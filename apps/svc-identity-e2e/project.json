@@ -1,0 +1,17 @@
+{
+  "name": "svc-identity-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "implicitDependencies": ["svc-identity"],
+  "projectType": "application",
+  "targets": {
+    "e2e": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{e2eProjectRoot}"],
+      "options": {
+        "jestConfig": "apps/svc-identity-e2e/jest.config.cts",
+        "passWithNoTests": true
+      },
+      "dependsOn": ["svc-identity:build", "svc-identity:serve"]
+    }
+  }
+}

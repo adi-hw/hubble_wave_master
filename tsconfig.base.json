@@ -1,6 +1,12 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "rootDir": ".",
     "sourceMap": true,
     "declaration": false,
@@ -14,7 +20,13 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@eam-platform/auth-guard": ["libs/auth-guard/src/index.ts"],
+      "@eam-platform/platform-db": ["libs/platform-db/src/index.ts"],
+      "@eam-platform/tenant-db": ["libs/tenant-db/src/index.ts"],
+      "@eam-platform/shared-types": ["libs/shared-types/src/index.ts"],
+      "@eam-platform/authorization": ["libs/authorization/src/index.ts"]
+    }
   },
   "exclude": ["node_modules", "tmp"]
 }

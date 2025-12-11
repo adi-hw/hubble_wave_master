@@ -1,0 +1,598 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ===== Modern Design Tokens - Light Mode ===== */
+    /* Background layers */
+    --hw-bg: #f8fafc;
+    --hw-bg-subtle: #f1f5f9;
+    --hw-surface: #ffffff;
+    --hw-surface-elevated: #ffffff;
+    --hw-card: #ffffff;
+
+    /* Border colors */
+    --hw-border: #e2e8f0;
+    --hw-border-subtle: #f1f5f9;
+    --hw-border-strong: #cbd5e1;
+
+    /* Primary brand */
+    --hw-primary: #3b82f6;
+    --hw-primary-hover: #2563eb;
+    --hw-primary-active: #1d4ed8;
+    --hw-primary-subtle: #eff6ff;
+
+    /* Accent (purple) */
+    --hw-accent: #a855f7;
+    --hw-accent-hover: #9333ea;
+    --hw-accent-subtle: #faf5ff;
+
+    /* Text colors */
+    --hw-text: #0f172a;
+    --hw-text-secondary: #475569;
+    --hw-text-muted: #64748b;
+    --hw-text-placeholder: #94a3b8;
+    --hw-text-inverted: #ffffff;
+
+    /* Semantic colors */
+    --hw-success: #22c55e;
+    --hw-success-subtle: #f0fdf4;
+    --hw-warning: #f59e0b;
+    --hw-warning-subtle: #fffbeb;
+    --hw-danger: #ef4444;
+    --hw-danger-subtle: #fef2f2;
+    --hw-info: #3b82f6;
+    --hw-info-subtle: #eff6ff;
+
+    /* Diff colors */
+    --hw-diff-add: #22c55e;
+    --hw-diff-add-bg: #f0fdf4;
+    --hw-diff-remove: #ef4444;
+    --hw-diff-remove-bg: #fef2f2;
+    --hw-diff-change: #3b82f6;
+    --hw-diff-change-bg: #eff6ff;
+
+    /* Radii */
+    --hw-radius-sm: 0.375rem;
+    --hw-radius-md: 0.5rem;
+    --hw-radius-lg: 0.75rem;
+    --hw-radius-xl: 1rem;
+    --hw-radius-2xl: 1.5rem;
+
+    /* Shadows */
+    --hw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --hw-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    --hw-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    --hw-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+
+    /* Spacing scale */
+    --hw-space-1: 0.25rem;
+    --hw-space-2: 0.5rem;
+    --hw-space-3: 0.75rem;
+    --hw-space-4: 1rem;
+    --hw-space-5: 1.25rem;
+    --hw-space-6: 1.5rem;
+    --hw-space-8: 2rem;
+    --hw-space-10: 2.5rem;
+    --hw-space-12: 3rem;
+
+    /* Transitions */
+    --hw-transition-fast: 100ms;
+    --hw-transition-normal: 150ms;
+    --hw-transition-slow: 300ms;
+
+    /* Code/Mono colors */
+    --hw-code-bg: #1e293b;
+    --hw-code-text: #e2e8f0;
+  }
+
+  /* ===== Dark Mode ===== */
+  .dark {
+    /* Background layers */
+    --hw-bg: #0a0a0f;
+    --hw-bg-subtle: #111118;
+    --hw-surface: #16161d;
+    --hw-surface-elevated: #1c1c25;
+    --hw-card: #16161d;
+
+    /* Border colors */
+    --hw-border: #2a2a35;
+    --hw-border-subtle: #1f1f28;
+    --hw-border-strong: #3a3a48;
+
+    /* Primary brand */
+    --hw-primary: #60a5fa;
+    --hw-primary-hover: #3b82f6;
+    --hw-primary-active: #2563eb;
+    --hw-primary-subtle: rgba(59, 130, 246, 0.15);
+
+    /* Accent */
+    --hw-accent: #c084fc;
+    --hw-accent-hover: #a855f7;
+    --hw-accent-subtle: rgba(168, 85, 247, 0.15);
+
+    /* Text colors */
+    --hw-text: #f1f5f9;
+    --hw-text-secondary: #cbd5e1;
+    --hw-text-muted: #94a3b8;
+    --hw-text-placeholder: #64748b;
+    --hw-text-inverted: #0f172a;
+
+    /* Semantic colors */
+    --hw-success: #4ade80;
+    --hw-success-subtle: rgba(34, 197, 94, 0.15);
+    --hw-warning: #fbbf24;
+    --hw-warning-subtle: rgba(245, 158, 11, 0.15);
+    --hw-danger: #f87171;
+    --hw-danger-subtle: rgba(239, 68, 68, 0.15);
+    --hw-info: #60a5fa;
+    --hw-info-subtle: rgba(59, 130, 246, 0.15);
+
+    /* Diff colors */
+    --hw-diff-add: #4ade80;
+    --hw-diff-add-bg: rgba(34, 197, 94, 0.15);
+    --hw-diff-remove: #f87171;
+    --hw-diff-remove-bg: rgba(239, 68, 68, 0.15);
+    --hw-diff-change: #60a5fa;
+    --hw-diff-change-bg: rgba(59, 130, 246, 0.15);
+
+    /* Shadows (subtle in dark mode) */
+    --hw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --hw-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+    --hw-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+    --hw-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+
+    /* Code colors */
+    --hw-code-bg: #0f172a;
+    --hw-code-text: #e2e8f0;
+  }
+
+  html {
+    @apply scroll-smooth;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--hw-bg);
+    color: var(--hw-text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    @apply antialiased;
+  }
+
+  /* Better focus outlines */
+  *:focus-visible {
+    outline: 2px solid var(--hw-primary);
+    outline-offset: 2px;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: var(--hw-primary-subtle);
+    color: var(--hw-primary);
+  }
+}
+
+@layer components {
+  /* ===== Button System ===== */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none;
+    transition: all var(--hw-transition-normal) ease-out;
+  }
+
+  .btn-primary {
+    @apply btn text-white shadow-sm;
+    background-color: var(--hw-primary);
+  }
+  .btn-primary:hover {
+    background-color: var(--hw-primary-hover);
+  }
+  .btn-primary:active {
+    background-color: var(--hw-primary-active);
+  }
+
+  .btn-secondary {
+    @apply btn shadow-sm;
+    background-color: var(--hw-surface);
+    color: var(--hw-text-secondary);
+    border: 1px solid var(--hw-border);
+  }
+  .btn-secondary:hover {
+    background-color: var(--hw-bg-subtle);
+    border-color: var(--hw-border-strong);
+  }
+
+  .btn-ghost {
+    @apply btn;
+    color: var(--hw-text-secondary);
+  }
+  .btn-ghost:hover {
+    background-color: var(--hw-bg-subtle);
+    color: var(--hw-text);
+  }
+
+  .btn-danger {
+    @apply btn text-white shadow-sm;
+    background-color: var(--hw-danger);
+  }
+  .btn-danger:hover {
+    filter: brightness(0.9);
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-md {
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-5 py-2.5 text-base;
+  }
+
+  .btn-icon {
+    @apply p-2;
+  }
+
+  /* ===== Card System ===== */
+  .card {
+    background-color: var(--hw-card);
+    border: 1px solid var(--hw-border);
+    border-radius: var(--hw-radius-xl);
+    box-shadow: var(--hw-shadow-sm);
+  }
+
+  .card-elevated {
+    background-color: var(--hw-surface-elevated);
+    border: 1px solid var(--hw-border-subtle);
+    border-radius: var(--hw-radius-xl);
+    box-shadow: var(--hw-shadow-md);
+  }
+
+  .card-interactive {
+    @apply card cursor-pointer;
+    transition: all var(--hw-transition-normal) ease-out;
+  }
+  .card-interactive:hover {
+    border-color: var(--hw-border-strong);
+    box-shadow: var(--hw-shadow-md);
+  }
+
+  /* ===== Input System ===== */
+  .input {
+    @apply w-full px-3 py-2 text-sm;
+    background-color: var(--hw-surface);
+    border: 1px solid var(--hw-border);
+    border-radius: var(--hw-radius-lg);
+    color: var(--hw-text);
+    transition: all var(--hw-transition-fast) ease-out;
+  }
+  .input::placeholder {
+    color: var(--hw-text-placeholder);
+  }
+  .input:hover {
+    border-color: var(--hw-border-strong);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--hw-primary);
+    box-shadow: 0 0 0 3px var(--hw-primary-subtle);
+  }
+
+  .input-error {
+    border-color: var(--hw-danger);
+  }
+  .input-error:focus {
+    box-shadow: 0 0 0 3px var(--hw-danger-subtle);
+  }
+
+  /* ===== Badge System ===== */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply badge;
+    background-color: var(--hw-primary-subtle);
+    color: var(--hw-primary);
+  }
+
+  .badge-success {
+    @apply badge;
+    background-color: var(--hw-success-subtle);
+    color: var(--hw-success);
+  }
+
+  .badge-warning {
+    @apply badge;
+    background-color: var(--hw-warning-subtle);
+    color: var(--hw-warning);
+  }
+
+  .badge-danger {
+    @apply badge;
+    background-color: var(--hw-danger-subtle);
+    color: var(--hw-danger);
+  }
+
+  .badge-neutral {
+    @apply badge;
+    background-color: var(--hw-bg-subtle);
+    color: var(--hw-text-muted);
+  }
+
+  /* ===== Admin Console Specific ===== */
+  /* Config type badges */
+  .badge-config-table {
+    @apply badge;
+    background-color: var(--hw-primary-subtle);
+    color: var(--hw-primary);
+  }
+
+  .badge-config-field {
+    @apply badge;
+    background-color: var(--hw-accent-subtle);
+    color: var(--hw-accent);
+  }
+
+  .badge-config-workflow {
+    @apply badge;
+    background-color: var(--hw-success-subtle);
+    color: var(--hw-success);
+  }
+
+  .badge-config-acl {
+    @apply badge;
+    background-color: var(--hw-warning-subtle);
+    color: var(--hw-warning);
+  }
+
+  .badge-config-script {
+    @apply badge;
+    background-color: var(--hw-danger-subtle);
+    color: var(--hw-danger);
+  }
+
+  /* Customization type badges */
+  .badge-override {
+    @apply badge;
+    background-color: var(--hw-warning-subtle);
+    color: var(--hw-warning);
+  }
+
+  .badge-extend {
+    @apply badge;
+    background-color: var(--hw-primary-subtle);
+    color: var(--hw-primary);
+  }
+
+  .badge-new {
+    @apply badge;
+    background-color: var(--hw-success-subtle);
+    color: var(--hw-success);
+  }
+
+  /* Impact severity badges */
+  .badge-impact-critical {
+    @apply badge font-semibold;
+    background-color: var(--hw-danger-subtle);
+    color: var(--hw-danger);
+  }
+
+  .badge-impact-high {
+    @apply badge;
+    background-color: var(--hw-warning-subtle);
+    color: var(--hw-warning);
+  }
+
+  .badge-impact-medium {
+    @apply badge;
+    background-color: var(--hw-info-subtle);
+    color: var(--hw-info);
+  }
+
+  .badge-impact-low {
+    @apply badge;
+    background-color: var(--hw-success-subtle);
+    color: var(--hw-success);
+  }
+
+  /* ===== Diff Viewer Styles ===== */
+  .diff-line-add {
+    background-color: var(--hw-diff-add-bg);
+    color: var(--hw-diff-add);
+  }
+
+  .diff-line-remove {
+    background-color: var(--hw-diff-remove-bg);
+    color: var(--hw-diff-remove);
+  }
+
+  .diff-line-change {
+    background-color: var(--hw-diff-change-bg);
+    color: var(--hw-diff-change);
+  }
+
+  /* ===== Code Block ===== */
+  .code-block {
+    background-color: var(--hw-code-bg);
+    color: var(--hw-code-text);
+    border-radius: var(--hw-radius-lg);
+    @apply font-mono text-sm p-4 overflow-auto;
+  }
+
+  /* ===== Surface Layers ===== */
+  .surface {
+    background-color: var(--hw-surface);
+  }
+
+  .surface-elevated {
+    background-color: var(--hw-surface-elevated);
+  }
+
+  .surface-subtle {
+    background-color: var(--hw-bg-subtle);
+  }
+
+  /* ===== Admin Sidebar ===== */
+  .admin-sidebar {
+    background-color: var(--hw-surface);
+    border-right: 1px solid var(--hw-border);
+  }
+
+  .admin-sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2 text-sm rounded-lg;
+    color: var(--hw-text-secondary);
+    transition: all var(--hw-transition-fast) ease-out;
+  }
+  .admin-sidebar-item:hover {
+    background-color: var(--hw-bg-subtle);
+    color: var(--hw-text);
+  }
+  .admin-sidebar-item.active {
+    background-color: var(--hw-primary-subtle);
+    color: var(--hw-primary);
+    font-weight: 500;
+  }
+
+  /* ===== Data Table ===== */
+  .data-table {
+    @apply w-full text-sm;
+  }
+
+  .data-table th {
+    @apply text-left px-4 py-3 font-medium;
+    color: var(--hw-text-muted);
+    background-color: var(--hw-bg-subtle);
+    border-bottom: 1px solid var(--hw-border);
+  }
+
+  .data-table td {
+    @apply px-4 py-3;
+    border-bottom: 1px solid var(--hw-border-subtle);
+    color: var(--hw-text);
+  }
+
+  .data-table tr:hover td {
+    background-color: var(--hw-bg-subtle);
+  }
+
+  .data-table tr.selected td {
+    background-color: var(--hw-primary-subtle);
+  }
+
+  /* ===== Empty State ===== */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-12 text-center;
+    color: var(--hw-text-muted);
+  }
+
+  .empty-state-icon {
+    @apply w-12 h-12 mb-4 opacity-40;
+  }
+
+  /* ===== Keyboard Shortcut ===== */
+  .kbd {
+    @apply inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-mono rounded;
+    background-color: var(--hw-bg-subtle);
+    border: 1px solid var(--hw-border);
+    color: var(--hw-text-muted);
+    min-width: 1.5rem;
+  }
+}
+
+@layer utilities {
+  /* Text utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Subtle scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+  }
+
+  /* Modern scrollbar for tables */
+  .scrollbar-modern::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 5px;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 5px;
+    border: 2px solid #f1f5f9;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-corner {
+    background: #f1f5f9;
+  }
+
+  /* Firefox */
+  .scrollbar-modern {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+
+  /* Context menu cursor */
+  .cursor-context-menu {
+    cursor: context-menu;
+  }
+}
+
+/* Context menu animation - outside layer to ensure it's globally available */
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

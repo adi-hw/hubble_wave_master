@@ -1,101 +1,162 @@
-# EamPlatform
+# EAM Platform
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+## Overview
+This is a multi-tenant Enterprise Asset Management (EAM) platform built with:
+- **Frontend**: React (Vite)
+- **Backend**: NestJS Microservices
+- **Database**: PostgreSQL
+- **Identity**: NestJS svc-identity (JWT, MFA, RBAC/ABAC)
+- **Storage**: MinIO
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+## Active Services
+- **svc-identity**: Manages tenant realms and authentication.
+- **svc-metadata**: Manages dynamic table definitions.
+- **svc-data**: Manages dynamic record storage.
+- **web-client**: The Studio UI for managing the platform.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/nest?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+## 🔒 Security Notice
 
-## Run tasks
+**IMPORTANT:** This platform has undergone a comprehensive security audit (Dec 2025).
+**Critical security fixes have been applied. Follow the setup steps carefully.**
 
-To run the dev server for your app, use:
+See: [QUICK-START-SECURITY.md](QUICK-START-SECURITY.md) for security configuration.
 
-```sh
-npx nx serve api-gateway
-```
+## Prerequisites
+- Docker & Docker Compose
+- Node.js 20+ (Vite/Nx expect >=18; 20 LTS recommended)
+- **PostgreSQL 16+** with UUID extension
+- **Secure JWT secret** (generated, not hardcoded)
 
-To create a production bundle:
+## Getting Started
 
-```sh
-npx nx build api-gateway
-```
+### 1. **Start Infrastructure**
+   ```bash
+   docker-compose up -d
+   ```
 
-To see all available targets to run for a project, run:
+### 2. **Generate JWT Secret** (REQUIRED)
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   ```
+   Copy the output and add to `.env`:
+   ```env
+   JWT_SECRET=<your-generated-secret-here>
+   ```
 
-```sh
-npx nx show project api-gateway
-```
+### 3. **Configure Environment**
+   Copy `.env.example` to `.env` and update:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set JWT_SECRET (from step 2)
+   ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+### 4. **Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+### 5. **Run Database Migrations**
+   ```bash
+   # TypeORM migrations (recommended)
+   npm run typeorm:migration:run
 
-## Add new projects
+   # OR manually apply SQL migrations in order
+   psql "$DATABASE_URL" -f migrations/2025-11-29_add_rbac_abac_config.sql
+   psql "$DATABASE_URL" -f migrations/2025-11-30_add_modules.sql
+   psql "$DATABASE_URL" -f migrations/2025-11-30_seed-modules.sql
+   psql "$DATABASE_URL" -f migrations/2025-11-30_add_forms_workflows.sql
+   psql "$DATABASE_URL" -f migrations/2025-12-01_add_ui_tables.sql
+   psql "$DATABASE_URL" -f migrations/2025-12-02_add_model_tables.sql
+   psql "$DATABASE_URL" -f migrations/platform/1733616000000-add-account-lockout.ts
+   ```
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
+### 6. **Run Services**
+   You can run services individually or all together:
+   ```bash
+   # Run all services
+   npm run dev:all
 
-Use the plugin's generator to create new projects.
+   # Run specific service
+   npm run dev:identity
+   npm run dev:metadata
+   npm run dev:data
+   npm run dev:web
+   ```
 
-To generate a new application, use:
+### 7. **Verify Security Configuration**
+   See: [QUICK-START-SECURITY.md](QUICK-START-SECURITY.md) for verification steps.
 
-```sh
-npx nx g @nx/nest:app demo
-```
+## Environment
+- Copy `.env.example` to `.env` (backend) and set secrets (`JWT_SECRET`, DB credentials).
+- Frontend uses `VITE_API_URL` (in `.env.local` or `.env.example`) to point at identity API (default `http://localhost:3000/api`).
+- Swagger is disabled in production by default; set `SWAGGER_ENABLED=true` to expose `/api/docs`.
+- If identity and web live on different parent domains (different eTLD+1), set `REFRESH_COOKIE_SAMESITE=none` and use HTTPS so refresh cookies flow correctly; keep `secure` enabled in that case.
 
-To generate a new library, use:
+## Ports
+- **Web Client**: http://localhost:4200
+- **Identity Service**: http://localhost:3000
+- **Metadata Service**: http://localhost:3333
+- **Data Service**: http://localhost:3001
+- **Postgres**: 5432
+- **MinIO**: 9000/9001
+- **Redis**: 6379
 
-```sh
-npx nx g @nx/node:lib mylib
-```
+## 📚 Documentation
 
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
+- **[QUICK-START-SECURITY.md](QUICK-START-SECURITY.md)** - Essential security setup (START HERE)
+- **[SECURITY-FIXES-APPLIED.md](SECURITY-FIXES-APPLIED.md)** - Detailed security audit report
+- **[TODO-REMAINING-FIXES.md](TODO-REMAINING-FIXES.md)** - Development roadmap
+- **[FIXES-SUMMARY.md](FIXES-SUMMARY.md)** - High-level overview
 
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## 🔐 Security Features
 
-## Set up CI!
+- ✅ **No hardcoded secrets** - JWT_SECRET required from environment
+- ✅ **Account lockout** - 5 failed attempts = 30-minute lockout
+- ✅ **Deny-by-default ABAC** - Explicit policies required for access
+- ✅ **Argon2 password hashing** - Industry-standard security
+- ✅ **Refresh token rotation** - Family-based reuse detection
+- ✅ **Multi-factor authentication** - TOTP with recovery codes
 
-### Step 1
+## ⚠️ Security Warnings
 
-To connect to Nx Cloud, run the following command:
+1. **JWT_SECRET is required** - Application will not start without it
+2. **Account lockout is enforced** - Users locked after 5 failed attempts
+3. **Default ABAC policy is DENY** - Tables require explicit ACL configuration
 
-```sh
-npx nx connect
-```
+## 🚀 Production Deployment
 
-Connecting to Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
+**Before deploying to production:**
 
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+1. Set all required environment variables (see `.env.example`)
+2. Run all database migrations
+3. Generate secure JWT_SECRET (64-byte hex string)
+4. Enable HTTPS/TLS
+5. Set `NODE_ENV=production`
+6. Review: [SECURITY-FIXES-APPLIED.md](SECURITY-FIXES-APPLIED.md)
 
-### Step 2
+## Deprecated / Unused
+- `apps/backend` (Deleted)
+- `apps/api-gateway` (Deleted)
 
-Use the following command to configure a CI workflow for your workspace:
+## 📊 Project Status
 
-```sh
-npx nx g ci-workflow
-```
+**Production Readiness:** 55% (after security fixes)
+**Critical Issues:** 0
+**High-Priority TODOs:** 4 (see TODO-REMAINING-FIXES.md)
 
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## 🆘 Troubleshooting
 
-## Install Nx Console
+**Error: "JWT_SECRET environment variable must be set"**
+- Generate secret: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+- Add to `.env` file
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+**Error: "Account is locked"**
+- Wait 30 minutes OR manually reset in database
+- See: [QUICK-START-SECURITY.md](QUICK-START-SECURITY.md#troubleshooting)
 
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+**Error: "Column 'failed_login_attempts' does not exist"**
+- Run migration: `npm run typeorm:migration:run`
 
-## Useful links
+## 📝 License
 
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/nest?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+MIT

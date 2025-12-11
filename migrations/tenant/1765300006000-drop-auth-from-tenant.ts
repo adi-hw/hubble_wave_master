@@ -1,0 +1,53 @@
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class DropAuthFromTenant1765300006000 implements MigrationInterface {
+    name = 'DropAuthFromTenant1765300006000'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`DROP TABLE IF EXISTS "nav_profile_item" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "nav_profile" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "config_settings" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "abac_policies" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "api_keys" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "email_verification_tokens" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "password_reset_tokens" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "mfa_methods" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "refresh_tokens" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "password_policies" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "group_roles" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "user_role_assignments" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "user_groups" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "groups" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "roles" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "permissions" CASCADE`);
+        await queryRunner.query(`DROP TABLE IF EXISTS "user_accounts" CASCADE`);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`CREATE TABLE "user_accounts" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "username" character varying NOT NULL, "email" character varying, "displayName" character varying, "authSource" character varying NOT NULL DEFAULT 'LOCAL', "passwordHash" character varying, "previousPasswords" text NOT NULL DEFAULT '', "failedLoginCount" integer NOT NULL DEFAULT '0', "lastFailedLoginAt" TIMESTAMP, "lockedUntil" TIMESTAMP, "status" character varying NOT NULL DEFAULT 'ACTIVE', "emailVerified" boolean NOT NULL DEFAULT false, "passwordChangedAt" TIMESTAMP WITH TIME ZONE, "lastLoginAt" TIMESTAMP WITH TIME ZONE, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_user_accounts_id" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_d45e7ca4a62293443961558c56" ON "user_accounts" ("username")`);
+        await queryRunner.query(`CREATE TABLE "permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "description" character varying, "category" character varying NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_48ce552495d14eae9b187bb6716" UNIQUE ("name"), CONSTRAINT "PK_920331560282b8bd21bb02290df" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "roles" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "description" character varying, "permissions" text NOT NULL DEFAULT '', "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c1433d71a4838793a49dcad46ab" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "groups" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "description" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_659d1483316afb28afd3a90646e" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_664ea405ae2a10c264d582ee56" ON "groups" ("name")`);
+        await queryRunner.query(`CREATE TABLE "user_groups" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "groupId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_dc24675c437bf3c70d3d0dff67f" UNIQUE ("userId", "groupId"), CONSTRAINT "PK_ea7760dc75ee1bf0b09ab9b3289" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "user_role_assignments" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "roleId" uuid NOT NULL, CONSTRAINT "PK_ac634a3aa59d70bf0fb7b423b47" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "group_roles" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "groupId" uuid NOT NULL, "roleId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_681b827dab7faf2f26680850743" UNIQUE ("groupId", "roleId"), CONSTRAINT "PK_c88b2351f40bf170bc7ab7e8fda" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "password_policies" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "minLength" integer NOT NULL DEFAULT '12', "requireUppercase" boolean NOT NULL DEFAULT true, "requireLowercase" boolean NOT NULL DEFAULT true, "requireNumbers" boolean NOT NULL DEFAULT true, "requireSymbols" boolean NOT NULL DEFAULT false, "passwordExpiryDays" integer NOT NULL DEFAULT '0', "passwordHistoryDepth" integer NOT NULL DEFAULT '5', "maxFailedAttempts" integer NOT NULL DEFAULT '5', "lockoutDurationMinutes" integer NOT NULL DEFAULT '15', "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_5468b65a86afc8563ac81cb9153" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "refresh_tokens" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "tokenHash" character varying NOT NULL, "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL, "revoked" boolean NOT NULL DEFAULT false, "revokedAt" TIMESTAMP WITH TIME ZONE, "replacedByToken" character varying, "ipAddress" character varying, "userAgent" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_c25bc63d248ca90e8dcc1d92d06" UNIQUE ("tokenHash"), CONSTRAINT "PK_7d8bee0204106019488c4c50ffa" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_fd99bb073033ec13353c5f62c5" ON "refresh_tokens" ("userId", "revoked")`);
+        await queryRunner.query(`CREATE TABLE "mfa_methods" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "type" character varying NOT NULL, "enabled" boolean NOT NULL DEFAULT false, "verified" boolean NOT NULL DEFAULT false, "secret" character varying, "destination" character varying, "recoveryCodes" text NOT NULL DEFAULT '', "lastUsedAt" TIMESTAMP WITH TIME ZONE, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_60e4d183e6dbd427aa5549da581" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_b8cf794d73ba5870a92032da94" ON "mfa_methods" ("userId", "type")`);
+        await queryRunner.query(`CREATE TABLE "password_reset_tokens" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "tokenHash" character varying NOT NULL, "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL, "used" boolean NOT NULL DEFAULT false, "usedAt" TIMESTAMP WITH TIME ZONE, "ipAddress" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_1143abb8c3fad8b06dd857a8c9c" UNIQUE ("tokenHash"), CONSTRAINT "PK_d16bebd73e844c48bca50ff8d3d" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_9bfba70726ffca74288d85e6fd" ON "password_reset_tokens" ("userId", "used")`);
+        await queryRunner.query(`CREATE TABLE "email_verification_tokens" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "tokenHash" character varying NOT NULL, "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL, "used" boolean NOT NULL DEFAULT false, "usedAt" TIMESTAMP WITH TIME ZONE, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_90489f8f3368c45f461e90efbe5" UNIQUE ("tokenHash"), CONSTRAINT "PK_417a095bbed21c2369a6a01ab9a" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_aee6bd8cf4c84b0a0561adfe0e" ON "email_verification_tokens" ("userId", "used")`);
+        await queryRunner.query(`CREATE TABLE "api_keys" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "keyPrefix" character varying NOT NULL, "keyHash" character varying NOT NULL, "scopes" text NOT NULL DEFAULT '', "expiresAt" TIMESTAMP, "lastUsedAt" TIMESTAMP, "isActive" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_5c8a79801b44bd27b79228e1dad" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "abac_policies" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "tenantId" uuid, "name" character varying NOT NULL, "resource" character varying NOT NULL, "action" character varying NOT NULL, "effect" character varying NOT NULL DEFAULT 'allow', "conditions" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_88f2f8490c1af9c04c1ba0a2d67" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE INDEX "IDX_abac_policies_tenant_resource_action" ON "abac_policies" ("tenantId", "resource", "action")`);
+        await queryRunner.query(`CREATE TABLE "config_settings" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "scope" character varying NOT NULL, "tenantId" uuid, "category" character varying NOT NULL, "key" character varying NOT NULL, "type" character varying NOT NULL, "value" jsonb NOT NULL, "version" integer NOT NULL DEFAULT '1', "createdBy" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f19d19b64b32b6dcaadb2e98906" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_config_settings_scope_tenant_key" ON "config_settings" ("scope", "tenantId", "key")`);
+        await queryRunner.query(`CREATE TABLE "nav_profile" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "tenant_id" uuid NOT NULL, "name" text, "is_default" boolean NOT NULL DEFAULT false, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_04fbfc9ff92f0a0b21f750366a5" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "nav_profile_item" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "profile_id" uuid NOT NULL, "code" text NOT NULL, "label" text, "section" text, "order" integer NOT NULL DEFAULT '999', "visible" boolean NOT NULL DEFAULT true, "pinned" boolean NOT NULL DEFAULT false, "icon" text, CONSTRAINT "PK_f6e0654aa32fb836543353c0770" PRIMARY KEY ("id"))`);
+    }
+}

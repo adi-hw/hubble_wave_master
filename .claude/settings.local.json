@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir:*)",
+      "Bash(npx nx build:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(cat:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(find:*)",
+      "Bash(npx nx run-many:*)",
+      "Bash(node tools/check-roles.js:*)",
+      "Bash(docker exec:*)",
+      "Bash(npm audit fix:*)",
+      "Bash(ls:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(curl:*)",
+      "Bash(dir /s /b \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\libs\\crypto\\*.ts\")",
+      "Bash(docker ps:*)",
+      "Bash(dir:*)",
+      "Bash(docker logs:*)",
+      "Bash(npm run migration:run:tenant:*)",
+      "Bash(node --loader ts-node/esm --no-warnings node_modules/typeorm/cli.js migration:run:*)",
+      "Bash(node:*)",
+      "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\components\\layout\\SidebarFlyout.tsx\")",
+      "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\hooks\\useNavigation.ts\")",
+      "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\components\\layout\\AppShellV2.tsx\")",
+      "Bash(npx tsx:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
