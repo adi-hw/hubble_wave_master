@@ -1,0 +1,8 @@
+{
+  "name": "integrations",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/integrations/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {}
+}

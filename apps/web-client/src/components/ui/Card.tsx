@@ -51,11 +51,11 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
   return (
     <div className={`flex items-start justify-between gap-4 ${className}`} {...props}>
       <div>
-        <h3 className="text-base font-semibold" style={{ color: 'var(--hw-text)' }}>
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
           {title}
         </h3>
         {description && (
-          <p className="mt-1 text-sm" style={{ color: 'var(--hw-text-muted)' }}>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {description}
           </p>
         )}
@@ -98,8 +98,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
 
   return (
     <div
-      className={`flex items-center gap-3 pt-4 border-t ${alignClasses[align]} ${className}`}
-      style={{ borderColor: 'var(--hw-border-subtle)' }}
+      className={`flex items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 ${alignClasses[align]} ${className}`}
       {...props}
     >
       {children}

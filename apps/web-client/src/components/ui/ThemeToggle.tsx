@@ -1,71 +1,205 @@
-import React from 'react';
-import { Moon, Sun, Monitor } from 'lucide-react';
+/**
+ * ThemeToggle - Modern Theme Switcher
+ *
+ * A sleek, animated theme toggle supporting system/light/dark modes.
+ * Designed for the HubbleWave design system.
+ */
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Moon, Sun, Monitor, Check } from 'lucide-react';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
 type Theme = 'light' | 'dark' | 'system';
 
 interface ThemeToggleProps {
+  /** Show text label next to icon */
   showLabel?: boolean;
-  variant?: 'button' | 'dropdown';
+  /** Display variant */
+  variant?: 'button' | 'dropdown' | 'segmented';
+  /** Size of the toggle */
+  size?: 'sm' | 'md';
+  /** Additional className */
   className?: string;
 }
+
+const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+];
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   showLabel = false,
   variant = 'button',
+  size = 'md',
   className = '',
 }) => {
   const { theme, isDark, setTheme, toggleTheme } = useDarkMode();
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Size classes
+  const sizeClasses = {
+    sm: 'h-8 w-8',
+    md: 'h-9 w-9',
+  };
+
+  const iconSizeClasses = {
+    sm: 'h-4 w-4',
+    md: 'h-5 w-5',
+  };
+
+  // Simple toggle button with smooth animation
   if (variant === 'button') {
     return (
       <button
         onClick={toggleTheme}
-        className={`btn-ghost btn-icon rounded-lg ${className}`}
+        className={`
+          relative inline-flex items-center justify-center gap-2
+          ${showLabel ? 'px-3' : sizeClasses[size]}
+          rounded-lg
+          text-slate-500 hover:text-slate-700
+          dark:text-slate-400 dark:hover:text-slate-200
+          hover:bg-slate-100 dark:hover:bg-slate-800
+          transition-all duration-200
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50
+          ${className}
+        `}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       >
-        {isDark ? (
-          <Sun className="h-5 w-5" />
-        ) : (
-          <Moon className="h-5 w-5" />
-        )}
+        <span className="relative h-5 w-5">
+          {/* Sun icon - shown in dark mode */}
+          <Sun
+            className={`
+              ${iconSizeClasses[size]}
+              absolute inset-0
+              transition-all duration-300 ease-out
+              ${isDark ? 'rotate-0 scale-100 opacity-100' : 'rotate-90 scale-0 opacity-0'}
+            `}
+          />
+          {/* Moon icon - shown in light mode */}
+          <Moon
+            className={`
+              ${iconSizeClasses[size]}
+              absolute inset-0
+              transition-all duration-300 ease-out
+              ${!isDark ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-0 opacity-0'}
+            `}
+          />
+        </span>
         {showLabel && (
-          <span className="ml-2 text-sm">{isDark ? 'Light' : 'Dark'}</span>
+          <span className="text-sm font-medium">
+            {isDark ? 'Light' : 'Dark'}
+          </span>
         )}
       </button>
     );
   }
 
-  // Dropdown variant
-  const options: { value: Theme; label: string; icon: React.ReactNode }[] = [
-    { value: 'light', label: 'Light', icon: <Sun className="h-4 w-4" /> },
-    { value: 'dark', label: 'Dark', icon: <Moon className="h-4 w-4" /> },
-    { value: 'system', label: 'System', icon: <Monitor className="h-4 w-4" /> },
-  ];
-
-  return (
-    <div className={`relative ${className}`}>
+  // Segmented control variant
+  if (variant === 'segmented') {
+    return (
       <div
-        className="flex items-center rounded-lg p-1"
-        style={{ backgroundColor: 'var(--hw-bg-subtle)' }}
+        className={`
+          inline-flex items-center gap-1 p-1 rounded-xl
+          bg-slate-100 dark:bg-slate-800
+          ${className}
+        `}
       >
-        {options.map((option) => (
+        {themeOptions.map(({ value, icon: Icon }) => (
           <button
-            key={option.value}
-            onClick={() => setTheme(option.value)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors"
-            style={{
-              backgroundColor: theme === option.value ? 'var(--hw-surface)' : 'transparent',
-              color: theme === option.value ? 'var(--hw-text)' : 'var(--hw-text-muted)',
-              boxShadow: theme === option.value ? 'var(--hw-shadow-sm)' : 'none',
-            }}
+            key={value}
+            onClick={() => setTheme(value)}
+            className={`
+              p-2 rounded-lg transition-all duration-200
+              ${theme === value
+                ? 'bg-white dark:bg-slate-700 shadow-sm text-primary-600 dark:text-primary-400'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }
+            `}
+            aria-label={`${value} theme`}
+            title={`${value.charAt(0).toUpperCase() + value.slice(1)} theme`}
           >
-            {option.icon}
-            {showLabel && <span>{option.label}</span>}
+            <Icon className={iconSizeClasses[size]} />
           </button>
         ))}
       </div>
+    );
+  }
+
+  // Dropdown variant
+  const CurrentIcon = isDark ? Moon : Sun;
+
+  return (
+    <div className={`relative ${className}`} ref={menuRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`
+          inline-flex items-center justify-center
+          ${sizeClasses[size]} rounded-lg
+          text-slate-500 hover:text-slate-700
+          dark:text-slate-400 dark:hover:text-slate-200
+          hover:bg-slate-100 dark:hover:bg-slate-800
+          transition-all duration-200
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50
+        `}
+        aria-label="Theme options"
+        aria-expanded={isOpen}
+      >
+        <CurrentIcon className={iconSizeClasses[size]} />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div
+          className="
+            absolute right-0 mt-2 w-40
+            bg-white dark:bg-slate-800
+            border border-slate-200 dark:border-slate-700
+            rounded-xl shadow-elevated
+            py-1 z-50
+            animate-scale-in
+          "
+          style={{ transformOrigin: 'top right' }}
+        >
+          {themeOptions.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => {
+                setTheme(value);
+                setIsOpen(false);
+              }}
+              className={`
+                w-full flex items-center gap-3 px-3 py-2
+                text-sm transition-colors
+                ${theme === value
+                  ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                }
+              `}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="flex-1 text-left">{label}</span>
+              {theme === value && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

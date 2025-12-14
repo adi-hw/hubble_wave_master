@@ -83,9 +83,12 @@ const AppShellInner: React.FC = () => {
 
   if (loading && !navigation) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 text-primary-600 animate-spin mb-4" />
-        <p className="text-sm text-slate-500">Loading workspace...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="relative">
+          <div className="absolute inset-0 bg-hubble-gradient opacity-20 blur-xl rounded-full" />
+          <Loader2 className="h-8 w-8 text-primary-600 dark:text-primary-400 animate-spin mb-4 relative z-10" />
+        </div>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Loading workspace...</p>
       </div>
     );
   }
@@ -95,7 +98,7 @@ const AppShellInner: React.FC = () => {
   const legacySections = convertToLegacySections(navigation);
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
       <AppHeader />
 
       <div className="flex min-h-screen pt-14">
@@ -104,7 +107,7 @@ const AppShellInner: React.FC = () => {
           onToggle={() => setSidebarCollapsed((v) => !v)}
         />
 
-        <main className="flex-1 min-h-[calc(100vh-3.5rem)] overflow-auto bg-slate-50">
+        <main className="flex-1 min-h-[calc(100vh-3.5rem)] overflow-auto bg-slate-50 dark:bg-slate-900">
           <div className="h-full">
             <Outlet />
           </div>

@@ -36,7 +36,12 @@
       "Bash(do echo '=== $entity ===')",
       "Bash(done)",
       "Bash(del \"C:\\Users\\Hubble-Wave\\.claude-worktrees\\eam-platform\\competent-nobel\\apps\\svc-data\\src\\app\\app.service.ts\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nchore: cleanup deprecated files and add HubbleWave foundation\n\n- Remove deprecated SQL migrations (now using TypeORM)\n- Remove deprecated entity files (model-field, model-table, etc.)\n- Remove deprecated components (ChoiceEditor, FieldTemplateSelector, etc.)\n- Remove deprecated services and controllers\n- Add hybrid identity entities (TenantUser, UserPreference, etc.)\n- Add tenant user management (controller, service, UI pages)\n- Add HubbleWave documentation (brand, features, implementation plan)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npx nx generate:*)",
+      "Bash(del \"C:\\Users\\Hubble-Wave\\.claude-worktrees\\eam-platform\\competent-nobel\\libs\\ai\\src\\lib\\providers\\ollama.provider.ts\")",
+      "Bash(npx nx serve svc-metadata)",
+      "Bash(npx nx serve svc-data)"
     ],
     "deny": [],
     "ask": []

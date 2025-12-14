@@ -25,7 +25,12 @@
       "@eam-platform/platform-db": ["libs/platform-db/src/index.ts"],
       "@eam-platform/tenant-db": ["libs/tenant-db/src/index.ts"],
       "@eam-platform/shared-types": ["libs/shared-types/src/index.ts"],
-      "@eam-platform/authorization": ["libs/authorization/src/index.ts"]
+      "@eam-platform/authorization": ["libs/authorization/src/index.ts"],
+      "@eam-platform/automation": ["libs/automation/src/index.ts"],
+      "@eam-platform/integrations": ["libs/integrations/src/index.ts"],
+      "@eam-platform/analytics": ["libs/analytics/src/index.ts"],
+      "@eam-platform/ai": ["libs/ai/src/index.ts"],
+      "@eam-platform/enterprise": ["libs/enterprise/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

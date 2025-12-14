@@ -107,7 +107,7 @@ const NavItemComponent: React.FC<NavItemProps> = ({
   };
 
   if (isSeparator) {
-    return <div className="my-2 mx-4 border-t border-slate-200/60" />;
+    return <div className="my-2 mx-4 border-t border-slate-200/60 dark:border-slate-700/60" />;
   }
 
   // Group header
@@ -117,10 +117,10 @@ const NavItemComponent: React.FC<NavItemProps> = ({
         {!collapsed && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 transition-colors"
+            className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
           >
             {node.icon && (
-              <span className="text-slate-400">
+              <span className="text-slate-400 dark:text-slate-500">
                 <Icon name={node.icon} className="h-3.5 w-3.5" />
               </span>
             )}
@@ -158,11 +158,11 @@ const NavItemComponent: React.FC<NavItemProps> = ({
       <div className="mt-1">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-md mx-2 transition-colors"
+          className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-md mx-2 transition-colors"
           style={{ paddingLeft: `${16 + depth * 12}px` }}
         >
           <ChevronRight
-            className={`h-3 w-3 text-slate-400 transition-transform duration-200 ${
+            className={`h-3 w-3 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${
               isExpanded ? 'rotate-90' : ''
             }`}
           />
@@ -209,8 +209,8 @@ const NavItemComponent: React.FC<NavItemProps> = ({
         group relative flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm cursor-pointer
         transition-all duration-150
         ${isActive
-          ? 'bg-gradient-to-r from-sky-500/10 to-indigo-500/10 text-sky-700 font-medium shadow-sm ring-1 ring-sky-500/20'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-hubble-gradient-subtle text-primary-700 dark:text-primary-300 font-medium shadow-sm ring-1 ring-primary-500/20 dark:ring-primary-400/20'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
         }
         ${collapsed ? 'justify-center mx-1' : ''}
       `}
@@ -218,7 +218,7 @@ const NavItemComponent: React.FC<NavItemProps> = ({
     >
       {/* Icon */}
       {node.icon && (
-        <span className={`flex-shrink-0 ${isActive ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+        <span className={`flex-shrink-0 ${isActive ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400'}`}>
           <Icon name={node.icon} className="h-4 w-4" />
         </span>
       )}
@@ -235,8 +235,8 @@ const NavItemComponent: React.FC<NavItemProps> = ({
               className={`
                 flex-shrink-0 p-0.5 rounded transition-all duration-150
                 ${isFavorite
-                  ? 'text-amber-500 hover:text-amber-600'
-                  : 'text-slate-300 hover:text-amber-400 opacity-0 group-hover:opacity-100'
+                  ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-500'
+                  : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 dark:hover:text-amber-500 opacity-0 group-hover:opacity-100'
                 }
               `}
               title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -285,12 +285,12 @@ const SmartGroup: React.FC<SmartGroupProps> = ({
     <div className="mb-4">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 transition-colors"
+        className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
       >
-        <span className="text-slate-400">{icon}</span>
+        <span className="text-slate-400 dark:text-slate-500">{icon}</span>
         <span className="flex-1 text-left">{title}</span>
         {items.length > 0 && (
-          <span className="px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-500 rounded-full">
+          <span className="px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
             {items.length}
           </span>
         )}
@@ -316,7 +316,7 @@ const SmartGroup: React.FC<SmartGroupProps> = ({
               />
             ))
           ) : (
-            <p className="px-4 py-2 text-xs text-slate-400 italic">
+            <p className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 italic">
               {emptyMessage || 'No items'}
             </p>
           )}
@@ -417,7 +417,7 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
       className={`
         relative hidden md:flex flex-col flex-shrink-0
         ${widthClass} h-[calc(100vh-3.5rem)] sticky top-14
-        bg-white border-r border-slate-200
+        bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800
         transition-all duration-200 ease-in-out
       `}
     >
@@ -427,8 +427,8 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
         className="
           absolute -right-3 top-6 z-10
           h-6 w-6 rounded-full
-          bg-white border border-slate-200 shadow-sm
-          text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:shadow
+          bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm
+          text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow
           flex items-center justify-center
           transition-all duration-150
         "
@@ -443,23 +443,23 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
 
       {/* Header with Profile/App Switcher */}
       {!collapsed && (
-        <div className="px-3 py-3 border-b border-slate-100">
+        <div className="px-3 py-3 border-b border-slate-100 dark:border-slate-800">
           {/* Profile Switcher */}
           {profiles.length > 1 && (
             <div className="relative mb-2">
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-slate-50 hover:bg-slate-100 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
-                <Layers className="h-4 w-4 text-slate-400" />
-                <span className="flex-1 text-left text-slate-700 truncate">
+                <Layers className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                <span className="flex-1 text-left text-slate-700 dark:text-slate-300 truncate">
                   {activeProfile?.name || 'Navigation'}
                 </span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 text-slate-400 dark:text-slate-500 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
               </button>
 
               {showProfileMenu && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1">
                   {profiles.map((profile) => (
                     <button
                       key={profile.id}
@@ -467,12 +467,12 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
                         switchProfile(profile.id);
                         setShowProfileMenu(false);
                       }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 ${
-                        profile.id === activeProfile?.id ? 'bg-sky-50 text-sky-700' : 'text-slate-700'
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 ${
+                        profile.id === activeProfile?.id ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'
                       }`}
                     >
                       {profile.id === activeProfile?.id && (
-                        <span className="text-sky-500">✓</span>
+                        <span className="text-primary-500">✓</span>
                       )}
                       <span className={profile.id === activeProfile?.id ? '' : 'ml-5'}>{profile.name}</span>
                     </button>
@@ -484,18 +484,18 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
 
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-sky-300 focus:ring-2 focus:ring-sky-100 outline-none transition-all"
+              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-400 dark:focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/30 outline-none transition-all"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -597,7 +597,7 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
                 <button
                   key={node.key}
                   title={node.label}
-                  className="w-full p-3 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                  className="w-full p-3 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                 >
                   {node.icon ? (
                     <Icon name={node.icon} className="h-5 w-5 mx-auto" />
@@ -612,11 +612,11 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
 
       {/* Footer */}
       {!collapsed && (
-        <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-          <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span className="truncate">{activeProfile?.name || 'Navigation'}</span>
             {loading && (
-              <div className="h-3 w-3 border-2 border-slate-300 border-t-sky-500 rounded-full animate-spin" />
+              <div className="h-3 w-3 border-2 border-slate-300 dark:border-slate-600 border-t-primary-500 rounded-full animate-spin" />
             )}
           </div>
         </div>

@@ -4,23 +4,33 @@ export class DropTableDefinitions1764809000000 implements MigrationInterface {
     name = 'DropTableDefinitions1764809000000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        // Drop FK from model_form_layout to table_definitions
-        await queryRunner.query(`ALTER TABLE "model_form_layout" DROP CONSTRAINT IF EXISTS "model_form_layout_tableId_fkey"`);
-        await queryRunner.query(`ALTER TABLE "model_form_layout" DROP CONSTRAINT IF EXISTS "FK_ef968475e513c7d117771a5736e"`);
-
-        // Drop legacy table_definitions
-        await queryRunner.query(`DROP TABLE IF EXISTS "table_definitions"`);
-
-        // Remove catalog entry if it exists
-        await queryRunner.query(`DELETE FROM "model_table" WHERE code = 'table_definitions'`);
-
-        // Reattach FK to model_table
-        await queryRunner.query(`
-          ALTER TABLE "model_form_layout"
-          ADD CONSTRAINT "FK_model_form_layout_model_table"
-          FOREIGN KEY ("tableId") REFERENCES "model_table"("id")
-          ON DELETE CASCADE ON UPDATE NO ACTION
+        // Check if model_form_layout exists before altering
+        const tableExists = await queryRunner.query(`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'model_form_layout'
+          )
         `);
+
+        if (tableExists?.[0]?.exists) {
+            // Drop FK from model_form_layout to table_definitions
+            await queryRunner.query(`ALTER TABLE "model_form_layout" DROP CONSTRAINT IF EXISTS "model_form_layout_tableId_fkey"`);
+            await queryRunner.query(`ALTER TABLE "model_form_layout" DROP CONSTRAINT IF EXISTS "FK_ef968475e513c7d117771a5736e"`);
+
+            // Drop legacy table_definitions
+            await queryRunner.query(`DROP TABLE IF EXISTS "table_definitions"`);
+
+            // Remove catalog entry if it exists
+            await queryRunner.query(`DELETE FROM "model_table" WHERE code = 'table_definitions'`);
+
+            // Reattach FK to model_table
+            await queryRunner.query(`
+              ALTER TABLE "model_form_layout"
+              ADD CONSTRAINT "FK_model_form_layout_model_table"
+              FOREIGN KEY ("tableId") REFERENCES "model_table"("id")
+              ON DELETE CASCADE ON UPDATE NO ACTION
+            `);
+        }
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {

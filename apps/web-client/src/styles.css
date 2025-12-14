@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    /* ===== Modern Design Tokens - Light Mode ===== */
+    /* ===== HubbleWave Design Tokens - Light Mode ===== */
     /* Background layers */
     --hw-bg: #f8fafc;
     --hw-bg-subtle: #f1f5f9;
@@ -17,16 +17,17 @@
     --hw-border-subtle: #f1f5f9;
     --hw-border-strong: #cbd5e1;
 
-    /* Primary brand */
-    --hw-primary: #3b82f6;
-    --hw-primary-hover: #2563eb;
-    --hw-primary-active: #1d4ed8;
-    --hw-primary-subtle: #eff6ff;
+    /* Primary brand - Indigo (Deep Space) */
+    --hw-primary: #4f46e5;
+    --hw-primary-hover: #4338ca;
+    --hw-primary-active: #3730a3;
+    --hw-primary-subtle: #eef2ff;
+    --hw-primary-foreground: #ffffff;
 
-    /* Accent (purple) */
-    --hw-accent: #a855f7;
-    --hw-accent-hover: #9333ea;
-    --hw-accent-subtle: #faf5ff;
+    /* Accent - Cyan (Wave) */
+    --hw-accent: #06b6d4;
+    --hw-accent-hover: #0891b2;
+    --hw-accent-subtle: #ecfeff;
 
     /* Text colors */
     --hw-text: #0f172a;
@@ -87,30 +88,31 @@
     --hw-code-text: #e2e8f0;
   }
 
-  /* ===== Dark Mode ===== */
+  /* ===== HubbleWave Dark Mode - Cosmic Space Theme ===== */
   .dark {
-    /* Background layers */
-    --hw-bg: #0a0a0f;
-    --hw-bg-subtle: #111118;
-    --hw-surface: #16161d;
-    --hw-surface-elevated: #1c1c25;
-    --hw-card: #16161d;
+    /* Background layers - Deep space */
+    --hw-bg: #0c0a1a;
+    --hw-bg-subtle: #12101f;
+    --hw-surface: #181627;
+    --hw-surface-elevated: #1e1c30;
+    --hw-card: #181627;
 
     /* Border colors */
-    --hw-border: #2a2a35;
-    --hw-border-subtle: #1f1f28;
-    --hw-border-strong: #3a3a48;
+    --hw-border: #2d2a42;
+    --hw-border-subtle: #211f32;
+    --hw-border-strong: #3d3a55;
 
-    /* Primary brand */
-    --hw-primary: #60a5fa;
-    --hw-primary-hover: #3b82f6;
-    --hw-primary-active: #2563eb;
-    --hw-primary-subtle: rgba(59, 130, 246, 0.15);
+    /* Primary brand - Indigo (lighter for dark mode) */
+    --hw-primary: #818cf8;
+    --hw-primary-hover: #6366f1;
+    --hw-primary-active: #4f46e5;
+    --hw-primary-subtle: rgba(79, 70, 229, 0.15);
+    --hw-primary-foreground: #ffffff;
 
-    /* Accent */
-    --hw-accent: #c084fc;
-    --hw-accent-hover: #a855f7;
-    --hw-accent-subtle: rgba(168, 85, 247, 0.15);
+    /* Accent - Cyan (Wave) */
+    --hw-accent: #22d3ee;
+    --hw-accent-hover: #06b6d4;
+    --hw-accent-subtle: rgba(6, 182, 212, 0.15);
 
     /* Text colors */
     --hw-text: #f1f5f9;
@@ -227,18 +229,36 @@
 
   .btn-sm {
     @apply px-3 py-1.5 text-sm;
+    min-height: 32px;
   }
 
   .btn-md {
     @apply px-4 py-2 text-sm;
+    min-height: 40px;
   }
 
   .btn-lg {
     @apply px-5 py-2.5 text-base;
+    min-height: 44px; /* Touch-friendly */
   }
 
   .btn-icon {
     @apply p-2;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  /* Mobile-friendly button adjustments */
+  @media (max-width: 768px) {
+    .btn-md {
+      min-height: 44px; /* Touch-friendly on mobile */
+      @apply py-2.5;
+    }
+
+    .btn-icon {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 
   /* ===== Card System ===== */
@@ -268,6 +288,7 @@
   /* ===== Input System ===== */
   .input {
     @apply w-full px-3 py-2 text-sm;
+    min-height: 40px;
     background-color: var(--hw-surface);
     border: 1px solid var(--hw-border);
     border-radius: var(--hw-radius-lg);
@@ -291,6 +312,14 @@
   }
   .input-error:focus {
     box-shadow: 0 0 0 3px var(--hw-danger-subtle);
+  }
+
+  /* Mobile-friendly input adjustments */
+  @media (max-width: 768px) {
+    .input {
+      min-height: 44px; /* Touch-friendly on mobile */
+      @apply py-2.5 text-base; /* Larger text prevents zoom on iOS */
+    }
   }
 
   /* ===== Badge System ===== */
@@ -509,6 +538,15 @@
 }
 
 @layer utilities {
+  /* Safe area insets for iOS */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-area-pt {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   /* Text utilities */
   .text-balance {
     text-wrap: balance;
@@ -594,5 +632,126 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* PWA Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Safe area utilities for PWA */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Bottom navigation safe area adjustment */
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Touch feedback */
+.touch-feedback {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.touch-feedback:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* Prevent pull-to-refresh on iOS when not needed */
+.no-overscroll {
+  overscroll-behavior: none;
+}
+
+/* Smooth momentum scrolling on iOS */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Disable text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* PWA standalone mode specific styles */
+@media (display-mode: standalone) {
+  /* Remove any address bar gaps */
+  body {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Adjust header for notch */
+  .app-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Adjust bottom nav for home indicator */
+  .bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }

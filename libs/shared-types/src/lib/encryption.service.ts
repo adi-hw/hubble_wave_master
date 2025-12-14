@@ -14,7 +14,7 @@ export class EncryptionService {
   private readonly key: Buffer;
 
   constructor(encryptionKey?: string) {
-    const key = encryptionKey || process.env.ENCRYPTION_KEY;
+    const key = encryptionKey || process.env['ENCRYPTION_KEY'];
 
     if (!key) {
       throw new Error(

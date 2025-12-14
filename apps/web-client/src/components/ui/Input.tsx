@@ -33,18 +33,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium mb-1.5"
-            style={{ color: 'var(--hw-text-secondary)' }}
+            className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {hasLeftIcon && (
-            <div
-              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ color: 'var(--hw-text-placeholder)' }}
-            >
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
               {showSearch ? <Search className="h-4 w-4" /> : leftIcon}
             </div>
           )}
@@ -64,8 +60,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
           {(rightIcon || error) && (
             <div
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ color: error ? 'var(--hw-danger)' : 'var(--hw-text-placeholder)' }}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
+                error ? 'text-danger-500' : 'text-slate-400 dark:text-slate-500'
+              }`}
             >
               {error ? <AlertCircle className="h-4 w-4" /> : rightIcon}
             </div>
@@ -74,8 +71,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {error && (
           <p
             id={`${inputId}-error`}
-            className="mt-1.5 text-sm"
-            style={{ color: 'var(--hw-danger)' }}
+            className="mt-1.5 text-sm text-danger-500"
           >
             {error}
           </p>
@@ -83,8 +79,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {hint && !error && (
           <p
             id={`${inputId}-hint`}
-            className="mt-1.5 text-sm"
-            style={{ color: 'var(--hw-text-muted)' }}
+            className="mt-1.5 text-sm text-slate-500 dark:text-slate-400"
           >
             {hint}
           </p>

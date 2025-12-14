@@ -162,20 +162,21 @@ export class CreateTenantBusinessSchema1765300007000 implements MigrationInterfa
         `);
         await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_model_form_layout_table" ON "model_form_layout" ("tableId")`);
 
-        // Audit log
+        // Audit log - drop and recreate to ensure consistent schema
+        await queryRunner.query(`DROP TABLE IF EXISTS "audit_log" CASCADE`);
         await queryRunner.query(`
-          CREATE TABLE IF NOT EXISTS "audit_log" (
+          CREATE TABLE "audit_log" (
             "id" uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-            "tableName" character varying NOT NULL,
-            "recordId" character varying NOT NULL,
+            "table_name" character varying NOT NULL,
+            "record_id" character varying NOT NULL,
             "action" character varying NOT NULL,
             "diff" jsonb,
-            "performedBy" character varying,
+            "performed_by" character varying,
             "timestamp" TIMESTAMP NOT NULL DEFAULT now()
           )
         `);
-        await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_audit_log_table" ON "audit_log" ("tableName")`);
-        await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_audit_log_record" ON "audit_log" ("recordId")`);
+        await queryRunner.query(`CREATE INDEX "idx_audit_log_table" ON "audit_log" ("table_name")`);
+        await queryRunner.query(`CREATE INDEX "idx_audit_log_record" ON "audit_log" ("record_id")`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {

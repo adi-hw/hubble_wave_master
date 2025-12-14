@@ -1,6 +1,9 @@
 import { DataSource } from 'typeorm';
 import { join } from 'path';
 
+// Use process.cwd() for ESM compatibility
+const migrationsPath = join(process.cwd(), 'migrations', 'platform', '*.ts');
+
 export default new DataSource({
   type: 'postgres',
   host: process.env.PGHOST || 'localhost',
@@ -8,9 +11,7 @@ export default new DataSource({
   username: process.env.PGUSER || 'admin',
   password: process.env.PGPASSWORD || 'password',
   database: process.env.PGDATABASE || 'eam_global',
-  entities: [join(__dirname, '..', 'libs', 'platform-db', 'src', 'lib', 'entities', '**', '*.ts')],
-  migrations: [
-    join(__dirname, '..', 'migrations', 'platform', '1777*.ts'),
-    join(__dirname, '..', 'migrations', 'platform', '1778*.ts'),
-  ],
+  entities: [], // Entities not needed for migrations
+  migrations: [migrationsPath],
+  migrationsTableName: 'migrations',
 });

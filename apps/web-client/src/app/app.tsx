@@ -25,6 +25,12 @@ import {
   UsersListPage,
   UserInvitePage,
   UserDetailPage,
+  CollectionsListPage,
+  CollectionEditorPage,
+  PropertiesListPage,
+  PropertyEditorPage,
+  ViewsListPage,
+  ViewEditorPage,
   ScriptsListPage,
   ScriptEditorPage,
   BusinessRulesListPage,
@@ -43,7 +49,30 @@ import {
   UpgradeCenterPage,
   SettingsPage,
   ChangeHistoryPage,
+  // Modern Automations UI
+  BusinessRulesPage,
+  WorkflowsPage,
+  WorkflowRunsPage,
+  // Integrations
+  IntegrationsPage,
+  // Analytics
+  AnalyticsDashboard,
+  // Modules
+  ModulesPage,
+  // Reports
+  ReportsPage,
 } from '../features/admin';
+
+// Data pages (Schema Engine runtime)
+import { CollectionListPage, CollectionRecordPage } from '../features/data';
+
+// Service Portal pages
+import {
+  ServicePortalHome,
+  ServiceCatalog,
+  MyItemsPage,
+  KnowledgeBase,
+} from '../features/portal';
 
 const ShellRoute = () => (
   <ProtectedRoute>
@@ -127,6 +156,56 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <UserDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - Collections (Schema Engine) */}
+          <Route
+            path="/studio/collections"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CollectionsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CollectionEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:id/properties"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <PropertiesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:id/properties/:propertyId"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <PropertyEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:collectionId/views"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ViewsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:collectionId/views/:viewId"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ViewEditorPage />
               </ProtectedRoute>
             }
           />
@@ -289,11 +368,114 @@ export function App() {
             }
           />
 
-          {/* List view: /table.list */}
+          {/* Admin - Automations (Modern UI) */}
+          <Route
+            path="/admin/automations/rules"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <BusinessRulesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/automations/rules/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <BusinessRulesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/automations/workflows"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/automations/workflows/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/automations/runs"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowRunsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/automations/runs/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowRunsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - Integrations */}
+          <Route
+            path="/admin/integrations"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <IntegrationsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - Analytics */}
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <AnalyticsDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - Modules */}
+          <Route
+            path="/admin/modules"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ModulesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - Reports */}
+          <Route
+            path="/admin/reports"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Data Engine - Collection Data Pages */}
+          <Route path="/data/:collectionCode" element={<CollectionListPage />} />
+          <Route path="/data/:collectionCode/:recordId" element={<CollectionRecordPage />} />
+
+          {/* Service Portal - End User Self-Service */}
+          <Route path="/portal" element={<ServicePortalHome />} />
+          <Route path="/portal/catalog" element={<ServiceCatalog />} />
+          <Route path="/portal/catalog/:itemId" element={<ServiceCatalog />} />
+          <Route path="/portal/my-items" element={<MyItemsPage />} />
+          <Route path="/portal/requests/:requestId" element={<MyItemsPage />} />
+          <Route path="/portal/knowledge" element={<KnowledgeBase />} />
+          <Route path="/portal/knowledge/:articleId" element={<KnowledgeBase />} />
+
+          {/* Legacy: List view: /table.list */}
           <Route path="/:tableCode.list" element={<ModuleListPage />} />
-          {/* Create: /table.form */}
+          {/* Legacy: Create: /table.form */}
           <Route path="/:tableCode.form" element={<ModuleCreatePage />} />
-          {/* Record view/edit: /table.form/:id */}
+          {/* Legacy: Record view/edit: /table.form/:id */}
           <Route path="/:tableCode.form/:id" element={<ModuleRecordPage />} />
         </Route>
 

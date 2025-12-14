@@ -1,0 +1,8 @@
+{
+  "name": "automation",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/automation/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {}
+}

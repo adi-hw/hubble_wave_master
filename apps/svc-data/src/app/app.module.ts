@@ -7,10 +7,12 @@ import { DataController } from './data.controller';
 import { DataService } from './data.service';
 import { HealthController } from './health.controller';
 import { ModelRegistryService } from './model-registry.service';
+import { CollectionDataController } from './collection-data.controller';
+import { CollectionDataService } from './collection-data.service';
 
 @Module({
   imports: [PlatformDbModule, TenantDbModule, AuthGuardModule, AuthorizationModule],
-  controllers: [DataController, HealthController],
-  providers: [DataService, ModelRegistryService],
+  controllers: [DataController, HealthController, CollectionDataController],
+  providers: [DataService, ModelRegistryService, CollectionDataService],
 })
 export class AppModule {}

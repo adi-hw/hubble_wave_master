@@ -4,13 +4,23 @@ export class SeedModulesModel1765300010000 implements MigrationInterface {
     name = 'SeedModulesModel1765300010000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        // Add snake_case columns if they don't exist
         await queryRunner.query(`
           ALTER TABLE "modules"
           ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP NOT NULL DEFAULT now(),
           ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP NOT NULL DEFAULT now()
         `);
-        await queryRunner.query(`UPDATE "modules" SET created_at = COALESCE(created_at, "createdAt")`);
-        await queryRunner.query(`UPDATE "modules" SET updated_at = COALESCE(updated_at, "updatedAt")`);
+        // Migrate from camelCase if columns exist (legacy schema)
+        const hasCreatedAt = await queryRunner.query(`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'modules' AND column_name = 'createdAt'
+          )
+        `);
+        if (hasCreatedAt?.[0]?.exists) {
+          await queryRunner.query(`UPDATE "modules" SET created_at = COALESCE(created_at, "createdAt")`);
+          await queryRunner.query(`UPDATE "modules" SET updated_at = COALESCE(updated_at, "updatedAt")`);
+        }
 
         // Ensure field types include integer
         await queryRunner.query(`

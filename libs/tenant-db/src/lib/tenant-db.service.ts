@@ -84,6 +84,17 @@ import { UserDelegate } from './entities/user-delegate.entity';
 import { UserApiKey } from './entities/user-api-key.entity';
 import { UserAuditLog } from './entities/user-audit-log.entity';
 import { TenantSetting } from './entities/tenant-setting.entity';
+import { CollectionDefinition } from './entities/collection-definition.entity';
+import { PropertyDefinition } from './entities/property-definition.entity';
+import { PropertyTypeDefinition } from './entities/property-type.entity';
+import { CollectionRelationship } from './entities/collection-relationship.entity';
+import { PropertyDependency } from './entities/property-dependency.entity';
+import { ViewDefinition } from './entities/view-definition.entity';
+import { ViewColumn } from './entities/view-column.entity';
+import { FormLayout } from './entities/form-layout.entity';
+import { SavedFilter } from './entities/saved-filter.entity';
+import { UserViewPreference } from './entities/user-view-preference.entity';
+import { AVAAuditTrail, AVAPermissionConfig, AVAGlobalSettings } from './entities/ava-audit.entity';
 import { extractTenantSlug } from './tenant-host.util';
 
 export const platformEntities = new Set([
@@ -178,6 +189,22 @@ export const tenantEntities = [
   UserApiKey,
   UserAuditLog,
   TenantSetting,
+  // Schema Engine entities (Collections & Properties)
+  CollectionDefinition,
+  PropertyDefinition,
+  PropertyTypeDefinition,
+  CollectionRelationship,
+  PropertyDependency,
+  // Views Engine entities
+  ViewDefinition,
+  ViewColumn,
+  FormLayout,
+  SavedFilter,
+  UserViewPreference,
+  // AVA Governance entities
+  AVAAuditTrail,
+  AVAPermissionConfig,
+  AVAGlobalSettings,
 ];
 
 @Injectable()

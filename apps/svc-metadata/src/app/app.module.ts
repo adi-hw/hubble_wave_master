@@ -19,6 +19,16 @@ import { ApprovalsController } from './approvals.controller';
 import { WorkflowsController } from './workflows.controller';
 import { UpgradeController } from './upgrade.controller';
 import { ExportController } from './export.controller';
+import { CollectionController } from './collection.controller';
+import { CollectionService } from './collection.service';
+import { PropertyController } from './property.controller';
+import { PropertyService } from './property.service';
+import { ViewController } from './view.controller';
+import { ViewService } from './view.service';
+import { CommitmentController } from './commitment.controller';
+import { CommitmentService } from './commitment.service';
+import { ImportExportController } from './import-export.controller';
+import { ImportExportService } from './import-export.service';
 
 // NOTE: Data CRUD operations have been consolidated to svc-data service.
 // Use svc-data endpoints for all record create/read/update/delete operations.
@@ -41,7 +51,12 @@ import { ExportController } from './export.controller';
     WorkflowsController,
     UpgradeController,
     ExportController,
+    CollectionController,
+    PropertyController,
+    ViewController,
+    CommitmentController,
+    ImportExportController,
   ],
-  providers: [ModuleService, FormService, ModelRegistryService],
+  providers: [ModuleService, FormService, ModelRegistryService, CollectionService, PropertyService, ViewService, CommitmentService, ImportExportService],
 })
 export class AppModule {}

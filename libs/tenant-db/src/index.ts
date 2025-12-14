@@ -80,6 +80,44 @@ export * from './lib/entities/tenant-field-acl.entity';
 export * from './lib/entities/table-ui-config.entity';
 export * from './lib/entities/field-ui-config.entity';
 
+// Schema Engine entities (Collections & Properties)
+export * from './lib/entities/collection-definition.entity';
+export * from './lib/entities/property-definition.entity';
+export * from './lib/entities/property-type.entity';
+export * from './lib/entities/collection-relationship.entity';
+export * from './lib/entities/property-dependency.entity';
+
+// Views Engine entities
+export * from './lib/entities/view-definition.entity';
+export * from './lib/entities/view-column.entity';
+export * from './lib/entities/form-layout.entity';
+export * from './lib/entities/saved-filter.entity';
+export * from './lib/entities/user-view-preference.entity';
+
+// Application Modules & Analytics entities
+export * from './lib/entities/application-module.entity';
+
+// Service Portal & Self-Service entities
+export * from './lib/entities/service-catalog.entity';
+
+// Enterprise SSO entities
+export * from './lib/entities/sso-config.entity';
+
+// Enterprise Audit entities
+export * from './lib/entities/audit-config.entity';
+
+// Enterprise Compliance entities
+export * from './lib/entities/compliance.entity';
+
+// Commitment Engine entities (SLA/OLA)
+export * from './lib/entities/commitment.entity';
+
+// Import/Export and Connections entities
+export * from './lib/entities/import-export.entity';
+
+// AVA Governance entities
+export * from './lib/entities/ava-audit.entity';
+
 export { tenantEntities, platformEntities } from './lib/tenant-db.service';
 
 // Utilities
