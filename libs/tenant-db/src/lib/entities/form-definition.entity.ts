@@ -1,5 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
-import { ModelTable } from './model-table.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('form_definitions')
 @Index(['slug'], { unique: true })
@@ -19,12 +18,9 @@ export class FormDefinition {
   @Column({ name: 'current_version', type: 'int', default: 1 })
   currentVersion!: number;
 
-  @Column({ name: 'model_table_id', type: 'uuid', nullable: true })
-  modelTableId?: string | null;
-
-  @ManyToOne(() => ModelTable, { nullable: true })
-  @JoinColumn({ name: 'model_table_id' })
-  modelTable?: ModelTable | null;
+  /** Reference to table name (using database-first approach) */
+  @Column({ name: 'table_name', type: 'varchar', length: 100, nullable: true })
+  tableName?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -12,7 +12,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, RolesGuard, Roles } from '@eam-platform/auth-guard';
+import { JwtAuthGuard, RolesGuard, Roles, TenantRequest, extractContext } from '@eam-platform/auth-guard';
+import { Logger, InternalServerErrorException } from '@nestjs/common';
 import { TenantDbService, PlatformScript } from '@eam-platform/tenant-db';
 import type { ExecutionContext } from '@eam-platform/tenant-db';
 
@@ -48,6 +49,8 @@ const ruleTypeToExecutionContext: Record<string, ExecutionContext> = {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('tenant_admin', 'platform_admin')
 export class BusinessRulesController {
+  private readonly logger = new Logger(BusinessRulesController.name);
+
   constructor(private readonly tenantDb: TenantDbService) {}
 
   @Get()
@@ -55,15 +58,14 @@ export class BusinessRulesController {
     @Query('table') targetTable: string,
     @Query('type') ruleType: string,
     @Query('active') active: string,
-    @Req() req: any,
+    @Req() req: TenantRequest,
   ) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+    const ctx = extractContext(req);
 
     try {
       const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
 
-      const where: any = { scriptType: 'business_rule' };
+      const where: Record<string, unknown> = { scriptType: 'business_rule' };
       if (targetTable) where.targetTable = targetTable;
       if (active !== undefined) where.isActive = active === 'true';
 
@@ -99,16 +101,20 @@ export class BusinessRulesController {
 
       return { data: filteredItems, total: filteredItems.length };
     } catch (error) {
-      // Return empty data if tenant DB is not available
-      console.warn('Failed to fetch business rules:', (error as Error).message);
-      return { data: [], total: 0 };
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch business rules for tenant ${ctx.tenantId}: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
+
+      // For admin users, provide more details; otherwise return a generic error
+      if (ctx.isPlatformAdmin || ctx.isTenantAdmin) {
+        throw new InternalServerErrorException(`Failed to fetch business rules: ${errorMessage}`);
+      }
+      throw new InternalServerErrorException('Failed to fetch business rules. Please try again later.');
     }
   }
 
   @Get(':id')
-  async getRule(@Param('id') id: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async getRule(@Param('id') id: string, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
     const rule = await repo.findOne({
@@ -142,9 +148,8 @@ export class BusinessRulesController {
   }
 
   @Post()
-  async createRule(@Body() body: CreateBusinessRuleDto, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async createRule(@Body() body: CreateBusinessRuleDto, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
 
@@ -209,9 +214,8 @@ export class BusinessRulesController {
   }
 
   @Patch(':id')
-  async updateRule(@Param('id') id: string, @Body() body: Partial<CreateBusinessRuleDto>, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async updateRule(@Param('id') id: string, @Body() body: Partial<CreateBusinessRuleDto>, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
     const rule = await repo.findOne({
@@ -294,9 +298,8 @@ export class BusinessRulesController {
   }
 
   @Delete(':id')
-  async deleteRule(@Param('id') id: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async deleteRule(@Param('id') id: string, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
     const rule = await repo.findOne({
@@ -316,9 +319,8 @@ export class BusinessRulesController {
   }
 
   @Post(':id/toggle')
-  async toggleRule(@Param('id') id: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async toggleRule(@Param('id') id: string, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
     const rule = await repo.findOne({
@@ -343,11 +345,10 @@ export class BusinessRulesController {
   @Post(':id/test')
   async testRule(
     @Param('id') id: string,
-    @Body() body: { recordData: Record<string, any> },
-    @Req() req: any,
+    @Body() body: { recordData: Record<string, unknown> },
+    @Req() req: TenantRequest,
   ) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+    const ctx = extractContext(req);
 
     const repo = await this.tenantDb.getRepository<PlatformScript>(ctx.tenantId, PlatformScript);
     const rule = await repo.findOne({

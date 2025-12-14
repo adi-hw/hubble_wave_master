@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityTarget, Repository, ObjectLiteral } from 'typeorm';
 import { join } from 'path';
+import { EncryptionService } from '@eam-platform/shared-types';
 import {
   Tenant,
   UserAccount,
@@ -36,11 +37,7 @@ import { FormDefinition } from './entities/form-definition.entity';
 import { FormVersion } from './entities/form-version.entity';
 import { WorkflowDefinition } from './entities/workflow-definition.entity';
 import { WorkflowRun } from './entities/workflow-run.entity';
-import { ModelFieldType } from './entities/model-field-type.entity';
-import { ModelTable } from './entities/model-table.entity';
-import { ModelField } from './entities/model-field.entity';
 import { AuditLog } from './entities/audit-log.entity';
-import { ModelFormLayout } from './entities/model-form-layout.entity';
 import { UserProfile } from './entities/user-profile.entity';
 import { PlatformConfig } from './entities/platform-config.entity';
 import { TenantCustomization } from './entities/tenant-customization.entity';
@@ -76,13 +73,17 @@ import { TenantFieldAcl } from './entities/tenant-field-acl.entity';
 import { UpgradeManifest } from './entities/upgrade-manifest.entity';
 import { TenantUpgradeImpact } from './entities/tenant-upgrade-impact.entity';
 import { BusinessRule } from './entities/business-rule.entity';
-import { UserLayoutPreference } from './entities/user-layout-preference.entity';
-import { FieldProtectionRule } from './entities/field-protection-rule.entity';
 import { TableUiConfig } from './entities/table-ui-config.entity';
 import { FieldUiConfig } from './entities/field-ui-config.entity';
 import { Application } from './entities/application.entity';
 import { NavTemplate } from './entities/nav-template.entity';
 import { NavPatch } from './entities/nav-patch.entity';
+import { TenantUser } from './entities/tenant-user.entity';
+import { UserPreference } from './entities/user-preference.entity';
+import { UserDelegate } from './entities/user-delegate.entity';
+import { UserApiKey } from './entities/user-api-key.entity';
+import { UserAuditLog } from './entities/user-audit-log.entity';
+import { TenantSetting } from './entities/tenant-setting.entity';
 import { extractTenantSlug } from './tenant-host.util';
 
 export const platformEntities = new Set([
@@ -123,11 +124,7 @@ export const tenantEntities = [
   WorkflowRun,
   WorkflowStepType,
   WorkflowStepExecution,
-  ModelFieldType,
-  ModelTable,
-  ModelField,
   AuditLog,
-  ModelFormLayout,
   UserProfile,
   PlatformConfig,
   TenantCustomization,
@@ -171,18 +168,25 @@ export const tenantEntities = [
   UpgradeManifest,
   TenantUpgradeImpact,
   BusinessRule,
-  UserLayoutPreference,
-  FieldProtectionRule,
   // Database-first UI configuration entities
   TableUiConfig,
   FieldUiConfig,
+  // Tenant User Management entities
+  TenantUser,
+  UserPreference,
+  UserDelegate,
+  UserApiKey,
+  UserAuditLog,
+  TenantSetting,
 ];
 
 @Injectable()
 export class TenantDbService implements OnModuleDestroy {
+  private readonly logger = new Logger(TenantDbService.name);
   private dataSources = new Map<string, DataSource>();
   private dataSourceOrder: string[] = [];
   private readonly maxDataSources: number;
+  private encryptionService: EncryptionService | null = null;
 
   constructor(
     @InjectRepository(Tenant)
@@ -192,6 +196,44 @@ export class TenantDbService implements OnModuleDestroy {
   ) {
     const parsedMax = Number(this.configService.get('TENANT_DB_MAX_CONNECTIONS') || 20);
     this.maxDataSources = Number.isNaN(parsedMax) ? 20 : parsedMax;
+
+    // Initialize encryption service if ENCRYPTION_KEY is available
+    const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
+    if (encryptionKey) {
+      try {
+        this.encryptionService = new EncryptionService(encryptionKey);
+      } catch (error) {
+        this.logger.warn('Failed to initialize encryption service. Encrypted passwords will not be decrypted.', error);
+      }
+    }
+  }
+
+  /**
+   * Decrypts a password if it appears to be encrypted, otherwise returns as-is.
+   * This allows backwards compatibility with existing unencrypted passwords.
+   */
+  private decryptPassword(password: string | null | undefined): string | undefined {
+    if (!password) {
+      return undefined;
+    }
+
+    // If encryption service is not available, return password as-is
+    if (!this.encryptionService) {
+      return password;
+    }
+
+    // Check if password appears to be encrypted (format: iv:authTag:ciphertext)
+    if (this.encryptionService.isEncrypted(password)) {
+      try {
+        return this.encryptionService.decrypt(password);
+      } catch (error) {
+        this.logger.error('Failed to decrypt tenant database password. Using as plaintext.', error);
+        return password;
+      }
+    }
+
+    // Password is not encrypted, return as-is
+    return password;
   }
 
   async findTenantBySlug(slug: string): Promise<Tenant | null> {
@@ -238,9 +280,10 @@ export class TenantDbService implements OnModuleDestroy {
       tenant.dbUser ||
       this.configService.get('TENANT_DB_USER') ||
       this.configService.get('DB_USER', 'admin');
+
+    // Decrypt tenant-specific password if encrypted, or fall back to config/defaults
     const dbPassword =
-      tenant.dbPasswordEnc ||
-      // TODO: Warning - dbPasswordEnc is currently used as cleartext. Implement decryption if this is actually encrypted.
+      this.decryptPassword(tenant.dbPasswordEnc) ||
       this.configService.get('TENANT_DB_PASSWORD') ||
       this.configService.get('DB_PASSWORD', 'password');
     const dbName =

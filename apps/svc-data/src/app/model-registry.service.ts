@@ -1,13 +1,55 @@
-import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleDestroy, Logger } from '@nestjs/common';
 import { TenantDbService, TableUiConfig, FieldUiConfig } from '@eam-platform/tenant-db';
 import NodeCache from 'node-cache';
+
+/** Return type for getTable method */
+export interface TableInfo {
+  tableName: string;
+  label: string;
+  storageTable: string;
+  storageSchema: string;
+  category: string;
+  isSystem: boolean;
+}
+
+/** Return type for getFields method */
+export interface FieldInfo {
+  code: string;
+  label: string;
+  type: string;
+  backendType: string;
+  uiWidget: string;
+  storagePath: string;
+  nullable: boolean;
+  isUnique: boolean;
+  defaultValue: string | null;
+  config: {
+    maxLength?: number | null;
+    precision?: number | null;
+    choices?: Array<{ value: string; label: string }> | null;
+    referenceTable?: string | null;
+    referenceDisplayField?: string | null;
+  };
+  validators: Record<string, unknown>;
+  isInternal: boolean;
+  isSystem: boolean;
+  showInForms: boolean;
+  showInLists: boolean;
+  displayOrder: number;
+}
 
 /**
  * Database-first model registry service.
  * Discovers tables and columns from information_schema instead of relying on model_table/model_field.
+ *
+ * Cache Strategy:
+ * - Default TTL: 30 seconds for automatic expiration
+ * - Manual invalidation: Call invalidateCache() when schema or UI config changes
+ * - Per-tenant isolation: Each tenant's cache is prefixed with tenantId
  */
 @Injectable()
 export class ModelRegistryService implements OnModuleDestroy {
+  private readonly logger = new Logger(ModelRegistryService.name);
   private cache: NodeCache;
 
   constructor(private readonly tenantDb: TenantDbService) {
@@ -15,19 +57,56 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
+   * Invalidate cache for a specific table, or all tables for a tenant.
+   * Call this method when:
+   * - Table schema changes (columns added/removed)
+   * - table_ui_config or field_ui_config is updated
+   * - Admin manually requests cache refresh
+   *
+   * @param tenantId - The tenant whose cache to invalidate
+   * @param tableName - Optional specific table to invalidate. If not provided, invalidates all tables for tenant.
+   */
+  invalidateCache(tenantId: string, tableName?: string): void {
+    if (tableName) {
+      // Invalidate specific table and its fields
+      const tableKey = `${tenantId}:table:${tableName}`;
+      const fieldsKey = `${tenantId}:fields:${tableName}`;
+      this.cache.del([tableKey, fieldsKey]);
+      this.logger.debug(`Invalidated cache for tenant ${tenantId}, table ${tableName}`);
+    } else {
+      // Invalidate all cache entries for this tenant
+      this.clearCache(tenantId);
+      this.logger.debug(`Invalidated all cache entries for tenant ${tenantId}`);
+    }
+  }
+
+  /**
+   * Force refresh cache for a specific table by fetching fresh data.
+   * Useful when you need the latest data immediately after a schema change.
+   *
+   * @param tableName - The table to refresh
+   * @param tenantId - The tenant ID
+   * @param roles - Optional roles for field visibility
+   * @returns Fresh table and field data
+   */
+  async refreshTableCache(
+    tableName: string,
+    tenantId: string,
+    roles?: string[]
+  ): Promise<{ table: TableInfo; fields: FieldInfo[] }> {
+    this.invalidateCache(tenantId, tableName);
+    const table = await this.getTable(tableName, tenantId);
+    const fields = await this.getFields(tableName, tenantId, roles);
+    return { table, fields };
+  }
+
+  /**
    * Get table info from information_schema
    */
-  async getTable(tableName: string, tenantId: string): Promise<{
-    tableName: string;
-    label: string;
-    storageTable: string;
-    storageSchema: string;
-    category: string;
-    isSystem: boolean;
-  }> {
+  async getTable(tableName: string, tenantId: string): Promise<TableInfo> {
     const cacheKey = `${tenantId}:table:${tableName}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) return cached as any;
+    const cached = this.cache.get<TableInfo>(cacheKey);
+    if (cached) return cached;
 
     const ds = await this.tenantDb.getDataSource(tenantId);
 
@@ -110,10 +189,10 @@ export class ModelRegistryService implements OnModuleDestroy {
   /**
    * Get fields from information_schema and field_ui_config
    */
-  async getFields(tableName: string, tenantId: string, roles?: string[]): Promise<any[]> {
+  async getFields(tableName: string, tenantId: string, roles?: string[]): Promise<FieldInfo[]> {
     const cacheKey = `${tenantId}:fields:${tableName}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) return cached as any[];
+    const cached = this.cache.get<FieldInfo[]>(cacheKey);
+    if (cached) return cached;
 
     // First ensure table exists
     await this.getTable(tableName, tenantId);
@@ -143,8 +222,19 @@ export class ModelRegistryService implements OnModuleDestroy {
 
     const showHidden = this.isPlatformAdmin(roles);
 
-    const fields = columnsResult
-      .map((col: any) => {
+    // Define column result type
+    interface ColumnResult {
+      column_name: string;
+      data_type: string;
+      is_nullable: string;
+      column_default: string | null;
+      character_maximum_length: number | null;
+      numeric_precision: number | null;
+      ordinal_position: number;
+    }
+
+    const fields: FieldInfo[] = (columnsResult as ColumnResult[])
+      .map((col) => {
         const config = uiConfigMap.get(col.column_name);
         const typeInfo = this.mapDataTypeToFieldType(col.data_type);
 
@@ -176,8 +266,8 @@ export class ModelRegistryService implements OnModuleDestroy {
           displayOrder: config?.displayOrder ?? col.ordinal_position,
         };
       })
-      .filter((f: any) => showHidden || !f.isInternal)
-      .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+      .filter((f) => showHidden || !f.isInternal)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
 
     this.cache.set(cacheKey, fields);
     return fields;

@@ -27,4 +27,6 @@ export * from './lib/entities/nav-profile-item.entity';
 export * from './lib/entities/table-acl.entity';
 export * from './lib/entities/field-acl.entity';
 export * from './lib/entities/auth-event.entity';
+export * from './lib/entities/user-invitation.entity';
+export * from './lib/entities/sso-config.entity';
 export { platformEntities } from './lib/platform-db.module';

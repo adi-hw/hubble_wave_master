@@ -7,7 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, RolesGuard, Roles } from '@eam-platform/auth-guard';
+import { JwtAuthGuard, RolesGuard, Roles, TenantRequest, extractContext } from '@eam-platform/auth-guard';
 import { TenantDbService, TenantCustomization } from '@eam-platform/tenant-db';
 
 // Placeholder types for upgrade management (entities to be implemented)
@@ -74,9 +74,8 @@ export class UpgradeController {
   // ========== Impact Analysis ==========
 
   @Get('analyze/:manifestId')
-  async analyzeUpgradeImpact(@Param('manifestId') manifestId: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async analyzeUpgradeImpact(@Param('manifestId') manifestId: string, @Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     // Get tenant customizations to provide meaningful info
     const customRepo = await this.tenantDb.getRepository<TenantCustomization>(
@@ -123,9 +122,8 @@ export class UpgradeController {
   // ========== Customization Summary ==========
 
   @Get('customizations-summary')
-  async getCustomizationsSummary(@Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async getCustomizationsSummary(@Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const customRepo = await this.tenantDb.getRepository<TenantCustomization>(
       ctx.tenantId,
@@ -155,9 +153,8 @@ export class UpgradeController {
   // ========== Pre-upgrade Check ==========
 
   @Post('pre-check')
-  async runPreUpgradeCheck(@Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Access check done by RolesGuard
+  async runPreUpgradeCheck(@Req() req: TenantRequest) {
+    const ctx = extractContext(req);
 
     const customRepo = await this.tenantDb.getRepository<TenantCustomization>(
       ctx.tenantId,

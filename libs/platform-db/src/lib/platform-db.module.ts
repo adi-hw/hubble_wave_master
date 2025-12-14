@@ -29,6 +29,8 @@ import { AuthEvent } from './entities/auth-event.entity';
 import { TenantUserMembership } from './entities/tenant-user-membership.entity';
 import { TableAcl } from './entities/table-acl.entity';
 import { FieldAcl } from './entities/field-acl.entity';
+import { UserInvitation } from './entities/user-invitation.entity';
+import { SsoConfig } from './entities/sso-config.entity';
 
 // Control plane connection: only platform entities (tenants, authZ/authN, config)
 export const platformEntities = [
@@ -59,6 +61,8 @@ export const platformEntities = [
   NavProfile,
   NavProfileItem,
   AuthEvent,
+  UserInvitation,
+  SsoConfig,
 ];
 
 @Module({

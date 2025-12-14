@@ -1,6 +1,9 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+
+export type UserAccountStatus = 'ACTIVE' | 'LOCKED' | 'INVITED' | 'DISABLED';
 
 @Entity('user_accounts')
+@Index(['isPlatformAdmin'], { where: '"is_platform_admin" = true' })
 export class UserAccount {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -18,10 +21,19 @@ export class UserAccount {
   mfaEnabled!: boolean;
 
   @Column({ type: 'enum', enumName: 'user_account_status', default: 'ACTIVE' })
-  status!: string;
+  status!: UserAccountStatus;
 
   @Column({ name: 'display_name', nullable: true })
   displayName?: string;
+
+  @Column({ name: 'first_name', type: 'varchar', length: 100, nullable: true })
+  firstName?: string | null;
+
+  @Column({ name: 'last_name', type: 'varchar', length: 100, nullable: true })
+  lastName?: string | null;
+
+  @Column({ name: 'avatar_url', type: 'varchar', length: 500, nullable: true })
+  avatarUrl?: string | null;
 
   @Column({ name: 'locale', nullable: true })
   locale?: string;
@@ -40,6 +52,31 @@ export class UserAccount {
 
   @Column({ name: 'password_changed_at', type: 'timestamptz', nullable: true })
   passwordChangedAt?: Date;
+
+  // Email verification
+  @Column({ name: 'email_verified', type: 'boolean', default: false })
+  emailVerified!: boolean;
+
+  @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
+  emailVerifiedAt?: Date | null;
+
+  // Platform admin flag (superuser access across all tenants)
+  @Column({ name: 'is_platform_admin', type: 'boolean', default: false })
+  isPlatformAdmin!: boolean;
+
+  // Last login tracking (global, not per-tenant)
+  @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
+  lastLoginAt?: Date | null;
+
+  @Column({ name: 'last_login_ip', type: 'varchar', length: 45, nullable: true })
+  lastLoginIp?: string | null;
+
+  // Phone number for MFA/recovery
+  @Column({ name: 'phone_number', type: 'varchar', length: 50, nullable: true })
+  phoneNumber?: string | null;
+
+  @Column({ name: 'phone_verified', type: 'boolean', default: false })
+  phoneVerified!: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

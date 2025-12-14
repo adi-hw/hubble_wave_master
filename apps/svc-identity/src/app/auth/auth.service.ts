@@ -15,7 +15,14 @@ import {
   RoleInheritance,
   Role,
 } from '@eam-platform/platform-db';
-import { UserProfile } from '@eam-platform/tenant-db';
+import {
+  UserProfile,
+  TenantUser,
+  TenantUserRole,
+  TenantGroupMember,
+  TenantRole,
+  TenantGroupRole,
+} from '@eam-platform/tenant-db';
 import { LoginDto } from './dto/login.dto';
 import { LdapService } from '../ldap/ldap.service';
 import { RefreshTokenService } from './refresh-token.service';
@@ -273,6 +280,7 @@ export class AuthService {
       }
 
       const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenant.id, UserAccount as any);
+      const tenantUserRepo = await this.tenantDbService.getRepository<TenantUser>(tenant.id, TenantUser);
       const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenant.id, TenantUserMembership as any);
 
       let user = await usersRepo.findOne({
@@ -284,12 +292,36 @@ export class AuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      const membership = await membershipRepo.findOne({
-        where: { tenantId: tenant.id, userId: user.id },
+      // Check new TenantUser table first (hybrid model)
+      let tenantUser = await tenantUserRepo.findOne({
+        where: { userAccountId: user.id },
       });
 
-      if (!membership || membership.status !== 'ACTIVE') {
-        throw new UnauthorizedException('Invalid credentials');
+      // If no TenantUser found, check legacy TenantUserMembership
+      let membership: TenantUserMembership | null = null;
+      let isTenantAdmin = false;
+      let membershipOrTenantUserId: string;
+
+      if (tenantUser) {
+        // Use new TenantUser system
+        if (tenantUser.status !== 'active') {
+          throw new UnauthorizedException('Account is not active in this tenant');
+        }
+        isTenantAdmin = tenantUser.isTenantAdmin;
+        membershipOrTenantUserId = tenantUser.id;
+        this.logger.log('Using TenantUser for auth', { tenantUserId: tenantUser.id });
+      } else {
+        // Fall back to legacy TenantUserMembership
+        membership = await membershipRepo.findOne({
+          where: { tenantId: tenant.id, userId: user.id },
+        });
+
+        if (!membership || membership.status !== 'ACTIVE') {
+          throw new UnauthorizedException('Invalid credentials');
+        }
+        isTenantAdmin = membership.isTenantAdmin;
+        membershipOrTenantUserId = membership.id;
+        this.logger.log('Using legacy TenantUserMembership for auth', { membershipId: membership.id });
       }
 
       // Get password policy for lockout enforcement
@@ -351,13 +383,16 @@ export class AuthService {
         }
       }
 
-      await this.ensureUserProfile(tenant.id, membership.id, user.primaryEmail, user.displayName);
+      await this.ensureUserProfile(tenant.id, membershipOrTenantUserId, user.primaryEmail, user.displayName);
 
-      const { roleNames, permissions } = await this.resolveRolesAndPermissions(tenant.id, membership.id);
+      // Resolve roles and permissions based on new or legacy system
+      const { roleNames, permissions } = tenantUser
+        ? await this.resolveRolesAndPermissionsForTenantUser(tenant.id, tenantUser.id)
+        : await this.resolveRolesAndPermissions(tenant.id, membershipOrTenantUserId);
 
-      // Include tenant_admin role if set on membership but not already in roleNames
+      // Include tenant_admin role if not already in roleNames
       const allRoles = [...roleNames];
-      if (membership.isTenantAdmin && !allRoles.includes('tenant_admin')) {
+      if (isTenantAdmin && !allRoles.includes('tenant_admin')) {
         allRoles.push('tenant_admin');
       }
 
@@ -365,9 +400,10 @@ export class AuthService {
         sub: user.id,
         username: user.displayName || user.primaryEmail,
         tenant_id: tenant.id,
+        tenant_user_id: tenantUser?.id, // Include new tenant user ID if available
         roles: allRoles,
         permissions: Array.from(permissions),
-        is_tenant_admin: membership.isTenantAdmin,
+        is_tenant_admin: isTenantAdmin,
       };
       const accessToken = this.jwtService.sign(payload);
 
@@ -386,12 +422,13 @@ export class AuthService {
         refreshToken,
         user: {
           id: user.id,
+          tenantUserId: tenantUser?.id, // Include new tenant user ID if available
           username: user.displayName || user.primaryEmail,
           email: user.primaryEmail,
-          displayName: user.displayName,
+          displayName: tenantUser?.displayName || user.displayName,
           tenantId: tenant.id,
           roles: allRoles,
-          isTenantAdmin: membership.isTenantAdmin,
+          isTenantAdmin,
         },
       };
     } catch (error) {
@@ -465,28 +502,72 @@ export class AuthService {
       where: { id: tokenEntity.userId },
     });
 
-    const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenant.id, TenantUserMembership as any);
-    const membership = await membershipRepo.findOne({ where: { tenantId: tenant.id, userId: tokenEntity.userId } });
-
-    if (!user || !membership || membership.status !== 'ACTIVE') {
+    if (!user) {
       await this.authEventsService.record({
         tenantId: tenant.id,
         userId: tokenEntity.userId,
         type: 'REFRESH_FAILED',
         ip: ipAddress,
         userAgent,
-        metadata: { reason: 'USER_INACTIVE' },
+        metadata: { reason: 'USER_NOT_FOUND' },
       });
-      throw new UnauthorizedException('User not found or inactive');
+      throw new UnauthorizedException('User not found');
     }
 
-    await this.ensureUserProfile(tenant.id, membership.id, user.primaryEmail, user.displayName);
+    // Check new TenantUser table first (hybrid model)
+    const tenantUserRepo = await this.tenantDbService.getRepository<TenantUser>(tenant.id, TenantUser);
+    let tenantUser = await tenantUserRepo.findOne({
+      where: { userAccountId: user.id },
+    });
 
-    const { roleNames, permissions } = await this.resolveRolesAndPermissions(tenant.id, membership.id);
+    // If no TenantUser found, check legacy TenantUserMembership
+    const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenant.id, TenantUserMembership as any);
+    let membership: TenantUserMembership | null = null;
+    let isTenantAdmin = false;
+    let membershipOrTenantUserId: string;
 
-    // Include tenant_admin role if set on membership but not already in roleNames
+    if (tenantUser) {
+      if (tenantUser.status !== 'active') {
+        await this.authEventsService.record({
+          tenantId: tenant.id,
+          userId: tokenEntity.userId,
+          type: 'REFRESH_FAILED',
+          ip: ipAddress,
+          userAgent,
+          metadata: { reason: 'TENANT_USER_INACTIVE' },
+        });
+        throw new UnauthorizedException('User not active in this tenant');
+      }
+      isTenantAdmin = tenantUser.isTenantAdmin;
+      membershipOrTenantUserId = tenantUser.id;
+    } else {
+      membership = await membershipRepo.findOne({ where: { tenantId: tenant.id, userId: tokenEntity.userId } });
+
+      if (!membership || membership.status !== 'ACTIVE') {
+        await this.authEventsService.record({
+          tenantId: tenant.id,
+          userId: tokenEntity.userId,
+          type: 'REFRESH_FAILED',
+          ip: ipAddress,
+          userAgent,
+          metadata: { reason: 'USER_INACTIVE' },
+        });
+        throw new UnauthorizedException('User not found or inactive');
+      }
+      isTenantAdmin = membership.isTenantAdmin;
+      membershipOrTenantUserId = membership.id;
+    }
+
+    await this.ensureUserProfile(tenant.id, membershipOrTenantUserId, user.primaryEmail, user.displayName);
+
+    // Resolve roles and permissions based on new or legacy system
+    const { roleNames, permissions } = tenantUser
+      ? await this.resolveRolesAndPermissionsForTenantUser(tenant.id, tenantUser.id)
+      : await this.resolveRolesAndPermissions(tenant.id, membershipOrTenantUserId);
+
+    // Include tenant_admin role if not already in roleNames
     const allRoles = [...roleNames];
-    if (membership.isTenantAdmin && !allRoles.includes('tenant_admin')) {
+    if (isTenantAdmin && !allRoles.includes('tenant_admin')) {
       allRoles.push('tenant_admin');
     }
 
@@ -516,9 +597,10 @@ export class AuthService {
       sub: user.id,
       username: user.displayName || user.primaryEmail,
       tenant_id: tenant.id,
+      tenant_user_id: tenantUser?.id, // Include new tenant user ID if available
       roles: allRoles,
       permissions: Array.from(permissions),
-      is_tenant_admin: membership.isTenantAdmin,
+      is_tenant_admin: isTenantAdmin,
     };
     const accessToken = this.jwtService.sign(payload);
 
@@ -654,6 +736,61 @@ export class AuthService {
         if (rp.permission?.name) permissions.add(rp.permission.name);
       });
     });
+    return { roleNames, permissions };
+  }
+
+  /**
+   * Resolve roles and permissions for a TenantUser (new hybrid model)
+   * Uses tenant-db entities: TenantUserRole, TenantGroupMember, TenantRole
+   */
+  private async resolveRolesAndPermissionsForTenantUser(tenantId: string, tenantUserId: string) {
+    const tenantUserRoleRepo = await this.tenantDbService.getRepository<TenantUserRole>(tenantId, TenantUserRole);
+    const tenantGroupMemberRepo = await this.tenantDbService.getRepository<TenantGroupMember>(tenantId, TenantGroupMember);
+    const tenantGroupRoleRepo = await this.tenantDbService.getRepository<TenantGroupRole>(tenantId, TenantGroupRole);
+
+    // Get direct role assignments with role permissions
+    const directRoles = await tenantUserRoleRepo.find({
+      where: { tenantUserId },
+      relations: ['role', 'role.rolePermissions', 'role.rolePermissions.permission'],
+    });
+
+    // Get group memberships
+    const groupMemberships = await tenantGroupMemberRepo.find({
+      where: { tenantUserId },
+    });
+
+    // Get roles from groups
+    const groupIds = groupMemberships.map((gm) => gm.groupId);
+    let groupRoles: TenantGroupRole[] = [];
+    if (groupIds.length > 0) {
+      groupRoles = await tenantGroupRoleRepo
+        .createQueryBuilder('gr')
+        .where('gr.group_id IN (:...groupIds)', { groupIds })
+        .leftJoinAndSelect('gr.role', 'role')
+        .leftJoinAndSelect('role.rolePermissions', 'rp')
+        .leftJoinAndSelect('rp.permission', 'perm')
+        .getMany();
+    }
+
+    // Collect all roles
+    const roleMap = new Map<string, TenantRole>();
+    [...directRoles.map((r) => r.role), ...groupRoles.map((gr) => gr.role)]
+      .filter(Boolean)
+      .forEach((r) => roleMap.set(r.id, r));
+
+    // Extract role names and permissions
+    const uniqueRoles = Array.from(roleMap.values());
+    const roleNames = uniqueRoles.map((r) => r.slug || r.name);
+    const permissions = new Set<string>();
+
+    uniqueRoles.forEach((role) => {
+      role.rolePermissions?.forEach((rp: any) => {
+        if (rp.permission?.name || rp.permission?.key) {
+          permissions.add(rp.permission.name || rp.permission.key);
+        }
+      });
+    });
+
     return { roleNames, permissions };
   }
 }

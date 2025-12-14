@@ -177,4 +177,64 @@ EAM Platform Team`,
       `,
     });
   }
+
+  async sendInvitationEmail(options: {
+    to: string;
+    displayName: string;
+    tenantName: string;
+    inviterName?: string;
+    personalMessage?: string;
+    activationUrl: string;
+    expiresAt?: Date;
+  }): Promise<void> {
+    const expiryText = options.expiresAt
+      ? `This invitation will expire on ${options.expiresAt.toLocaleDateString()}.`
+      : 'This invitation will expire in 72 hours.';
+
+    const inviterText = options.inviterName
+      ? `${options.inviterName} has invited you to join`
+      : 'You have been invited to join';
+
+    const personalMessageHtml = options.personalMessage
+      ? `<div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
+           <p style="margin: 0; color: #666; font-style: italic;">"${options.personalMessage}"</p>
+         </div>`
+      : '';
+
+    await this.sendEmail({
+      to: options.to,
+      subject: `You're invited to join ${options.tenantName} on EAM Platform`,
+      text: `Hello ${options.displayName},
+
+${inviterText} ${options.tenantName} on EAM Platform.
+
+${options.personalMessage ? `Message: "${options.personalMessage}"\n` : ''}
+Click the link below to accept your invitation and set up your account:
+${options.activationUrl}
+
+${expiryText}
+
+If you did not expect this invitation, you can safely ignore this email.
+
+Best regards,
+EAM Platform Team`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>You're Invited!</h2>
+          <p>Hello ${options.displayName},</p>
+          <p>${inviterText} <strong>${options.tenantName}</strong> on EAM Platform.</p>
+          ${personalMessageHtml}
+          <p>Click the button below to accept your invitation and set up your account:</p>
+          <p style="text-align: center; margin: 30px 0;">
+            <a href="${options.activationUrl}" style="background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; display: inline-block;">Accept Invitation</a>
+          </p>
+          <p><small>Or copy this link: ${options.activationUrl}</small></p>
+          <p><strong>${expiryText}</strong></p>
+          <p>If you did not expect this invitation, you can safely ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+          <p style="color: #666; font-size: 12px;">Best regards,<br>EAM Platform Team</p>
+        </div>
+      `,
+    });
+  }
 }

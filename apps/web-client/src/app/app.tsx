@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext';
+import { AuthProvider } from '../auth/AuthContext';
 import { Login } from '../pages/Login';
 import { Unauthorized } from '../pages/Unauthorized';
 import { HomePage } from '../pages/HomePage';
@@ -22,6 +22,9 @@ import { ProtectedRoute } from '../routing/ProtectedRoute';
 // Admin pages
 import {
   AdminDashboardPage,
+  UsersListPage,
+  UserInvitePage,
+  UserDetailPage,
   ScriptsListPage,
   ScriptEditorPage,
   BusinessRulesListPage,
@@ -98,6 +101,32 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <AdminDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - User Management */}
+          <Route
+            path="/studio/users"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <UsersListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/users/invite"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <UserInvitePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/users/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <UserDetailPage />
               </ProtectedRoute>
             }
           />

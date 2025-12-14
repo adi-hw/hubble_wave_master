@@ -20,13 +20,16 @@ import {
   FileDown,
 } from 'lucide-react';
 
+/** Generic form data type - maps field codes to their values */
+export type FormData = Record<string, unknown>;
+
 interface DynamicFormProps {
   tableCode: string;
   tableLabel?: string;
   recordLabel?: string;
   recordId?: string;
-  onSubmit: (data: any, goBack?: boolean) => void | Promise<void>;
-  initialData?: any;
+  onSubmit: (data: FormData, goBack?: boolean) => void | Promise<void>;
+  initialData?: FormData;
   hideSubmit?: boolean;
   headerContent?: React.ReactNode;
   onBack?: () => void;
@@ -48,7 +51,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 }) => {
   const { fields, layout, loading, error } = useModel(tableCode);
   const initialDataMemo = useMemo(() => initialData || {}, [initialData]);
-  const [formData, setFormData] = useState<Record<string, any>>(initialDataMemo);
+  const [formData, setFormData] = useState<FormData>(initialDataMemo);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<'stay' | 'go' | false>(false);
   const [showLayoutDesigner, setShowLayoutDesigner] = useState(false);
@@ -64,7 +67,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
   }, [initialDataMemo]);
 
   // Format value for PDF display
-  const formatValueForPdf = (value: any, fieldType?: string): string => {
+  const formatValueForPdf = (value: unknown, fieldType?: string): string => {
     if (value === null || value === undefined) return '-';
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     if (typeof value === 'object') {
@@ -75,13 +78,16 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
       }
     }
     if (fieldType === 'date' && value) {
-      return new Date(value).toLocaleDateString();
+      return new Date(String(value)).toLocaleDateString();
     }
     if (fieldType === 'datetime' && value) {
-      return new Date(value).toLocaleString();
+      return new Date(String(value)).toLocaleString();
     }
     return String(value);
   };
+
+  // Display title computed from props (used in header and PDF export)
+  const displayTitle = recordLabel || tableLabel || tableCode;
 
   // Export form to PDF using jsPDF text-based approach
   const handleExportPdf = async () => {
@@ -207,25 +213,43 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
       return personalLayout;
     }
 
+    // Type for layout tabs from API
+    interface LayoutTab {
+      id?: string;
+      label?: string;
+      icon?: string;
+      sections?: LayoutSection[];
+    }
+
+    interface LayoutSection {
+      id?: string;
+      label: string;
+      columns?: number;
+      collapsible?: boolean;
+      defaultCollapsed?: boolean;
+      fields?: string[];
+    }
+
     // Convert current layout to designer format
     if (layout?.layout?.tabs) {
+      const tabs = layout.layout.tabs as LayoutTab[];
       return {
         version: 2,
-        tabs: layout.layout.tabs.map((tab: any, tabIdx: number) => ({
+        tabs: tabs.map((tab, tabIdx) => ({
           id: tab.id || `tab-${tabIdx}`,
           label: tab.label || `Tab ${tabIdx + 1}`,
           icon: tab.icon || 'layers',
-          sections: (tab.sections || []).map((section: any, secIdx: number) => ({
+          sections: (tab.sections || []).map((section, secIdx) => ({
             id: section.id || `section-${tabIdx}-${secIdx}`,
             label: section.label,
-            columns: section.columns || 2,
+            columns: (section.columns || 2) as 1 | 2 | 3 | 4,
             collapsible: section.collapsible ?? false,
             defaultCollapsed: section.defaultCollapsed ?? false,
             items: (section.fields || []).map((fieldCode: string) => ({
               type: 'field' as const,
               id: generateId(),
               fieldCode,
-              span: 1,
+              span: 1 as const,
             })),
           })),
         })),
@@ -258,7 +282,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     };
   };
 
-  const validateField = (field: ModelField, value: any) => {
+  const validateField = (field: ModelField, value: unknown): boolean => {
     const validators = field.config?.validators || {};
     let errorMsg = '';
 
@@ -270,18 +294,19 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
     if (!errorMsg && value !== null && value !== undefined && value !== '') {
       if (field.type === 'string' || field.type === 'text' || field.type === 'rich_text') {
-        if (validators.minLength && value.length < validators.minLength) {
+        const strValue = String(value);
+        if (validators.minLength && strValue.length < validators.minLength) {
           errorMsg =
             validators.customError ||
             `${field.label} must be at least ${validators.minLength} characters`;
-        } else if (validators.maxLength && value.length > validators.maxLength) {
+        } else if (validators.maxLength && strValue.length > validators.maxLength) {
           errorMsg =
             validators.customError ||
             `${field.label} must be no more than ${validators.maxLength} characters`;
         } else if (validators.pattern) {
           try {
             const regex = new RegExp(validators.pattern);
-            if (!regex.test(value)) {
+            if (!regex.test(strValue)) {
               errorMsg = validators.customError || `${field.label} format is invalid`;
             }
           } catch (e) {
@@ -291,7 +316,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
       }
 
       if (field.type === 'integer' || field.type === 'number' || field.type === 'long' || field.type === 'decimal') {
-        const numValue = typeof value === 'string' ? parseFloat(value) : value;
+        const numValue = typeof value === 'string' ? parseFloat(value) : Number(value);
         if (!isNaN(numValue)) {
           if (validators.min !== undefined && numValue < validators.min) {
             errorMsg =
@@ -319,7 +344,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     return !errorMsg;
   };
 
-  const handleChange = (field: ModelField, value: any) => {
+  const handleChange = (field: ModelField, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field.code]: value }));
     validateField(field, value);
   };
@@ -353,8 +378,6 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
   const totalErrors = Object.keys(errors).length;
   const isSubmitting = !!submitting;
   const canSave = !hideSubmit && !isSubmitting && totalErrors === 0;
-
-  const displayTitle = recordLabel || tableLabel || tableCode;
 
   if (loading) {
     return (

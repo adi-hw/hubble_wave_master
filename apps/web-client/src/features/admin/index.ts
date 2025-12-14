@@ -1,6 +1,9 @@
 // Admin Dashboard
 export { AdminDashboardPage } from './pages/AdminDashboardPage';
 
+// Users
+export { UsersListPage, UserInvitePage, UserDetailPage } from './users';
+
 // Scripts
 export { ScriptsListPage } from './scripts/ScriptsListPage';
 export { ScriptEditorPage } from './scripts/ScriptEditorPage';
@@ -44,7 +47,7 @@ export { UpgradeCenterPage } from './upgrade/UpgradeCenterPage';
 // Components
 export { CustomizationBadge } from './components/CustomizationBadge';
 export { ConfigCard } from './components/ConfigCard';
-export { DiffViewer } from './components/DiffViewer';
+export { DiffViewer } from '../../components/ui/DiffViewer';
 export { PageHeader, Breadcrumb } from './components/Breadcrumb';
 export { ScriptEditor } from './components/ScriptEditor';
 export { WorkflowDesigner } from './components/WorkflowDesigner';

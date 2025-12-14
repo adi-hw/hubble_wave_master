@@ -30,7 +30,13 @@
       "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\components\\layout\\SidebarFlyout.tsx\")",
       "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\hooks\\useNavigation.ts\")",
       "Bash(del \"c:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\eam-platform\\apps\\web-client\\src\\components\\layout\\AppShellV2.tsx\")",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(comm:*)",
+      "Bash(for entity in TenantGroupMember TenantGroupRole NavTemplate NavPatch TenantUpgradeImpact UserLayoutPreference)",
+      "Bash(do echo '=== $entity ===')",
+      "Bash(done)",
+      "Bash(del \"C:\\Users\\Hubble-Wave\\.claude-worktrees\\eam-platform\\competent-nobel\\apps\\svc-data\\src\\app\\app.service.ts\")",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

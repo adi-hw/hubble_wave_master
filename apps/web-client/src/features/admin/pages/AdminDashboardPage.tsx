@@ -15,6 +15,9 @@ import {
   TrendingUp,
   Clock,
   AlertTriangle,
+  Users,
+  UserPlus,
+  KeyRound,
 } from 'lucide-react';
 import { useCustomizationList, useBusinessRulesList, useConfigHistoryList } from '../hooks';
 
@@ -34,6 +37,36 @@ interface AdminItem {
 }
 
 const adminSections: AdminSection[] = [
+  {
+    title: 'User Administration',
+    description: 'Manage users, roles, and access permissions',
+    items: [
+      {
+        name: 'Users',
+        description: 'Manage user accounts and profiles',
+        href: '/studio/users',
+        icon: Users,
+        color: 'text-violet-600 bg-violet-100',
+        darkColor: 'dark:text-violet-400 dark:bg-violet-900/30',
+      },
+      {
+        name: 'Invite User',
+        description: 'Send invitations to new users',
+        href: '/studio/users/invite',
+        icon: UserPlus,
+        color: 'text-emerald-600 bg-emerald-100',
+        darkColor: 'dark:text-emerald-400 dark:bg-emerald-900/30',
+      },
+      {
+        name: 'Roles & Permissions',
+        description: 'Configure access control policies',
+        href: '/studio/roles',
+        icon: KeyRound,
+        color: 'text-amber-600 bg-amber-100',
+        darkColor: 'dark:text-amber-400 dark:bg-amber-900/30',
+      },
+    ],
+  },
   {
     title: 'Automation',
     description: 'Configure scripts, business rules, and automated processes',

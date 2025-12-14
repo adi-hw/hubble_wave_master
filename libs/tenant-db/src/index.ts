@@ -9,12 +9,16 @@ export * from './lib/entities/form-definition.entity';
 export * from './lib/entities/module.entity';
 export * from './lib/entities/audit-log.entity';
 export * from './lib/entities/form-version.entity';
-export * from './lib/entities/model-field.entity';
-export * from './lib/entities/model-field-type.entity';
-export * from './lib/entities/model-form-layout.entity';
-export * from './lib/entities/model-table.entity';
 export * from './lib/entities/workflow-run.entity';
 export * from './lib/entities/user-profile.entity';
+
+// Tenant User Management entities
+export * from './lib/entities/tenant-user.entity';
+export * from './lib/entities/user-preference.entity';
+export * from './lib/entities/user-delegate.entity';
+export * from './lib/entities/user-api-key.entity';
+export * from './lib/entities/user-audit-log.entity';
+export * from './lib/entities/tenant-setting.entity';
 
 // Platform configuration entities
 export * from './lib/entities/platform-config.entity';
@@ -24,8 +28,6 @@ export * from './lib/entities/upgrade-manifest.entity';
 export * from './lib/entities/tenant-upgrade-impact.entity';
 export * from './lib/entities/shared-types';
 export * from './lib/entities/business-rule.entity';
-export * from './lib/entities/user-layout-preference.entity';
-export * from './lib/entities/field-protection-rule.entity';
 
 // Script entities
 export * from './lib/entities/platform-script.entity';
