@@ -6,6 +6,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlatformDbModule, Tenant } from '@eam-platform/platform-db';
 import { TenantDbModule } from '@eam-platform/tenant-db';
+import { AuthGuardModule } from '@eam-platform/auth-guard';
 // AppController removed
 import { IdentityService } from './identity.service';
 import { AuthModule } from './auth/auth.module';
@@ -42,6 +43,7 @@ import { NavigationModule } from './navigation/navigation.module';
     TenantDbModule,
     TypeOrmModule.forFeature([Tenant]),
     AuthModule,
+    AuthGuardModule,
     OidcModule,
     EmailModule,
     RbacModule,

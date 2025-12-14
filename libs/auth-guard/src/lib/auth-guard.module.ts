@@ -1,8 +1,9 @@
-import { Module, Logger } from '@nestjs/common';
+import { Global, Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './jwt.guard';
 
+@Global()
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -31,7 +32,13 @@ import { JwtAuthGuard } from './jwt.guard';
       inject: [ConfigService],
     }),
   ],
-  providers: [JwtAuthGuard, Logger],
+  providers: [
+    JwtAuthGuard,
+    {
+      provide: Logger,
+      useValue: new Logger('JwtAuthGuard'),
+    },
+  ],
   exports: [JwtAuthGuard, JwtModule, Logger],
 })
 export class AuthGuardModule {}
