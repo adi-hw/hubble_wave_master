@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle,
 } from 'lucide-react';
+import identityApi from '../../../services/identityApi';
 
 interface Role {
   id: string;
@@ -78,17 +79,13 @@ export const UserInvitePage: React.FC = () => {
     const fetchRolesAndGroups = async () => {
       try {
         const [rolesRes, groupsRes] = await Promise.all([
-          fetch('/api/roles', { credentials: 'include' }),
-          fetch('/api/groups', { credentials: 'include' }),
+          identityApi.get<{ data?: Role[] } | Role[]>('/rbac/roles'),
+          identityApi.get<{ data?: Group[] } | Group[]>('/rbac/groups'),
         ]);
-        if (rolesRes.ok) {
-          const rolesData = await rolesRes.json();
-          setRoles(rolesData.data || rolesData);
-        }
-        if (groupsRes.ok) {
-          const groupsData = await groupsRes.json();
-          setGroups(groupsData.data || groupsData);
-        }
+        const rolesData = rolesRes.data;
+        const groupsData = groupsRes.data;
+        setRoles(Array.isArray(rolesData) ? rolesData : (rolesData as { data?: Role[] }).data || []);
+        setGroups(Array.isArray(groupsData) ? groupsData : (groupsData as { data?: Group[] }).data || []);
       } catch (err) {
         console.error('Failed to fetch roles/groups:', err);
       }
@@ -128,22 +125,12 @@ export const UserInvitePage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/tenant-users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setSuccess(true);
-        setTimeout(() => navigate('/studio/users'), 2000);
-      } else {
-        const data = await response.json();
-        setError(data.message || 'Failed to invite user');
-      }
-    } catch (err) {
-      setError('Failed to invite user. Please try again.');
+      await identityApi.post('/tenant-users', formData);
+      setSuccess(true);
+      setTimeout(() => navigate('/studio/users'), 2000);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to invite user. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }

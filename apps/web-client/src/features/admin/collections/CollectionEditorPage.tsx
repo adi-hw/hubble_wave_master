@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
+import metadataApi from '../../../services/metadataApi';
 
 interface CollectionFormData {
   code: string;
@@ -95,27 +96,23 @@ export const CollectionEditorPage: React.FC = () => {
   const fetchCollection = async (collectionId: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        credentials: 'include',
+      const response = await metadataApi.get<Collection>(`/collections/${collectionId}`);
+      const data = response.data;
+      setCollection(data);
+      setForm({
+        code: data.code,
+        label: data.label,
+        labelPlural: data.labelPlural || '',
+        description: data.description || '',
+        icon: data.icon || 'Layers',
+        color: data.color || '#4f46e5',
+        storageTable: data.storageTable,
+        category: data.category || '',
+        isExtensible: data.isExtensible,
+        isAudited: data.isAudited,
+        isVersioned: data.isVersioned,
+        tags: data.tags || [],
       });
-      if (response.ok) {
-        const data: Collection = await response.json();
-        setCollection(data);
-        setForm({
-          code: data.code,
-          label: data.label,
-          labelPlural: data.labelPlural || '',
-          description: data.description || '',
-          icon: data.icon || 'Layers',
-          color: data.color || '#4f46e5',
-          storageTable: data.storageTable,
-          category: data.category || '',
-          isExtensible: data.isExtensible,
-          isAudited: data.isAudited,
-          isVersioned: data.isVersioned,
-          tags: data.tags || [],
-        });
-      }
     } catch (error) {
       console.error('Failed to fetch collection:', error);
     } finally {
@@ -125,13 +122,8 @@ export const CollectionEditorPage: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/collections/categories', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
+      const response = await metadataApi.get<string[]>('/collections/categories');
+      setCategories(response.data);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
     }
@@ -186,32 +178,20 @@ export const CollectionEditorPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const url = isNew ? '/api/collections' : `/api/collections/${id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(form),
-      });
-
-      if (response.ok) {
-        const saved = await response.json();
-        if (isNew) {
-          navigate(`/studio/collections/${saved.id}`);
-        } else {
-          setCollection(saved);
-        }
+      let saved: Collection;
+      if (isNew) {
+        const response = await metadataApi.post<Collection>('/collections', form);
+        saved = response.data;
+        navigate(`/studio/collections/${saved.id}`);
       } else {
-        const error = await response.json();
-        if (error.message) {
-          setErrors({ _form: error.message });
-        }
+        const response = await metadataApi.put<Collection>(`/collections/${id}`, form);
+        saved = response.data;
+        setCollection(saved);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save collection:', error);
-      setErrors({ _form: 'Failed to save collection' });
+      const message = error?.response?.data?.message || 'Failed to save collection';
+      setErrors({ _form: message });
     } finally {
       setSaving(false);
     }
@@ -263,11 +243,12 @@ export const CollectionEditorPage: React.FC = () => {
               variant="secondary"
               leftIcon={<Eye className="h-4 w-4" />}
               onClick={async () => {
-                const response = await fetch(`/api/collections/${id}/publish`, {
-                  method: 'POST',
-                  credentials: 'include',
-                });
-                if (response.ok) fetchCollection(id!);
+                try {
+                  await metadataApi.post(`/collections/${id}/publish`);
+                  fetchCollection(id!);
+                } catch (error) {
+                  console.error('Failed to publish:', error);
+                }
               }}
             >
               Publish

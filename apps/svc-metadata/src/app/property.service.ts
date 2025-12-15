@@ -110,6 +110,18 @@ export class PropertyService {
   }
 
   /**
+   * List all properties across all collections
+   */
+  async listAllProperties(tenantId: string) {
+    const repo = await this.propertyRepo(tenantId);
+
+    return repo.find({
+      where: { deletedAt: IsNull() },
+      order: { collectionId: 'ASC', groupName: 'ASC', sortOrder: 'ASC' },
+    });
+  }
+
+  /**
    * Get a single property by ID
    */
   async getProperty(tenantId: string, propertyId: string) {

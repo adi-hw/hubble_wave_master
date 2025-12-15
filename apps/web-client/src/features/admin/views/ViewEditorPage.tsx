@@ -22,7 +22,7 @@ import {
   Settings,
   Filter,
 } from 'lucide-react';
-import { api } from '../../../lib/api';
+import metadataApi from '../../../services/metadataApi';
 
 interface ViewDefinition {
   id: string;
@@ -186,11 +186,14 @@ export function ViewEditorPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const propertiesData = await api.get<PropertyDefinition[]>(`/metadata/properties/collection/${collectionId}`);
+      const propertiesRes = await metadataApi.get<PropertyDefinition[] | { data: PropertyDefinition[] }>(`/properties/collection/${collectionId}`);
+      // Handle both array and wrapped response
+      const propertiesData = Array.isArray(propertiesRes.data) ? propertiesRes.data : (propertiesRes.data?.data ?? []);
       setProperties(propertiesData);
 
       if (!isNew && viewId) {
-        const viewData = await api.get<ViewDefinition & { columns?: ViewColumn[] }>(`/metadata/views/${viewId}/full`);
+        const viewRes = await metadataApi.get<(ViewDefinition & { columns?: ViewColumn[] }) | { data: ViewDefinition & { columns?: ViewColumn[] } }>(`/views/${viewId}/full`);
+        const viewData = viewRes.data && 'columns' in viewRes.data ? viewRes.data : (viewRes.data as any)?.data;
         setView(viewData);
         setColumns(viewData.columns || []);
       } else {
@@ -236,15 +239,17 @@ export function ViewEditorPage() {
 
       let savedView: ViewDefinition;
       if (isNew) {
-        savedView = await api.post<ViewDefinition>('/metadata/views', { ...view, collectionId });
+        const res = await metadataApi.post<ViewDefinition>('/views', { ...view, collectionId });
+        savedView = res.data;
       } else {
-        savedView = await api.put<ViewDefinition>(`/metadata/views/${viewId}`, view);
+        const res = await metadataApi.put<ViewDefinition>(`/views/${viewId}`, view);
+        savedView = res.data;
       }
 
       // Save columns
-      await api.put(`/metadata/views/${savedView.id}/columns`, columns);
+      await metadataApi.put(`/views/${savedView.id}/columns`, columns);
 
-      navigate(`/admin/collections/${collectionId}/views`);
+      navigate(`/studio/collections/${collectionId}/views`);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string } }; message?: string };
       setError(error.response?.data?.message || error.message || 'Failed to save');
@@ -299,7 +304,7 @@ export function ViewEditorPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate(`/admin/collections/${collectionId}/views`)}
+            onClick={() => navigate(`/studio/collections/${collectionId}/views`)}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-500" />

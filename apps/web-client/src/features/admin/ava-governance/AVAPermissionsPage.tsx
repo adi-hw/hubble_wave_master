@@ -17,6 +17,7 @@ import {
   Navigation,
   Zap,
 } from 'lucide-react';
+import aiApi from '../../../services/aiApi';
 
 type AVAActionType = 'create' | 'update' | 'delete' | 'execute' | 'navigate';
 
@@ -94,19 +95,12 @@ export const AVAPermissionsPage: React.FC = () => {
   const fetchData = async () => {
     try {
       const [settingsRes, permissionsRes] = await Promise.all([
-        fetch('/api/ava/admin/settings', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        }),
-        fetch('/api/ava/admin/permissions', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        }),
+        aiApi.get<{ settings: AVAGlobalSettings }>('/ava/admin/settings'),
+        aiApi.get<{ permissions: AVAPermissionConfig[] }>('/ava/admin/permissions'),
       ]);
 
-      const settingsData = await settingsRes.json();
-      const permissionsData = await permissionsRes.json();
-
-      setGlobalSettings(settingsData.settings);
-      setPermissions(permissionsData.permissions || []);
+      setGlobalSettings(settingsRes.data.settings);
+      setPermissions(permissionsRes.data.permissions || []);
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
@@ -119,16 +113,8 @@ export const AVAPermissionsPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const response = await fetch('/api/ava/admin/settings', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(globalSettings),
-      });
-      const data = await response.json();
-      setGlobalSettings(data.settings);
+      const response = await aiApi.put<{ settings: AVAGlobalSettings }>('/ava/admin/settings', globalSettings);
+      setGlobalSettings(response.data.settings);
     } catch (error) {
       console.error('Failed to save settings:', error);
       alert('Failed to save settings');
@@ -141,27 +127,14 @@ export const AVAPermissionsPage: React.FC = () => {
     setSaving(true);
     try {
       const isNew = !permission.id || isCreatingNew;
-      const url = isNew
-        ? '/api/ava/admin/permissions'
-        : `/api/ava/admin/permissions/${permission.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(permission),
-      });
-
-      if (response.ok) {
-        fetchData();
-        setEditingPermission(null);
-        setIsCreatingNew(false);
+      if (isNew) {
+        await aiApi.post('/ava/admin/permissions', permission);
       } else {
-        alert('Failed to save permission');
+        await aiApi.put(`/ava/admin/permissions/${permission.id}`, permission);
       }
+      fetchData();
+      setEditingPermission(null);
+      setIsCreatingNew(false);
     } catch (error) {
       console.error('Failed to save permission:', error);
       alert('Failed to save permission');
@@ -176,10 +149,7 @@ export const AVAPermissionsPage: React.FC = () => {
     }
 
     try {
-      await fetch(`/api/ava/admin/permissions/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      });
+      await aiApi.delete(`/ava/admin/permissions/${id}`);
       fetchData();
     } catch (error) {
       console.error('Failed to delete permission:', error);

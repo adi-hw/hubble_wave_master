@@ -68,13 +68,24 @@ const fallbackNavigation: NavigationResponse = {
       items: [
         { code: 'studio-dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/studio' },
         { code: 'tables', label: 'Tables', icon: 'Database', path: '/studio/tables' },
+        { code: 'collections', label: 'Collections', icon: 'Database', path: '/studio/collections' },
         { code: 'scripts', label: 'Scripts', icon: 'FileCode', path: '/studio/scripts' },
-        { code: 'business-rules', label: 'Business Rules', icon: 'Shield', path: '/studio/business-rules' },
-        { code: 'workflows', label: 'Workflows', icon: 'GitBranch', path: '/studio/workflows' },
+        { code: 'business-rules', label: 'Business Rules', icon: 'Shield', path: '/admin/automations/rules' },
+        { code: 'workflows', label: 'Workflows', icon: 'GitBranch', path: '/admin/automations/workflows' },
         { code: 'platform-config', label: 'Platform Config', icon: 'Settings', path: '/studio/platform-config' },
         { code: 'customizations', label: 'Customizations', icon: 'Layers', path: '/studio/customizations' },
         { code: 'upgrade', label: 'Upgrade Center', icon: 'ArrowUpCircle', path: '/studio/upgrade' },
         { code: 'history', label: 'Change History', icon: 'History', path: '/studio/history' },
+      ],
+    },
+    {
+      name: 'Admin',
+      items: [
+        { code: 'users', label: 'Users', icon: 'Users', path: '/studio/users' },
+        { code: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/admin/analytics' },
+        { code: 'reports', label: 'Reports', icon: 'FileBarChart', path: '/admin/reports' },
+        { code: 'integrations', label: 'Integrations', icon: 'Puzzle', path: '/admin/integrations' },
+        { code: 'modules', label: 'Modules', icon: 'Package', path: '/admin/modules' },
       ],
     },
     {

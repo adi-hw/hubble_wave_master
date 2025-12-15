@@ -14,6 +14,7 @@ export default defineConfig(() => ({
     host: true,
     // Proxy API requests through dev server to avoid cross-origin cookie issues
     proxy: {
+      // Service-prefixed routes (primary pattern)
       '/api/identity': {
         target: 'http://localhost:3000',
         changeOrigin: true,
@@ -44,6 +45,26 @@ export default defineConfig(() => ({
         target: 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/admin/, '/api/admin'),
+      },
+      // Direct API routes (for pages using simple /api/... paths)
+      // Collections & Properties → svc-metadata
+      '/api/collections': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      '/api/properties': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      // User management → svc-identity
+      '/api/tenant-users': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // AVA governance → svc-ai
+      '/api/ava': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
       },
     },
   },

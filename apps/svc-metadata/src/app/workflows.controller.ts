@@ -292,6 +292,35 @@ export class WorkflowsController {
 
   // ========== Workflow Runs ==========
 
+  @Get('runs')
+  async listAllRuns(
+    @Query('status') status: string,
+    @Query('workflowId') workflowId: string,
+    @Query('limit') limit: string,
+    @Query('offset') offset: string,
+    @Req() req: any,
+  ) {
+    const ctx: RequestContext = req.context || req.user;
+
+    const repo = await this.tenantDb.getRepository<WorkflowRun>(
+      ctx.tenantId,
+      WorkflowRun,
+    );
+
+    const where: any = { tenantId: ctx.tenantId };
+    if (status) where.status = status;
+    if (workflowId) where.workflowId = workflowId;
+
+    const runs = await repo.find({
+      where,
+      order: { startedAt: 'DESC' },
+      take: parseInt(limit, 10) || 50,
+      skip: parseInt(offset, 10) || 0,
+    });
+
+    return runs;
+  }
+
   @Get(':id/runs')
   async listRuns(
     @Param('id') id: string,

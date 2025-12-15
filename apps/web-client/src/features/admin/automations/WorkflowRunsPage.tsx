@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import metadataApi from '../../../services/metadataApi';
 
 interface WorkflowRun {
   id: string;
@@ -57,13 +58,13 @@ export function WorkflowRunsPage() {
       const params = new URLSearchParams();
       if (filterStatus) params.append('status', filterStatus);
 
-      const response = await fetch(`/api/metadata/workflow-runs?${params.toString()}`);
-      if (response.ok) {
-        const data = await response.json();
-        setRuns(data);
-      }
+      const response = await metadataApi.get<WorkflowRun[] | { data: WorkflowRun[] }>(`/admin/workflows/runs?${params.toString()}`);
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setRuns(data);
     } catch (error) {
       console.error('Failed to fetch workflow runs:', error);
+      setRuns([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -88,12 +89,8 @@ export function WorkflowRunsPage() {
     if (!confirm('Are you sure you want to cancel this workflow run?')) return;
 
     try {
-      const response = await fetch(`/api/metadata/workflow-runs/${run.id}/cancel`, {
-        method: 'POST',
-      });
-      if (response.ok) {
-        fetchRuns();
-      }
+      await metadataApi.post(`/admin/workflows/runs/${run.id}/cancel`);
+      fetchRuns();
     } catch (error) {
       console.error('Failed to cancel workflow run:', error);
     }
@@ -101,12 +98,8 @@ export function WorkflowRunsPage() {
 
   const retryRun = async (run: WorkflowRun) => {
     try {
-      const response = await fetch(`/api/metadata/workflow-runs/${run.id}/retry`, {
-        method: 'POST',
-      });
-      if (response.ok) {
-        fetchRuns();
-      }
+      await metadataApi.post(`/admin/workflows/runs/${run.id}/retry`);
+      fetchRuns();
     } catch (error) {
       console.error('Failed to retry workflow run:', error);
     }
@@ -252,7 +245,7 @@ export function WorkflowRunsPage() {
                     <tr
                       key={run.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-                      onClick={() => navigate(`/admin/automations/runs/${run.id}`)}
+                      onClick={() => navigate(`/studio/workflows/runs/${run.id}`)}
                     >
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
@@ -318,7 +311,7 @@ export function WorkflowRunsPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => navigate(`/admin/automations/runs/${run.id}`)}
+                            onClick={() => navigate(`/studio/workflows/runs/${run.id}`)}
                             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                             title="View Details"
                           >

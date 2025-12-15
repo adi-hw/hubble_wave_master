@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import metadataApi from '../../../services/metadataApi';
 
 interface WorkflowDefinition {
   id: string;
@@ -50,13 +51,13 @@ export function WorkflowsPage() {
 
   const fetchWorkflows = async () => {
     try {
-      const response = await fetch('/api/metadata/workflows');
-      if (response.ok) {
-        const data = await response.json();
-        setWorkflows(data);
-      }
+      const response = await metadataApi.get<WorkflowDefinition[] | { data: WorkflowDefinition[] }>('/admin/workflows');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setWorkflows(data);
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
+      setWorkflows([]);
     } finally {
       setLoading(false);
     }
@@ -64,14 +65,8 @@ export function WorkflowsPage() {
 
   const toggleActive = async (workflow: WorkflowDefinition) => {
     try {
-      const response = await fetch(`/api/metadata/workflows/${workflow.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !workflow.isActive }),
-      });
-      if (response.ok) {
-        setWorkflows(workflows.map(w => w.id === workflow.id ? { ...w, isActive: !w.isActive } : w));
-      }
+      await metadataApi.patch(`/admin/workflows/${workflow.id}`, { isActive: !workflow.isActive });
+      setWorkflows(workflows.map(w => w.id === workflow.id ? { ...w, isActive: !w.isActive } : w));
     } catch (error) {
       console.error('Failed to toggle workflow:', error);
     }
@@ -110,7 +105,7 @@ export function WorkflowsPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/admin/automations/workflows/new')}
+          onClick={() => navigate('/studio/workflows/new')}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,7 +155,7 @@ export function WorkflowsPage() {
             ? "Try adjusting your filters"
             : "Create your first workflow to automate processes"}
           actionLabel="Create Workflow"
-          onAction={() => navigate('/admin/automations/workflows/new')}
+          onAction={() => navigate('/studio/workflows/new')}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -171,7 +166,7 @@ export function WorkflowsPage() {
               <Card
                 key={workflow.id}
                 className="cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => navigate(`/admin/automations/workflows/${workflow.id}`)}
+                onClick={() => navigate(`/studio/workflows/${workflow.id}`)}
               >
                 <div className="p-5">
                   <div className="flex items-start justify-between">

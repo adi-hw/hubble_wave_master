@@ -114,6 +114,25 @@ export class UiService {
   }
 
   /**
+   * System/configuration tables that should route to Studio pages
+   * instead of the generic list view
+   */
+  private readonly STUDIO_TABLE_ROUTES: Record<string, string> = {
+    'applications': '/studio/applications',
+    'modules': '/studio/modules',
+    'workflow_definitions': '/studio/workflows',
+    'business_rules': '/studio/business-rules',
+    'platform_scripts': '/studio/scripts',
+    'form_definitions': '/studio/forms',
+    'view_definitions': '/studio/views',
+    'collection_definitions': '/studio/collections',
+    'property_definitions': '/studio/properties',
+    'approval_types': '/studio/approvals',
+    'notification_templates': '/studio/notifications',
+    'event_definitions': '/studio/events',
+  };
+
+  /**
    * Build the route path based on module type and target configuration
    * Similar to ServiceNow's module link types
    */
@@ -124,12 +143,21 @@ export class UiService {
       case ModuleType.LIST:
         // List view - points to a table
         if (config?.table) {
+          // Check if this is a system table that should route to Studio
+          const studioRoute = this.STUDIO_TABLE_ROUTES[config.table];
+          if (studioRoute) {
+            return studioRoute;
+          }
           return `/${config.table}.list`;
         }
         if (config?.route) {
           return config.route;
         }
-        // Fallback to slug-based route
+        // Fallback to slug-based route - also check for studio routes
+        const slugStudioRoute = this.STUDIO_TABLE_ROUTES[module.slug];
+        if (slugStudioRoute) {
+          return slugStudioRoute;
+        }
         return `/${module.slug}.list`;
 
       case ModuleType.RECORD:

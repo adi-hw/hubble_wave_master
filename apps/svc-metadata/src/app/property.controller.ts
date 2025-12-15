@@ -24,6 +24,14 @@ export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
   /**
+   * List all properties across all collections
+   */
+  @Get()
+  listAll(@TenantId() tenantId: string) {
+    return this.propertyService.listAllProperties(tenantId);
+  }
+
+  /**
    * List properties by collection
    */
   @Get('by-collection/:collectionId')

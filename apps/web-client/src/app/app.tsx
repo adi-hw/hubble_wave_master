@@ -61,6 +61,20 @@ import {
   ModulesPage,
   // Reports
   ReportsPage,
+  // Enterprise Features
+  SSOConfigPage,
+  AuditLogViewer,
+  ComplianceDashboard,
+  // Commitments (SLA/OLA)
+  CommitmentsListPage,
+  CommitmentEditorPage,
+  // Import/Export
+  ImportPage,
+  ExportPage,
+  ConnectionsPage,
+  // AVA Governance
+  AVAAuditTrailPage,
+  AVAPermissionsPage,
 } from '../features/admin';
 
 // Data pages (Schema Engine runtime)
@@ -170,6 +184,14 @@ export function App() {
             }
           />
           <Route
+            path="/studio/collections/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CollectionEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/studio/collections/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
@@ -220,6 +242,14 @@ export function App() {
             }
           />
           <Route
+            path="/studio/scripts/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ScriptEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/studio/scripts/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
@@ -232,6 +262,14 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <BusinessRulesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/business-rules/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <BusinessRuleEditorPage />
               </ProtectedRoute>
             }
           />
@@ -252,6 +290,14 @@ export function App() {
             }
           />
           <Route
+            path="/studio/workflows/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/studio/workflows/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
@@ -264,6 +310,14 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <ApprovalsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/approvals/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ApprovalEditorPage />
               </ProtectedRoute>
             }
           />
@@ -284,6 +338,14 @@ export function App() {
             }
           />
           <Route
+            path="/studio/events/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <EventEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/studio/events/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
@@ -296,6 +358,14 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <NotificationsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/notifications/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <NotificationEditorPage />
               </ProtectedRoute>
             }
           />
@@ -322,6 +392,14 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <CustomizationsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/customizations/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CustomizationDetailPage />
               </ProtectedRoute>
             }
           />
@@ -368,6 +446,78 @@ export function App() {
             }
           />
 
+          {/* Studio - Standalone Properties List */}
+          <Route
+            path="/studio/properties"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <PropertiesListPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - Standalone Views List */}
+          <Route
+            path="/studio/views"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ViewsListPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - Commitments (SLA/OLA) */}
+          <Route
+            path="/studio/commitments"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CommitmentsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/commitments/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CommitmentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/commitments/:id"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <CommitmentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - Import/Export & Connections */}
+          <Route
+            path="/studio/import"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ImportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/export"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ExportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/connections"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ConnectionsPage />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Admin - Automations (Modern UI) */}
           <Route
             path="/admin/automations/rules"
@@ -378,10 +528,18 @@ export function App() {
             }
           />
           <Route
+            path="/admin/automations/rules/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <BusinessRuleEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/automations/rules/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
-                <BusinessRulesPage />
+                <BusinessRuleEditorPage />
               </ProtectedRoute>
             }
           />
@@ -394,10 +552,18 @@ export function App() {
             }
           />
           <Route
+            path="/admin/automations/workflows/new"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <WorkflowEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/automations/workflows/:id"
             element={
               <ProtectedRoute roles="tenant_admin">
-                <WorkflowsPage />
+                <WorkflowEditorPage />
               </ProtectedRoute>
             }
           />
@@ -454,6 +620,50 @@ export function App() {
             element={
               <ProtectedRoute roles="tenant_admin">
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - AVA Governance */}
+          <Route
+            path="/admin/ava/permissions"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <AVAPermissionsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/ava/audit"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <AVAAuditTrailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin - Enterprise Features */}
+          <Route
+            path="/admin/enterprise/audit"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <AuditLogViewer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/enterprise/compliance"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <ComplianceDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/enterprise/sso"
+            element={
+              <ProtectedRoute roles="tenant_admin">
+                <SSOConfigPage />
               </ProtectedRoute>
             }
           />

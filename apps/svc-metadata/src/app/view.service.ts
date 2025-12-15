@@ -147,6 +147,17 @@ export class ViewService {
 
   // ============ VIEW DEFINITIONS ============
 
+  async listAllViews(tenantId: string, userId?: string) {
+    const repo = await this.viewRepo(tenantId);
+
+    const qb = repo
+      .createQueryBuilder('v')
+      .where('v.deleted_at IS NULL')
+      .andWhere('(v.is_personal = false OR v.owner_id = :userId)', { userId });
+
+    return qb.orderBy('v.collection_id', 'ASC').addOrderBy('v.sort_order', 'ASC').addOrderBy('v.label', 'ASC').getMany();
+  }
+
   async listViews(tenantId: string, collectionId: string, userId?: string) {
     const repo = await this.viewRepo(tenantId);
 

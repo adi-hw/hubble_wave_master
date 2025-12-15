@@ -15,8 +15,9 @@ import {
   Eye,
   User,
   Users,
+  RefreshCw,
 } from 'lucide-react';
-import { api } from '../../../lib/api';
+import metadataApi from '../../../services/metadataApi';
 
 interface ViewDefinition {
   id: string;
@@ -62,23 +63,45 @@ export function ViewsListPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
+  const isStandalone = !collectionId;
+
   useEffect(() => {
     if (collectionId) {
-      loadData();
+      loadCollectionViews();
+    } else {
+      loadAllViews();
     }
   }, [collectionId]);
 
-  async function loadData() {
+  async function loadCollectionViews() {
     try {
       setLoading(true);
       const [viewsRes, collectionRes] = await Promise.all([
-        api.get<ViewDefinition[]>(`/metadata/views/collection/${collectionId}`),
-        api.get<CollectionDefinition>(`/metadata/collections/${collectionId}`),
+        metadataApi.get<ViewDefinition[] | { data: ViewDefinition[] }>(`/views/collection/${collectionId}`),
+        metadataApi.get<CollectionDefinition>(`/collections/${collectionId}`),
       ]);
-      setViews(viewsRes);
-      setCollection(collectionRes);
+      // Handle both array and wrapped response
+      const viewsData = Array.isArray(viewsRes.data) ? viewsRes.data : (viewsRes.data?.data ?? []);
+      setViews(viewsData);
+      setCollection(collectionRes.data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load views');
+      setViews([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadAllViews() {
+    try {
+      setLoading(true);
+      const viewsRes = await metadataApi.get<ViewDefinition[] | { data: ViewDefinition[] }>('/views');
+      // Handle both array and wrapped response
+      const viewsData = Array.isArray(viewsRes.data) ? viewsRes.data : (viewsRes.data?.data ?? []);
+      setViews(viewsData);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load views');
+      setViews([]);
     } finally {
       setLoading(false);
     }
@@ -87,7 +110,7 @@ export function ViewsListPage() {
   async function handleDelete(viewId: string) {
     if (!confirm('Are you sure you want to delete this view?')) return;
     try {
-      await api.delete(`/metadata/views/${viewId}`);
+      await metadataApi.delete(`/views/${viewId}`);
       setViews(views.filter((v) => v.id !== viewId));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete view');
@@ -96,7 +119,7 @@ export function ViewsListPage() {
 
   async function handleSetDefault(viewId: string) {
     try {
-      await api.put(`/metadata/views/${viewId}`, { isDefault: true });
+      await metadataApi.put(`/views/${viewId}`, { isDefault: true });
       setViews(
         views.map((v) => ({
           ...v,
@@ -128,7 +151,7 @@ export function ViewsListPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+        <RefreshCw className="h-8 w-8 animate-spin text-indigo-600" />
       </div>
     );
   }
@@ -143,6 +166,8 @@ export function ViewsListPage() {
     );
   }
 
+  const pageTitle = isStandalone ? 'All Views' : `Views for ${collection?.label}`;
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -156,20 +181,30 @@ export function ViewsListPage() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-              Views for {collection?.label}
+              {pageTitle}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Configure how data is displayed and organized
+              {isStandalone ? `${views.length} views across all collections` : 'Configure how data is displayed and organized'}
             </p>
           </div>
         </div>
-        <button
-          onClick={() => navigate(`/admin/collections/${collectionId}/views/new`)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New View
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => isStandalone ? loadAllViews() : loadCollectionViews()}
+            className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          {!isStandalone && (
+            <button
+              onClick={() => navigate(`/studio/collections/${collectionId}/views/new`)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New View
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -213,12 +248,14 @@ export function ViewsListPage() {
         <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
           <LayoutList className="w-12 h-12 mx-auto text-gray-400 mb-4" />
           <p className="text-gray-600 dark:text-gray-400 mb-4">No views found</p>
-          <button
-            onClick={() => navigate(`/admin/collections/${collectionId}/views/new`)}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Create your first view
-          </button>
+          {!isStandalone && (
+            <button
+              onClick={() => navigate(`/studio/collections/${collectionId}/views/new`)}
+              className="text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Create your first view
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-8">
@@ -247,7 +284,7 @@ export function ViewsListPage() {
                       config={config}
                       menuOpen={menuOpenId === view.id}
                       onMenuToggle={() => setMenuOpenId(menuOpenId === view.id ? null : view.id)}
-                      onEdit={() => navigate(`/admin/collections/${collectionId}/views/${view.id}`)}
+                      onEdit={() => navigate(`/studio/collections/${view.collectionId}/views/${view.id}`)}
                       onDelete={() => handleDelete(view.id)}
                       onSetDefault={() => handleSetDefault(view.id)}
                     />

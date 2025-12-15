@@ -20,6 +20,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
+import aiApi from '../../../services/aiApi';
 
 type AVAActionType = 'create' | 'update' | 'delete' | 'execute' | 'navigate';
 type AVAActionStatus = 'pending' | 'completed' | 'failed' | 'reverted' | 'rejected';
@@ -108,11 +109,8 @@ export const AVAAuditTrailPage: React.FC = () => {
       if (dateRange.end) params.append('toDate', dateRange.end);
       params.append('limit', '50');
 
-      const response = await fetch(`/api/ava/admin/audit?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      });
-      const data = await response.json();
-      setEntries(data.entries || []);
+      const response = await aiApi.get<{ entries: AVAAuditEntry[] }>(`/ava/admin/audit?${params}`);
+      setEntries(response.data.entries || []);
     } catch (error) {
       console.error('Failed to fetch audit trail:', error);
     } finally {
@@ -122,11 +120,8 @@ export const AVAAuditTrailPage: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/ava/admin/audit/stats', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      });
-      const data = await response.json();
-      setStats(data.stats);
+      const response = await aiApi.get<{ stats: AuditStats }>('/ava/admin/audit/stats');
+      setStats(response.data.stats);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
@@ -139,20 +134,12 @@ export const AVAAuditTrailPage: React.FC = () => {
 
     setRevertingId(entryId);
     try {
-      const response = await fetch(`/api/ava/admin/audit/${entryId}/revert`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason: 'Admin initiated revert' }),
-      });
-      const result = await response.json();
-      if (result.success) {
+      const response = await aiApi.post<{ success: boolean; message?: string }>(`/ava/admin/audit/${entryId}/revert`, { reason: 'Admin initiated revert' });
+      if (response.data.success) {
         fetchAuditTrail();
         fetchStats();
       } else {
-        alert(`Revert failed: ${result.message}`);
+        alert(`Revert failed: ${response.data.message}`);
       }
     } catch (error) {
       console.error('Revert failed:', error);

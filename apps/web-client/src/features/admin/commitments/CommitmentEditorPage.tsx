@@ -86,7 +86,7 @@ export const CommitmentEditorPage: React.FC = () => {
 
   const handleSave = () => {
     console.log('Saving commitment:', form);
-    navigate('/admin/commitments');
+    navigate('/studio/commitments');
   };
 
   const updateForm = (field: keyof CommitmentForm, value: unknown) => {
@@ -127,7 +127,7 @@ export const CommitmentEditorPage: React.FC = () => {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/admin/commitments')}
+            onClick={() => navigate('/studio/commitments')}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
           >
             <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-400" />
@@ -145,7 +145,7 @@ export const CommitmentEditorPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin/commitments')}
+            onClick={() => navigate('/studio/commitments')}
             className="px-4 py-2 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
           >
             Cancel

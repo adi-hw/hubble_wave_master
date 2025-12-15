@@ -8,6 +8,7 @@ import { ModuleService } from './module.service';
 import { FormController } from './form.controller';
 import { FormService } from './form.service';
 import { ModelRegistryService } from './model-registry.service';
+import { ModelController } from './model.controller';
 import { MetadataController } from './metadata.controller';
 import { StudioTablesController } from './studio-tables.controller';
 import { StudioScriptsController } from './studio-scripts.controller';
@@ -39,6 +40,7 @@ import { ImportExportService } from './import-export.service';
   imports: [PlatformDbModule, TenantDbModule, AuthGuardModule, AuthorizationModule],
   controllers: [
     ModuleController,
+    ModelController,
     FormController,
     MetadataController,
     StudioTablesController,

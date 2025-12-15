@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
+import metadataApi from '../../../services/metadataApi';
 
 interface PropertyType {
   code: string;
@@ -145,41 +146,32 @@ export const PropertyEditorPage: React.FC = () => {
 
   const fetchPropertyTypes = async () => {
     try {
-      const response = await fetch('/api/collections/property-types', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPropertyTypes(data);
-      }
+      const response = await metadataApi.get<PropertyType[] | { data: PropertyType[] }>('/collections/property-types');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setPropertyTypes(data);
     } catch (error) {
       console.error('Failed to fetch property types:', error);
+      setPropertyTypes([]);
     }
   };
 
   const fetchCollections = async () => {
     try {
-      const response = await fetch('/api/collections?includeSystem=true', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCollections(data);
-      }
+      const response = await metadataApi.get<Collection[] | { data: Collection[] }>('/collections?includeSystem=true');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setCollections(data);
     } catch (error) {
       console.error('Failed to fetch collections:', error);
+      setCollections([]);
     }
   };
 
   const fetchCollection = async () => {
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCollection(data);
-      }
+      const response = await metadataApi.get<Collection>(`/collections/${collectionId}`);
+      setCollection(response.data);
     } catch (error) {
       console.error('Failed to fetch collection:', error);
     }
@@ -188,43 +180,39 @@ export const PropertyEditorPage: React.FC = () => {
   const fetchProperty = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/properties/${propertyId}`, {
-        credentials: 'include',
+      const response = await metadataApi.get(`/properties/${propertyId}`);
+      const data = response.data as any;
+      setForm({
+        code: data.code,
+        label: data.label,
+        description: data.description || '',
+        propertyType: data.propertyType,
+        storageColumn: data.storageColumn,
+        isRequired: data.isRequired,
+        isUnique: data.isUnique,
+        isIndexed: data.isIndexed,
+        isSearchable: data.isSearchable,
+        isFilterable: data.isFilterable,
+        isSortable: data.isSortable,
+        isReadonly: data.isReadonly,
+        isComputed: data.isComputed,
+        isEncrypted: data.isEncrypted,
+        maxLength: data.maxLength,
+        minValue: data.minValue,
+        maxValue: data.maxValue,
+        defaultValue: data.defaultValue ? JSON.stringify(data.defaultValue) : '',
+        computedFormula: data.computedFormula || '',
+        validationRegex: data.validationRegex || '',
+        validationMessage: data.validationMessage || '',
+        hintText: data.hintText || '',
+        placeholder: data.placeholder || '',
+        referenceCollectionId: data.referenceCollectionId || '',
+        referenceDisplayProperty: data.referenceDisplayProperty || '',
+        choiceList: data.choiceList || [],
+        choiceType: data.choiceType || 'static',
+        groupName: data.groupName || '',
+        uiWidth: data.uiWidth || 'full',
       });
-      if (response.ok) {
-        const data = await response.json();
-        setForm({
-          code: data.code,
-          label: data.label,
-          description: data.description || '',
-          propertyType: data.propertyType,
-          storageColumn: data.storageColumn,
-          isRequired: data.isRequired,
-          isUnique: data.isUnique,
-          isIndexed: data.isIndexed,
-          isSearchable: data.isSearchable,
-          isFilterable: data.isFilterable,
-          isSortable: data.isSortable,
-          isReadonly: data.isReadonly,
-          isComputed: data.isComputed,
-          isEncrypted: data.isEncrypted,
-          maxLength: data.maxLength,
-          minValue: data.minValue,
-          maxValue: data.maxValue,
-          defaultValue: data.defaultValue ? JSON.stringify(data.defaultValue) : '',
-          computedFormula: data.computedFormula || '',
-          validationRegex: data.validationRegex || '',
-          validationMessage: data.validationMessage || '',
-          hintText: data.hintText || '',
-          placeholder: data.placeholder || '',
-          referenceCollectionId: data.referenceCollectionId || '',
-          referenceDisplayProperty: data.referenceDisplayProperty || '',
-          choiceList: data.choiceList || [],
-          choiceType: data.choiceType || 'static',
-          groupName: data.groupName || '',
-          uiWidth: data.uiWidth || 'full',
-        });
-      }
     } catch (error) {
       console.error('Failed to fetch property:', error);
     } finally {
@@ -282,9 +270,6 @@ export const PropertyEditorPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const url = isNew ? '/api/properties' : `/api/properties/${propertyId}`;
-      const method = isNew ? 'POST' : 'PUT';
-
       const payload = {
         ...form,
         collectionId,
@@ -294,24 +279,16 @@ export const PropertyEditorPage: React.FC = () => {
         maxValue: form.maxValue || undefined,
       };
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        navigate(`/studio/collections/${collectionId}/properties`);
+      if (isNew) {
+        await metadataApi.post('/properties', payload);
       } else {
-        const error = await response.json();
-        if (error.message) {
-          setErrors({ _form: error.message });
-        }
+        await metadataApi.put(`/properties/${propertyId}`, payload);
       }
-    } catch (error) {
+      navigate(`/studio/collections/${collectionId}/properties`);
+    } catch (error: any) {
       console.error('Failed to save property:', error);
-      setErrors({ _form: 'Failed to save property' });
+      const message = error?.response?.data?.message || 'Failed to save property';
+      setErrors({ _form: message });
     } finally {
       setSaving(false);
     }

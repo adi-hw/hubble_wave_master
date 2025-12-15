@@ -54,52 +54,28 @@ export class SeedPlatformNavigation1785000002000 implements MigrationInterface {
 
         -- Admin Application Modules
         ('admin.users.list', 'Admin: Users', 'admin-users', 'Users', 'admin', 'list',
-          '{"table": "user_profile", "route": "/admin/users"}',
+          '{"table": "user_profile", "route": "/studio/users"}',
           'Users', 'platform', true, 10),
-        ('admin.roles.list', 'Admin: Roles', 'admin-roles', 'Roles', 'admin', 'list',
-          '{"table": "tenant_roles", "route": "/admin/roles"}',
-          'Shield', 'platform', true, 20),
-        ('admin.groups.list', 'Admin: Groups', 'admin-groups', 'Groups', 'admin', 'list',
-          '{"table": "tenant_groups", "route": "/admin/groups"}',
-          'Users2', 'platform', true, 30),
-        ('admin.navigation.list', 'Admin: Navigation Profiles', 'admin-nav-profiles', 'Navigation Profiles', 'admin', 'list',
-          '{"table": "tenant_nav_profiles", "route": "/admin/navigation"}',
-          'Navigation', 'platform', true, 40),
-        ('admin.acl.table', 'Admin: Table ACLs', 'admin-table-acls', 'Table ACLs', 'admin', 'list',
-          '{"table": "tenant_table_acls", "route": "/admin/acl/tables"}',
-          'Lock', 'platform', true, 50),
         ('admin.workflows.list', 'Admin: Workflows', 'admin-workflows', 'Workflows', 'admin', 'list',
-          '{"table": "workflow_definitions", "route": "/admin/workflows"}',
+          '{"table": "workflow_definitions", "route": "/admin/automations/workflows"}',
           'GitBranch', 'platform', true, 60),
         ('admin.business_rules.list', 'Admin: Business Rules', 'admin-business-rules', 'Business Rules', 'admin', 'list',
-          '{"table": "business_rule", "route": "/admin/business-rules"}',
+          '{"table": "business_rule", "route": "/admin/automations/rules"}',
           'FileCode', 'platform', true, 70),
-        ('admin.notifications.channels', 'Admin: Notification Channels', 'admin-notification-channels', 'Notification Channels', 'admin', 'list',
-          '{"table": "notification_channel", "route": "/admin/notifications/channels"}',
-          'Bell', 'platform', true, 80),
-        ('admin.notifications.templates', 'Admin: Notification Templates', 'admin-notification-templates', 'Notification Templates', 'admin', 'list',
-          '{"table": "notification_template", "route": "/admin/notifications/templates"}',
-          'FileText', 'platform', true, 81),
-        ('admin.audit.list', 'Admin: Audit Log', 'admin-audit-log', 'Audit Log', 'admin', 'list',
-          '{"table": "audit_log", "route": "/admin/audit"}',
-          'History', 'platform', true, 90),
 
         -- Studio Application Modules
         ('studio.tables.create', 'Studio: Create Table', 'studio-tables-create', 'Create Table', 'studio', 'wizard',
           '{"route": "/studio/tables/new"}',
           'Plus', 'platform', true, 11),
-        ('studio.fields.manage', 'Studio: Field Manager', 'studio-fields', 'Field Manager', 'studio', 'custom',
-          '{"route": "/studio/fields"}',
-          'Columns', 'platform', true, 20),
-        ('studio.forms.list', 'Studio: Form Designer', 'studio-forms', 'Form Designer', 'studio', 'list',
-          '{"table": "form_definitions", "route": "/studio/forms"}',
-          'LayoutTemplate', 'platform', true, 30),
         ('studio.scripts.list', 'Studio: Scripts', 'studio-scripts', 'Scripts', 'studio', 'list',
           '{"table": "platform_script", "route": "/studio/scripts"}',
           'Code', 'platform', true, 40),
         ('studio.events.list', 'Studio: Events', 'studio-events', 'Events', 'studio', 'list',
           '{"table": "event_definition", "route": "/studio/events"}',
-          'Zap', 'platform', true, 50)
+          'Zap', 'platform', true, 50),
+        ('studio.notifications.list', 'Studio: Notifications', 'studio-notifications', 'Notifications', 'studio', 'list',
+          '{"table": "notification_template", "route": "/studio/notifications"}',
+          'Bell', 'platform', true, 55)
       ON CONFLICT (slug) DO UPDATE SET
         key = EXCLUDED.key,
         label = EXCLUDED.label,
@@ -175,62 +151,12 @@ export class SeedPlatformNavigation1785000002000 implements MigrationInterface {
             },
             "children": [
               {
-                "key": "admin.identity",
-                "label": "Identity & Access",
-                "icon": "Shield",
-                "type": "group",
-                "order": 0,
-                "children": [
-                  {
-                    "key": "admin.users",
-                    "label": "Users",
-                    "icon": "Users",
-                    "type": "module",
-                    "moduleKey": "admin.users.list",
-                    "order": 0
-                  },
-                  {
-                    "key": "admin.roles",
-                    "label": "Roles",
-                    "icon": "Shield",
-                    "type": "module",
-                    "moduleKey": "admin.roles.list",
-                    "order": 10
-                  },
-                  {
-                    "key": "admin.groups",
-                    "label": "Groups",
-                    "icon": "Users2",
-                    "type": "module",
-                    "moduleKey": "admin.groups.list",
-                    "order": 20
-                  }
-                ]
-              },
-              {
-                "key": "admin.security",
-                "label": "Security",
-                "icon": "Lock",
-                "type": "group",
-                "order": 10,
-                "children": [
-                  {
-                    "key": "admin.table_acl",
-                    "label": "Table ACLs",
-                    "icon": "Lock",
-                    "type": "module",
-                    "moduleKey": "admin.acl.table",
-                    "order": 0
-                  },
-                  {
-                    "key": "admin.navigation",
-                    "label": "Navigation Profiles",
-                    "icon": "Navigation",
-                    "type": "module",
-                    "moduleKey": "admin.navigation.list",
-                    "order": 10
-                  }
-                ]
+                "key": "admin.users",
+                "label": "Users",
+                "icon": "Users",
+                "type": "module",
+                "moduleKey": "admin.users.list",
+                "order": 0
               },
               {
                 "key": "admin.automation",
@@ -261,34 +187,9 @@ export class SeedPlatformNavigation1785000002000 implements MigrationInterface {
                 "key": "admin.notifications",
                 "label": "Notifications",
                 "icon": "Bell",
-                "type": "group",
-                "order": 30,
-                "children": [
-                  {
-                    "key": "admin.notification_channels",
-                    "label": "Channels",
-                    "icon": "Bell",
-                    "type": "module",
-                    "moduleKey": "admin.notifications.channels",
-                    "order": 0
-                  },
-                  {
-                    "key": "admin.notification_templates",
-                    "label": "Templates",
-                    "icon": "FileText",
-                    "type": "module",
-                    "moduleKey": "admin.notifications.templates",
-                    "order": 10
-                  }
-                ]
-              },
-              {
-                "key": "admin.audit",
-                "label": "Audit Log",
-                "icon": "History",
                 "type": "module",
-                "moduleKey": "admin.audit.list",
-                "order": 90
+                "moduleKey": "studio.notifications.list",
+                "order": 30
               }
             ]
           },
@@ -309,14 +210,6 @@ export class SeedPlatformNavigation1785000002000 implements MigrationInterface {
                 "type": "module",
                 "moduleKey": "studio.tables.list",
                 "order": 0
-              },
-              {
-                "key": "studio.forms",
-                "label": "Form Designer",
-                "icon": "LayoutTemplate",
-                "type": "module",
-                "moduleKey": "studio.forms.list",
-                "order": 10
               },
               {
                 "key": "studio.scripts",

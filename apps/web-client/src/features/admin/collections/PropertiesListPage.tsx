@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { NoDataState, NoResultsState } from '../../../components/ui/EmptyState';
+import metadataApi from '../../../services/metadataApi';
 
 interface Property {
   id: string;
@@ -100,18 +101,17 @@ export const PropertiesListPage: React.FC = () => {
       fetchCollection();
       fetchProperties();
       fetchPropertyTypes();
+    } else {
+      // Standalone properties page - fetch all properties
+      fetchAllProperties();
+      fetchPropertyTypes();
     }
   }, [collectionId]);
 
   const fetchCollection = async () => {
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCollection(data);
-      }
+      const response = await metadataApi.get<Collection>(`/collections/${collectionId}`);
+      setCollection(response.data);
     } catch (error) {
       console.error('Failed to fetch collection:', error);
     }
@@ -120,15 +120,28 @@ export const PropertiesListPage: React.FC = () => {
   const fetchProperties = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/properties/by-collection/${collectionId}`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setProperties(data);
-      }
+      const response = await metadataApi.get<Property[] | { data: Property[] }>(`/properties/by-collection/${collectionId}`);
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setProperties(data);
     } catch (error) {
       console.error('Failed to fetch properties:', error);
+      setProperties([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllProperties = async () => {
+    setLoading(true);
+    try {
+      const response = await metadataApi.get<Property[] | { data: Property[] }>('/properties');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setProperties(data);
+    } catch (error) {
+      console.error('Failed to fetch properties:', error);
+      setProperties([]);
     } finally {
       setLoading(false);
     }
@@ -136,15 +149,13 @@ export const PropertiesListPage: React.FC = () => {
 
   const fetchPropertyTypes = async () => {
     try {
-      const response = await fetch('/api/collections/property-types', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPropertyTypes(data);
-      }
+      const response = await metadataApi.get<PropertyType[] | { data: PropertyType[] }>('/collections/property-types');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setPropertyTypes(data);
     } catch (error) {
       console.error('Failed to fetch property types:', error);
+      setPropertyTypes([]);
     }
   };
 
@@ -154,35 +165,22 @@ export const PropertiesListPage: React.FC = () => {
       switch (action) {
         case 'delete': {
           if (!window.confirm('Are you sure you want to delete this property?')) return;
-          const response = await fetch(`/api/properties/${propertyId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-          });
-          if (response.ok) fetchProperties();
+          await metadataApi.delete(`/properties/${propertyId}`);
+          fetchProperties();
           break;
         }
         case 'deprecate': {
           const message = window.prompt('Enter deprecation message:');
           if (!message) return;
-          const response = await fetch(`/api/properties/${propertyId}/deprecate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ message }),
-          });
-          if (response.ok) fetchProperties();
+          await metadataApi.post(`/properties/${propertyId}/deprecate`, { message });
+          fetchProperties();
           break;
         }
         case 'clone': {
           const newCode = window.prompt('Enter a code for the cloned property:');
           if (!newCode) return;
-          const response = await fetch(`/api/properties/${propertyId}/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ targetCollectionId: collectionId, newCode }),
-          });
-          if (response.ok) fetchProperties();
+          await metadataApi.post(`/properties/${propertyId}/clone`, { targetCollectionId: collectionId, newCode });
+          fetchProperties();
           break;
         }
       }
@@ -217,12 +215,7 @@ export const PropertiesListPage: React.FC = () => {
     setDraggedProperty(null);
 
     try {
-      await fetch(`/api/properties/by-collection/${collectionId}/reorder`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ orders }),
-      });
+      await metadataApi.put(`/properties/by-collection/${collectionId}/reorder`, { orders });
     } catch (error) {
       console.error('Failed to reorder properties:', error);
       fetchProperties(); // Revert on error
@@ -254,7 +247,8 @@ export const PropertiesListPage: React.FC = () => {
     return acc;
   }, {} as Record<string, Property[]>);
 
-  if (!collection) {
+  // Show loading only when we have collectionId and are waiting for collection data
+  if (collectionId && !collection && loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <RefreshCw className="h-8 w-8 animate-spin text-slate-400" />
@@ -262,39 +256,46 @@ export const PropertiesListPage: React.FC = () => {
     );
   }
 
+  const isStandalone = !collectionId;
+  const pageTitle = isStandalone ? 'All Properties' : `${collection?.label || ''} Properties`;
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <button
-          onClick={() => navigate(`/studio/collections/${collectionId}`)}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-        </button>
+        {!isStandalone && (
+          <button
+            onClick={() => navigate(`/studio/collections/${collectionId}`)}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          </button>
+        )}
         <div className="flex-1">
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            {collection.label} Properties
+            {pageTitle}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {properties.length} properties defined
+            {properties.length} properties {isStandalone ? 'across all collections' : 'defined'}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => fetchProperties()}
+            onClick={() => isStandalone ? fetchAllProperties() : fetchProperties()}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <Button
-            variant="primary"
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => navigate(`/studio/collections/${collectionId}/properties/new`)}
-            disabled={collection.isSystem}
-          >
-            Add Property
-          </Button>
+          {!isStandalone && (
+            <Button
+              variant="primary"
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => navigate(`/studio/collections/${collectionId}/properties/new`)}
+              disabled={collection?.isSystem}
+            >
+              Add Property
+            </Button>
+          )}
         </div>
       </div>
 
@@ -342,7 +343,7 @@ export const PropertiesListPage: React.FC = () => {
         ) : (
           <NoDataState
             itemName="properties"
-            onCreate={() => navigate(`/studio/collections/${collectionId}/properties/new`)}
+            onCreate={isStandalone ? undefined : () => navigate(`/studio/collections/${collectionId}/properties/new`)}
           />
         )
       ) : (

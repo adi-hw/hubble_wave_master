@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react';
+import identityApi from '../../../services/identityApi';
 
 type TenantUserStatus = 'invited' | 'pending_activation' | 'active' | 'inactive' | 'suspended' | 'deleted';
 
@@ -111,28 +112,26 @@ export const UserDetailPage: React.FC = () => {
       setLoading(true);
       try {
         const [userRes, rolesRes, groupsRes, auditRes] = await Promise.all([
-          fetch(`/api/tenant-users/${id}`, { credentials: 'include' }),
-          fetch(`/api/tenant-users/${id}/roles`, { credentials: 'include' }),
-          fetch(`/api/tenant-users/${id}/groups`, { credentials: 'include' }),
-          fetch(`/api/tenant-users/${id}/audit?limit=20`, { credentials: 'include' }),
+          identityApi.get<TenantUser>(`/tenant-users/${id}`),
+          identityApi.get<Role[] | { data: Role[] }>(`/tenant-users/${id}/roles`),
+          identityApi.get<Group[] | { data: Group[] }>(`/tenant-users/${id}/groups`),
+          identityApi.get<AuditLogEntry[] | { data: AuditLogEntry[] }>(`/tenant-users/${id}/audit?limit=20`),
         ]);
 
-        if (userRes.ok) {
-          const userData = await userRes.json();
-          setUser(userData);
-          setEditData(userData);
-        }
-        if (rolesRes.ok) {
-          setRoles(await rolesRes.json());
-        }
-        if (groupsRes.ok) {
-          setGroups(await groupsRes.json());
-        }
-        if (auditRes.ok) {
-          setAuditLog(await auditRes.json());
-        }
+        setUser(userRes.data);
+        setEditData(userRes.data);
+        // Handle both array response and wrapped { data: [...] } response
+        const rolesData = rolesRes.data;
+        setRoles(Array.isArray(rolesData) ? rolesData : (rolesData?.data ?? []));
+        const groupsData = groupsRes.data;
+        setGroups(Array.isArray(groupsData) ? groupsData : (groupsData?.data ?? []));
+        const auditData = auditRes.data;
+        setAuditLog(Array.isArray(auditData) ? auditData : (auditData?.data ?? []));
       } catch (err) {
         setError('Failed to load user data');
+        setRoles([]);
+        setGroups([]);
+        setAuditLog([]);
       } finally {
         setLoading(false);
       }
@@ -155,23 +154,12 @@ export const UserDetailPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch(`/api/tenant-users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(editData),
-      });
-
-      if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
-        setIsEditing(false);
-      } else {
-        const data = await response.json();
-        setError(data.message || 'Failed to update user');
-      }
-    } catch (err) {
-      setError('Failed to update user');
+      const response = await identityApi.patch<TenantUser>(`/tenant-users/${id}`, editData);
+      setUser(response.data);
+      setIsEditing(false);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Failed to update user';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -180,31 +168,14 @@ export const UserDetailPage: React.FC = () => {
   const handleAction = async (action: string, payload?: Record<string, unknown>) => {
     if (!id) return;
     try {
-      let endpoint = `/api/tenant-users/${id}/${action}`;
-      let method = 'POST';
-
       if (action === 'delete') {
-        endpoint = `/api/tenant-users/${id}`;
-        method = 'DELETE';
-      }
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: payload ? JSON.stringify(payload) : undefined,
-      });
-
-      if (response.ok) {
-        if (action === 'delete') {
-          navigate('/studio/users');
-        } else {
-          // Refresh user data
-          const userRes = await fetch(`/api/tenant-users/${id}`, { credentials: 'include' });
-          if (userRes.ok) {
-            setUser(await userRes.json());
-          }
-        }
+        await identityApi.delete(`/tenant-users/${id}`);
+        navigate('/studio/users');
+      } else {
+        await identityApi.post(`/tenant-users/${id}/${action}`, payload || {});
+        // Refresh user data
+        const userRes = await identityApi.get<TenantUser>(`/tenant-users/${id}`);
+        setUser(userRes.data);
       }
     } catch (err) {
       setError(`Failed to ${action} user`);

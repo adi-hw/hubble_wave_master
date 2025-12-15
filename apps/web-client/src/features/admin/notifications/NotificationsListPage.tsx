@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Bell, Mail, Smartphone, MessageSquare, AlertCircle, Settings } from 'lucide-react';
+import { Plus, Search, Filter, Bell, Mail, Smartphone, MessageSquare, AlertCircle } from 'lucide-react';
 
 interface NotificationTemplate {
   id: string;
@@ -91,22 +91,13 @@ export const NotificationsListPage: React.FC = () => {
             Manage notification templates for email, in-app, SMS, and push notifications
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/studio/notifications/channels')}
-            className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <Settings className="h-4 w-4" />
-            Channels
-          </button>
-          <button
-            onClick={() => navigate('/studio/notifications/new')}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New Template
-          </button>
-        </div>
+        <button
+          onClick={() => navigate('/studio/notifications/new')}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          New Template
+        </button>
       </div>
 
       {/* Stats */}

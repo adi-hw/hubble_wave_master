@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Users,
   UserPlus,
-  KeyRound,
 } from 'lucide-react';
 import { useCustomizationList, useBusinessRulesList, useConfigHistoryList } from '../hooks';
 
@@ -56,14 +55,6 @@ const adminSections: AdminSection[] = [
         icon: UserPlus,
         color: 'text-emerald-600 bg-emerald-100',
         darkColor: 'dark:text-emerald-400 dark:bg-emerald-900/30',
-      },
-      {
-        name: 'Roles & Permissions',
-        description: 'Configure access control policies',
-        href: '/studio/roles',
-        icon: KeyRound,
-        color: 'text-amber-600 bg-amber-100',
-        darkColor: 'dark:text-amber-400 dark:bg-amber-900/30',
       },
     ],
   },

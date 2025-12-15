@@ -16,6 +16,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { NoDataState, NoResultsState } from '../../../components/ui/EmptyState';
+import metadataApi from '../../../services/metadataApi';
 
 interface Collection {
   id: string;
@@ -57,17 +58,13 @@ export const CollectionsListPage: React.FC = () => {
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       if (includeSystem) params.set('includeSystem', 'true');
 
-      const response = await fetch(`/api/collections?${params.toString()}`, {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCollections(data);
-      }
+      const response = await metadataApi.get<Collection[] | { data: Collection[] }>(`/collections?${params.toString()}`);
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setCollections(data);
     } catch (error) {
       console.error('Failed to fetch collections:', error);
+      setCollections([]);
     } finally {
       setLoading(false);
     }
@@ -76,17 +73,13 @@ export const CollectionsListPage: React.FC = () => {
   // Fetch categories
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/collections/categories', {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
+      const response = await metadataApi.get<string[] | { data: string[] }>('/collections/categories');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setCategories(data);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
+      setCategories([]);
     }
   };
 
@@ -102,19 +95,13 @@ export const CollectionsListPage: React.FC = () => {
       switch (action) {
         case 'delete': {
           if (!window.confirm('Are you sure you want to delete this collection?')) return;
-          const response = await fetch(`/api/collections/${collectionId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-          });
-          if (response.ok) fetchCollections();
+          await metadataApi.delete(`/collections/${collectionId}`);
+          fetchCollections();
           break;
         }
         case 'publish': {
-          const response = await fetch(`/api/collections/${collectionId}/publish`, {
-            method: 'POST',
-            credentials: 'include',
-          });
-          if (response.ok) fetchCollections();
+          await metadataApi.post(`/collections/${collectionId}/publish`);
+          fetchCollections();
           break;
         }
         case 'clone': {
@@ -122,16 +109,8 @@ export const CollectionsListPage: React.FC = () => {
           if (!newCode) return;
           const newLabel = window.prompt('Enter a label for the new collection:');
           if (!newLabel) return;
-          const response = await fetch(`/api/collections/${collectionId}/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ code: newCode, label: newLabel }),
-          });
-          if (response.ok) {
-            const newCollection = await response.json();
-            navigate(`/studio/collections/${newCollection.id}`);
-          }
+          const response = await metadataApi.post<Collection>(`/collections/${collectionId}/clone`, { code: newCode, label: newLabel });
+          navigate(`/studio/collections/${response.data.id}`);
           break;
         }
       }

@@ -29,6 +29,11 @@ export class ViewController {
 
   // ============ VIEW DEFINITIONS ============
 
+  @Get()
+  async listAllViews(@CurrentUser() user: RequestUser) {
+    return this.viewService.listAllViews(user.tenantId, user.id);
+  }
+
   @Get('collection/:collectionId')
   async listViews(
     @Param('collectionId') collectionId: string,

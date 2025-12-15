@@ -12,6 +12,7 @@ import {
   Building,
   RefreshCw,
 } from 'lucide-react';
+import identityApi from '../../../services/identityApi';
 
 // Status type matching backend TenantUserStatus
 type TenantUserStatus = 'invited' | 'pending_activation' | 'active' | 'inactive' | 'suspended' | 'deleted';
@@ -78,20 +79,13 @@ export const UsersListPage: React.FC = () => {
       params.set('page', pagination.page.toString());
       params.set('pageSize', pagination.pageSize.toString());
 
-      const response = await fetch(`/api/tenant-users?${params.toString()}`, {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const result: UsersListResult = await response.json();
-        setUsers(result.data);
-        setPagination(prev => ({
-          ...prev,
-          total: result.total,
-          totalPages: result.totalPages,
-        }));
-      }
+      const response = await identityApi.get<UsersListResult>(`/tenant-users?${params.toString()}`);
+      setUsers(response.data.data);
+      setPagination(prev => ({
+        ...prev,
+        total: response.data.total,
+        totalPages: response.data.totalPages,
+      }));
     } catch (error) {
       console.error('Failed to fetch users:', error);
     } finally {
@@ -107,45 +101,29 @@ export const UsersListPage: React.FC = () => {
   const handleAction = async (userId: string, action: string) => {
     setActionMenuOpen(null);
     try {
-      let endpoint = `/api/tenant-users/${userId}`;
-      let method = 'POST';
-      let body = {};
-
       switch (action) {
         case 'deactivate':
-          endpoint = `/api/tenant-users/${userId}/deactivate`;
+          await identityApi.post(`/tenant-users/${userId}/deactivate`);
           break;
         case 'reactivate':
-          endpoint = `/api/tenant-users/${userId}/reactivate`;
+          await identityApi.post(`/tenant-users/${userId}/reactivate`);
           break;
         case 'suspend':
-          endpoint = `/api/tenant-users/${userId}/suspend`;
-          body = { reason: 'Suspended by admin' };
+          await identityApi.post(`/tenant-users/${userId}/suspend`, { reason: 'Suspended by admin' });
           break;
         case 'unsuspend':
-          endpoint = `/api/tenant-users/${userId}/unsuspend`;
+          await identityApi.post(`/tenant-users/${userId}/unsuspend`);
           break;
         case 'resend-invitation':
-          endpoint = `/api/tenant-users/${userId}/resend-invitation`;
+          await identityApi.post(`/tenant-users/${userId}/resend-invitation`);
           break;
         case 'delete':
-          method = 'DELETE';
-          endpoint = `/api/tenant-users/${userId}`;
+          await identityApi.delete(`/tenant-users/${userId}`);
           break;
         default:
           return;
       }
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
-      });
-
-      if (response.ok) {
-        fetchUsers(); // Refresh list
-      }
+      fetchUsers(); // Refresh list
     } catch (error) {
       console.error(`Failed to ${action} user:`, error);
     }

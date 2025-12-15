@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import metadataApi from '../../../services/metadataApi';
 
 interface BusinessRule {
   id: string;
@@ -54,13 +55,13 @@ export function BusinessRulesPage() {
 
   const fetchRules = async () => {
     try {
-      const response = await fetch('/api/metadata/business-rules');
-      if (response.ok) {
-        const data = await response.json();
-        setRules(data);
-      }
+      const response = await metadataApi.get<BusinessRule[] | { data: BusinessRule[] }>('/admin/business-rules');
+      // Handle both array response and wrapped { data: [...] } response
+      const data = Array.isArray(response.data) ? response.data : (response.data?.data ?? []);
+      setRules(data);
     } catch (error) {
       console.error('Failed to fetch business rules:', error);
+      setRules([]);
     } finally {
       setLoading(false);
     }
@@ -68,14 +69,8 @@ export function BusinessRulesPage() {
 
   const toggleActive = async (rule: BusinessRule) => {
     try {
-      const response = await fetch(`/api/metadata/business-rules/${rule.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !rule.isActive }),
-      });
-      if (response.ok) {
-        setRules(rules.map(r => r.id === rule.id ? { ...r, isActive: !r.isActive } : r));
-      }
+      await metadataApi.patch(`/admin/business-rules/${rule.id}`, { isActive: !rule.isActive });
+      setRules(rules.map(r => r.id === rule.id ? { ...r, isActive: !r.isActive } : r));
     } catch (error) {
       console.error('Failed to toggle rule:', error);
     }
@@ -123,7 +118,7 @@ export function BusinessRulesPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/admin/automations/rules/new')}
+          onClick={() => navigate('/studio/business-rules/new')}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,7 +168,7 @@ export function BusinessRulesPage() {
             ? "Try adjusting your filters"
             : "Create your first business rule to automate record operations"}
           actionLabel="Create Rule"
-          onAction={() => navigate('/admin/automations/rules/new')}
+          onAction={() => navigate('/studio/business-rules/new')}
         />
       ) : (
         <div className="space-y-6">
@@ -190,7 +185,7 @@ export function BusinessRulesPage() {
                   <li
                     key={rule.id}
                     className="px-4 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-                    onClick={() => navigate(`/admin/automations/rules/${rule.id}`)}
+                    onClick={() => navigate(`/studio/business-rules/${rule.id}`)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
