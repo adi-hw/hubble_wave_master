@@ -3,42 +3,34 @@ import { Request, Response, NextFunction } from 'express';
 import { TenantDbService } from '@eam-platform/tenant-db';
 
 /**
- * Resolves tenant by Host header (subdomain) and attaches to req.tenant/req.tenantSlug.
- * Does not enforce auth; guards can validate JWT tenant matches this context.
+ * Single-tenant architecture: Resolves tenant from environment variable or request context.
+ * The default tenant (DEFAULT_TENANT_SLUG env var) is used for all requests.
+ * Request headers/body can override for multi-tenant scenarios but defaults to single tenant.
  */
 @Injectable()
 export class TenantResolverMiddleware implements NestMiddleware {
   constructor(private readonly tenantDbService: TenantDbService) {}
 
   async use(req: Request & { tenant?: any; tenantSlug?: string }, _res: Response, next: NextFunction) {
-    const host = req.headers.host;
-    const headerSlug = (req.headers['x-tenant-slug'] as string | undefined) || undefined;
-    const bodySlug = (req as any).body?.tenantSlug as string | undefined;
-    const querySlug = (req.query as any)?.tenantSlug as string | undefined;
-    const defaultSlug = process.env.DEFAULT_TENANT_SLUG || 'acme';
-    const allowFallback = process.env.ALLOW_DEFAULT_TENANT_FALLBACK === 'true';
-
-    // Allow unauthenticated/login routes to fall back to controller-level resolution
     const path = req.originalUrl || req.url || '';
-    const isAuthRoute = path.includes('/auth/login') || path.includes('/auth/refresh');
+    const isHealthRoute = path.includes('/health');
 
-    const tenant =
-      (await this.tenantDbService.getTenantFromHost(host)) ||
-      (headerSlug && (await this.tenantDbService.findTenantBySlug(headerSlug))) ||
-      (bodySlug && (await this.tenantDbService.findTenantBySlug(bodySlug))) ||
-      (querySlug && (await this.tenantDbService.findTenantBySlug(querySlug)));
+    // Health routes don't need tenant context
+    if (isHealthRoute) {
+      return next();
+    }
+
+    // Single-tenant: use default tenant from environment
+    const defaultSlug = process.env.DEFAULT_TENANT_SLUG || 'acme';
+
+    // Try to resolve tenant (allows override via header for testing/flexibility)
+    const headerSlug = (req.headers['x-tenant-slug'] as string | undefined) || undefined;
+    const tenantSlug = headerSlug || defaultSlug;
+
+    const tenant = await this.tenantDbService.findTenantBySlug(tenantSlug);
 
     if (!tenant) {
-      if (isAuthRoute && defaultSlug && allowFallback) {
-        const fallback = await this.tenantDbService.findTenantBySlug(defaultSlug);
-        if (fallback) {
-          (req as any).tenant = fallback;
-          (req as any).tenantSlug = fallback.slug;
-          return next();
-        }
-        return next();
-      }
-      throw new NotFoundException('Tenant not found (host/header/body/query)');
+      throw new NotFoundException(`Tenant '${tenantSlug}' not found`);
     }
 
     req.tenant = tenant;

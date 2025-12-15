@@ -25,10 +25,13 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
   return (
     <div className={`field-wrapper ${className}`}>
       {/* Label */}
-      <label className="flex items-center gap-1 text-sm font-medium text-slate-700 mb-1.5">
+      <label
+        className="flex items-center gap-1 text-sm font-medium mb-1.5"
+        style={{ color: 'var(--text-secondary)' }}
+      >
         <span>{label}</span>
         {required && (
-          <Asterisk className="h-3 w-3 text-danger-500" aria-label="Required" />
+          <Asterisk className="h-3 w-3" style={{ color: 'var(--text-danger)' }} aria-label="Required" />
         )}
       </label>
 
@@ -40,13 +43,13 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
       {/* Error or Help text */}
       {error ? (
         <div className="flex items-start gap-1.5 mt-1.5">
-          <AlertCircle className="h-3.5 w-3.5 text-danger-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-danger-600">{error}</p>
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
+          <p className="text-xs" style={{ color: 'var(--text-danger)' }}>{error}</p>
         </div>
       ) : helpText ? (
         <div className="flex items-start gap-1.5 mt-1.5">
-          <Info className="h-3.5 w-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-500">{helpText}</p>
+          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{helpText}</p>
         </div>
       ) : null}
     </div>
@@ -54,29 +57,16 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
 };
 
 /**
- * Common input class names for consistent styling across all field types
+ * Common input class names for consistent styling across all field types.
+ * Uses the `.input` class from the design system for base styling.
  */
-export const inputBaseClasses = `
-  w-full px-3 py-2.5 text-sm
-  border border-slate-300 rounded-lg
-  bg-white text-slate-900
-  placeholder:text-slate-400
-  focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-500
-  transition-colors duration-150
-`;
+export const inputBaseClasses = 'input w-full';
 
-export const inputErrorClasses = `
-  border-danger-300
-  focus:border-danger-500 focus:ring-danger-100
-`;
+export const inputErrorClasses = 'input-error';
 
-export const inputReadOnlyClasses = `
-  bg-slate-50 text-slate-600 cursor-not-allowed
-`;
+export const inputReadOnlyClasses = 'input-readonly';
 
-export const inputDisabledClasses = `
-  bg-slate-100 text-slate-400 cursor-not-allowed opacity-60
-`;
+export const inputDisabledClasses = 'input-disabled';
 
 /**
  * Helper to combine input classes based on state

@@ -37,7 +37,7 @@ export const ModuleCreatePage: React.FC<ModuleCreatePageProps> = ({ forcedCode }
   if (!code) {
     return (
       <AppLayout title="Module" subtitle="Create" activeNavKey="models">
-        <div className="text-slate-600">Invalid module.</div>
+        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Invalid module.</div>
       </AppLayout>
     );
   }
@@ -67,14 +67,25 @@ export const ModuleCreatePage: React.FC<ModuleCreatePageProps> = ({ forcedCode }
     >
       <div className="space-y-4">
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+          <div
+            className="text-sm rounded-lg px-4 py-3"
+            style={{
+              color: 'var(--text-danger)',
+              backgroundColor: 'var(--bg-danger-subtle)',
+              border: '1px solid var(--border-danger)',
+            }}
+          >
             {error}
           </div>
         )}
 
         {submitting && (
-          <div className="flex items-center gap-2 text-slate-600 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+          <div
+            className="flex items-center gap-2 text-sm"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--text-brand)' }} />
+            <span>Saving...</span>
           </div>
         )}
 

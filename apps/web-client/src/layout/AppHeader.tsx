@@ -22,26 +22,43 @@ export const AppHeader: React.FC = () => {
     .toUpperCase();
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 flex h-14 items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 shadow-sm">
+    <header
+      className="fixed top-0 left-0 right-0 z-50 flex h-14 items-center justify-between px-4"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-default)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
       {/* Logo & Brand */}
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-hubble-gradient text-xs font-bold text-white shadow-sm">
+        <div
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white shadow-sm"
+          style={{ background: 'var(--gradient-brand)' }}
+        >
           HW
         </div>
         <div className="hidden sm:block">
-          <span className="text-base font-semibold text-slate-900 dark:text-white">HubbleWave</span>
-          <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">EAM Platform</span>
+          <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+            HubbleWave
+          </span>
+          <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+            Envision at your own ease
+          </span>
         </div>
       </div>
 
       {/* Search Bar - Optional, hidden on mobile */}
       <div className="hidden md:flex flex-1 max-w-md mx-8">
         <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+            style={{ color: 'var(--text-muted)' }}
+          />
           <input
             type="search"
             placeholder="Search..."
-            className="w-full h-9 pl-9 pr-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary-400 dark:focus:border-primary-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/30 focus:outline-none transition-all"
+            className="input w-full h-9 pl-9 pr-4"
           />
         </div>
       </div>
@@ -65,11 +82,23 @@ export const AppHeader: React.FC = () => {
 
         {/* Notifications */}
         <button
-          className="relative p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+          className="relative p-2 rounded-lg transition-colors"
+          style={{ color: 'var(--text-muted)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--text-secondary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
           aria-label="Notifications"
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary-500" />
+          <span
+            className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full"
+            style={{ backgroundColor: 'var(--bg-primary)' }}
+          />
         </button>
 
         {/* User Menu */}
@@ -113,26 +142,54 @@ const UserMenu: React.FC<{
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors"
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-hubble-gradient text-xs font-semibold text-white shadow-sm">
+        <div
+          className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white shadow-sm"
+          style={{ background: 'var(--gradient-brand)' }}
+        >
           {initials}
         </div>
         <div className="hidden lg:flex flex-col text-left">
-          <span className="text-sm font-medium text-slate-900 dark:text-slate-100 leading-tight">{name}</span>
+          <span className="text-sm font-medium leading-tight" style={{ color: 'var(--text-primary)' }}>
+            {name}
+          </span>
           {email && (
-            <span className="text-xs text-slate-500 dark:text-slate-400 leading-tight">{email}</span>
+            <span className="text-xs leading-tight" style={{ color: 'var(--text-muted)' }}>
+              {email}
+            </span>
           )}
         </div>
-        <ChevronDown className={`hidden lg:block h-4 w-4 text-slate-400 dark:text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`hidden lg:block h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          style={{ color: 'var(--text-muted)' }}
+        />
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-elevated py-1 animate-fade-in">
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
-            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{name}</p>
-            {email && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{email}</p>}
+        <div
+          className="absolute right-0 mt-2 w-56 rounded-xl py-1 animate-fade-in"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
+          <div
+            className="px-4 py-3"
+            style={{ borderBottom: '1px solid var(--border-subtle)' }}
+          >
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              {name}
+            </p>
+            {email && (
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {email}
+              </p>
+            )}
           </div>
 
           <div className="py-1">
@@ -141,9 +198,12 @@ const UserMenu: React.FC<{
                 setIsOpen(false);
                 onNavigate('/settings/profile');
               }}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
-              <User className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              <User className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
               Your Profile
             </button>
             <button
@@ -151,17 +211,23 @@ const UserMenu: React.FC<{
                 setIsOpen(false);
                 onNavigate('/settings');
               }}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
-              <Settings className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              <Settings className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
               Settings
             </button>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-700 py-1">
+          <div className="py-1" style={{ borderTop: '1px solid var(--border-subtle)' }}>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: 'var(--text-danger)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               <LogOut className="h-4 w-4" />
               Sign out

@@ -93,29 +93,39 @@ const CollapsibleSection: React.FC<{
   const errorCount = sectionFields.filter((f) => errors[f.code]).length;
 
   return (
-    <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+    <div
+      className="rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        border: '1px solid var(--border-default)',
+      }}
+    >
       {section.label && (
         <button
           type="button"
           onClick={() => section.collapsible && setIsCollapsed(!isCollapsed)}
-          className={`w-full px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between group ${
-            section.collapsible ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'
+          className={`w-full px-4 py-3 flex items-center justify-between group ${
+            section.collapsible ? 'cursor-pointer' : 'cursor-default'
           }`}
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
         >
           <div className="flex items-center gap-2">
-            <div className="w-1 h-4 rounded-full bg-primary-500" />
-            <h3 className="text-sm font-semibold text-slate-900">{section.label}</h3>
-            <span className="text-xs text-slate-400 font-normal">
+            <div className="w-1 h-4 rounded-full" style={{ backgroundColor: 'var(--bg-primary)' }} />
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{section.label}</h3>
+            <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
               {sectionFields.length} field{sectionFields.length !== 1 ? 's' : ''}
             </span>
             {errorCount > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-danger-100 text-danger-600 rounded-full">
+              <span className="badge badge-danger">
                 {errorCount} error{errorCount !== 1 ? 's' : ''}
               </span>
             )}
           </div>
           {section.collapsible && (
-            <div className="text-slate-400 group-hover:text-slate-600 transition-colors">
+            <div style={{ color: 'var(--text-muted)' }}>
               {isCollapsed ? (
                 <ChevronRight className="h-4 w-4" />
               ) : (
@@ -207,10 +217,13 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-            <FileText className="h-8 w-8 text-slate-400" />
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: 'var(--bg-elevated)' }}
+          >
+            <FileText className="h-8 w-8" style={{ color: 'var(--text-muted)' }} />
           </div>
-          <p className="text-sm text-slate-500">No fields configured for this form.</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No fields configured for this form.</p>
         </div>
       </div>
     );
@@ -223,10 +236,19 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
+    <div
+      className="flex-1 flex flex-col overflow-hidden"
+      style={{ backgroundColor: 'var(--bg-base)' }}
+    >
       {/* Tab Bar - Only show if multiple tabs */}
       {tabs.length > 1 && (
-        <div className="border-b border-slate-200 bg-white px-4">
+        <div
+          className="px-4"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderBottom: '1px solid var(--border-default)',
+          }}
+        >
           <div className="flex gap-1 -mb-px overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const TabIcon = getTabIcon(tab.icon);
@@ -238,21 +260,17 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTabId(tab.id)}
-                  className={`
-                    group flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap
-                    ${
-                      isActive
-                        ? 'border-primary-500 text-primary-600 bg-primary-50/50'
-                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                    }
-                  `}
+                  className="tab group flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap"
+                  style={{
+                    borderBottom: isActive ? '2px solid var(--bg-primary)' : '2px solid transparent',
+                    color: isActive ? 'var(--text-brand)' : 'var(--text-muted)',
+                    backgroundColor: isActive ? 'var(--bg-primary-subtle)' : 'transparent',
+                  }}
                 >
-                  <TabIcon
-                    className={`h-4 w-4 ${isActive ? 'text-primary-500' : 'text-slate-400 group-hover:text-slate-600'}`}
-                  />
+                  <TabIcon className="h-4 w-4" />
                   <span>{tab.label}</span>
                   {errorCount > 0 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium bg-danger-100 text-danger-600 rounded-full">
+                    <span className="badge badge-danger">
                       {errorCount}
                     </span>
                   )}

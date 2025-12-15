@@ -78,10 +78,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
   return (
     <div
-      className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
-        ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'}
-        ${disabled ? 'opacity-60 cursor-not-allowed' : ''}
-      `}
+      className={`relative rounded-lg p-4 text-center cursor-pointer transition-colors ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      style={{
+        border: dragActive ? '2px dashed var(--border-brand)' : '2px dashed var(--border-default)',
+        backgroundColor: dragActive ? 'var(--bg-primary-subtle)' : 'var(--bg-surface-secondary)',
+      }}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
@@ -98,30 +99,50 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       />
 
       {fileName ? (
-        <div className="flex items-center justify-between bg-white p-2 rounded border shadow-sm">
+        <div
+          className="flex items-center justify-between p-2 rounded-lg shadow-sm"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+          }}
+        >
           <div className="flex items-center gap-3 overflow-hidden">
             {preview ? (
               <img src={preview} alt="Preview" className="w-10 h-10 object-cover rounded" />
             ) : (
-              <div className="p-2 bg-gray-100 rounded">
-                <FileIcon size={20} className="text-gray-500" />
+              <div
+                className="p-2 rounded"
+                style={{ backgroundColor: 'var(--bg-elevated)' }}
+              >
+                <FileIcon size={20} style={{ color: 'var(--text-secondary)' }} />
               </div>
             )}
-            <span className="text-sm font-medium truncate max-w-[200px]">{fileName}</span>
+            <span className="text-sm font-medium truncate max-w-[200px]" style={{ color: 'var(--text-primary)' }}>
+              {fileName}
+            </span>
           </div>
           <button
             type="button"
             onClick={removeFile}
-            className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-500 rounded-full transition-colors"
+            className="p-1 rounded-full transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)';
+              e.currentTarget.style.color = 'var(--text-danger)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
           >
             <X size={16} />
           </button>
         </div>
       ) : (
         <div className="py-4">
-          <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-          <p className="text-sm text-gray-600 font-medium">{label}</p>
-          <p className="text-xs text-gray-400 mt-1">SVG, PNG, JPG or GIF (max. 10MB)</p>
+          <Upload className="mx-auto h-8 w-8 mb-2" style={{ color: 'var(--text-muted)' }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>SVG, PNG, JPG or GIF (max. 10MB)</p>
         </div>
       )}
     </div>

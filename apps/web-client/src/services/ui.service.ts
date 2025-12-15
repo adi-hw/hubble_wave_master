@@ -80,7 +80,14 @@ const fallbackNavigation: NavigationResponse = {
     {
       name: 'Modules',
       items: [
-        { code: 'assets', label: 'Assets', icon: 'Package' },
+        { code: 'assets', label: 'Assets', icon: 'Package', path: '/assets.list' },
+        { code: 'users', label: 'Users', icon: 'Users', path: '/users.list' },
+        { code: 'locations', label: 'Locations', icon: 'MapPin', path: '/locations.list' },
+        { code: 'departments', label: 'Departments', icon: 'Building2', path: '/departments.list' },
+        { code: 'vendors', label: 'Vendors', icon: 'Truck', path: '/vendors.list' },
+        { code: 'contracts', label: 'Contracts', icon: 'FileText', path: '/contracts.list' },
+        { code: 'work_orders', label: 'Work Orders', icon: 'ClipboardList', path: '/work_orders.list' },
+        { code: 'incidents', label: 'Incidents', icon: 'AlertTriangle', path: '/incidents.list' },
       ],
     },
   ],

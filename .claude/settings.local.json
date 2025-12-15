@@ -41,7 +41,10 @@
       "Bash(npx nx generate:*)",
       "Bash(del \"C:\\Users\\Hubble-Wave\\.claude-worktrees\\eam-platform\\competent-nobel\\libs\\ai\\src\\lib\\providers\\ollama.provider.ts\")",
       "Bash(npx nx serve svc-metadata)",
-      "Bash(npx nx serve svc-data)"
+      "Bash(npx nx serve svc-data)",
+      "Bash(npx nx serve:*)",
+      "Bash(timeout /t 30 /nobreak)",
+      "Bash(del NUL)"
     ],
     "deny": [],
     "ask": []

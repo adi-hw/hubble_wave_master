@@ -24,12 +24,18 @@ export const FormActionsBar: React.FC<FormActionsBarProps> = ({
   const saveLabel = mode === 'create' ? 'Create' : 'Save';
 
   return (
-    <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur-sm px-5 py-4">
+    <div
+      className="sticky bottom-0 px-5 py-4 backdrop-blur-sm"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        borderTop: '1px solid var(--border-default)',
+      }}
+    >
       <div className="flex items-center justify-between">
         {/* Left side - validation warning */}
         <div className="flex-1">
           {hasErrors && (
-            <div className="flex items-center gap-2 text-amber-600">
+            <div className="flex items-center gap-2" style={{ color: 'var(--text-warning)' }}>
               <AlertTriangle className="h-4 w-4" />
               <span className="text-sm">Please fix validation errors before saving</span>
             </div>
@@ -43,16 +49,7 @@ export const FormActionsBar: React.FC<FormActionsBarProps> = ({
             type="button"
             onClick={onSaveAndStay}
             disabled={isSubmitting || hasErrors}
-            className={`
-              inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border transition-all
-              ${
-                hasErrors
-                  ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-                  : isSubmitting
-                    ? 'bg-slate-50 text-slate-500 border-slate-200 cursor-wait'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400 active:scale-[0.98]'
-              }
-            `}
+            className="btn btn-secondary"
           >
             {submitting === 'stay' ? (
               <>
@@ -72,16 +69,7 @@ export const FormActionsBar: React.FC<FormActionsBarProps> = ({
             type="button"
             onClick={onSaveAndGo}
             disabled={isSubmitting || hasErrors}
-            className={`
-              inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg shadow-sm transition-all
-              ${
-                hasErrors
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : isSubmitting
-                    ? 'bg-primary-500 text-white cursor-wait'
-                    : 'bg-primary-600 text-white hover:bg-primary-700 hover:shadow-md active:scale-[0.98]'
-              }
-            `}
+            className="btn btn-primary"
           >
             {submitting === 'go' ? (
               <>

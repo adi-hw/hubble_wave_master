@@ -1,12 +1,14 @@
 import React from 'react';
+import { cn } from '../../lib/utils';
 
 export type BadgeVariant =
   | 'primary'
+  | 'accent'
   | 'success'
   | 'warning'
   | 'danger'
-  | 'neutral'
-  | 'info';
+  | 'info'
+  | 'neutral';
 
 export type ConfigType =
   | 'table'
@@ -24,42 +26,90 @@ export type CustomizationType = 'override' | 'extend' | 'new';
 export type ImpactSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  /** Visual variant */
   variant?: BadgeVariant;
-  size?: 'sm' | 'md';
+  /** Size of the badge */
+  size?: 'sm' | 'md' | 'lg';
+  /** Show a colored dot before the text */
   dot?: boolean;
+  /** Use solid background instead of subtle */
+  solid?: boolean;
+  /** Make the badge rounded-full (pill) */
+  pill?: boolean;
 }
 
+/**
+ * Badge component for status indicators and labels.
+ * Uses the HubbleWave design system tokens.
+ *
+ * @example
+ * <Badge variant="success">Active</Badge>
+ *
+ * @example
+ * <Badge variant="danger" dot>Error</Badge>
+ *
+ * @example
+ * <Badge variant="primary" solid>New</Badge>
+ */
 export const Badge: React.FC<BadgeProps> = ({
   variant = 'neutral',
   size = 'md',
   dot = false,
+  solid = false,
+  pill = true,
   className = '',
   children,
   ...props
 }) => {
-  const variantClasses: Record<BadgeVariant, string> = {
-    primary: 'badge-primary',
-    success: 'badge-success',
-    warning: 'badge-warning',
-    danger: 'badge-danger',
-    neutral: 'badge-neutral',
-    info: 'badge-primary',
-  };
+  const baseClasses = solid
+    ? {
+        primary: 'badge-primary-solid',
+        accent: 'badge-accent-solid',
+        success: 'badge-success-solid',
+        warning: 'badge bg-warning text-warning-foreground',
+        danger: 'badge-danger-solid',
+        info: 'badge bg-info text-info-foreground',
+        neutral: 'badge bg-neutral-700 text-white',
+      }
+    : {
+        primary: 'badge-primary',
+        accent: 'badge-accent',
+        success: 'badge-success',
+        warning: 'badge-warning',
+        danger: 'badge-danger',
+        info: 'badge-info',
+        neutral: 'badge-neutral',
+      };
 
   const sizeClasses = {
-    sm: 'text-[10px] px-1.5 py-0',
-    md: 'text-xs px-2 py-0.5',
+    sm: 'text-2xs px-1.5 py-0',
+    md: '',
+    lg: 'text-sm px-3 py-1',
+  };
+
+  const dotColorClasses: Record<BadgeVariant, string> = {
+    primary: 'bg-primary',
+    accent: 'bg-accent',
+    success: 'bg-success',
+    warning: 'bg-warning',
+    danger: 'bg-danger',
+    info: 'bg-info',
+    neutral: 'bg-neutral-400',
   };
 
   return (
     <span
-      className={`${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={cn(
+        baseClasses[variant],
+        sizeClasses[size],
+        !pill && 'rounded-md',
+        className
+      )}
       {...props}
     >
       {dot && (
         <span
-          className="w-1.5 h-1.5 rounded-full mr-1.5"
-          style={{ backgroundColor: 'currentColor' }}
+          className={cn('w-1.5 h-1.5 rounded-full mr-1.5', dotColorClasses[variant])}
         />
       )}
       {children}
@@ -67,103 +117,151 @@ export const Badge: React.FC<BadgeProps> = ({
   );
 };
 
+// ============================================
+// CONFIG TYPE BADGE
+// ============================================
+
 export interface ConfigTypeBadgeProps {
   type: ConfigType;
   className?: string;
 }
 
+const configLabels: Record<ConfigType, string> = {
+  table: 'Table',
+  field: 'Field',
+  workflow: 'Workflow',
+  acl: 'ACL',
+  script: 'Script',
+  approval: 'Approval',
+  notification: 'Notification',
+  event: 'Event',
+  business_rule: 'Business Rule',
+};
+
+const configVariants: Record<ConfigType, BadgeVariant> = {
+  table: 'primary',
+  field: 'accent',
+  workflow: 'success',
+  acl: 'warning',
+  script: 'danger',
+  approval: 'warning',
+  notification: 'info',
+  event: 'success',
+  business_rule: 'danger',
+};
+
 export const ConfigTypeBadge: React.FC<ConfigTypeBadgeProps> = ({
   type,
   className = '',
 }) => {
-  const configLabels: Record<ConfigType, string> = {
-    table: 'Table',
-    field: 'Field',
-    workflow: 'Workflow',
-    acl: 'ACL',
-    script: 'Script',
-    approval: 'Approval',
-    notification: 'Notification',
-    event: 'Event',
-    business_rule: 'Business Rule',
-  };
-
-  const configClasses: Record<ConfigType, string> = {
-    table: 'badge-config-table',
-    field: 'badge-config-field',
-    workflow: 'badge-config-workflow',
-    acl: 'badge-config-acl',
-    script: 'badge-config-script',
-    approval: 'badge-warning',
-    notification: 'badge-primary',
-    event: 'badge-success',
-    business_rule: 'badge-danger',
-  };
-
   return (
-    <span className={`${configClasses[type]} ${className}`}>
+    <Badge variant={configVariants[type]} className={className}>
       {configLabels[type]}
-    </span>
+    </Badge>
   );
 };
+
+// ============================================
+// CUSTOMIZATION TYPE BADGE
+// ============================================
 
 export interface CustomizationTypeBadgeProps {
   type: CustomizationType;
   className?: string;
 }
 
+const customizationLabels: Record<CustomizationType, string> = {
+  override: 'Override',
+  extend: 'Extend',
+  new: 'New',
+};
+
+const customizationVariants: Record<CustomizationType, BadgeVariant> = {
+  override: 'warning',
+  extend: 'primary',
+  new: 'success',
+};
+
 export const CustomizationTypeBadge: React.FC<CustomizationTypeBadgeProps> = ({
   type,
   className = '',
 }) => {
-  const labels: Record<CustomizationType, string> = {
-    override: 'Override',
-    extend: 'Extend',
-    new: 'New',
-  };
-
-  const classes: Record<CustomizationType, string> = {
-    override: 'badge-override',
-    extend: 'badge-extend',
-    new: 'badge-new',
-  };
-
   return (
-    <span className={`${classes[type]} ${className}`}>
-      {labels[type]}
-    </span>
+    <Badge variant={customizationVariants[type]} className={className}>
+      {customizationLabels[type]}
+    </Badge>
   );
 };
+
+// ============================================
+// IMPACT SEVERITY BADGE
+// ============================================
 
 export interface ImpactSeverityBadgeProps {
   severity: ImpactSeverity;
   className?: string;
 }
 
+const severityLabels: Record<ImpactSeverity, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'None',
+};
+
+const severityVariants: Record<ImpactSeverity, BadgeVariant> = {
+  critical: 'danger',
+  high: 'warning',
+  medium: 'info',
+  low: 'success',
+  none: 'neutral',
+};
+
 export const ImpactSeverityBadge: React.FC<ImpactSeverityBadgeProps> = ({
   severity,
   className = '',
 }) => {
-  const labels: Record<ImpactSeverity, string> = {
-    critical: 'Critical',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
-    none: 'None',
-  };
-
-  const classes: Record<ImpactSeverity, string> = {
-    critical: 'badge-impact-critical',
-    high: 'badge-impact-high',
-    medium: 'badge-impact-medium',
-    low: 'badge-impact-low',
-    none: 'badge-neutral',
-  };
-
   return (
-    <span className={`${classes[severity]} ${className}`}>
-      {labels[severity]}
-    </span>
+    <Badge
+      variant={severityVariants[severity]}
+      className={cn(severity === 'critical' && 'font-semibold', className)}
+    >
+      {severityLabels[severity]}
+    </Badge>
+  );
+};
+
+// ============================================
+// STATUS BADGE (with dot indicator)
+// ============================================
+
+export interface StatusBadgeProps {
+  status: 'online' | 'offline' | 'busy' | 'away' | 'active' | 'inactive' | 'pending';
+  label?: string;
+  className?: string;
+}
+
+const statusConfig: Record<StatusBadgeProps['status'], { variant: BadgeVariant; label: string }> = {
+  online: { variant: 'success', label: 'Online' },
+  offline: { variant: 'neutral', label: 'Offline' },
+  busy: { variant: 'danger', label: 'Busy' },
+  away: { variant: 'warning', label: 'Away' },
+  active: { variant: 'success', label: 'Active' },
+  inactive: { variant: 'neutral', label: 'Inactive' },
+  pending: { variant: 'warning', label: 'Pending' },
+};
+
+export const StatusBadge: React.FC<StatusBadgeProps> = ({
+  status,
+  label,
+  className = '',
+}) => {
+  const config = statusConfig[status];
+  return (
+    <Badge variant={config.variant} dot className={className}>
+      {label || config.label}
+    </Badge>
   );
 };
 

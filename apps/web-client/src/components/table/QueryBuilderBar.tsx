@@ -1134,11 +1134,17 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
   const queryString = buildQueryString(filterGroup, getFieldLabel);
 
   return (
-    <div className="relative bg-slate-50/50 border-b border-slate-100">
+    <div
+      className="relative"
+      style={{
+        backgroundColor: 'var(--bg-elevated)',
+        borderBottom: '1px solid var(--border-subtle)',
+      }}
+    >
       {/* Main bar */}
       <div className="flex items-center gap-2 px-4 py-2 flex-wrap">
         {/* Label */}
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           Filter
         </span>
 
@@ -1199,7 +1205,10 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
           <button
             type="button"
             onClick={clearAll}
-            className="ml-auto text-[11px] text-slate-400 hover:text-danger-600 transition-colors"
+            className="ml-auto text-[11px] transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-danger)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
           >
             Clear all
           </button>
@@ -1208,8 +1217,14 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
 
       {/* Query Preview */}
       {hasFilters && queryString && (
-        <div className="px-4 py-1.5 bg-slate-100/50 border-t border-slate-100">
-          <code className="text-[11px] text-slate-600 font-mono">
+        <div
+          className="px-4 py-1.5"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderTop: '1px solid var(--border-subtle)',
+          }}
+        >
+          <code className="text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
             {queryString}
           </code>
         </div>

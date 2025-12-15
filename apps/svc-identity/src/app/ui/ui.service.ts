@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NavProfile, NavProfileItem } from '@eam-platform/platform-db';
-import { ModuleEntity, TenantDbService } from '@eam-platform/tenant-db';
+import { ModuleEntity, ModuleType, Application, TenantDbService } from '@eam-platform/tenant-db';
 
 interface ThemeTokens {
   [key: string]: string | number;
@@ -19,6 +19,7 @@ interface NavItem {
   pinned?: boolean;
   visible?: boolean;
   order?: number;
+  path?: string;
 }
 
 interface NavSection {
@@ -68,15 +69,15 @@ export class UiService {
   ) {}
 
   async getTheme(_tenantId: string): Promise<ThemeResponse> {
-    // Single-tenant: return static theme
+    // Single-tenant: return static theme (tenantId available for future customization)
     return FALLBACK_THEME;
   }
 
-  async updateTheme(_tenantId: string, payload: Partial<ThemeResponse>, _userId?: string): Promise<ThemeResponse> {
+  async updateTheme(_tenantId: string, payload?: Partial<ThemeResponse>, _userId?: string): Promise<ThemeResponse> {
     // No-op; return merged with fallback
     return {
-      variant: payload.variant ?? FALLBACK_THEME.variant,
-      tokens: { ...FALLBACK_THEME.tokens, ...(payload.tokens ?? {}) },
+      variant: payload?.variant ?? FALLBACK_THEME.variant,
+      tokens: { ...FALLBACK_THEME.tokens, ...(payload?.tokens ?? {}) },
     };
   }
 
@@ -112,44 +113,202 @@ export class UiService {
     return { sections, bottomNav: bottomNav.length ? bottomNav : FALLBACK_NAV.bottomNav };
   }
 
-  async getNavigation(tenantId?: string): Promise<NavigationResponse> {
-    // If no tenantId (unauthenticated user), return fallback navigation
-    if (!tenantId) {
-      return FALLBACK_NAV;
+  /**
+   * Build the route path based on module type and target configuration
+   * Similar to ServiceNow's module link types
+   */
+  private buildModulePath(module: ModuleEntity): string {
+    const config = module.targetConfig;
+
+    switch (module.type) {
+      case ModuleType.LIST:
+        // List view - points to a table
+        if (config?.table) {
+          return `/${config.table}.list`;
+        }
+        if (config?.route) {
+          return config.route;
+        }
+        // Fallback to slug-based route
+        return `/${module.slug}.list`;
+
+      case ModuleType.RECORD:
+        // Single record view
+        if (config?.table) {
+          return `/${config.table}.form`;
+        }
+        return config?.route || `/${module.slug}.form`;
+
+      case ModuleType.DASHBOARD:
+        // Dashboard view
+        return config?.route || `/dashboard/${module.slug}`;
+
+      case ModuleType.REPORT:
+        // Report view
+        return config?.route || `/report/${module.slug}`;
+
+      case ModuleType.URL:
+        // External URL - handled separately in frontend
+        return config?.url || '#';
+
+      case ModuleType.WIZARD:
+        // Multi-step wizard
+        return config?.route || `/wizard/${module.slug}`;
+
+      case ModuleType.FORM:
+        // Standalone form
+        return config?.route || `/form/${module.slug}`;
+
+      case ModuleType.CUSTOM:
+        // Custom component
+        return config?.route || `/${module.slug}`;
+
+      default:
+        // Default to list if route specified, otherwise slug-based
+        return config?.route || module.route || `/${module.slug}.list`;
     }
+  }
 
+  async getNavigation(tenantId: string): Promise<NavigationResponse> {
     try {
-      // New source of truth: modules table
-      const modulesRepo = await this.tenantDbService.getRepository<ModuleEntity>(tenantId, ModuleEntity as any);
-      const modules = await modulesRepo.find({
-        order: { sortOrder: 'ASC', name: 'ASC' },
-      });
+      // ServiceNow-style navigation: Read from applications and modules tables
+      let applications: Application[] = [];
+      let modules: ModuleEntity[] = [];
 
-      if (!modules.length) {
-        return FALLBACK_NAV;
+      try {
+        const appRepo = await this.tenantDbService.getRepository<Application>(tenantId, Application as any);
+        applications = await appRepo.find({
+          where: { isActive: true },
+          order: { sortOrder: 'ASC', label: 'ASC' },
+        });
+      } catch (appError) {
+        // Applications table may not exist yet - this is OK
+        console.warn('Could not fetch applications:', appError instanceof Error ? appError.message : appError);
       }
 
-      const items = modules.map((m) => ({
-        code: m.slug || m.route || m.name.toLowerCase(),
-        label: m.name,
-        icon: m.icon || 'Circle',
-      }));
+      try {
+        const moduleRepo = await this.tenantDbService.getRepository<ModuleEntity>(tenantId, ModuleEntity as any);
+        modules = await moduleRepo.find({
+          where: { isActive: true },
+          order: { sortOrder: 'ASC', name: 'ASC' },
+        });
+      } catch (modError) {
+        // Modules table may not exist yet - this is OK
+        console.warn('Could not fetch modules:', modError instanceof Error ? modError.message : modError);
+      }
 
-      return {
-        sections: [{ name: 'Modules', items }],
-        bottomNav: items.slice(0, 4),
-      };
+      // If no applications/modules exist, return fallback with Studio
+      if (applications.length === 0 && modules.length === 0) {
+        return this.getDefaultNavigation();
+      }
+
+      // Group modules by applicationKey
+      const modulesByApp = new Map<string, ModuleEntity[]>();
+      const ungroupedModules: ModuleEntity[] = [];
+
+      modules.forEach((mod) => {
+        if (mod.applicationKey) {
+          const existing = modulesByApp.get(mod.applicationKey) || [];
+          existing.push(mod);
+          modulesByApp.set(mod.applicationKey, existing);
+        } else {
+          ungroupedModules.push(mod);
+        }
+      });
+
+      // Build sections from applications
+      const sections: NavSection[] = [];
+
+      // Add application sections
+      applications.forEach((app) => {
+        const appModules = modulesByApp.get(app.key) || [];
+        if (appModules.length > 0) {
+          sections.push({
+            name: app.label,
+            items: appModules.map((mod) => ({
+              code: mod.key || mod.slug,
+              label: mod.label || mod.name,
+              icon: mod.icon || 'Circle',
+              path: this.buildModulePath(mod),
+            })),
+          });
+        }
+      });
+
+      // Add ungrouped modules as "Other" section
+      if (ungroupedModules.length > 0) {
+        sections.push({
+          name: 'Other',
+          items: ungroupedModules.map((mod) => ({
+            code: mod.key || mod.slug,
+            label: mod.label || mod.name,
+            icon: mod.icon || 'Circle',
+            path: this.buildModulePath(mod),
+          })),
+        });
+      }
+
+      // Always add Studio section for platform administration
+      sections.unshift({
+        name: 'Studio',
+        items: [
+          { code: 'studio-dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/studio' },
+          { code: 'tables', label: 'Tables', icon: 'Database', path: '/studio/tables' },
+          { code: 'applications', label: 'Applications', icon: 'AppWindow', path: '/studio/applications' },
+          { code: 'modules', label: 'Modules', icon: 'LayoutGrid', path: '/studio/modules' },
+          { code: 'scripts', label: 'Scripts', icon: 'FileCode', path: '/studio/scripts' },
+          { code: 'business-rules', label: 'Business Rules', icon: 'Shield', path: '/studio/business-rules' },
+          { code: 'workflows', label: 'Workflows', icon: 'GitBranch', path: '/studio/workflows' },
+        ],
+      });
+
+      // Build bottom nav from first few modules across all sections (excluding Studio)
+      const allModuleItems = sections
+        .filter((s) => s.name !== 'Studio')
+        .flatMap((s) => s.items);
+      const bottomNav = allModuleItems.slice(0, 3).concat([
+        { code: 'more', label: 'More', icon: 'Ellipsis' },
+      ]);
+
+      return { sections, bottomNav };
     } catch (error) {
-      // If tenant DB access fails, return fallback
-      return FALLBACK_NAV;
+      console.error('Failed to fetch navigation:', error);
+      return this.getDefaultNavigation();
     }
+  }
+
+  /**
+   * Default navigation when no applications/modules are configured
+   */
+  private getDefaultNavigation(): NavigationResponse {
+    return {
+      sections: [
+        {
+          name: 'Studio',
+          items: [
+            { code: 'studio-dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/studio' },
+            { code: 'tables', label: 'Tables', icon: 'Database', path: '/studio/tables' },
+            { code: 'applications', label: 'Applications', icon: 'AppWindow', path: '/studio/applications' },
+            { code: 'modules', label: 'Modules', icon: 'LayoutGrid', path: '/studio/modules' },
+            { code: 'scripts', label: 'Scripts', icon: 'FileCode', path: '/studio/scripts' },
+            { code: 'business-rules', label: 'Business Rules', icon: 'Shield', path: '/studio/business-rules' },
+            { code: 'workflows', label: 'Workflows', icon: 'GitBranch', path: '/studio/workflows' },
+          ],
+        },
+      ],
+      bottomNav: [
+        { code: 'studio-dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/studio' },
+        { code: 'tables', label: 'Tables', icon: 'Database', path: '/studio/tables' },
+        { code: 'more', label: 'More', icon: 'Ellipsis' },
+      ],
+    };
   }
 
   async updateNavigation(
     tenantId: string,
-    payload: Partial<NavigationResponse> & { items?: Partial<NavProfileItem>[] },
+    payload?: Partial<NavigationResponse> & { items?: Partial<NavProfileItem>[] },
   ): Promise<NavigationResponse> {
-    if (!tenantId) return FALLBACK_NAV;
+    if (!payload) return this.getNavigation(tenantId);
 
     const navProfileRepo = await this.tenantDbService.getRepository<NavProfile>(tenantId, NavProfile as any);
     const navProfileItemRepo = await this.tenantDbService.getRepository<NavProfileItem>(tenantId, NavProfileItem as any);

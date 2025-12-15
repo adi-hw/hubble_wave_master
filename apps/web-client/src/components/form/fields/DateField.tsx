@@ -42,7 +42,7 @@ export const DateField: React.FC<FieldComponentProps<unknown>> = ({
           max={field.config?.validators?.maxDate}
           className={`${getInputClasses({ error, readOnly, disabled })} pr-10`}
         />
-        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
       </div>
     </FieldWrapper>
   );

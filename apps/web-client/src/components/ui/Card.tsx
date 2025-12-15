@@ -1,17 +1,31 @@
 import React from 'react';
+import { cn } from '../../lib/utils';
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'elevated' | 'interactive';
+  /** Visual variant of the card */
+  variant?: 'default' | 'elevated' | 'interactive' | 'selected';
+  /** Padding size */
   padding?: 'none' | 'sm' | 'md' | 'lg';
 }
 
 const paddingClasses = {
   none: '',
-  sm: 'p-3',
-  md: 'p-4',
+  sm: 'p-4',
+  md: 'p-5',
   lg: 'p-6',
 };
 
+/**
+ * Card component for containing related content.
+ * Uses the HubbleWave design system tokens.
+ *
+ * @example
+ * <Card>
+ *   <CardHeader title="Settings" description="Manage your preferences" />
+ *   <CardContent>Content here</CardContent>
+ *   <CardFooter><Button>Save</Button></CardFooter>
+ * </Card>
+ */
 export const Card: React.FC<CardProps> = ({
   variant = 'default',
   padding = 'md',
@@ -23,11 +37,12 @@ export const Card: React.FC<CardProps> = ({
     default: 'card',
     elevated: 'card-elevated',
     interactive: 'card-interactive',
+    selected: 'card-selected',
   };
 
   return (
     <div
-      className={`${variantClasses[variant]} ${paddingClasses[padding]} ${className}`}
+      className={cn(variantClasses[variant], paddingClasses[padding], className)}
       {...props}
     >
       {children}
@@ -36,29 +51,54 @@ export const Card: React.FC<CardProps> = ({
 };
 
 export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Main title of the card */
   title: string;
+  /** Optional description below the title */
   description?: string;
+  /** Optional action element (button, menu, etc.) */
   action?: React.ReactNode;
+  /** Icon to display before the title */
+  icon?: React.ReactNode;
 }
 
 export const CardHeader: React.FC<CardHeaderProps> = ({
   title,
   description,
   action,
+  icon,
   className = '',
   ...props
 }) => {
   return (
-    <div className={`flex items-start justify-between gap-4 ${className}`} {...props}>
-      <div>
-        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-          {title}
-        </h3>
-        {description && (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
+    <div
+      className={cn('flex items-start justify-between gap-4', className)}
+      {...props}
+    >
+      <div className="flex items-start gap-3">
+        {icon && (
+          <div
+            className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'var(--bg-primary-subtle)', color: 'var(--text-brand)' }}
+          >
+            {icon}
+          </div>
         )}
+        <div>
+          <h3
+            className="text-base font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {title}
+          </h3>
+          {description && (
+            <p
+              className="mt-1 text-sm"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              {description}
+            </p>
+          )}
+        </div>
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </div>
@@ -73,13 +113,14 @@ export const CardContent: React.FC<CardContentProps> = ({
   ...props
 }) => {
   return (
-    <div className={className} {...props}>
+    <div className={cn('mt-4', className)} {...props}>
       {children}
     </div>
   );
 };
 
 export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Alignment of footer content */
   align?: 'left' | 'center' | 'right' | 'between';
 }
 
@@ -98,7 +139,12 @@ export const CardFooter: React.FC<CardFooterProps> = ({
 
   return (
     <div
-      className={`flex items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 ${alignClasses[align]} ${className}`}
+      className={cn(
+        'flex items-center gap-3 pt-4 mt-4',
+        alignClasses[align],
+        className
+      )}
+      style={{ borderTop: '1px solid var(--border-subtle)' }}
       {...props}
     >
       {children}

@@ -221,26 +221,47 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
 
   if (loading) {
     return (
-      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center bg-white rounded-xl border border-slate-200">
-        <Loader2 className="h-10 w-10 text-primary-600 animate-spin mb-4" />
-        <p className="text-base text-slate-600">Loading table data...</p>
+      <div
+        className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-default)',
+        }}
+      >
+        <Loader2
+          className="h-10 w-10 animate-spin mb-4"
+          style={{ color: 'var(--text-brand)' }}
+        />
+        <p className="text-base" style={{ color: 'var(--text-muted)' }}>
+          Loading table data...
+        </p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center bg-white rounded-xl border border-danger-200">
-        <div className="w-16 h-16 rounded-full bg-danger-100 flex items-center justify-center mb-4">
-          <AlertCircle className="h-8 w-8 text-danger-600" />
+      <div
+        className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-danger)',
+        }}
+      >
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+          style={{ backgroundColor: 'var(--bg-danger-subtle)' }}
+        >
+          <AlertCircle className="h-8 w-8" style={{ color: 'var(--text-danger)' }} />
         </div>
-        <p className="text-base font-medium text-danger-700">Failed to load table</p>
-        <p className="text-sm text-danger-600 mt-1">{error}</p>
+        <p className="text-base font-medium" style={{ color: 'var(--text-danger)' }}>
+          Failed to load table
+        </p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-danger)' }}>
+          {error}
+        </p>
         {onRefresh && (
-          <button
-            onClick={onRefresh}
-            className="mt-6 btn-secondary"
-          >
+          <button onClick={onRefresh} className="mt-6 btn btn-secondary">
             Try again
           </button>
         )}
@@ -249,7 +270,14 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] min-h-[500px] w-full flex bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+    <div
+      className="h-[calc(100vh-8rem)] min-h-[500px] w-full flex rounded-xl overflow-hidden"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        border: '1px solid var(--border-default)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
       {/* Main Table Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Bulk Action Bar - Shows when rows are selected */}
@@ -329,7 +357,10 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
 
       {/* Side Panel - Columns only */}
       {showColumnPanel && (
-        <div className="w-80 border-l border-slate-200 flex-shrink-0 animate-slide-in-right">
+        <div
+          className="w-80 flex-shrink-0 animate-slide-in-right"
+          style={{ borderLeft: '1px solid var(--border-default)' }}
+        >
           <ColumnPanel
             columns={columns}
             onChange={setColumns}

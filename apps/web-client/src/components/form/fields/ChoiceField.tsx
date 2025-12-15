@@ -34,7 +34,7 @@ export const ChoiceField: React.FC<FieldComponentProps<string>> = ({
             </option>
           ))}
         </select>
-        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
       </div>
     </FieldWrapper>
   );

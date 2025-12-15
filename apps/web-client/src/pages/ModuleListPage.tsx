@@ -84,11 +84,14 @@ export const ModuleListPage: React.FC<ModuleListPageProps> = ({ forcedCode }) =>
     return (
       <AppLayout title="Module" subtitle="List" activeNavKey="models">
         <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-            <AlertCircle className="h-6 w-6 text-slate-400" />
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+            style={{ backgroundColor: 'var(--bg-elevated)' }}
+          >
+            <AlertCircle className="h-6 w-6" style={{ color: 'var(--text-muted)' }} />
           </div>
-          <p className="text-sm font-medium text-slate-900">No module selected</p>
-          <p className="text-xs text-slate-500 mt-1">Please select a module from the sidebar</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>No module selected</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Please select a module from the sidebar</p>
         </div>
       </AppLayout>
     );
@@ -102,14 +105,21 @@ export const ModuleListPage: React.FC<ModuleListPageProps> = ({ forcedCode }) =>
     >
       {/* Error Alert */}
       {error && (
-        <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-lg">
-          <AlertCircle className="h-5 w-5 text-danger-600 flex-shrink-0" />
+        <div
+          className="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg"
+          style={{
+            backgroundColor: 'var(--bg-danger-subtle)',
+            border: '1px solid var(--border-danger)',
+          }}
+        >
+          <AlertCircle className="h-5 w-5 flex-shrink-0" style={{ color: 'var(--text-danger)' }} />
           <div className="flex-1">
-            <p className="text-sm font-medium text-danger-800">{error}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-danger)' }}>{error}</p>
           </div>
           <button
             onClick={loadData}
-            className="text-sm font-medium text-danger-600 hover:text-danger-800"
+            className="text-sm font-medium"
+            style={{ color: 'var(--text-danger)' }}
           >
             Retry
           </button>
@@ -118,9 +128,15 @@ export const ModuleListPage: React.FC<ModuleListPageProps> = ({ forcedCode }) =>
 
       {/* Data Table */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-slate-200">
-          <Loader2 className="h-8 w-8 text-primary-600 animate-spin mb-3" />
-          <p className="text-sm text-slate-600">Loading records...</p>
+        <div
+          className="flex flex-col items-center justify-center py-16 rounded-xl"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+          }}
+        >
+          <Loader2 className="h-8 w-8 animate-spin mb-3" style={{ color: 'var(--text-brand)' }} />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading records...</p>
         </div>
       ) : (
         <DynamicTable

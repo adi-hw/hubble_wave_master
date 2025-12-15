@@ -65,15 +65,24 @@ export const ReadOnlyField: React.FC<FieldComponentProps<any>> = ({
       required={false}
       helpText={field.config?.helpText}
     >
-      <div className="flex items-start gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg">
-        <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center flex-shrink-0">
-          <Icon className="h-4 w-4 text-slate-500" />
+      <div
+        className="flex items-start gap-3 px-4 py-3 rounded-lg"
+        style={{
+          backgroundColor: 'var(--bg-surface-secondary)',
+          border: '1px solid var(--border-subtle)',
+        }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: 'var(--bg-elevated)' }}
+        >
+          <Icon className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-slate-700 break-words font-mono">
+          <p className="text-sm break-words font-mono" style={{ color: 'var(--text-primary)' }}>
             {formatValue(value)}
           </p>
-          <p className="text-xs text-slate-400 mt-1">{getTypeLabel()}</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{getTypeLabel()}</p>
         </div>
       </div>
     </FieldWrapper>

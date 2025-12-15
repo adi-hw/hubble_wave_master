@@ -22,10 +22,10 @@ interface ThemeToggleProps {
   className?: string;
 }
 
-const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'system', label: 'System', icon: Monitor },
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
+const themeOptions: { value: Theme; label: string; description: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', description: 'Always use light theme', icon: Sun },
+  { value: 'dark', label: 'Dark', description: 'Always use dark theme', icon: Moon },
+  { value: 'system', label: 'Auto', description: 'Match your device settings', icon: Monitor },
 ];
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({
@@ -72,13 +72,21 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           relative inline-flex items-center justify-center gap-2
           ${showLabel ? 'px-3' : sizeClasses[size]}
           rounded-lg
-          text-slate-500 hover:text-slate-700
-          dark:text-slate-400 dark:hover:text-slate-200
-          hover:bg-slate-100 dark:hover:bg-slate-800
           transition-all duration-200
-          focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50
+          focus:outline-none focus-visible:ring-2
           ${className}
         `}
+        style={{
+          color: 'var(--text-muted)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+          e.currentTarget.style.color = 'var(--text-secondary)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = 'var(--text-muted)';
+        }}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       >
@@ -115,25 +123,21 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   if (variant === 'segmented') {
     return (
       <div
-        className={`
-          inline-flex items-center gap-1 p-1 rounded-xl
-          bg-slate-100 dark:bg-slate-800
-          ${className}
-        `}
+        className={`inline-flex items-center gap-1 p-1 rounded-xl ${className}`}
+        style={{ backgroundColor: 'var(--bg-hover)' }}
       >
-        {themeOptions.map(({ value, icon: Icon }) => (
+        {themeOptions.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
             onClick={() => setTheme(value)}
-            className={`
-              p-2 rounded-lg transition-all duration-200
-              ${theme === value
-                ? 'bg-white dark:bg-slate-700 shadow-sm text-primary-600 dark:text-primary-400'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }
-            `}
-            aria-label={`${value} theme`}
-            title={`${value.charAt(0).toUpperCase() + value.slice(1)} theme`}
+            className="p-2 rounded-lg transition-all duration-200"
+            style={{
+              backgroundColor: theme === value ? 'var(--bg-surface)' : 'transparent',
+              color: theme === value ? 'var(--text-brand)' : 'var(--text-muted)',
+              boxShadow: theme === value ? 'var(--shadow-sm)' : 'none',
+            }}
+            aria-label={`${label} theme`}
+            title={`${label} theme`}
           >
             <Icon className={iconSizeClasses[size]} />
           </button>
@@ -149,15 +153,16 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     <div className={`relative ${className}`} ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`
-          inline-flex items-center justify-center
-          ${sizeClasses[size]} rounded-lg
-          text-slate-500 hover:text-slate-700
-          dark:text-slate-400 dark:hover:text-slate-200
-          hover:bg-slate-100 dark:hover:bg-slate-800
-          transition-all duration-200
-          focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50
-        `}
+        className={`inline-flex items-center justify-center ${sizeClasses[size]} rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2`}
+        style={{ color: 'var(--text-muted)' }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+          e.currentTarget.style.color = 'var(--text-secondary)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = 'var(--text-muted)';
+        }}
         aria-label="Theme options"
         aria-expanded={isOpen}
       >
@@ -167,35 +172,50 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
       {/* Dropdown Menu */}
       {isOpen && (
         <div
-          className="
-            absolute right-0 mt-2 w-40
-            bg-white dark:bg-slate-800
-            border border-slate-200 dark:border-slate-700
-            rounded-xl shadow-elevated
-            py-1 z-50
-            animate-scale-in
-          "
-          style={{ transformOrigin: 'top right' }}
+          className="absolute right-0 mt-2 w-52 rounded-xl py-1 z-50 animate-scale-in"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+            boxShadow: 'var(--shadow-lg)',
+            transformOrigin: 'top right',
+          }}
         >
-          {themeOptions.map(({ value, label, icon: Icon }) => (
+          {themeOptions.map(({ value, label, description, icon: Icon }) => (
             <button
               key={value}
               onClick={() => {
                 setTheme(value);
                 setIsOpen(false);
               }}
-              className={`
-                w-full flex items-center gap-3 px-3 py-2
-                text-sm transition-colors
-                ${theme === value
-                  ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors"
+              style={{
+                backgroundColor: theme === value ? 'var(--bg-primary-subtle)' : 'transparent',
+                color: theme === value ? 'var(--text-brand)' : 'var(--text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                if (theme !== value) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
                 }
-              `}
+              }}
+              onMouseLeave={(e) => {
+                if (theme !== value) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
             >
-              <Icon className="h-4 w-4" />
-              <span className="flex-1 text-left">{label}</span>
-              {theme === value && <Check className="h-4 w-4" />}
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              <div className="flex-1 text-left">
+                <div className="font-medium">{label}</div>
+                <div
+                  className="text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {description}
+                </div>
+              </div>
+              {theme === value && (
+                <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-brand)' }} />
+              )}
             </button>
           ))}
         </div>

@@ -53,34 +53,57 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
     <div className="relative">
       <input
         type="text"
-        className="w-full p-2 border rounded bg-gray-50 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        className="input w-full"
         placeholder={`Search ${referenceTable}...`}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         required={required}
         disabled={disabled}
       />
-      {loading && <div className="absolute right-2 top-2 text-gray-400">Loading...</div>}
+      {loading && (
+        <div
+          className="absolute right-2 top-2 text-sm"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Loading...
+        </div>
+      )}
       {records.length > 0 && search && (
-        <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-auto">
+        <ul
+          className="absolute z-10 w-full mt-1 rounded-lg shadow-lg max-h-60 overflow-auto"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+          }}
+        >
           {records.map((record) => (
             <li
               key={record.id}
-              className="p-2 hover:bg-gray-100 cursor-pointer"
+              className="p-2 cursor-pointer transition-colors"
+              style={{ color: 'var(--text-primary)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
               onClick={() => {
                 onChange(record.id);
-                setSearch(record.attributes?.name || record.id); // Fallback to ID if no name
+                setSearch(record.attributes?.name || record.id);
                 setRecords([]);
               }}
             >
-              {/* Display some meaningful attribute, defaulting to ID or Name */}
-              <div className="font-medium">{record.attributes?.name || record.attributes?.title || record.id}</div>
+              <div className="font-medium">
+                {record.attributes?.name || record.attributes?.title || record.id}
+              </div>
             </li>
           ))}
         </ul>
       )}
-       {value && !search && (
-          <div className="mt-1 text-sm text-gray-600">Selected ID: {value}</div>
+      {value && !search && (
+        <div className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Selected ID: {value}
+        </div>
       )}
     </div>
   );

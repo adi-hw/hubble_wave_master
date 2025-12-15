@@ -1,85 +1,160 @@
-import React, { forwardRef } from 'react';
-import { AlertCircle, Search } from 'lucide-react';
+import React, { forwardRef, useId } from 'react';
+import { AlertCircle, Search, Check } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  /** Label text above the input */
   label?: string;
+  /** Error message - shows error state */
   error?: string;
+  /** Hint text below the input */
   hint?: string;
+  /** Success message - shows success state */
+  success?: string;
+  /** Icon displayed on the left side */
   leftIcon?: React.ReactNode;
+  /** Icon displayed on the right side */
   rightIcon?: React.ReactNode;
+  /** Show search icon on left */
   showSearch?: boolean;
+  /** Size variant */
+  inputSize?: 'sm' | 'md' | 'lg';
 }
 
+/**
+ * Modern input component with label, error, hint, and icon support.
+ * Uses the HubbleWave design system tokens.
+ *
+ * @example
+ * <Input label="Email" placeholder="Enter your email" />
+ *
+ * @example
+ * <Input error="This field is required" />
+ *
+ * @example
+ * <Input showSearch placeholder="Search..." />
+ */
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   (
     {
       label,
       error,
       hint,
+      success,
       leftIcon,
       rightIcon,
       showSearch,
+      inputSize = 'md',
       className = '',
       id,
       ...props
     },
     ref
   ) => {
-    const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+    const generatedId = useId();
+    const inputId = id || generatedId;
     const hasLeftIcon = leftIcon || showSearch;
+    const hasRightContent = rightIcon || error || success;
+
+    const sizeClasses = {
+      sm: 'input-sm',
+      md: '',
+      lg: 'input-lg',
+    };
+
+    const getStateClass = () => {
+      if (error) return 'input-error';
+      if (success) return 'input-success';
+      return '';
+    };
 
     return (
       <div className="w-full">
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300"
+            className="block text-sm font-medium mb-1.5"
+            style={{ color: 'var(--text-primary)' }}
           >
             {label}
           </label>
         )}
         <div className="relative">
           {hasLeftIcon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
+            <div
+              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: 'var(--text-muted)' }}
+            >
               {showSearch ? <Search className="h-4 w-4" /> : leftIcon}
             </div>
           )}
           <input
             ref={ref}
             id={inputId}
-            className={`
-              input
-              ${hasLeftIcon ? 'pl-10' : ''}
-              ${rightIcon || error ? 'pr-10' : ''}
-              ${error ? 'input-error' : ''}
-              ${className}
-            `}
+            className={cn(
+              'input',
+              sizeClasses[inputSize],
+              getStateClass(),
+              hasLeftIcon && 'pl-10',
+              hasRightContent && 'pr-10',
+              className
+            )}
             aria-invalid={!!error}
-            aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
+            aria-describedby={
+              error
+                ? `${inputId}-error`
+                : success
+                ? `${inputId}-success`
+                : hint
+                ? `${inputId}-hint`
+                : undefined
+            }
             {...props}
           />
-          {(rightIcon || error) && (
+          {hasRightContent && (
             <div
-              className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
-                error ? 'text-danger-500' : 'text-slate-400 dark:text-slate-500'
-              }`}
+              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{
+                color: error
+                  ? 'var(--text-danger)'
+                  : success
+                  ? 'var(--text-success)'
+                  : 'var(--text-muted)',
+              }}
             >
-              {error ? <AlertCircle className="h-4 w-4" /> : rightIcon}
+              {error ? (
+                <AlertCircle className="h-4 w-4" />
+              ) : success ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                rightIcon
+              )}
             </div>
           )}
         </div>
         {error && (
           <p
             id={`${inputId}-error`}
-            className="mt-1.5 text-sm text-danger-500"
+            className="mt-1.5 text-sm"
+            style={{ color: 'var(--text-danger)' }}
           >
             {error}
           </p>
         )}
-        {hint && !error && (
+        {success && !error && (
+          <p
+            id={`${inputId}-success`}
+            className="mt-1.5 text-sm"
+            style={{ color: 'var(--text-success)' }}
+          >
+            {success}
+          </p>
+        )}
+        {hint && !error && !success && (
           <p
             id={`${inputId}-hint`}
-            className="mt-1.5 text-sm text-slate-500 dark:text-slate-400"
+            className="mt-1.5 text-sm"
+            style={{ color: 'var(--text-tertiary)' }}
           >
             {hint}
           </p>

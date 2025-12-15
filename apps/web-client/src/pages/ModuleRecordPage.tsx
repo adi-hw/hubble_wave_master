@@ -103,7 +103,7 @@ export const ModuleRecordPage: React.FC<ModuleRecordPageProps> = ({ forcedCode }
   if (!code || !id) {
     return (
       <AppLayout title="Record" subtitle="Details" activeNavKey="models">
-        <div className="text-slate-600">Invalid record reference.</div>
+        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Invalid record reference.</div>
       </AppLayout>
     );
   }
@@ -116,14 +116,25 @@ export const ModuleRecordPage: React.FC<ModuleRecordPageProps> = ({ forcedCode }
     >
       <div className="space-y-4">
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+          <div
+            className="text-sm rounded-lg px-4 py-3"
+            style={{
+              color: 'var(--text-danger)',
+              backgroundColor: 'var(--bg-danger-subtle)',
+              border: '1px solid var(--border-danger)',
+            }}
+          >
             {error}
           </div>
         )}
 
         {loading || !record ? (
-          <div className="flex items-center gap-2 text-slate-600 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading record...
+          <div
+            className="flex items-center justify-center gap-2 text-sm py-16"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--text-brand)' }} />
+            <span>Loading record...</span>
           </div>
         ) : (
           <div className="flex-1 min-h-0">

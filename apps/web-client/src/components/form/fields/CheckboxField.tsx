@@ -31,35 +31,37 @@ export const CheckboxField: React.FC<FieldComponentProps<unknown>> = ({
             className="sr-only peer"
           />
           <div
-            className={`
-              w-5 h-5 rounded border-2 flex items-center justify-center transition-all
-              ${
-                isChecked
-                  ? 'bg-primary-600 border-primary-600'
-                  : 'bg-white border-slate-300 group-hover:border-slate-400'
-              }
-              ${error ? 'border-danger-400' : ''}
-              ${disabled || readOnly ? 'opacity-60' : ''}
-            `}
+            className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
+            style={{
+              backgroundColor: isChecked ? 'var(--bg-primary)' : 'var(--bg-surface)',
+              borderColor: error
+                ? 'var(--border-danger)'
+                : isChecked
+                  ? 'var(--bg-primary)'
+                  : 'var(--border-default)',
+              opacity: disabled || readOnly ? 0.6 : 1,
+            }}
           >
             {isChecked && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
           </div>
         </div>
 
         {/* Label text */}
-        <span className="text-sm font-medium text-slate-700 select-none">{field.label}</span>
+        <span className="text-sm font-medium select-none" style={{ color: 'var(--text-primary)' }}>
+          {field.label}
+        </span>
       </label>
 
       {/* Error or Help text */}
       {error ? (
         <div className="flex items-start gap-1.5 mt-1.5 ml-8">
-          <AlertCircle className="h-3.5 w-3.5 text-danger-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-danger-600">{error}</p>
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
+          <p className="text-xs" style={{ color: 'var(--text-danger)' }}>{error}</p>
         </div>
       ) : field.config?.helpText ? (
         <div className="flex items-start gap-1.5 mt-1.5 ml-8">
-          <Info className="h-3.5 w-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-500">{field.config.helpText}</p>
+          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{field.config.helpText}</p>
         </div>
       ) : null}
     </div>

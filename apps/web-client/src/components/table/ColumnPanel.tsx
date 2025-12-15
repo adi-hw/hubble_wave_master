@@ -193,44 +193,66 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col" style={{ backgroundColor: 'var(--bg-surface)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: '1px solid var(--border-default)' }}
+      >
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
-            <SlidersHorizontal className="h-4 w-4 text-primary-600" />
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
+          >
+            <SlidersHorizontal className="h-4 w-4" style={{ color: 'var(--text-brand)' }} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Manage Columns</h3>
-            <p className="text-xs text-slate-500">{visibleCount} of {totalCount} visible</p>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Manage Columns</h3>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{visibleCount} of {totalCount} visible</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: 'var(--text-muted)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--text-secondary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {/* Search & Quick Actions */}
-      <div className="px-4 py-3 space-y-3 border-b border-slate-100 bg-slate-50/50">
+      <div
+        className="px-4 py-3 space-y-3"
+        style={{
+          borderBottom: '1px solid var(--border-subtle)',
+          backgroundColor: 'var(--bg-elevated)',
+        }}
+      >
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search columns..."
-            className="w-full h-9 pl-9 pr-3 text-sm border border-slate-200 rounded-lg bg-white focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            className="input w-full h-9 pl-9 pr-3 text-sm"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+              style={{ color: 'var(--text-muted)' }}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -242,21 +264,22 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
           <button
             type="button"
             onClick={showAll}
-            className="flex-1 h-8 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg transition-colors"
+            className="btn btn-secondary flex-1 h-8 text-xs"
           >
             Show all
           </button>
           <button
             type="button"
             onClick={hideAll}
-            className="flex-1 h-8 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg transition-colors"
+            className="btn btn-secondary flex-1 h-8 text-xs"
           >
             Hide all
           </button>
           <button
             type="button"
             onClick={reset}
-            className="h-8 px-3 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1"
+            className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
+            style={{ color: 'var(--text-muted)' }}
             title="Reset to original"
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -414,11 +437,17 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200">
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-3"
+        style={{
+          backgroundColor: 'var(--bg-elevated)',
+          borderTop: '1px solid var(--border-default)',
+        }}
+      >
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:border-slate-300 rounded-lg transition-colors"
+          className="btn btn-secondary"
         >
           Cancel
         </button>
@@ -426,13 +455,7 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
           type="button"
           onClick={apply}
           disabled={!hasChanges}
-          className={`
-            px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-colors
-            ${hasChanges
-              ? 'text-white bg-primary-600 hover:bg-primary-700 shadow-sm'
-              : 'text-slate-400 bg-slate-100 cursor-not-allowed'
-            }
-          `}
+          className="btn btn-primary flex items-center gap-2"
         >
           <Check className="h-4 w-4" />
           Apply Changes

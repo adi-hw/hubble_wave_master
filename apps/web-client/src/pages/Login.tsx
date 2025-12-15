@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/auth';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { setStoredToken } from '../services/token';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { refresh } = useAuth();
@@ -23,8 +24,6 @@ export const Login = () => {
       const normalizedPassword = password;
       const data = await authService.login(normalizedUsername, normalizedPassword);
       setStoredToken(data.accessToken);
-      // SECURITY: Refresh token is set as HttpOnly cookie by backend
-      // Do NOT store in localStorage to prevent XSS token theft
       await refresh();
       navigate('/', { replace: true });
     } catch (err: any) {
@@ -35,96 +34,261 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full">
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-300/40 border border-slate-200 px-8 py-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-xl bg-sky-600 flex items-center justify-center text-white font-semibold">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-12"
+      style={{ backgroundColor: 'var(--bg-base)' }}
+    >
+      {/* Background gradient decoration */}
+      <div
+        className="fixed inset-0 overflow-hidden pointer-events-none"
+        style={{ zIndex: 0 }}
+      >
+        <div
+          className="absolute -top-40 -right-40 w-80 h-80 rounded-full opacity-20 blur-3xl"
+          style={{ background: 'var(--color-primary-500)' }}
+        />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full opacity-20 blur-3xl"
+          style={{ background: 'var(--color-accent-500)' }}
+        />
+      </div>
+
+      <div className="max-w-md w-full relative z-10">
+        <div
+          className="rounded-2xl px-8 py-10"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+            boxShadow: 'var(--shadow-xl)',
+          }}
+        >
+          {/* Logo & Brand */}
+          <div className="flex items-center gap-3 mb-8">
+            <div
+              className="h-12 w-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg"
+              style={{ background: 'var(--gradient-brand)' }}
+            >
               HW
             </div>
             <div>
-              <div className="text-slate-900 font-semibold text-lg">HubbleWave</div>
-              <div className="text-slate-500 text-sm">Envision At Your Own Ease</div>
+              <div
+                className="font-semibold text-xl"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                HubbleWave
+              </div>
+              <div
+                className="text-sm"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Envision at your own ease
+              </div>
             </div>
           </div>
 
-          <h1 className="text-xl font-semibold text-slate-900 mb-1">Sign in</h1>
-          <p className="text-sm text-slate-500 mb-6">
-            Use your work credentials to access equipment, inventory, and maintenance data.
+          {/* Header */}
+          <h1
+            className="text-2xl font-semibold mb-2"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Welcome back
+          </h1>
+          <p
+            className="text-sm mb-8"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Sign in to access your workspace and continue where you left off.
           </p>
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          {/* Form */}
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            {/* Username/Email Field */}
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-slate-700">
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 Email or username
               </label>
-              <div className="mt-1">
+              <div className="relative">
+                <Mail
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+                  style={{ color: 'var(--text-muted)' }}
+                />
                 <input
                   id="username"
                   name="username"
                   type="text"
                   required
-                  className="w-full rounded-lg border border-sky-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none"
-                  placeholder="name@hospital.org"
+                  className="input w-full pl-10"
+                  placeholder="name@company.com"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
             </div>
 
+            {/* Password Field */}
             <div>
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
                   Password
                 </label>
-                <span className="text-xs text-slate-400">Min. 8 characters</span>
+                <button
+                  type="button"
+                  className="text-xs font-medium transition-colors"
+                  style={{ color: 'var(--text-brand)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                >
+                  Forgot password?
+                </button>
               </div>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="mt-1 block w-full rounded-lg border border-rose-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <div className="relative">
+                <Lock
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+                  style={{ color: 'var(--text-muted)' }}
+                />
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="input w-full pl-10 pr-10"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded transition-colors"
+                  style={{ color: 'var(--text-muted)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
+            {/* Error Message */}
             {error && (
-              <div className="text-rose-600 text-sm text-center bg-rose-50 p-2 rounded-lg border border-rose-100">
+              <div
+                className="text-sm text-center p-3 rounded-lg"
+                style={{
+                  backgroundColor: 'var(--bg-danger-subtle)',
+                  color: 'var(--text-danger)',
+                  border: '1px solid var(--border-danger)',
+                }}
+              >
                 {error}
               </div>
             )}
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 inline-flex justify-center items-center gap-2 rounded-lg bg-sky-700 text-white text-sm font-semibold py-2.5 hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 focus:ring-offset-slate-100 transition disabled:opacity-70 disabled:cursor-not-allowed"
+              className="btn btn-primary w-full justify-center"
             >
-              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Sign in'}
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
             </button>
 
+            {/* Divider */}
+            <div className="relative my-6">
+              <div
+                className="absolute inset-0 flex items-center"
+                aria-hidden="true"
+              >
+                <div
+                  className="w-full"
+                  style={{ borderTop: '1px solid var(--border-subtle)' }}
+                />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span
+                  className="px-3"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  or continue with
+                </span>
+              </div>
+            </div>
+
+            {/* SSO Button */}
             <button
               type="button"
-              className="w-full inline-flex justify-center items-center rounded-lg bg-sky-50 text-sky-700 text-sm font-semibold py-2.5 hover:bg-sky-100 border border-sky-100 transition"
+              className="btn btn-secondary w-full justify-center"
             >
               Sign in with SSO
             </button>
           </form>
 
-          <div className="mt-6 text-xs text-slate-500 flex items-center justify-between">
-            <div>
+          {/* Footer Links */}
+          <div
+            className="mt-8 pt-6 text-xs flex items-center justify-between"
+            style={{ borderTop: '1px solid var(--border-subtle)' }}
+          >
+            <div style={{ color: 'var(--text-muted)' }}>
               Need access?{' '}
-              <button className="text-sky-600 hover:text-sky-700 font-medium">Contact admin</button>
+              <button
+                className="font-medium transition-colors"
+                style={{ color: 'var(--text-brand)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                Contact admin
+              </button>
             </div>
-            <div className="flex gap-4">
-              <button className="hover:text-slate-700">Privacy</button>
-              <button className="hover:text-slate-700">Terms</button>
-              <button className="hover:text-slate-700">Support</button>
+            <div
+              className="flex gap-4"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <button
+                className="transition-colors"
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                Privacy
+              </button>
+              <button
+                className="transition-colors"
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                Terms
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Version/Copyright */}
+        <p
+          className="text-center text-xs mt-6"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          © {new Date().getFullYear()} HubbleWave. All rights reserved.
+        </p>
       </div>
     </div>
   );
