@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { customizationApi } from '../services/admin-config.service';
 import type {
-  TenantCustomization,
+  InstanceCustomization,
   CreateCustomizationDto,
   UpdateCustomizationDto,
   ListResponse,
@@ -14,7 +14,7 @@ interface UseCustomizationListOptions extends ConfigListFilters {
 }
 
 interface UseCustomizationListReturn {
-  customizations: TenantCustomization[];
+  customizations: InstanceCustomization[];
   total: number;
   loading: boolean;
   error: string | null;
@@ -28,7 +28,7 @@ export function useCustomizationList(
   options: UseCustomizationListOptions = {}
 ): UseCustomizationListReturn {
   const { configType, customizationType, active, enabled = true } = options;
-  const [customizations, setCustomizations] = useState<TenantCustomization[]>([]);
+  const [customizations, setCustomizations] = useState<InstanceCustomization[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export function useCustomizationList(
     try {
       setLoading(true);
       setError(null);
-      const response: ListResponse<TenantCustomization> = await customizationApi.list({
+      const response: ListResponse<InstanceCustomization> = await customizationApi.list({
         configType,
         customizationType,
         active,
@@ -71,7 +71,7 @@ interface UseCustomizationOptions {
 }
 
 interface UseCustomizationReturn {
-  customization: TenantCustomization | null;
+  customization: InstanceCustomization | null;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -85,7 +85,7 @@ export function useCustomization(
   options: UseCustomizationOptions = {}
 ): UseCustomizationReturn {
   const { enabled = true } = options;
-  const [customization, setCustomization] = useState<TenantCustomization | null>(null);
+  const [customization, setCustomization] = useState<InstanceCustomization | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,7 +120,7 @@ export function useCustomization(
 }
 
 interface UseCustomizationVersionHistoryReturn {
-  versions: TenantCustomization[];
+  versions: InstanceCustomization[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -135,7 +135,7 @@ export function useCustomizationVersionHistory(
   options: UseCustomizationOptions = {}
 ): UseCustomizationVersionHistoryReturn {
   const { enabled = true } = options;
-  const [versions, setVersions] = useState<TenantCustomization[]>([]);
+  const [versions, setVersions] = useState<InstanceCustomization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -171,7 +171,7 @@ export function useCustomizationVersionHistory(
 
 interface UseCompareWithPlatformReturn {
   comparison: {
-    customization: TenantCustomization;
+    customization: InstanceCustomization;
     platformConfig: PlatformConfig;
     diff: any[];
   } | null;
@@ -228,8 +228,8 @@ interface MutationState {
 }
 
 interface UseCustomizationMutationsReturn {
-  createCustomization: (data: CreateCustomizationDto) => Promise<TenantCustomization | null>;
-  updateCustomization: (id: string, data: UpdateCustomizationDto) => Promise<TenantCustomization | null>;
+  createCustomization: (data: CreateCustomizationDto) => Promise<InstanceCustomization | null>;
+  updateCustomization: (id: string, data: UpdateCustomizationDto) => Promise<InstanceCustomization | null>;
   deleteCustomization: (id: string) => Promise<boolean>;
   createState: MutationState;
   updateState: MutationState;
@@ -245,7 +245,7 @@ export function useCustomizationMutations(): UseCustomizationMutationsReturn {
   const [deleteState, setDeleteState] = useState<MutationState>({ loading: false, error: null });
 
   const createCustomization = useCallback(
-    async (data: CreateCustomizationDto): Promise<TenantCustomization | null> => {
+    async (data: CreateCustomizationDto): Promise<InstanceCustomization | null> => {
       try {
         setCreateState({ loading: true, error: null });
         const result = await customizationApi.create(data);
@@ -261,7 +261,7 @@ export function useCustomizationMutations(): UseCustomizationMutationsReturn {
   );
 
   const updateCustomization = useCallback(
-    async (id: string, data: UpdateCustomizationDto): Promise<TenantCustomization | null> => {
+    async (id: string, data: UpdateCustomizationDto): Promise<InstanceCustomization | null> => {
       try {
         setUpdateState({ loading: true, error: null });
         const result = await customizationApi.update(id, data);

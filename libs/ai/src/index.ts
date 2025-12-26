@@ -98,7 +98,7 @@ export {
   BusinessRuleContext,
   TenantMetrics,
   UserProfile,
-} from './lib/tenant-context.service';
+} from './lib/instance-context.service';
 
 // Platform Knowledge (AVA's knowledge of platform capabilities)
 export {

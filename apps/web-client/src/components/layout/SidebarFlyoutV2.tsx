@@ -33,6 +33,9 @@ import { cn } from '../../lib/utils';
 interface SidebarFlyoutV2Props {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Mobile sheet visibility controlled by parent */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 // Helper to get application icon
@@ -122,7 +125,12 @@ const NavItemComponent: React.FC<NavItemProps> = ({
       <div className="mt-6 first:mt-2">
         {!collapsed && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
             className="sidebar-group-title w-full flex items-center gap-2"
           >
             {node.icon && (
@@ -140,7 +148,7 @@ const NavItemComponent: React.FC<NavItemProps> = ({
           </button>
         )}
 
-        {(isExpanded || collapsed) && hasChildren && (
+        {isExpanded && hasChildren && (
           <div className="mt-1 space-y-0.5">
             {node.children!.map((child) => (
               <NavItemComponent
@@ -164,7 +172,12 @@ const NavItemComponent: React.FC<NavItemProps> = ({
     return (
       <div className="mt-1">
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
           className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-md mx-2 transition-colors"
           style={{
             paddingLeft: `${16 + depth * 12}px`,
@@ -222,8 +235,6 @@ const NavItemComponent: React.FC<NavItemProps> = ({
           handleClick();
         }
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       title={collapsed ? node.label : undefined}
       className={cn(
         'group relative flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150',
@@ -237,6 +248,8 @@ const NavItemComponent: React.FC<NavItemProps> = ({
         boxShadow: isActive ? 'var(--shadow-xs)' : undefined,
         border: isActive ? '1px solid var(--border-primary)' : '1px solid transparent',
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onMouseOver={(e) => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
@@ -267,18 +280,17 @@ const NavItemComponent: React.FC<NavItemProps> = ({
         <>
           <span className="flex-1 truncate">{node.label}</span>
 
-          {/* Favorite star */}
-          {onToggleFavorite && node.moduleKey && (isHovered || isFavorite) && (
+          {/* Favorite star - show on hover or when favorited */}
+          {onToggleFavorite && node.moduleKey && (
             <button
+              type="button"
               onClick={handleFavoriteClick}
-              className={cn(
-                'flex-shrink-0 p-0.5 rounded transition-all duration-150',
-                !isFavorite && 'opacity-0 group-hover:opacity-100'
-              )}
+              className="flex-shrink-0 p-0.5 rounded transition-all duration-150"
               style={{
                 color: isFavorite
                   ? 'var(--color-warning-500)'
                   : 'var(--text-muted)',
+                opacity: isFavorite || isHovered ? 1 : 0.4,
               }}
               title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             >
@@ -288,6 +300,7 @@ const NavItemComponent: React.FC<NavItemProps> = ({
               />
             </button>
           )}
+
         </>
       )}
     </div>
@@ -325,7 +338,12 @@ const SmartGroup: React.FC<SmartGroupProps> = ({
   return (
     <div className="mb-4">
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsExpanded(!isExpanded);
+        }}
         className="sidebar-group-title w-full flex items-center gap-2"
       >
         <span style={{ color: 'var(--text-muted)' }}>{icon}</span>
@@ -380,7 +398,12 @@ const SmartGroup: React.FC<SmartGroupProps> = ({
 export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
   collapsed = false,
   onToggle,
+  // mobileOpen and onMobileClose are kept for API compatibility but handled by AppShellV2
+  mobileOpen: _mobileOpen = false,
+  onMobileClose: _onMobileClose,
 }) => {
+  void _mobileOpen;
+  void _onMobileClose;
   const {
     navigation,
     loading,
@@ -463,17 +486,18 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
 
   const widthClass = collapsed ? 'w-16' : 'w-64';
 
-  return (
+  const renderNav = () => (
     <nav
       className={cn(
-        'sidebar relative hidden md:flex flex-col flex-shrink-0 h-[calc(100vh-3.5rem)] sticky top-14 transition-all duration-200 ease-in-out',
+        'sidebar relative flex flex-col flex-shrink-0 h-full transition-all duration-300 ease-out glass-sidebar',
         widthClass
       )}
+      aria-label="Main navigation"
     >
-      {/* Toggle Button */}
+      {/* Toggle Button (desktop) */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full flex items-center justify-center transition-all duration-150"
+        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full items-center justify-center transition-all duration-150 hidden md:flex"
         style={{
           backgroundColor: 'var(--bg-surface)',
           border: '1px solid var(--border-default)',
@@ -710,6 +734,9 @@ export const SidebarFlyoutV2: React.FC<SidebarFlyoutV2Props> = ({
 
     </nav>
   );
+
+  // Mobile backdrop is handled by AppShellV2
+  return renderNav();
 };
 
 export default SidebarFlyoutV2;

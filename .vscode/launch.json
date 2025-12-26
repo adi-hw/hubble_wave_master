@@ -72,6 +72,24 @@
         "${workspaceFolder}/apps/svc-ai/dist/**/*.(m|c|)js",
         "!**/node_modules/**"
       ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug svc-control-plane with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "svc-control-plane"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9235"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/svc-control-plane/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
     }
   ]
 }

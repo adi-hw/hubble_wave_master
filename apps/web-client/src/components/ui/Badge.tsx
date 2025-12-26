@@ -11,15 +11,15 @@ export type BadgeVariant =
   | 'neutral';
 
 export type ConfigType =
-  | 'table'
-  | 'field'
+  | 'collection'
+  | 'property'
   | 'workflow'
-  | 'acl'
+  | 'access_rule'
   | 'script'
   | 'approval'
   | 'notification'
   | 'event'
-  | 'business_rule';
+  | 'automation_rule';
 
 export type CustomizationType = 'override' | 'extend' | 'new';
 
@@ -127,27 +127,27 @@ export interface ConfigTypeBadgeProps {
 }
 
 const configLabels: Record<ConfigType, string> = {
-  table: 'Table',
-  field: 'Field',
+  collection: 'Collection',
+  property: 'Property',
   workflow: 'Workflow',
-  acl: 'ACL',
+  access_rule: 'Access Rule',
   script: 'Script',
   approval: 'Approval',
   notification: 'Notification',
   event: 'Event',
-  business_rule: 'Business Rule',
+  automation_rule: 'Automation Rule',
 };
 
 const configVariants: Record<ConfigType, BadgeVariant> = {
-  table: 'primary',
-  field: 'accent',
+  collection: 'primary',
+  property: 'accent',
   workflow: 'success',
-  acl: 'warning',
+  access_rule: 'warning',
   script: 'danger',
   approval: 'warning',
   notification: 'info',
   event: 'success',
-  business_rule: 'danger',
+  automation_rule: 'danger',
 };
 
 export const ConfigTypeBadge: React.FC<ConfigTypeBadgeProps> = ({

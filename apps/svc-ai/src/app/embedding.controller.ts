@@ -12,9 +12,9 @@ import {
   EmbeddingService,
   EmbeddingQueueService,
   VectorStoreService,
-} from '@eam-platform/ai';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { JwtAuthGuard, CurrentUser } from '@eam-platform/auth-guard';
+} from '@hubblewave/ai';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard, CurrentUser } from '@hubblewave/auth-guard';
 
 interface IndexKnowledgeArticleDto {
   id: string;
@@ -57,18 +57,14 @@ export class EmbeddingController {
     private embeddingService: EmbeddingService,
     private embeddingQueueService: EmbeddingQueueService,
     private vectorStoreService: VectorStoreService,
-    private tenantDbService: TenantDbService
+    private dataSource: DataSource
   ) {}
 
   @Get('stats')
   @ApiOperation({ summary: 'Get embedding statistics for tenant' })
   @ApiResponse({ status: 200, description: 'Embedding statistics' })
-  async getStats(@CurrentUser() user: { tenantId: string }) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    const counts = await this.vectorStoreService.getDocumentCounts(dataSource);
+  async getStats(@CurrentUser() _user: any) {
+    const counts = await this.vectorStoreService.getDocumentCounts(this.dataSource);
     const queueStats = await this.embeddingQueueService.getStats();
 
     return {
@@ -82,12 +78,8 @@ export class EmbeddingController {
   @Post('initialize')
   @ApiOperation({ summary: 'Initialize vector store for tenant' })
   @ApiResponse({ status: 200, description: 'Vector store initialized' })
-  async initialize(@CurrentUser() user: { tenantId: string }) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    await this.vectorStoreService.initializeTenantVectorStore(dataSource);
+  async initialize(@CurrentUser() _user: any) {
+    await this.vectorStoreService.initializeTenantVectorStore(this.dataSource);
 
     return { message: 'Vector store initialized successfully' };
   }
@@ -96,14 +88,10 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Search documents using semantic similarity' })
   @ApiResponse({ status: 200, description: 'Search results' })
   async search(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Body() dto: SearchDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    const results = await this.vectorStoreService.search(dataSource, dto.query, {
+    const results = await this.vectorStoreService.search(this.dataSource, dto.query, {
       limit: dto.limit,
       threshold: dto.threshold,
       sourceTypes: dto.sourceTypes,
@@ -116,13 +104,12 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Index a knowledge article' })
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexKnowledgeArticle(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Body() dto: IndexKnowledgeArticleDto
   ) {
     // If queue is enabled, add to queue for background processing
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
-        tenantId: user.tenantId,
         sourceType: 'knowledge_article',
         sourceId: dto.id,
         action: 'index',
@@ -137,12 +124,8 @@ export class EmbeddingController {
     }
 
     // Process synchronously if queue not available
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
     const result = await this.embeddingService.indexKnowledgeArticle(
-      dataSource,
+      this.dataSource,
       dto
     );
 
@@ -156,12 +139,11 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Index a catalog item' })
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexCatalogItem(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Body() dto: IndexCatalogItemDto
   ) {
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
-        tenantId: user.tenantId,
         sourceType: 'catalog_item',
         sourceId: dto.id,
         action: 'index',
@@ -171,11 +153,7 @@ export class EmbeddingController {
       return { queued: true, jobId };
     }
 
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    const result = await this.embeddingService.indexCatalogItem(dataSource, dto);
+    const result = await this.embeddingService.indexCatalogItem(this.dataSource, dto);
 
     return { queued: false, result };
   }
@@ -184,12 +162,11 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Index a record from any collection' })
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexRecord(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Body() dto: IndexRecordDto
   ) {
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
-        tenantId: user.tenantId,
         sourceType: 'record',
         sourceId: `${dto.collectionName}:${dto.id}`,
         action: 'index',
@@ -199,11 +176,7 @@ export class EmbeddingController {
       return { queued: true, jobId };
     }
 
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    const result = await this.embeddingService.indexRecord(dataSource, dto);
+    const result = await this.embeddingService.indexRecord(this.dataSource, dto);
 
     return { queued: false, result };
   }
@@ -212,13 +185,12 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Remove a document from the index' })
   @ApiResponse({ status: 200, description: 'Document removed' })
   async removeFromIndex(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Param('sourceType') sourceType: string,
     @Param('sourceId') sourceId: string
   ) {
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
-        tenantId: user.tenantId,
         sourceType: sourceType as 'knowledge_article' | 'catalog_item' | 'record',
         sourceId,
         action: 'delete',
@@ -227,11 +199,7 @@ export class EmbeddingController {
       return { queued: true, jobId };
     }
 
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
-    await this.embeddingService.removeFromIndex(dataSource, sourceType, sourceId);
+    await this.embeddingService.removeFromIndex(this.dataSource, sourceType, sourceId);
 
     return { success: true };
   }
@@ -240,7 +208,7 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Schedule a full reindex for the tenant' })
   @ApiResponse({ status: 200, description: 'Reindex scheduled' })
   async scheduleReindex(
-    @CurrentUser() user: { tenantId: string },
+    @CurrentUser() _user: any,
     @Body() dto: { sourceTypes?: string[] }
   ) {
     if (!this.embeddingQueueService.isQueueEnabled()) {
@@ -250,10 +218,7 @@ export class EmbeddingController {
       };
     }
 
-    const jobId = await this.embeddingQueueService.scheduleReindex(
-      user.tenantId,
-      dto.sourceTypes
-    );
+    const jobId = await this.embeddingQueueService.scheduleReindex(dto.sourceTypes);
 
     return {
       success: true,
@@ -266,9 +231,9 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Get queue jobs for tenant' })
   @ApiResponse({ status: 200, description: 'Queue jobs' })
   async getQueueJobs(
-    @CurrentUser() user: { tenantId: string }
+    @CurrentUser() _user: any
   ) {
-    const jobs = await this.embeddingQueueService.getTenantJobs(user.tenantId);
+    const jobs = await this.embeddingQueueService.getJobs();
 
     return {
       jobs: jobs.map((job) => ({
@@ -285,9 +250,10 @@ export class EmbeddingController {
   @Post('queue/retry')
   @ApiOperation({ summary: 'Retry failed jobs for tenant' })
   @ApiResponse({ status: 200, description: 'Jobs retried' })
-  async retryFailedJobs(@CurrentUser() user: { tenantId: string }) {
-    const count = await this.embeddingQueueService.retryFailedJobs(user.tenantId);
+  async retryFailedJobs(@CurrentUser() _user: any) {
+    const count = await this.embeddingQueueService.retryFailedJobs();
 
     return { retriedCount: count };
   }
 }
+

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TenantDbModule } from '@eam-platform/tenant-db';
-import { AuthGuardModule } from '@eam-platform/auth-guard';
+import { InstanceDbModule } from '@hubblewave/instance-db';
+import { AuthGuardModule } from '@hubblewave/auth-guard';
 import { IamController } from './iam.controller';
+import { RolesModule } from '../roles/roles.module';
 
 @Module({
-  imports: [TenantDbModule, AuthGuardModule],
+  imports: [InstanceDbModule, AuthGuardModule, RolesModule],
   controllers: [IamController],
 })
 export class IamModule {}
+

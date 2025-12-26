@@ -2,9 +2,11 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { assertSecureConfig } from '@hubblewave/shared-types';
 
 // Create Winston logger that excludes passwords/tokens
 const winstonLogger = WinstonModule.createLogger({
@@ -44,23 +46,19 @@ const winstonLogger = WinstonModule.createLogger({
 async function bootstrap() {
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Validate JWT_SECRET is configured - required in production
-  if (!process.env.JWT_SECRET && !process.env.IDENTITY_JWT_SECRET && isProd) {
+  // SECURITY: Validate configuration before starting
+  // This will throw in production if insecure defaults are detected
+  assertSecureConfig();
+
+  // Validate JWT_SECRET is configured - REQUIRED in all environments
+  const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+  if (!jwtSecret) {
     throw new Error(
-      'JWT_SECRET environment variable must be set in production. ' +
+      'SECURITY ERROR: JWT_SECRET environment variable must be set. ' +
       'Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
     );
   }
-
-  // Use JWT_SECRET or fall back to IDENTITY_JWT_SECRET, with dev fallback for local development
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (isProd ? undefined : 'dev-only-insecure-secret');
-
-  if (!isProd && process.env.JWT_SECRET === 'dev-only-insecure-secret') {
-    Logger.warn('Using insecure dev JWT secret - DO NOT use in production!', 'Bootstrap');
-  }
+  process.env.JWT_SECRET = jwtSecret;
 
   const app = await NestFactory.create(AppModule, {
     logger: winstonLogger,
@@ -82,8 +80,10 @@ async function bootstrap() {
   });
 
   // Also support *.localhost patterns for tenant subdomains in development
+  // and localhost with any port
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
   }
 
   app.enableCors({
@@ -114,10 +114,13 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       process.env.CORS_ALLOWED_HEADERS ??
-      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Tenant-Slug',
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Tenant-Slug, X-XSRF-TOKEN',
     optionsSuccessStatus: 204,
   });
   Logger.log(`CORS enabled for origins: ${allowedOrigins.join(', ')} (+ subdomain patterns in dev)`, 'Bootstrap');
+
+  // Cookie parser for reading cookies (required for CSRF and refresh tokens)
+  app.use(cookieParser());
 
   // Security headers with Helmet (after CORS)
   const styleSrc = isProd ? ["'self'"] : ["'self'", "'unsafe-inline'"];
@@ -163,8 +166,8 @@ async function bootstrap() {
 
   if (swaggerEnabled) {
     const config = new DocumentBuilder()
-      .setTitle('EAM Platform API')
-      .setDescription('Enterprise Asset Management Platform API documentation')
+      .setTitle('HubbleWave Platform API')
+      .setDescription('HubbleWave Platform API documentation')
       .setVersion('1.0')
       .addBearerAuth()
       .addApiKey({ type: 'apiKey', name: 'X-API-KEY', in: 'header' }, 'X-API-KEY')

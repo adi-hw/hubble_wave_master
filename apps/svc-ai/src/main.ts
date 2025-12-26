@@ -8,8 +8,14 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app/app.module';
+import { DataSource } from 'typeorm';
+import { ConversationMemoryService, VectorStoreService } from '@hubblewave/ai';
+import { assertSecureConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
+  // SECURITY: Validate configuration before starting
+  assertSecureConfig();
+
   const app = await NestFactory.create(AppModule);
 
   // Security
@@ -41,7 +47,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3003;
+  // Initialize AI tables
+  const dataSource = app.get(DataSource);
+  const conversationMemory = app.get(ConversationMemoryService);
+  await conversationMemory.initializeTenantConversations(dataSource);
+
+  const vectorStore = app.get(VectorStoreService);
+  await vectorStore.initializeTenantVectorStore(dataSource);
+
+  const port = process.env.AI_PORT || process.env.PORT || 3004;
   await app.listen(port);
 
   Logger.log(`AI Service running on: http://localhost:${port}`);

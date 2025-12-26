@@ -1,24 +1,38 @@
-import { Injectable } from '@nestjs/common';
-import { LessThan } from 'typeorm';
-import { PasswordResetToken, UserAccount, TenantUserMembership } from '@eam-platform/platform-db';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan, IsNull } from 'typeorm';
+import { PasswordResetToken, User, RefreshToken } from '@hubblewave/instance-db';
 import { EmailService } from '../email/email.service';
+import { AuthEventsService } from './auth-events.service';
 import * as crypto from 'crypto';
 import * as argon2 from 'argon2';
-import { TenantDbService } from '@eam-platform/tenant-db';
+
+/**
+ * OWASP-recommended Argon2id parameters
+ */
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 65536,  // 64 MB
+  timeCost: 3,        // 3 iterations
+  parallelism: 4,     // 4 threads
+  hashLength: 32,     // 256-bit output
+};
 
 @Injectable()
 export class PasswordResetService {
+  private readonly logger = new Logger(PasswordResetService.name);
+
   constructor(
-    private readonly tenantDbService: TenantDbService,
+    @InjectRepository(PasswordResetToken) private readonly resetTokenRepo: Repository<PasswordResetToken>,
+    @InjectRepository(User) private readonly usersRepo: Repository<User>,
+    @InjectRepository(RefreshToken) private readonly refreshTokenRepo: Repository<RefreshToken>,
     private emailService: EmailService,
+    private authEventsService: AuthEventsService,
   ) {}
 
-  async createResetToken(email: string, tenantId: string): Promise<{ token: string; user: UserAccount } | null> {
-    const resetTokenRepo = await this.tenantDbService.getRepository<PasswordResetToken>(tenantId, PasswordResetToken as any);
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount as any);
-    const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenantId, TenantUserMembership as any);
-    const user = await usersRepo.findOne({
-      where: { primaryEmail: email },
+  async createResetToken(email: string): Promise<{ token: string; user: User } | null> {
+    const user = await this.usersRepo.findOne({
+      where: { email: email },
     });
 
     if (!user) {
@@ -26,8 +40,7 @@ export class PasswordResetService {
       return null;
     }
 
-    const membership = await membershipRepo.findOne({ where: { tenantId, userId: user.id } });
-    if (!membership || membership.status !== 'ACTIVE') {
+    if (user.status !== 'active') { // Assuming 'active' is the correct status string
       return null;
     }
 
@@ -40,30 +53,27 @@ export class PasswordResetService {
     expiresAt.setHours(expiresAt.getHours() + 1);
 
     // Invalidate any existing tokens for this user
-    await resetTokenRepo.update(
-      { userId: user.id, tenantId, used: false },
-      { used: true, usedAt: new Date() }
+    await this.resetTokenRepo.update(
+      { userId: user.id, usedAt: IsNull() },
+      { usedAt: new Date() }
     );
 
     // Create new reset token
-    await resetTokenRepo.save({
-      tenantId,
+    await this.resetTokenRepo.save({
       userId: user.id,
-      tokenHash,
+      token: tokenHash,
       expiresAt,
-      used: false,
+      usedAt: null,
     });
 
     return { token, user };
   }
 
-  async validateResetToken(tenantId: string, token: string): Promise<UserAccount | null> {
-    const resetTokenRepo = await this.tenantDbService.getRepository<PasswordResetToken>(tenantId, PasswordResetToken as any);
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount as any);
+  async validateResetToken(token: string): Promise<User | null> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const resetToken = await resetTokenRepo.findOne({
-      where: { tokenHash, tenantId },
+    const resetToken = await this.resetTokenRepo.findOne({
+      where: { token: tokenHash },
       relations: ['user'],
     });
 
@@ -72,7 +82,7 @@ export class PasswordResetService {
     }
 
     // Check if token is used
-    if (resetToken.used) {
+    if (resetToken.usedAt) {
       return null;
     }
 
@@ -81,48 +91,66 @@ export class PasswordResetService {
       return null;
     }
 
-    return await usersRepo.findOne({ where: { id: resetToken.userId } });
+    return await this.usersRepo.findOne({ where: { id: resetToken.userId } });
   }
 
-  async useResetToken(tenantId: string, token: string, newPassword: string): Promise<boolean> {
-    const resetTokenRepo = await this.tenantDbService.getRepository<PasswordResetToken>(tenantId, PasswordResetToken as any);
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount as any);
+  async useResetToken(token: string, newPassword: string): Promise<boolean> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const resetToken = await resetTokenRepo.findOne({
-      where: { tokenHash, tenantId },
+    const resetToken = await this.resetTokenRepo.findOne({
+      where: { token: tokenHash },
       relations: ['user'],
     });
 
-    if (!resetToken || resetToken.used || resetToken.expiresAt < new Date()) {
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
       return false;
     }
 
     // Mark token as used
-    await resetTokenRepo.update(resetToken.id, {
-      used: true,
+    await this.resetTokenRepo.update(resetToken.id, {
       usedAt: new Date(),
     });
 
-    const hashed = await argon2.hash(newPassword);
+    // Hash with OWASP-recommended parameters
+    const hashed = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
-    await usersRepo.update(resetToken.userId, {
+    await this.usersRepo.update(resetToken.userId, {
       passwordHash: hashed,
+      passwordChangedAt: new Date(),
     });
+
+    // Revoke all refresh tokens for security (force re-login)
+    await this.refreshTokenRepo.update(
+      { userId: resetToken.userId, isRevoked: false },
+      { isRevoked: true, revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' }
+    );
+
+    // Record the password change event
+    await this.authEventsService.record({
+      eventType: 'PASSWORD_CHANGED',
+      success: true,
+      userId: resetToken.userId,
+    });
+
+    this.logger.log(`Password reset completed for user ${resetToken.userId}`);
 
     return true;
   }
 
-  async cleanupExpiredTokens(tenantId: string): Promise<void> {
-    const resetTokenRepo = await this.tenantDbService.getRepository<PasswordResetToken>(tenantId, PasswordResetToken as any);
-    await resetTokenRepo.delete({
+
+  async cleanupExpiredTokens(): Promise<void> {
+    await this.resetTokenRepo.delete({
       expiresAt: LessThan(new Date()),
-      tenantId,
     });
   }
 
   // Send reset email using EmailService
-  async sendResetEmail(email: string, token: string, tenantSlug: string): Promise<void> {
-    await this.emailService.sendPasswordResetEmail(email, token, tenantSlug);
+  async sendResetEmail(email: string, token: string): Promise<void> {
+    await this.emailService.sendPasswordResetEmail(email, token);
   }
 }
+
+
+
+
+

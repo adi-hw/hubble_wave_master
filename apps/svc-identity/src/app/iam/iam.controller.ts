@@ -1,92 +1,78 @@
 import { Controller, Get, NotFoundException, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext } from '@eam-platform/auth-guard';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { TenantUserMembership, UserAccount } from '@eam-platform/platform-db';
-import { UserProfile } from '@eam-platform/tenant-db';
+import { JwtAuthGuard, RequestContext } from '@hubblewave/auth-guard';
+import { User } from '@hubblewave/instance-db';
 import { SkipThrottle } from '@nestjs/throttler';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { PermissionResolverService } from '../roles/permission-resolver.service';
 
 @Controller('iam')
 @UseGuards(JwtAuthGuard)
-@SkipThrottle() // Profile endpoints are called frequently, skip rate limiting
+@SkipThrottle()
 export class IamController {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly permissionResolver: PermissionResolverService,
+  ) {}
 
   @Get('me')
   async me(@Req() req: any) {
     const ctx: RequestContext = req.context || req.user;
-    if (!ctx?.tenantId || !ctx?.userId) {
+    if (!ctx?.userId) {
       throw new NotFoundException('User context missing');
     }
 
-    const membershipRepo = await this.tenantDb.getRepository<TenantUserMembership>(ctx.tenantId, TenantUserMembership as any);
-    const userRepo = await this.tenantDb.getRepository<UserAccount>(ctx.tenantId, UserAccount as any);
+    const user = await this.userRepo.findOne({ where: { id: ctx.userId } });
 
-    const membership = await membershipRepo.findOne({ where: { tenantId: ctx.tenantId, userId: ctx.userId } });
-    const user = await userRepo.findOne({ where: { id: ctx.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Resolve roles and permissions using shared service (with caching)
+    const cached = await this.permissionResolver.getUserPermissions(ctx.userId);
+    const roleNames = cached.roles.map(r => r.code || r.name);
 
     return {
-      userId: ctx.userId,
-      tenantId: ctx.tenantId,
-      displayName: membership?.title || user?.displayName || user?.primaryEmail || 'User',
-      email: user?.primaryEmail,
-      isPlatformAdmin: ctx.isPlatformAdmin,
-      isTenantAdmin: ctx.isTenantAdmin,
-      roles: ctx.roles || [],
-      permissions: ctx.permissions || [],
+      id: user.id,
+      userId: user.id,
+      username: user.displayName || user.email,
+      displayName: user.displayName || user.email || 'User',
+      email: user.email,
+      isAdmin: roleNames.includes('admin'),
+      roles: roleNames,
+      permissions: Array.from(cached.permissions),
     };
   }
 
   @Get('profile')
   async profile(@Req() req: any) {
     const ctx: RequestContext = req.context || req.user;
-    if (!ctx?.tenantId || !ctx?.userId) {
+    if (!ctx?.userId) {
       throw new NotFoundException('User context missing');
     }
 
-    try {
-      const membershipRepo = await this.tenantDb.getRepository<TenantUserMembership>(ctx.tenantId, TenantUserMembership as any);
-      const membership = await membershipRepo.findOne({ where: { tenantId: ctx.tenantId, userId: ctx.userId } });
+    const user = await this.userRepo.findOne({
+      where: { id: ctx.userId },
+    });
 
-      if (!membership) {
-        return {
-          displayName: ctx.username || 'User',
-          preferences: {},
-        };
-      }
-
-      // Try to get profile from tenant database - may not exist if tenant DB not fully set up
-      try {
-        const profileRepo = await this.tenantDb.getRepository<UserProfile>(ctx.tenantId, UserProfile as any);
-        const profile = await profileRepo.findOne({ where: { tenantUserId: membership.id } });
-
-        if (profile) {
-          return {
-            id: profile.id,
-            displayName: profile.displayName,
-            email: profile.email,
-            phoneNumber: profile.phoneNumber,
-            locale: profile.locale,
-            timeZone: profile.timeZone,
-            title: profile.title,
-            department: profile.department,
-            preferences: profile.preferences,
-          };
-        }
-      } catch {
-        // UserProfile table may not exist in tenant DB - fall through to default
-      }
-
-      // Return default profile based on membership
+    if (!user) {
       return {
-        displayName: membership.title || ctx.username || 'User',
-        preferences: {},
-      };
-    } catch {
-      // Fallback if anything fails
-      return {
-        displayName: ctx.username || 'User',
+        displayName: 'User',
         preferences: {},
       };
     }
+
+    return {
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      phoneNumber: user.workPhone || user.mobilePhone,
+      locale: user.locale,
+      timeZone: user.timeZone,
+      title: user.title,
+      department: user.department,
+      preferences: {},
+    };
   }
 }

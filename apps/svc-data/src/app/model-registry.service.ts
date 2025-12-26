@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, OnModuleDestroy, Logger } from '@nestjs/common';
-import { TenantDbService, TableUiConfig, FieldUiConfig } from '@eam-platform/tenant-db';
+import { CollectionDefinition, PropertyDefinition } from '@hubblewave/instance-db';
+import { DataSource } from 'typeorm';
 import NodeCache from 'node-cache';
 
 /** Return type for getTable method */
@@ -10,6 +11,14 @@ export interface TableInfo {
   storageSchema: string;
   category: string;
   isSystem: boolean;
+}
+
+// Internal interface for UI config
+interface PropertyUiConfig {
+    propertyId: string;
+    label?: string;
+    isVisibleInForm?: boolean;
+    isVisibleInList?: boolean;
 }
 
 /** Return type for getFields method */
@@ -52,7 +61,7 @@ export class ModelRegistryService implements OnModuleDestroy {
   private readonly logger = new Logger(ModelRegistryService.name);
   private cache: NodeCache;
 
-  constructor(private readonly tenantDb: TenantDbService) {
+  constructor(private readonly dataSource: DataSource) {
     this.cache = new NodeCache({ stdTTL: 30, checkperiod: 60 });
   }
 
@@ -101,14 +110,14 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Get table info from information_schema
+   * Get table info from information_schema and collection_definitions
    */
-  async getTable(tableName: string, tenantId: string): Promise<TableInfo> {
-    const cacheKey = `${tenantId}:table:${tableName}`;
+  async getTable(tableName: string, instanceId: string): Promise<TableInfo> {
+    const cacheKey = `${instanceId}:table:${tableName}`;
     const cached = this.cache.get<TableInfo>(cacheKey);
     if (cached) return cached;
 
-    const ds = await this.tenantDb.getDataSource(tenantId);
+    const ds = this.dataSource;
 
     // Check if table exists in information_schema
     const result = await ds.query(`
@@ -123,17 +132,17 @@ export class ModelRegistryService implements OnModuleDestroy {
       throw new NotFoundException(`Table '${tableName}' not found in database`);
     }
 
-    // Get UI config if exists
-    const uiConfigRepo = ds.getRepository(TableUiConfig);
-    const uiConfig = await uiConfigRepo.findOne({ where: { tableName } });
+    // Get collection definition if exists
+    const collectionRepo = ds.getRepository(CollectionDefinition);
+    const collection = await collectionRepo.findOne({ where: { tableName, isActive: true } });
 
     const tableInfo = {
       tableName,
-      label: uiConfig?.label || this.formatTableName(tableName),
+      label: collection?.name || this.formatTableName(tableName),
       storageTable: tableName,
       storageSchema: 'public',
-      category: uiConfig?.category || 'application',
-      isSystem: uiConfig?.isSystem ?? false,
+      category: collection?.category || 'application',
+      isSystem: collection?.isSystem ?? false,
     };
 
     this.cache.set(cacheKey, tableInfo);
@@ -155,8 +164,8 @@ export class ModelRegistryService implements OnModuleDestroy {
       .join(' ');
   }
 
-  private isPlatformAdmin(roles?: string[]) {
-    return Array.isArray(roles) && roles.includes('platform_admin');
+  private isAdmin(roles?: string[]) {
+    return Array.isArray(roles) && roles.includes('admin');
   }
 
   /**
@@ -187,17 +196,89 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Get fields from information_schema and field_ui_config
+   * Get fields from property_definitions for a collection
    */
-  async getFields(tableName: string, tenantId: string, roles?: string[]): Promise<FieldInfo[]> {
-    const cacheKey = `${tenantId}:fields:${tableName}`;
+  async getFields(tableName: string, instanceId: string, roles?: string[]): Promise<FieldInfo[]> {
+    const cacheKey = `${instanceId}:fields:${tableName}`;
     const cached = this.cache.get<FieldInfo[]>(cacheKey);
     if (cached) return cached;
 
     // First ensure table exists
-    await this.getTable(tableName, tenantId);
+    await this.getTable(tableName, instanceId);
 
-    const ds = await this.tenantDb.getDataSource(tenantId);
+    const ds = this.dataSource;
+
+    // Get collection first
+    const collectionRepo = ds.getRepository(CollectionDefinition);
+    const collection = await collectionRepo.findOne({ where: { tableName, isActive: true } });
+
+    if (!collection) {
+      // Fall back to information_schema if no collection definition
+      return this.getFieldsFromSchema(tableName, instanceId, roles);
+    }
+
+    // Get property definitions for this collection
+    const propertyRepo = ds.getRepository(PropertyDefinition);
+    const properties = await propertyRepo.find({
+      where: { collectionId: collection.id, isActive: true },
+      order: { position: 'ASC' },
+    });
+
+    // UI Config disabled for now
+    // const uiConfigRepo = ds.getRepository(PropertyUiConfig);
+    // const uiConfigs = await uiConfigRepo.find({
+    //   where: { propertyId: properties.map(p => p.id).length > 0 ? undefined : undefined },
+    // });
+    const uiConfigMap = new Map<string, PropertyUiConfig>();
+
+    const showHidden = this.isAdmin(roles);
+
+    const fields: FieldInfo[] = properties
+      .map((prop) => {
+        const uiConfig = uiConfigMap.get(prop.id);
+        const dataType = (prop.config as Record<string, unknown>)?.dataType as string || 'string';
+        const typeInfo = this.mapDataTypeToFieldType(dataType);
+
+        // System columns are hidden by default
+        const isSystemColumn = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(prop.columnName || prop.code);
+
+        return {
+          code: prop.code,
+          label: uiConfig?.label || prop.name || this.formatColumnName(prop.code),
+          type: typeInfo.type,
+          backendType: typeInfo.backendType,
+          uiWidget: typeInfo.uiWidget,
+          storagePath: `column:${prop.columnName || prop.code}`,
+          nullable: !prop.isRequired,
+          isUnique: prop.isUnique ?? false,
+          defaultValue: prop.defaultValue as string | null,
+          config: {
+            maxLength: (prop.config as Record<string, unknown>)?.maxLength as number | null,
+            precision: (prop.config as Record<string, unknown>)?.precision as number | null,
+            choices: (prop.config as Record<string, unknown>)?.choices as Array<{ value: string; label: string }> | null,
+            referenceTable: (prop.config as Record<string, unknown>)?.referenceCollection as string | null,
+            referenceDisplayField: (prop.config as Record<string, unknown>)?.referenceDisplayProperty as string | null,
+          },
+          validators: (prop.config as Record<string, unknown>)?.validators as Record<string, unknown> || {},
+          isInternal: !prop.isVisible,
+          isSystem: prop.isSystem ?? isSystemColumn,
+          showInForms: uiConfig?.isVisibleInForm ?? !isSystemColumn,
+          showInLists: uiConfig?.isVisibleInList ?? !isSystemColumn,
+          displayOrder: prop.position ?? 0,
+        };
+      })
+      .filter((f) => showHidden || !f.isInternal)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+
+    this.cache.set(cacheKey, fields);
+    return fields;
+  }
+
+  /**
+   * Fallback: Get fields from information_schema when no collection definition exists
+   */
+  private async getFieldsFromSchema(tableName: string, _instanceId: string, roles?: string[]): Promise<FieldInfo[]> {
+    const ds = this.dataSource;
 
     // Get columns from information_schema
     const columnsResult = await ds.query(`
@@ -215,12 +296,7 @@ export class ModelRegistryService implements OnModuleDestroy {
       ORDER BY ordinal_position
     `, [tableName]);
 
-    // Get UI configs
-    const uiConfigRepo = ds.getRepository(FieldUiConfig);
-    const uiConfigs = await uiConfigRepo.find({ where: { tableName } });
-    const uiConfigMap = new Map(uiConfigs.map(c => [c.columnName, c]));
-
-    const showHidden = this.isPlatformAdmin(roles);
+    const showHidden = this.isAdmin(roles);
 
     // Define column result type
     interface ColumnResult {
@@ -235,41 +311,39 @@ export class ModelRegistryService implements OnModuleDestroy {
 
     const fields: FieldInfo[] = (columnsResult as ColumnResult[])
       .map((col) => {
-        const config = uiConfigMap.get(col.column_name);
         const typeInfo = this.mapDataTypeToFieldType(col.data_type);
 
         // System columns are hidden by default
-        const isSystemColumn = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at', 'row_version'].includes(col.column_name);
+        const isSystemColumn = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(col.column_name);
 
         return {
           code: col.column_name,
-          label: config?.label || this.formatColumnName(col.column_name),
+          label: this.formatColumnName(col.column_name),
           type: typeInfo.type,
           backendType: typeInfo.backendType,
           uiWidget: typeInfo.uiWidget,
           storagePath: `column:${col.column_name}`,
           nullable: col.is_nullable === 'YES',
-          isUnique: false, // Would need to query pg_indexes for this
+          isUnique: false,
           defaultValue: col.column_default,
           config: {
             maxLength: col.character_maximum_length,
             precision: col.numeric_precision,
-            choices: config?.choices,
-            referenceTable: config?.referenceTable,
-            referenceDisplayField: config?.referenceDisplayField,
+            choices: null,
+            referenceTable: null,
+            referenceDisplayField: null,
           },
           validators: {},
-          isInternal: config?.isHidden ?? false,
+          isInternal: false,
           isSystem: isSystemColumn,
-          showInForms: config?.showInForm ?? !isSystemColumn,
-          showInLists: config?.showInList ?? !isSystemColumn,
-          displayOrder: config?.displayOrder ?? col.ordinal_position,
+          showInForms: !isSystemColumn,
+          showInLists: !isSystemColumn,
+          displayOrder: col.ordinal_position,
         };
       })
       .filter((f) => showHidden || !f.isInternal)
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
-    this.cache.set(cacheKey, fields);
     return fields;
   }
 
@@ -296,3 +370,4 @@ export class ModelRegistryService implements OnModuleDestroy {
     this.cache.close();
   }
 }
+

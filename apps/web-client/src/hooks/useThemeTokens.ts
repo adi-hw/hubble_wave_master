@@ -1,31 +1,12 @@
-import { useEffect, useState } from 'react';
-import { ThemeResponse, uiService } from '../services/ui.service';
+/**
+ * useThemeTokens - Legacy hook for theme tokens
+ *
+ * NOTE: This hook is deprecated. Use useThemePreference() instead.
+ * Kept for backwards compatibility.
+ */
+import { useThemePreference } from './useThemePreference';
 
 export function useThemeTokens() {
-  const [theme, setTheme] = useState<ThemeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    uiService
-      .getTheme()
-      .then((tokens) => {
-        if (isMounted) {
-          setTheme(tokens);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  return { theme, loading };
+  const { resolved, loading } = useThemePreference();
+  return { theme: resolved, loading };
 }

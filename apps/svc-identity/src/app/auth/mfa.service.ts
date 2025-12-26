@@ -1,11 +1,12 @@
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MfaMethod } from '@eam-platform/platform-db';
+import { MfaMethod } from '@hubblewave/instance-db';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { EncryptionService } from '@eam-platform/shared-types';
+import { EncryptionService } from '@hubblewave/shared-types';
 
 @Injectable()
 export class MfaService implements OnModuleInit {
@@ -13,7 +14,7 @@ export class MfaService implements OnModuleInit {
   private encryptionService: EncryptionService | null = null;
 
   constructor(
-    private readonly tenantDbService: TenantDbService,
+    @InjectRepository(MfaMethod) private readonly mfaMethodRepo: Repository<MfaMethod>,
     private readonly configService: ConfigService,
   ) {
     // Configure TOTP settings
@@ -87,8 +88,8 @@ export class MfaService implements OnModuleInit {
     return secret;
   }
 
-  async enrollTotp(tenantId: string, userId: string, appName: string = 'EAM Platform'): Promise<{ secret: string; qrCode: string; recoveryCodes: string[] }> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async enrollTotp(userId: string, appName: string = 'HubbleWave Platform'): Promise<{ secret: string; qrCode: string; recoveryCodes: string[] }> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     // Generate a secret
     const secret = authenticator.generateSecret();
 
@@ -143,8 +144,8 @@ export class MfaService implements OnModuleInit {
     return { secret, qrCode, recoveryCodes };
   }
 
-  async verifyTotpEnrollment(tenantId: string, userId: string, token: string): Promise<boolean> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async verifyTotpEnrollment(userId: string, token: string): Promise<boolean> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     const mfaMethod = await mfaMethodRepo.findOne({
       where: { userId, type: 'TOTP' },
     });
@@ -173,8 +174,8 @@ export class MfaService implements OnModuleInit {
     return isValid;
   }
 
-  async verifyTotp(tenantId: string, userId: string, token: string): Promise<boolean> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async verifyTotp(userId: string, token: string): Promise<boolean> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     const mfaMethod = await mfaMethodRepo.findOne({
       where: { userId, type: 'TOTP', enabled: true, verified: true },
     });
@@ -201,8 +202,8 @@ export class MfaService implements OnModuleInit {
     return isValid;
   }
 
-  async verifyRecoveryCode(tenantId: string, userId: string, code: string): Promise<boolean> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async verifyRecoveryCode(userId: string, code: string): Promise<boolean> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     const mfaMethod = await mfaMethodRepo.findOne({
       where: { userId, type: 'TOTP', enabled: true },
     });
@@ -230,8 +231,8 @@ export class MfaService implements OnModuleInit {
     return true;
   }
 
-  async isMfaEnabled(tenantId: string, userId: string): Promise<boolean> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async isMfaEnabled(userId: string): Promise<boolean> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     const mfaMethod = await mfaMethodRepo.findOne({
       where: { userId, enabled: true, verified: true },
     });
@@ -239,13 +240,13 @@ export class MfaService implements OnModuleInit {
     return !!mfaMethod;
   }
 
-  async disableMfa(tenantId: string, userId: string): Promise<void> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async disableMfa(userId: string): Promise<void> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     await mfaMethodRepo.delete({ userId });
   }
 
-  async getMfaStatus(tenantId: string, userId: string): Promise<{ enabled: boolean; type?: string }> {
-    const mfaMethodRepo = await this.tenantDbService.getRepository(tenantId, MfaMethod);
+  async getMfaStatus(userId: string): Promise<{ enabled: boolean; type?: string }> {
+    const mfaMethodRepo = this.mfaMethodRepo;
     const mfaMethod = await mfaMethodRepo.findOne({
       where: { userId, enabled: true, verified: true },
     });

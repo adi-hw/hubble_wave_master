@@ -16,22 +16,57 @@
     "importHelpers": true,
     "target": "es2015",
     "module": "esnext",
-    "lib": ["es2020", "dom"],
+    "lib": [
+      "es2020",
+      "dom"
+    ],
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@eam-platform/auth-guard": ["libs/auth-guard/src/index.ts"],
-      "@eam-platform/platform-db": ["libs/platform-db/src/index.ts"],
-      "@eam-platform/tenant-db": ["libs/tenant-db/src/index.ts"],
-      "@eam-platform/shared-types": ["libs/shared-types/src/index.ts"],
-      "@eam-platform/authorization": ["libs/authorization/src/index.ts"],
-      "@eam-platform/automation": ["libs/automation/src/index.ts"],
-      "@eam-platform/integrations": ["libs/integrations/src/index.ts"],
-      "@eam-platform/analytics": ["libs/analytics/src/index.ts"],
-      "@eam-platform/ai": ["libs/ai/src/index.ts"],
-      "@eam-platform/enterprise": ["libs/enterprise/src/index.ts"]
+      "@hubblewave/auth-guard": [
+        "libs/auth-guard/src/index.ts"
+      ],
+      "@hubblewave/control-plane-db": [
+        "libs/control-plane-db/src/index.ts"
+      ],
+      "@hubblewave/instance-db": [
+        "libs/instance-db/src/index.ts"
+      ],
+      "@hubblewave/shared-types": [
+        "libs/shared-types/src/index.ts"
+      ],
+      "@hubblewave/authorization": [
+        "libs/authorization/src/index.ts"
+      ],
+      "@hubblewave/automation": [
+        "libs/automation/src/index.ts"
+      ],
+      "@hubblewave/integrations": [
+        "libs/integrations/src/index.ts"
+      ],
+      "@hubblewave/analytics": [
+        "libs/analytics/src/index.ts"
+      ],
+      "@hubblewave/ai": [
+        "libs/ai/src/index.ts"
+      ],
+      "@hubblewave/enterprise": [
+        "libs/enterprise/src/index.ts"
+      ],
+      "@hubblewave/redis": [
+        "libs/redis/src/index.ts"
+      ],
+      "@hubblewave/ui": [
+        "libs/ui/src/index.ts"
+      ],
+      "@hubblewave/schema-engine": [
+        "libs/schema-engine/src/index.ts"
+      ]
     }
   },
-  "exclude": ["node_modules", "tmp"]
+  "exclude": [
+    "node_modules",
+    "tmp"
+  ]
 }

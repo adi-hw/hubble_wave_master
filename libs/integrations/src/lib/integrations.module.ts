@@ -1,6 +1,12 @@
 import { Module, Global } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import {
+  NotificationTemplate,
+  NotificationChannel,
+  NotificationDelivery,
+  InAppNotification,
+} from '@hubblewave/instance-db';
 import { NotificationService } from './notification.service';
 import { HttpClientService } from './http-client.service';
 import { WebhookService } from './webhook.service';
@@ -9,7 +15,12 @@ import { WebhookService } from './webhook.service';
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
-    TenantDbModule,
+    TypeOrmModule.forFeature([
+      NotificationTemplate,
+      NotificationChannel,
+      NotificationDelivery,
+      InAppNotification,
+    ]),
   ],
   providers: [
     NotificationService,

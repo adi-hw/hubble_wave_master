@@ -44,6 +44,11 @@ Thumbs.db
 .github/instructions/nx.instructions.md
 
 vite.config.*.timestamp*
+# Environment files (NEVER commit secrets!)
 .env
 .env.local
 .env.*.local
+apps/**/.env
+libs/**/.env
+**/secrets.json
+**/credentials.json

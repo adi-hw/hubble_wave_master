@@ -9,7 +9,7 @@ import { ROLES_KEY } from './roles.decorator';
  * @example
  * ```typescript
  * @UseGuards(JwtAuthGuard, RolesGuard)
- * @Roles('tenant_admin', 'platform_admin')
+ * @Roles('admin')
  * @Controller('admin')
  * export class AdminController {}
  * ```

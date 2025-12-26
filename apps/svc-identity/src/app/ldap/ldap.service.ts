@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Client } from 'ldapts';
-import { LdapConfig } from '@eam-platform/platform-db';
+import { LdapConfig } from '@hubblewave/instance-db';
 
 export interface LdapUser {
   username: string;
@@ -14,10 +14,13 @@ export class LdapService {
    * Test LDAP connection using bind credentials
    */
   async testConnection(config: LdapConfig): Promise<boolean> {
-    const client = new Client({ url: config.host, timeout: config.timeoutMs });
+    const url = `${config.secure ? 'ldaps' : 'ldap'}://${config.host}:${config.port}`;
+    const client = new Client({ url, timeout: 5000 }); // Default 5s timeout
     
     try {
-      await client.bind(config.bindDn, config.bindPassword);
+      if (config.bindDn && config.bindPassword) {
+        await client.bind(config.bindDn, config.bindPassword);
+      }
       await client.unbind();
       return true;
     } catch (error) {
@@ -34,15 +37,23 @@ export class LdapService {
     username: string,
     password: string
   ): Promise<LdapUser> {
-    const client = new Client({ url: config.host, timeout: config.timeoutMs });
+    const url = `${config.secure ? 'ldaps' : 'ldap'}://${config.host}:${config.port}`;
+    const client = new Client({ url, timeout: 5000 });
 
     try {
       // 1. Bind as service account to search for user
-      await client.bind(config.bindDn, config.bindPassword);
+      if (config.bindDn && config.bindPassword) {
+        await client.bind(config.bindDn, config.bindPassword);
+      }
 
       // 2. Search for user with username filter
-      const filter = config.userFilter.replace('{username}', username);
-      const { searchEntries } = await client.search(config.userBaseDn, {
+      // Replace {username} placeholder if present, otherwise assume it's just the filter string
+      let filter = config.userSearchFilter || `(uid=${username})`;
+      if (filter.includes('{username}')) {
+        filter = filter.replace('{username}', username);
+      }
+
+      const { searchEntries } = await client.search(config.searchBase, {
         scope: 'sub',
         filter,
       });
@@ -59,9 +70,9 @@ export class LdapService {
 
       // 4. Extract user attributes
       const ldapUser: LdapUser = {
-        username: String(userEntry[config.mapUsernameAttr] || username),
-        email: String(userEntry[config.mapEmailAttr] || ''),
-        displayName: String(userEntry[config.mapDisplayNameAttr] || username),
+        username: String(userEntry[config.usernameAttribute || 'uid'] || username),
+        email: String(userEntry[config.emailAttribute || 'mail'] || ''),
+        displayName: String(userEntry[config.fullNameAttribute || 'cn'] || username),
       };
 
       await client.unbind();

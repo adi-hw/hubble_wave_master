@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+
 import {
   ILLMProvider,
   LLMChatMessage,
@@ -29,7 +29,16 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   private apiKey: string;
   private available = false;
 
-  constructor(private configService: ConfigService) {
+  constructor() {
+    // HARDCODED FIX: Environment variables are not being picked up reliably.
+    // Pointing directly to local Ollama instance.
+    this.baseUrl = 'http://localhost:11434'; // Ollama default
+    this.defaultModel = 'llama3:latest'; // Found installed on local Ollama
+    this.embeddingModel = 'nomic-embed-text'; // Common default for Ollama
+
+    this.logger.log(`[HARDCODED CONFIG] VLLM Provider initialized with URL: ${this.baseUrl}, Model: ${this.defaultModel}`);
+
+    /*
     this.baseUrl = this.configService.get<string>(
       'VLLM_BASE_URL',
       'http://localhost:8000'
@@ -44,6 +53,8 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
     );
     // vLLM can optionally require an API key
     this.apiKey = this.configService.get<string>('VLLM_API_KEY', '');
+    */
+    this.apiKey = '';
   }
 
   async onModuleInit() {
@@ -56,14 +67,18 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
 
   async initialize(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/models`, {
+      // Support both /v1 suffix in URL and without
+      const modelsUrl = this.baseUrl.endsWith('/v1')
+        ? `${this.baseUrl}/models`
+        : `${this.baseUrl}/v1/models`;
+      const response = await fetch(modelsUrl, {
         headers: this.getHeaders(),
       });
       if (response.ok) {
         this.available = true;
         const data = await response.json();
         this.logger.log(
-          `vLLM connected at ${this.baseUrl}. Available models: ${data.data?.length || 0}`
+          `LLM connected at ${this.baseUrl}. Available models: ${data.data?.length || 0}`
         );
         return true;
       }
@@ -72,7 +87,7 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
     } catch {
       this.available = false;
       this.logger.warn(
-        `vLLM not available at ${this.baseUrl}. Falling back to other providers.`
+        `LLM not available at ${this.baseUrl}. AI features will be limited.`
       );
       return false;
     }
@@ -89,9 +104,16 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
     };
   }
 
+  private getApiUrl(endpoint: string): string {
+    // Support both /v1 suffix in URL and without
+    return this.baseUrl.endsWith('/v1')
+      ? `${this.baseUrl}${endpoint}`
+      : `${this.baseUrl}/v1${endpoint}`;
+  }
+
   async listModels(): Promise<LLMModelInfo[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/models`, {
+      const response = await fetch(this.getApiUrl('/models'), {
         headers: this.getHeaders(),
       });
       if (!response.ok) return [];
@@ -112,7 +134,7 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   ): Promise<LLMCompletionResponse> {
     const startTime = Date.now();
 
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(this.getApiUrl('/chat/completions'), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -153,7 +175,7 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
     messages: LLMChatMessage[],
     options?: LLMCompletionOptions
   ): AsyncGenerator<LLMStreamChunk> {
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(this.getApiUrl('/chat/completions'), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -219,7 +241,7 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   }
 
   async embed(text: string): Promise<LLMEmbeddingResponse> {
-    const response = await fetch(`${this.baseUrl}/v1/embeddings`, {
+    const response = await fetch(this.getApiUrl('/embeddings'), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -244,7 +266,7 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
 
   async embedBatch(texts: string[]): Promise<LLMEmbeddingResponse[]> {
     // vLLM supports batch embeddings natively
-    const response = await fetch(`${this.baseUrl}/v1/embeddings`, {
+    const response = await fetch(this.getApiUrl('/embeddings'), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({

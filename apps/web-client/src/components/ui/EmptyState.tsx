@@ -36,14 +36,17 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 
   return (
     <div className={`empty-state ${className}`}>
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-slate-100 dark:bg-slate-800">
-        <IconComponent className="w-7 h-7 text-slate-400 dark:text-slate-500" />
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+        style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+      >
+        <IconComponent className="w-7 h-7" style={{ color: 'var(--text-muted)' }} />
       </div>
-      <h3 className="text-base font-semibold mb-1 text-slate-900 dark:text-slate-100">
+      <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
         {title}
       </h3>
       {description && (
-        <p className="text-sm max-w-sm mx-auto mb-6 text-slate-500 dark:text-slate-400">
+        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
           {description}
         </p>
       )}

@@ -15,6 +15,7 @@ export class LoggingInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
     const { method, url, ip, headers } = request;
+    const instanceLabel = process.env.INSTANCE_ID || 'single-instance';
 
     // Generate or extract request ID
     const requestId = headers['x-request-id'] || uuidv4();
@@ -26,7 +27,6 @@ export class LoggingInterceptor implements NestInterceptor {
     // Extract user context (if authenticated)
     const user = request.user;
     const userId = user?.userId || 'anonymous';
-    const tenantId = user?.tenantId || 'none';
 
     const startTime = Date.now();
 
@@ -43,7 +43,7 @@ export class LoggingInterceptor implements NestInterceptor {
             statusCode,
             duration,
             userId,
-            tenantId,
+            instance: instanceLabel,
             ip,
             userAgent: headers['user-agent'],
           });
@@ -59,7 +59,7 @@ export class LoggingInterceptor implements NestInterceptor {
             statusCode,
             duration,
             userId,
-            tenantId,
+            instance: instanceLabel,
             ip,
             error: error.message,
             stack: error.stack,

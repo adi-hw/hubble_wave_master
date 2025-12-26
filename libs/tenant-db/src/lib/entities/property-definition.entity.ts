@@ -4,245 +4,595 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
-import { CollectionDefinition } from './collection-definition.entity';
+import { CollectionDefinition, SchemaOwner, SyncStatus } from './collection-definition.entity';
 
-export type PropertyType =
-  | 'string'
-  | 'text'
-  | 'rich_text'
-  | 'email'
-  | 'url'
-  | 'phone'
-  | 'integer'
-  | 'decimal'
-  | 'currency'
-  | 'percent'
-  | 'date'
-  | 'datetime'
-  | 'time'
-  | 'duration'
-  | 'choice'
-  | 'multi_choice'
-  | 'boolean'
-  | 'reference'
-  | 'multi_reference'
-  | 'user'
-  | 'group'
-  | 'attachment'
-  | 'image'
-  | 'json'
-  | 'script'
-  | 'formula'
-  | 'conditions'
-  | 'glide_list';
+/**
+ * HubbleWave data types supported for properties.
+ * Each type maps to a PostgreSQL storage type but includes additional
+ * application-level semantics for validation, UI rendering, and behavior.
+ */
+export type PropertyDataType =
+  | 'text'           // VARCHAR - Short text, single line
+  | 'long_text'      // TEXT - Multi-line, unlimited length
+  | 'rich_text'      // TEXT - HTML/Markdown content
+  | 'number'         // NUMERIC - Decimal numbers
+  | 'integer'        // INTEGER - Whole numbers
+  | 'decimal'        // NUMERIC(19,4) - High precision decimals
+  | 'currency'       // NUMERIC(19,4) - Money with currency code
+  | 'boolean'        // BOOLEAN - True/false
+  | 'date'           // DATE - Date only, no time
+  | 'datetime'       // TIMESTAMPTZ - Date and time with timezone
+  | 'time'           // TIME - Time only
+  | 'reference'      // UUID - Foreign key to another collection
+  | 'multi_reference'// JSONB - Array of references (many-to-many)
+  | 'choice'         // VARCHAR - Single selection from choice list
+  | 'multi_choice'   // JSONB - Multiple selections from choice list
+  | 'attachment'     // JSONB - File attachment references
+  | 'json'           // JSONB - Arbitrary JSON data
+  | 'email'          // VARCHAR - Email with validation
+  | 'phone'          // VARCHAR - Phone with formatting
+  | 'url'            // VARCHAR - URL with validation
+  | 'uuid';          // UUID - Unique identifier
 
-export type ChoiceType = 'static' | 'dynamic' | 'dependent';
-
-export type UiWidth = 'quarter' | 'third' | 'half' | 'two_thirds' | 'three_quarters' | 'full';
-
-export interface ChoiceOption {
-  value: string;
-  label: string;
-  color?: string;
-  icon?: string;
-  dependsOnValue?: string;
-  sortOrder?: number;
-  isDefault?: boolean;
-  isInactive?: boolean;
-}
-
-@Entity('property_definitions')
-@Index(['collectionId'])
-@Index(['collectionId', 'code'], { unique: true })
-@Index(['propertyType'])
-@Index(['referenceCollectionId'])
-@Index(['isSystem'])
-@Index(['collectionId', 'groupName'])
+/**
+ * PropertyDefinition Entity
+ * 
+ * Represents a field/column within a collection. Each property maps to a
+ * physical PostgreSQL column (via storage_column) but adds rich metadata
+ * that PostgreSQL cannot express: display labels, UI widgets, validation
+ * rules, help text, and governance controls.
+ * 
+ * Key design principles:
+ * 
+ * 1. **Separation of Concerns**: The `code` is the application identifier
+ *    while `storage_column` is the physical column name. These can differ
+ *    to handle legacy schemas or naming conflicts.
+ * 
+ * 2. **Virtual Properties**: Some properties (computed, rollup) have no
+ *    storage_column because they're derived at query time.
+ * 
+ * 3. **Governance**: The `owner` field determines who can modify this property.
+ *    Custom properties on platform collections must use the x_ prefix.
+ * 
+ * @example
+ * ```typescript
+ * // Adding a custom property to a platform collection
+ * const property = await collectionService.addProperty('users', {
+ *   code: 'badge_number',  // Will become x_badge_number in storage
+ *   label: 'Badge Number',
+ *   dataType: 'text',
+ * }, { userId: currentUser.id });
+ * ```
+ */
+@Entity('property_definition')
+@Index('idx_property_collection_code', ['collection', 'code'], { unique: true })
+@Index('idx_property_owner', ['owner'])
+@Index('idx_property_sync_status', ['syncStatus'])
+@Index('idx_property_collection_owner', ['collection', 'owner'])
+@Index('idx_property_display_order', ['collection', 'displayOrder'])
 export class PropertyDefinition {
   @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  id: string;
 
-  /** Parent collection */
-  @Column({ name: 'collection_id', type: 'uuid' })
-  collectionId!: string;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IDENTIFICATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  @ManyToOne(() => CollectionDefinition, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'collection_id' })
-  collection?: CollectionDefinition;
-
-  /** Unique code within collection (e.g., 'short_description', 'state') */
+  /**
+   * Internal code/identifier for this property. Used in APIs and code.
+   * Must be lowercase snake_case: first_name, assigned_technician, etc.
+   * For custom properties on platform collections, this is the user-facing
+   * code (without x_ prefix), while storage_column has the actual column name.
+   */
   @Column({ type: 'varchar', length: 100 })
-  code!: string;
+  code: string;
 
-  /** Display label */
+  /**
+   * Human-readable display label shown in forms and grids.
+   * Example: "First Name", "Assigned Technician"
+   */
   @Column({ type: 'varchar', length: 200 })
-  label!: string;
+  label: string;
 
-  /** Help text description */
+  /**
+   * Optional description explaining the purpose of this field.
+   * Shown in Studio schema editor.
+   */
   @Column({ type: 'text', nullable: true })
-  description?: string | null;
+  description: string;
 
-  /** Property data type */
-  @Column({ name: 'property_type', type: 'varchar', length: 50 })
-  propertyType!: PropertyType;
+  /**
+   * Placeholder text shown in empty input fields.
+   * Example: "Enter first name..."
+   */
+  @Column({ type: 'text', nullable: true })
+  placeholder: string;
 
-  /** Actual database column name */
-  @Column({ name: 'storage_column', type: 'varchar', length: 100 })
-  storageColumn!: string;
+  /**
+   * Help text shown below the field or in tooltips.
+   * Example: "Legal first name as shown on government ID"
+   */
+  @Column({ type: 'text', name: 'help_text', nullable: true })
+  helpText: string;
 
-  // Flags
-  @Column({ name: 'is_system', type: 'boolean', default: false })
-  isSystem!: boolean;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TYPE CONFIGURATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  @Column({ name: 'is_required', type: 'boolean', default: false })
-  isRequired!: boolean;
+  /**
+   * HubbleWave data type that determines storage, validation, and UI behavior.
+   */
+  @Column({ type: 'varchar', length: 50, name: 'data_type' })
+  dataType: PropertyDataType;
 
-  @Column({ name: 'is_unique', type: 'boolean', default: false })
-  isUnique!: boolean;
+  /**
+   * UI widget to use for rendering this field.
+   * Can override the default widget for the data type.
+   * Examples: 'text-input', 'textarea', 'rich-editor', 'select', 'radio', etc.
+   */
+  @Column({ type: 'varchar', length: 50, name: 'ui_widget', nullable: true })
+  uiWidget: string;
 
-  @Column({ name: 'is_indexed', type: 'boolean', default: false })
-  isIndexed!: boolean;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHYSICAL STORAGE
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  @Column({ name: 'is_searchable', type: 'boolean', default: true })
-  isSearchable!: boolean;
+  /**
+   * Name of the actual PostgreSQL column that stores this property's data.
+   * For custom properties on platform collections, this includes the x_ prefix.
+   * NULL for virtual (computed/rollup) properties that have no storage.
+   */
+  @Column({ type: 'varchar', length: 100, name: 'storage_column', nullable: true })
+  storageColumn: string;
 
-  @Column({ name: 'is_filterable', type: 'boolean', default: true })
-  isFilterable!: boolean;
+  /**
+   * PostgreSQL data type for the storage column.
+   * Examples: 'varchar', 'integer', 'timestamptz', 'jsonb', 'uuid'
+   */
+  @Column({ type: 'varchar', length: 50, name: 'storage_type', nullable: true })
+  storageType: string;
 
-  @Column({ name: 'is_sortable', type: 'boolean', default: true })
-  isSortable!: boolean;
+  /**
+   * True for computed/rollup properties that are calculated, not stored.
+   * These properties have no storage_column.
+   */
+  @Column({ type: 'boolean', name: 'is_virtual', default: false })
+  isVirtual: boolean;
 
-  @Column({ name: 'is_readonly', type: 'boolean', default: false })
-  isReadonly!: boolean;
+  /**
+   * SQL or JavaScript expression for computed properties.
+   * Only used when is_virtual is true.
+   */
+  @Column({ type: 'text', name: 'virtual_expression', nullable: true })
+  virtualExpression: string;
 
-  @Column({ name: 'is_computed', type: 'boolean', default: false })
-  isComputed!: boolean;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VALIDATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  @Column({ name: 'is_encrypted', type: 'boolean', default: false })
-  isEncrypted!: boolean;
+  /**
+   * Whether this field must have a value when saving.
+   */
+  @Column({ type: 'boolean', name: 'is_required', default: false })
+  isRequired: boolean;
 
-  @Column({ name: 'is_internal', type: 'boolean', default: false })
-  isInternal!: boolean;
+  /**
+   * Whether values must be unique across all records.
+   */
+  @Column({ type: 'boolean', name: 'is_unique', default: false })
+  isUnique: boolean;
 
-  // Validation constraints
-  @Column({ name: 'max_length', type: 'int', nullable: true })
-  maxLength?: number | null;
+  /**
+   * Minimum allowed numeric value (for number/integer/decimal types).
+   */
+  @Column({ type: 'numeric', name: 'min_value', nullable: true })
+  minValue: number;
 
-  @Column({ name: 'min_value', type: 'decimal', nullable: true })
-  minValue?: number | null;
+  /**
+   * Maximum allowed numeric value (for number/integer/decimal types).
+   */
+  @Column({ type: 'numeric', name: 'max_value', nullable: true })
+  maxValue: number;
 
-  @Column({ name: 'max_value', type: 'decimal', nullable: true })
-  maxValue?: number | null;
+  /**
+   * Minimum string length (for text types).
+   */
+  @Column({ type: 'integer', name: 'min_length', nullable: true })
+  minLength: number;
 
-  @Column({ name: 'precision_value', type: 'int', nullable: true })
-  precisionValue?: number | null;
+  /**
+   * Maximum string length (for text types).
+   */
+  @Column({ type: 'integer', name: 'max_length', nullable: true })
+  maxLength: number;
 
-  @Column({ name: 'scale_value', type: 'int', nullable: true })
-  scaleValue?: number | null;
+  /**
+   * Regular expression pattern for validation (for text types).
+   * Example: "^[A-Z]{2}[0-9]{6}$" for ID codes
+   */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  pattern: string;
 
-  /** Default value as JSON */
-  @Column({ name: 'default_value', type: 'jsonb', nullable: true })
-  defaultValue?: unknown;
+  /**
+   * Custom error message when pattern validation fails.
+   */
+  @Column({ type: 'varchar', length: 200, name: 'pattern_message', nullable: true })
+  patternMessage: string;
 
-  /** Formula for computed fields */
-  @Column({ name: 'computed_formula', type: 'text', nullable: true })
-  computedFormula?: string | null;
+  /**
+   * JavaScript function for custom validation.
+   * Receives (value, record, context) and should return true or error message.
+   */
+  @Column({ type: 'text', name: 'custom_validator', nullable: true })
+  customValidator: string;
 
-  /** Regex validation pattern */
-  @Column({ name: 'validation_regex', type: 'varchar', length: 500, nullable: true })
-  validationRegex?: string | null;
+  /**
+   * Additional validation rules as JSON.
+   * Used for complex conditional validations.
+   */
+  @Column({ type: 'jsonb', name: 'validation_rules', nullable: true })
+  validationRules: Record<string, any>;
 
-  /** Error message for validation */
-  @Column({ name: 'validation_message', type: 'varchar', length: 500, nullable: true })
-  validationMessage?: string | null;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REFERENCE CONFIGURATION (for reference/multi_reference types)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Help text shown below field */
-  @Column({ name: 'hint_text', type: 'varchar', length: 500, nullable: true })
-  hintText?: string | null;
+  /**
+   * Target collection for reference types.
+   */
+  @Column({ type: 'uuid', name: 'reference_collection_id', nullable: true })
+  referenceCollectionId: string;
 
-  /** Placeholder text for input */
-  @Column({ type: 'varchar', length: 200, nullable: true })
-  placeholder?: string | null;
+  /**
+   * Property to display when showing referenced records.
+   * Example: "name" to show user names instead of IDs.
+   */
+  @Column({ type: 'varchar', length: 100, name: 'reference_display_property', nullable: true })
+  referenceDisplayProperty: string;
 
-  // Reference configuration
-  @Column({ name: 'reference_collection_id', type: 'uuid', nullable: true })
-  referenceCollectionId?: string | null;
+  /**
+   * JSON filter to limit which records can be referenced.
+   * Example: {"status": "active"} to only show active records.
+   */
+  @Column({ type: 'jsonb', name: 'reference_filter', nullable: true })
+  referenceFilter: Record<string, any>;
 
-  @ManyToOne(() => CollectionDefinition, { nullable: true })
-  @JoinColumn({ name: 'reference_collection_id' })
-  referenceCollection?: CollectionDefinition | null;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHOICE CONFIGURATION (for choice/multi_choice types)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Property to display from referenced record */
-  @Column({ name: 'reference_display_property', type: 'varchar', length: 100, nullable: true })
-  referenceDisplayProperty?: string | null;
+  /**
+   * Reference to a reusable choice list.
+   */
+  @Column({ type: 'uuid', name: 'choice_list_id', nullable: true })
+  choiceListId: string;
 
-  /** Filter conditions for reference lookup */
-  @Column({ name: 'reference_filter', type: 'jsonb', nullable: true })
-  referenceFilter?: Record<string, unknown> | null;
+  /**
+   * Inline choice options if not using a choice list.
+   * Array of {value, label, color?, icon?} objects.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  choices: Array<{
+    value: string;
+    label: string;
+    color?: string;
+    icon?: string;
+  }>;
 
-  // Choice configuration
-  @Column({ name: 'choice_list', type: 'jsonb', nullable: true })
-  choiceList?: ChoiceOption[] | null;
+  /**
+   * For multi_choice: whether multiple selections are allowed.
+   */
+  @Column({ type: 'boolean', name: 'allow_multiple', default: false })
+  allowMultiple: boolean;
 
-  @Column({ name: 'choice_type', type: 'varchar', length: 20, nullable: true })
-  choiceType?: ChoiceType | null;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DEFAULT VALUE
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Parent choice field for dependent choices */
-  @Column({ name: 'choice_dependent_on', type: 'uuid', nullable: true })
-  choiceDependentOn?: string | null;
+  /**
+   * Static default value for new records.
+   * Stored as string, parsed according to data type.
+   */
+  @Column({ type: 'text', name: 'default_value', nullable: true })
+  defaultValue: string;
 
-  @ManyToOne(() => PropertyDefinition, { nullable: true })
-  @JoinColumn({ name: 'choice_dependent_on' })
-  choiceDependentOnProperty?: PropertyDefinition | null;
+  /**
+   * JavaScript expression for dynamic defaults.
+   * Examples: "new Date()", "context.currentUser.id", "generateSequence('WO')"
+   */
+  @Column({ type: 'text', name: 'default_expression', nullable: true })
+  defaultExpression: string;
 
-  // UI configuration
-  @Column({ name: 'sort_order', type: 'int', default: 0 })
-  sortOrder!: number;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DISPLAY CONFIGURATION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /** Grouping within form */
-  @Column({ name: 'group_name', type: 'varchar', length: 100, nullable: true })
-  groupName?: string | null;
+  /**
+   * Order in which this property appears in forms and lists.
+   * Lower numbers appear first.
+   */
+  @Column({ type: 'integer', name: 'display_order', default: 0 })
+  displayOrder: number;
 
-  /** Layout width */
-  @Column({ name: 'ui_width', type: 'varchar', length: 20, default: 'full' })
-  uiWidth!: UiWidth;
+  /**
+   * Whether to show this property in list/grid views by default.
+   */
+  @Column({ type: 'boolean', name: 'show_in_grid', default: true })
+  showInGrid: boolean;
 
-  /** Override default component */
-  @Column({ name: 'ui_component', type: 'varchar', length: 50, nullable: true })
-  uiComponent?: string | null;
+  /**
+   * Whether to show this property in detail/form views by default.
+   */
+  @Column({ type: 'boolean', name: 'show_in_detail', default: true })
+  showInDetail: boolean;
 
-  /** Additional UI options */
-  @Column({ name: 'ui_options', type: 'jsonb', default: () => `'{}'` })
-  uiOptions!: Record<string, unknown>;
+  /**
+   * Whether to show this property in the create form.
+   */
+  @Column({ type: 'boolean', name: 'show_in_create', default: true })
+  showInCreate: boolean;
 
-  /** Schema version */
-  @Column({ type: 'int', default: 1 })
-  version!: number;
+  /**
+   * Default width for grid columns (pixels).
+   */
+  @Column({ type: 'integer', name: 'grid_width', nullable: true })
+  gridWidth: number;
 
-  /** Deprecation timestamp */
-  @Column({ name: 'deprecated_at', type: 'timestamptz', nullable: true })
-  deprecatedAt?: Date | null;
+  /**
+   * Priority for mobile display (1-100, higher = more important).
+   * Properties with low priority may be hidden on mobile.
+   */
+  @Column({ type: 'integer', name: 'mobile_priority', default: 50 })
+  mobilePriority: number;
 
-  /** Deprecation notice */
-  @Column({ name: 'deprecation_message', type: 'text', nullable: true })
-  deprecationMessage?: string | null;
+  /**
+   * Override UI widget for mobile rendering.
+   */
+  @Column({ type: 'varchar', length: 50, name: 'mobile_widget', nullable: true })
+  mobileWidget: string;
 
-  @Column({ name: 'created_by', type: 'uuid', nullable: true })
-  createdBy?: string | null;
+  /**
+   * Whether this property can be collapsed/hidden in detail views.
+   */
+  @Column({ type: 'boolean', default: false })
+  collapsible: boolean;
 
-  @Column({ name: 'updated_by', type: 'uuid', nullable: true })
-  updatedBy?: string | null;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACCESS CONTROL
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
-  deletedAt?: Date | null;
+  /**
+   * If true, this property can be viewed but not edited by regular users.
+   */
+  @Column({ type: 'boolean', name: 'is_readonly', default: false })
+  isReadonly: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  /**
+   * System properties are managed by the platform, not visible in Schema editor.
+   */
+  @Column({ type: 'boolean', name: 'is_system', default: false })
+  isSystem: boolean;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  /**
+   * Internal properties are hidden from regular users, visible to admins only.
+   */
+  @Column({ type: 'boolean', name: 'is_internal', default: false })
+  isInternal: boolean;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GOVERNANCE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Ownership determines what modifications are allowed.
+   * For properties on platform collections, 'custom' means tenant-added (with x_ prefix).
+   */
+  @Column({ 
+    type: 'enum', 
+    enum: ['system', 'platform', 'custom'],
+    default: 'custom' 
+  })
+  owner: SchemaOwner;
+
+  /**
+   * Current sync status between metadata and physical column.
+   */
+  @Column({ 
+    type: 'enum', 
+    enum: ['synced', 'pending', 'error', 'orphaned'],
+    name: 'sync_status',
+    default: 'synced' 
+  })
+  syncStatus: SyncStatus;
+
+  /**
+   * Error message if sync_status is 'error'.
+   */
+  @Column({ type: 'text', name: 'sync_error', nullable: true })
+  syncError: string;
+
+  /**
+   * Hard lock preventing any modifications.
+   */
+  @Column({ type: 'boolean', name: 'is_locked', default: false })
+  isLocked: boolean;
+
+  /**
+   * Platform version when this property was created/modified.
+   */
+  @Column({ type: 'varchar', length: 20, name: 'platform_version', nullable: true })
+  platformVersion: string;
+
+  /**
+   * Required prefix for custom properties on platform collections.
+   * Default is 'x_' to prevent collision with future platform properties.
+   */
+  @Column({ type: 'varchar', length: 10, name: 'custom_property_prefix', default: 'x_' })
+  customPropertyPrefix: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONDITIONAL REQUIREMENTS (Smart Field Handling)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Condition when this field becomes required.
+   * Example: {"property": "status", "operator": "equals", "value": "approved"}
+   */
+  @Column({ type: 'jsonb', name: 'required_when', nullable: true })
+  requiredWhen: Record<string, any>;
+
+  /**
+   * Custom title for the prompt shown when this hidden field is required.
+   */
+  @Column({ type: 'varchar', length: 200, name: 'prompt_title', nullable: true })
+  promptTitle: string;
+
+  /**
+   * Description for the prompt shown when this hidden field is required.
+   */
+  @Column({ type: 'text', name: 'prompt_description', nullable: true })
+  promptDescription: string;
+
+  /**
+   * Whether this field can be hidden by users.
+   * False = must always be visible in forms.
+   */
+  @Column({ type: 'boolean', name: 'can_be_hidden', default: true })
+  canBeHidden: boolean;
+
+  /**
+   * How to prompt for this field when hidden but required.
+   * 'modal' = show in popup, 'inline' = expand inline, 'block' = prevent save
+   */
+  @Column({ type: 'varchar', length: 20, name: 'hidden_prompt_mode', default: 'modal' })
+  hiddenPromptMode: 'modal' | 'inline' | 'block';
+
+  /**
+   * Whether to auto-fill this field when hidden (if possible).
+   */
+  @Column({ type: 'boolean', name: 'auto_fill_when_hidden', default: false })
+  autoFillWhenHidden: boolean;
+
+  /**
+   * Expression to compute auto-fill value.
+   * Example: "context.currentUser.id" for current user fields.
+   */
+  @Column({ type: 'text', name: 'auto_fill_expression', nullable: true })
+  autoFillExpression: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUDIT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'uuid', name: 'created_by', nullable: true })
+  createdBy: string;
+
+  @Column({ type: 'uuid', name: 'updated_by', nullable: true })
+  updatedBy: string;
+
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt: Date;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RELATIONSHIPS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Parent collection this property belongs to.
+   */
+  @ManyToOne(() => CollectionDefinition, (collection) => collection.properties, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'collection_id' })
+  collection: CollectionDefinition;
+
+  @Column({ type: 'uuid', name: 'collection_id' })
+  collectionId: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HELPER METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Returns true if this property can be deleted by tenants.
+   */
+  canBeDeleted(): boolean {
+    return this.owner === 'custom' && !this.isLocked && !this.isSystem;
+  }
+
+  /**
+   * Returns true if this property can be modified by tenants.
+   */
+  canBeModified(): boolean {
+    return this.owner === 'custom' && !this.isLocked;
+  }
+
+  /**
+   * Returns true if this is a virtual (computed) property with no storage.
+   */
+  hasStorage(): boolean {
+    return !this.isVirtual && this.storageColumn != null;
+  }
+
+  /**
+   * Returns the storage column name, accounting for prefixes.
+   */
+  getStorageColumn(): string | null {
+    return this.storageColumn;
+  }
+
+  /**
+   * Checks if a value passes this property's validation rules.
+   * This is a simplified version; full validation happens in ValidationService.
+   */
+  validateValue(value: any): { valid: boolean; error?: string } {
+    // Required check
+    if (this.isRequired && (value === null || value === undefined || value === '')) {
+      return { valid: false, error: `${this.label} is required` };
+    }
+
+    // Skip other validations if value is empty (and not required)
+    if (value === null || value === undefined || value === '') {
+      return { valid: true };
+    }
+
+    // Min/max for numbers
+    if (['number', 'integer', 'decimal', 'currency'].includes(this.dataType)) {
+      const num = Number(value);
+      if (this.minValue !== null && num < this.minValue) {
+        return { valid: false, error: `${this.label} must be at least ${this.minValue}` };
+      }
+      if (this.maxValue !== null && num > this.maxValue) {
+        return { valid: false, error: `${this.label} must be at most ${this.maxValue}` };
+      }
+    }
+
+    // Length for strings
+    if (['text', 'long_text', 'email', 'phone', 'url'].includes(this.dataType)) {
+      const str = String(value);
+      if (this.minLength !== null && str.length < this.minLength) {
+        return { valid: false, error: `${this.label} must be at least ${this.minLength} characters` };
+      }
+      if (this.maxLength !== null && str.length > this.maxLength) {
+        return { valid: false, error: `${this.label} must be at most ${this.maxLength} characters` };
+      }
+    }
+
+    // Pattern validation
+    if (this.pattern) {
+      const regex = new RegExp(this.pattern);
+      if (!regex.test(String(value))) {
+        return { valid: false, error: this.patternMessage || `${this.label} has invalid format` };
+      }
+    }
+
+    return { valid: true };
+  }
 }

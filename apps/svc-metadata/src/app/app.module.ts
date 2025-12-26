@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AuthGuardModule } from '@eam-platform/auth-guard';
-import { AuthorizationModule } from '@eam-platform/authorization';
-import { PlatformDbModule } from '@eam-platform/platform-db';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthorizationModule } from '@hubblewave/authorization';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 import { ModuleController } from './module.controller';
 import { ModuleService } from './module.service';
 import { FormController } from './form.controller';
@@ -10,26 +9,21 @@ import { FormService } from './form.service';
 import { ModelRegistryService } from './model-registry.service';
 import { ModelController } from './model.controller';
 import { MetadataController } from './metadata.controller';
-import { StudioTablesController } from './studio-tables.controller';
-import { StudioScriptsController } from './studio-scripts.controller';
-import { StudioConfigController } from './studio-config.controller';
-import { BusinessRulesController } from './business-rules.controller';
-import { EventsController } from './events.controller';
-import { NotificationsController } from './notifications.controller';
-import { ApprovalsController } from './approvals.controller';
-import { WorkflowsController } from './workflows.controller';
-import { UpgradeController } from './upgrade.controller';
-import { ExportController } from './export.controller';
-import { CollectionController } from './collection.controller';
-import { CollectionService } from './collection.service';
-import { PropertyController } from './property.controller';
-import { PropertyService } from './property.service';
-import { ViewController } from './view.controller';
-import { ViewService } from './view.service';
-import { CommitmentController } from './commitment.controller';
-import { CommitmentService } from './commitment.service';
-import { ImportExportController } from './import-export.controller';
-import { ImportExportService } from './import-export.service';
+
+import { PropertyModule } from './property/property.module';
+import { AccessModule } from './access/access.module';
+// import { FlowsModule } from './flows/flows.module'; // TODO: Fix type errors
+import { CollectionController } from './collection/collection.controller';
+import { CollectionService } from './collection/collection.service';
+import { CollectionStorageService } from './collection/collection-storage.service';
+import { CollectionAvaService } from './collection/collection-ava.service';
+
+// import { CommitmentController } from './commitment.controller';
+// import { CommitmentService } from './commitment.service';
+
+// import { CommitmentModule } from './commitment/commitment.module'; // TODO: Fix type errors
+import { ThemeModule } from './theme/theme.module';
+import { PreferencesModule } from './preferences/preferences.module';
 
 // NOTE: Data CRUD operations have been consolidated to svc-data service.
 // Use svc-data endpoints for all record create/read/update/delete operations.
@@ -37,28 +31,38 @@ import { ImportExportService } from './import-export.service';
 // Table schema is now discovered from information_schema (database-first approach).
 
 @Module({
-  imports: [PlatformDbModule, TenantDbModule, AuthGuardModule, AuthorizationModule],
+  imports: [
+    InstanceDbModule,
+
+    AuthGuardModule,
+    AuthorizationModule,
+    PropertyModule,
+    AccessModule,
+    ThemeModule,
+    PreferencesModule,
+    // FlowsModule,
+    // CommitmentModule,
+  ],
   controllers: [
     ModuleController,
     ModelController,
     FormController,
     MetadataController,
-    StudioTablesController,
-    StudioScriptsController,
-    StudioConfigController,
-    BusinessRulesController,
-    EventsController,
-    NotificationsController,
-    ApprovalsController,
-    WorkflowsController,
-    UpgradeController,
-    ExportController,
+
     CollectionController,
-    PropertyController,
-    ViewController,
-    CommitmentController,
-    ImportExportController,
+    // CommitmentController,
+
   ],
-  providers: [ModuleService, FormService, ModelRegistryService, CollectionService, PropertyService, ViewService, CommitmentService, ImportExportService],
+  providers: [
+    ModuleService,
+    FormService,
+    ModelRegistryService,
+    CollectionService,
+    CollectionStorageService,
+    CollectionAvaService,
+    // CommitmentService,
+
+  ],
 })
 export class AppModule {}
+

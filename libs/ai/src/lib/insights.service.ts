@@ -23,7 +23,6 @@ export interface InsightRule {
 
 export interface InsightContext {
   userId: string;
-  tenantId: string;
   userRole?: string;
   collections?: string[];
   timeRange?: {

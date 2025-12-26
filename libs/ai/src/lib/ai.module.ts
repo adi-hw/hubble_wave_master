@@ -17,7 +17,7 @@ import { ConversationMemoryService } from './conversation-memory.service';
 import { InsightsService } from './insights.service';
 import { ActionExecutorService } from './action-executor.service';
 import { AVAGovernanceService } from './ava-governance.service';
-import { TenantContextService } from './tenant-context.service';
+import { TenantContextService } from './instance-context.service';
 import { PlatformKnowledgeService } from './platform-knowledge.service';
 import { UpgradeAssistantService } from './upgrade-assistant.service';
 

@@ -1,6 +1,5 @@
-import { Controller, Get, NotFoundException, Param, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext } from '@eam-platform/auth-guard';
-import { AuthorizationService } from '@eam-platform/authorization';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 
 /**
@@ -10,23 +9,12 @@ import { ModelRegistryService } from './model-registry.service';
 @Controller('metadata/tables')
 @UseGuards(JwtAuthGuard)
 export class MetadataController {
-  constructor(
-    private readonly modelRegistry: ModelRegistryService,
-    private readonly authz: AuthorizationService,
-  ) {}
+  constructor(private readonly modelRegistry: ModelRegistryService) {}
 
   @Get(':tableName')
-  async getTable(@Param('tableName') tableName: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    const table = await this.modelRegistry.getTable(tableName, ctx.tenantId);
-    if (!table) {
-      throw new NotFoundException();
-    }
-
-    await this.authz.ensureTableAccess(ctx, table.storageTable, 'read');
-
-    const allFields = await this.modelRegistry.getFields(tableName, ctx.tenantId, ctx.roles);
-    const authorizedFields = await this.authz.getAuthorizedFields(ctx, table.storageTable, allFields);
+  async getTable(@Param('tableName') tableName: string) {
+    const table = await this.modelRegistry.getTable(tableName);
+    const fields = await this.modelRegistry.getFields(tableName);
 
     return {
       table: {
@@ -34,7 +22,7 @@ export class MetadataController {
         dbTableName: table.storageTable,
         label: table.label,
       },
-      fields: authorizedFields,
+      fields,
     };
   }
 }

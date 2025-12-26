@@ -212,7 +212,7 @@ export const CollectionEditorPage: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <RefreshCw className="h-8 w-8 animate-spin text-slate-400" />
+        <RefreshCw className="h-8 w-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
       </div>
     );
   }
@@ -223,16 +223,19 @@ export const CollectionEditorPage: React.FC = () => {
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate('/studio/collections')}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          className="p-2 rounded-lg transition-colors"
+          style={{ backgroundColor: 'transparent' }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
-          <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
         </button>
         <div className="flex-1">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
             {isNew ? 'New Collection' : `Edit ${collection?.label}`}
           </h1>
           {!isNew && collection && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
               Last updated {new Date(collection.updatedAt).toLocaleDateString()}
             </p>
           )}
@@ -267,14 +270,26 @@ export const CollectionEditorPage: React.FC = () => {
       </div>
 
       {errors._form && (
-        <div className="mb-6 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-          <p className="text-sm text-red-600 dark:text-red-400">{errors._form}</p>
+        <div
+          className="mb-6 p-4 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--bg-danger-subtle)',
+            borderColor: 'var(--border-danger)'
+          }}
+        >
+          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>{errors._form}</p>
         </div>
       )}
 
       {collection?.isSystem && (
-        <div className="mb-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-          <p className="text-sm text-amber-600 dark:text-amber-400">
+        <div
+          className="mb-6 p-4 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--bg-warning-subtle)',
+            borderColor: 'var(--border-warning)'
+          }}
+        >
+          <p className="text-sm" style={{ color: 'var(--text-warning)' }}>
             This is a system collection. Some properties cannot be modified.
           </p>
         </div>
@@ -283,14 +298,23 @@ export const CollectionEditorPage: React.FC = () => {
       {/* Form Sections */}
       <div className="space-y-8">
         {/* Basic Information */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+        <section
+          className="rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)'
+          }}
+        >
           <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-              <Database className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+            <div
+              className="h-10 w-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
+            >
+              <Database className="h-5 w-5" style={{ color: 'var(--text-brand)' }} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Basic Information</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Define the collection identity</p>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Basic Information</h2>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Define the collection identity</p>
             </div>
           </div>
 
@@ -327,7 +351,7 @@ export const CollectionEditorPage: React.FC = () => {
               placeholder="e.g., Incidents"
             />
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 Description
               </label>
               <textarea
@@ -335,27 +359,41 @@ export const CollectionEditorPage: React.FC = () => {
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="Describe what this collection is used for..."
                 rows={3}
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 resize-none"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-primary)'
+                }}
               />
             </div>
           </div>
         </section>
 
         {/* Appearance */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+        <section
+          className="rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)'
+          }}
+        >
           <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <Palette className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <div
+              className="h-10 w-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--bg-accent-subtle)' }}
+            >
+              <Palette className="h-5 w-5" style={{ color: 'var(--text-accent)' }} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Appearance</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Customize the visual representation</p>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Appearance</h2>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Customize the visual representation</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 Icon
               </label>
               <div className="flex flex-wrap gap-2">
@@ -364,11 +402,11 @@ export const CollectionEditorPage: React.FC = () => {
                     key={icon}
                     type="button"
                     onClick={() => handleChange('icon', icon)}
-                    className={`p-2 rounded-lg border transition-colors ${
-                      form.icon === icon
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
+                    className="p-2 rounded-lg border transition-colors"
+                    style={{
+                      borderColor: form.icon === icon ? 'var(--border-primary)' : 'var(--border-default)',
+                      backgroundColor: form.icon === icon ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)'
+                    }}
                   >
                     <Layers className="h-5 w-5" />
                   </button>
@@ -376,7 +414,7 @@ export const CollectionEditorPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 Color
               </label>
               <div className="flex flex-wrap gap-2">
@@ -385,12 +423,12 @@ export const CollectionEditorPage: React.FC = () => {
                     key={color}
                     type="button"
                     onClick={() => handleChange('color', color)}
-                    className={`h-10 w-10 rounded-lg border-2 transition-transform ${
-                      form.color === color
-                        ? 'border-slate-900 dark:border-white scale-110'
-                        : 'border-transparent hover:scale-105'
-                    }`}
-                    style={{ backgroundColor: color }}
+                    className="h-10 w-10 rounded-lg border-2 transition-transform hover:scale-105"
+                    style={{
+                      backgroundColor: color,
+                      borderColor: form.color === color ? 'var(--text-primary)' : 'transparent',
+                      transform: form.color === color ? 'scale(1.1)' : 'scale(1)'
+                    }}
                   />
                 ))}
               </div>
@@ -399,27 +437,41 @@ export const CollectionEditorPage: React.FC = () => {
         </section>
 
         {/* Organization */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+        <section
+          className="rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)'
+          }}
+        >
           <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <FolderOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div
+              className="h-10 w-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--bg-warning-subtle)' }}
+            >
+              <FolderOpen className="h-5 w-5" style={{ color: 'var(--text-warning)' }} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Organization</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Categorize and tag the collection</p>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Organization</h2>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Categorize and tag the collection</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 Category
               </label>
               <div className="flex gap-2">
                 <select
                   value={form.category}
                   onChange={(e) => handleChange('category', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
                 >
                   <option value="">Select or create category</option>
                   {categories.map((cat) => (
@@ -435,7 +487,7 @@ export const CollectionEditorPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 Tags
               </label>
               <div className="flex gap-2 mb-2">
@@ -454,14 +506,19 @@ export const CollectionEditorPage: React.FC = () => {
                 {form.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-sm text-slate-600 dark:text-slate-400"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-secondary)',
+                      color: 'var(--text-secondary)'
+                    }}
                   >
                     <Tag className="h-3 w-3" />
                     {tag}
                     <button
                       type="button"
                       onClick={() => handleRemoveTag(tag)}
-                      className="ml-1 hover:text-red-500"
+                      className="ml-1"
+                      style={{ color: 'var(--text-danger)' }}
                     >
                       &times;
                     </button>
@@ -473,19 +530,34 @@ export const CollectionEditorPage: React.FC = () => {
         </section>
 
         {/* Behavior */}
-        <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+        <section
+          className="rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)'
+          }}
+        >
           <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <Settings2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div
+              className="h-10 w-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: 'var(--bg-success-subtle)' }}
+            >
+              <Settings2 className="h-5 w-5" style={{ color: 'var(--text-success)' }} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Behavior</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Configure collection behavior</p>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Behavior</h2>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Configure collection behavior</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <label className="flex items-start gap-3 p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors">
+            <label
+              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
+              style={{
+                borderColor: 'var(--border-default)',
+                backgroundColor: 'var(--bg-surface)'
+              }}
+            >
               <input
                 type="checkbox"
                 checked={form.isExtensible}
@@ -493,17 +565,23 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
                   <Layers className="h-4 w-4" />
                   Extensible
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  Allow tenant admins to add custom properties
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Allow admins to add custom properties
                 </p>
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors">
+            <label
+              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
+              style={{
+                borderColor: 'var(--border-default)',
+                backgroundColor: 'var(--bg-surface)'
+              }}
+            >
               <input
                 type="checkbox"
                 checked={form.isAudited}
@@ -511,17 +589,23 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
                   <Shield className="h-4 w-4" />
                   Audited
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                   Track all changes in audit log
                 </p>
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors">
+            <label
+              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
+              style={{
+                borderColor: 'var(--border-default)',
+                backgroundColor: 'var(--bg-surface)'
+              }}
+            >
               <input
                 type="checkbox"
                 checked={form.isVersioned}
@@ -529,11 +613,11 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
                   <History className="h-4 w-4" />
                   Versioned
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                   Keep version history of records
                 </p>
               </div>
@@ -543,15 +627,24 @@ export const CollectionEditorPage: React.FC = () => {
 
         {/* Properties Summary (only for existing collections) */}
         {!isNew && collection && (
-          <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+          <section
+            className="rounded-xl border p-6"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-default)'
+            }}
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
-                  <Layers className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                <div
+                  className="h-10 w-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--bg-info-subtle)' }}
+                >
+                  <Layers className="h-5 w-5" style={{ color: 'var(--text-info)' }} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Properties</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Manage collection properties</p>
+                  <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Properties</h2>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Manage collection properties</p>
                 </div>
               </div>
               <Button
@@ -566,15 +659,24 @@ export const CollectionEditorPage: React.FC = () => {
 
         {/* Views Summary (only for existing collections) */}
         {!isNew && collection && (
-          <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+          <section
+            className="rounded-xl border p-6"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-default)'
+            }}
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                  <LayoutList className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <div
+                  className="h-10 w-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--bg-accent-subtle)' }}
+                >
+                  <LayoutList className="h-5 w-5" style={{ color: 'var(--text-accent)' }} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Views</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Configure list, board, calendar, and form views</p>
+                  <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Views</h2>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Configure list, board, calendar, and form views</p>
                 </div>
               </div>
               <Button

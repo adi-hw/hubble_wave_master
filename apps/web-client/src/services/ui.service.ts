@@ -32,6 +32,29 @@ export interface AdminNavProfile {
   items?: NavProfileItem[];
 }
 
+export interface ThemeDefinition {
+  id: string;
+  name: string;
+  code: string;  // API returns 'code', not 'slug'
+  slug?: string; // Kept for backwards compatibility
+  description?: string | null;
+  config: Record<string, any>;
+  themeType: string;
+  contrastLevel: string;
+  colorScheme: string;
+  isDefault: boolean;
+  isActive: boolean;
+  isDeletable?: boolean;
+}
+
+export interface ThemePreference {
+  userId: string;
+  themeId: string | null;
+  autoDarkMode: boolean;
+  colorScheme: 'dark' | 'light' | 'auto';
+  customOverrides: Record<string, any>;
+}
+
 // UI service uses identity service for basic theme/navigation
 // In development, use proxy path to avoid cross-origin cookie issues
 const UI_API_URL =
@@ -61,52 +84,10 @@ const fallbackTheme: ThemeResponse = {
   },
 };
 
+// No fallback navigation - navigation comes from database only
 const fallbackNavigation: NavigationResponse = {
-  sections: [
-    {
-      name: 'Studio',
-      items: [
-        { code: 'studio-dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/studio' },
-        { code: 'tables', label: 'Tables', icon: 'Database', path: '/studio/tables' },
-        { code: 'collections', label: 'Collections', icon: 'Database', path: '/studio/collections' },
-        { code: 'scripts', label: 'Scripts', icon: 'FileCode', path: '/studio/scripts' },
-        { code: 'business-rules', label: 'Business Rules', icon: 'Shield', path: '/admin/automations/rules' },
-        { code: 'workflows', label: 'Workflows', icon: 'GitBranch', path: '/admin/automations/workflows' },
-        { code: 'platform-config', label: 'Platform Config', icon: 'Settings', path: '/studio/platform-config' },
-        { code: 'customizations', label: 'Customizations', icon: 'Layers', path: '/studio/customizations' },
-        { code: 'upgrade', label: 'Upgrade Center', icon: 'ArrowUpCircle', path: '/studio/upgrade' },
-        { code: 'history', label: 'Change History', icon: 'History', path: '/studio/history' },
-      ],
-    },
-    {
-      name: 'Admin',
-      items: [
-        { code: 'users', label: 'Users', icon: 'Users', path: '/studio/users' },
-        { code: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/admin/analytics' },
-        { code: 'reports', label: 'Reports', icon: 'FileBarChart', path: '/admin/reports' },
-        { code: 'integrations', label: 'Integrations', icon: 'Puzzle', path: '/admin/integrations' },
-        { code: 'modules', label: 'Modules', icon: 'Package', path: '/admin/modules' },
-      ],
-    },
-    {
-      name: 'Modules',
-      items: [
-        { code: 'assets', label: 'Assets', icon: 'Package', path: '/assets.list' },
-        { code: 'users', label: 'Users', icon: 'Users', path: '/users.list' },
-        { code: 'locations', label: 'Locations', icon: 'MapPin', path: '/locations.list' },
-        { code: 'departments', label: 'Departments', icon: 'Building2', path: '/departments.list' },
-        { code: 'vendors', label: 'Vendors', icon: 'Truck', path: '/vendors.list' },
-        { code: 'contracts', label: 'Contracts', icon: 'FileText', path: '/contracts.list' },
-        { code: 'work_orders', label: 'Work Orders', icon: 'ClipboardList', path: '/work_orders.list' },
-        { code: 'incidents', label: 'Incidents', icon: 'AlertTriangle', path: '/incidents.list' },
-      ],
-    },
-  ],
-  bottomNav: [
-    { code: 'assets', label: 'Assets', icon: 'Package' },
-    { code: 'studio', label: 'Studio', icon: 'Wrench', path: '/studio' },
-    { code: 'more', label: 'More', icon: 'Ellipsis' },
-  ],
+  sections: [],
+  bottomNav: [],
 };
 
 export const uiService = {
@@ -142,6 +123,18 @@ export const uiService = {
   },
   async updateAdminNavProfile(body: AdminNavProfile): Promise<AdminNavProfile> {
     const res = await studioApi.put<AdminNavProfile>('/studio/ui/nav-profile', body);
+    return res.data;
+  },
+  async getThemes(): Promise<ThemeDefinition[]> {
+    const res = await studioApi.get<{ data: ThemeDefinition[] }>('/themes');
+    return res.data.data;
+  },
+  async getThemePreference(): Promise<ThemePreference> {
+    const res = await studioApi.get<ThemePreference>('/themes/preferences/me');
+    return res.data;
+  },
+  async updateThemePreference(body: Partial<ThemePreference>): Promise<ThemePreference> {
+    const res = await studioApi.put<ThemePreference>('/themes/preferences/me', body);
     return res.data;
   },
 };

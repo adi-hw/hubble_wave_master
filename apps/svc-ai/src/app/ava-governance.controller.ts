@@ -14,13 +14,10 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import {
   AVAGovernanceService,
   AuditQueryOptions,
-} from '@eam-platform/ai';
-import {
-  TenantDbService,
-  AVAActionType,
-  AVAActionStatus,
-} from '@eam-platform/tenant-db';
-import { JwtAuthGuard, CurrentUser } from '@eam-platform/auth-guard';
+} from '@hubblewave/ai';
+import { AVAActionType, AVAActionStatus } from '@hubblewave/instance-db';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard, CurrentUser } from '@hubblewave/auth-guard';
 
 interface UpdateGlobalSettingsDto {
   avaEnabled?: boolean;
@@ -83,14 +80,14 @@ interface AuditQueryDto {
 export class AVAGovernanceController {
   constructor(
     private governanceService: AVAGovernanceService,
-    private tenantDbService: TenantDbService
+    private dataSource: DataSource
   ) {}
 
   /**
    * Check if user has admin access
    */
   private requireAdmin(user: { role?: string }): void {
-    const adminRoles = ['admin', 'itil_admin', 'tenant_admin', 'system_admin'];
+    const adminRoles = ['admin', 'itil_admin', 'system_admin'];
     if (!user.role || !adminRoles.includes(user.role)) {
       throw new ForbiddenException('Admin access required');
     }
@@ -102,11 +99,11 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get AVA global settings' })
   @ApiResponse({ status: 200, description: 'Global settings' })
   async getGlobalSettings(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string }
+    @CurrentUser() user: { userId: string; role?: string }
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const settings = await this.governanceService.getGlobalSettings(dataSource);
 
     return { settings };
@@ -116,12 +113,12 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Update AVA global settings' })
   @ApiResponse({ status: 200, description: 'Updated settings' })
   async updateGlobalSettings(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Body() dto: UpdateGlobalSettingsDto
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const settings = await this.governanceService.updateGlobalSettings(
       dataSource,
       dto,
@@ -137,11 +134,11 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get all AVA permission configurations' })
   @ApiResponse({ status: 200, description: 'Permission configurations' })
   async getPermissionConfigs(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string }
+    @CurrentUser() user: { userId: string; role?: string }
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const permissions = await this.governanceService.getPermissionConfigs(dataSource);
 
     return { permissions };
@@ -151,12 +148,12 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Create a new permission configuration' })
   @ApiResponse({ status: 201, description: 'Created permission configuration' })
   async createPermissionConfig(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Body() dto: CreatePermissionConfigDto
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const permission = await this.governanceService.createPermissionConfig(
       dataSource,
       dto,
@@ -170,13 +167,13 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Update a permission configuration' })
   @ApiResponse({ status: 200, description: 'Updated permission configuration' })
   async updatePermissionConfig(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Param('id') id: string,
     @Body() dto: UpdatePermissionConfigDto
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const permission = await this.governanceService.updatePermissionConfig(
       dataSource,
       id,
@@ -195,12 +192,12 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Delete a permission configuration' })
   @ApiResponse({ status: 200, description: 'Deleted' })
   async deletePermissionConfig(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Param('id') id: string
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const deleted = await this.governanceService.deletePermissionConfig(dataSource, id);
 
     return { success: deleted };
@@ -212,12 +209,12 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get AVA audit trail' })
   @ApiResponse({ status: 200, description: 'Audit trail entries' })
   async getAuditTrail(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Query() query: AuditQueryDto
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const options: AuditQueryOptions = {
       userId: query.userId,
@@ -240,12 +237,12 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get AVA audit statistics' })
   @ApiResponse({ status: 200, description: 'Audit statistics' })
   async getAuditStats(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Query('fromDate') fromDate?: string
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const stats = await this.governanceService.getAuditStats(
       dataSource,
       fromDate ? new Date(fromDate) : undefined
@@ -258,13 +255,13 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get revertible AVA actions' })
   @ApiResponse({ status: 200, description: 'Revertible actions' })
   async getRevertibleActions(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Query('userId') targetUserId?: string,
     @Query('limit') limit?: string
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const actions = await this.governanceService.getRevertibleActions(dataSource, {
       userId: targetUserId,
       limit: limit ? parseInt(limit, 10) : 20,
@@ -277,13 +274,13 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Revert an AVA action' })
   @ApiResponse({ status: 200, description: 'Revert result' })
   async revertAction(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: { userId: string; role?: string },
     @Param('id') auditId: string,
     @Body() dto: RevertActionDto
   ) {
     this.requireAdmin(user);
 
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const result = await this.governanceService.revertAction(
       dataSource,
       auditId,
@@ -300,10 +297,10 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get current user\'s AVA action history' })
   @ApiResponse({ status: 200, description: 'User action history' })
   async getMyActions(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() user: { userId: string },
     @Query('limit') limit?: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const actions = await this.governanceService.getUserAuditTrail(
       dataSource,
       user.userId,
@@ -317,10 +314,10 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Get current user\'s revertible actions' })
   @ApiResponse({ status: 200, description: 'User\'s revertible actions' })
   async getMyRevertibleActions(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() user: { userId: string },
     @Query('limit') limit?: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
     const actions = await this.governanceService.getRevertibleActions(dataSource, {
       userId: user.userId,
       limit: limit ? parseInt(limit, 10) : 10,
@@ -333,11 +330,11 @@ export class AVAGovernanceController {
   @ApiOperation({ summary: 'Revert own AVA action' })
   @ApiResponse({ status: 200, description: 'Revert result' })
   async revertMyAction(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() user: { userId: string },
     @Param('id') auditId: string,
     @Body() dto: RevertActionDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     // First verify this action belongs to the user
     const userActions = await this.governanceService.getUserAuditTrail(
@@ -361,3 +358,4 @@ export class AVAGovernanceController {
     return result;
   }
 }
+

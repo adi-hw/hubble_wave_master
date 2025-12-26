@@ -14,18 +14,18 @@ import {
 } from 'lucide-react';
 import identityApi from '../../../services/identityApi';
 
-// Status type matching backend TenantUserStatus
-type TenantUserStatus = 'invited' | 'pending_activation' | 'active' | 'inactive' | 'suspended' | 'deleted';
+// Status type matching backend UserStatus
+type UserStatus = 'invited' | 'pending_activation' | 'active' | 'inactive' | 'suspended' | 'locked' | 'deleted';
 
-interface TenantUser {
+interface UserData {
   id: string;
   displayName: string;
   workEmail: string;
   employeeId?: string;
   title?: string;
   department?: string;
-  status: TenantUserStatus;
-  isTenantAdmin: boolean;
+  status: UserStatus;
+  isAdmin: boolean;
   invitedAt?: string;
   activatedAt?: string;
   lastLoginAt?: string;
@@ -33,40 +33,81 @@ interface TenantUser {
 }
 
 interface UsersListResult {
-  data: TenantUser[];
+  data: UserData[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
 }
 
-const statusLabels: Record<TenantUserStatus, string> = {
+const statusLabels: Record<UserStatus, string> = {
   invited: 'Invited',
   pending_activation: 'Pending',
   active: 'Active',
   inactive: 'Inactive',
   suspended: 'Suspended',
+  locked: 'Locked',
   deleted: 'Deleted',
 };
 
-const statusColors: Record<TenantUserStatus, { bg: string; text: string; dot: string }> = {
-  invited: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', dot: 'bg-blue-500' },
-  pending_activation: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
-  active: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' },
-  inactive: { bg: 'bg-slate-100 dark:bg-slate-700', text: 'text-slate-600 dark:text-slate-400', dot: 'bg-slate-400' },
-  suspended: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' },
-  deleted: { bg: 'bg-slate-100 dark:bg-slate-700', text: 'text-slate-500 dark:text-slate-500', dot: 'bg-slate-300' },
+// Theme-aware status styles using CSS variables from design-tokens.css
+const statusStyles: Record<UserStatus, { bg: string; text: string; dot: string }> = {
+  invited: { bg: 'var(--bg-info-subtle)', text: 'var(--text-info)', dot: 'var(--bg-info)' },
+  pending_activation: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)', dot: 'var(--bg-warning)' },
+  active: { bg: 'var(--bg-success-subtle)', text: 'var(--text-success)', dot: 'var(--bg-success)' },
+  inactive: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-tertiary)', dot: 'var(--text-muted)' },
+  suspended: { bg: 'var(--bg-danger-subtle)', text: 'var(--text-danger)', dot: 'var(--bg-danger)' },
+  locked: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)', dot: 'var(--bg-warning)' },
+  deleted: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-muted)', dot: 'var(--text-disabled)' },
 };
+
+// Status counts type
+type StatusCounts = Record<UserStatus, number>;
 
 export const UsersListPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TenantUserStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<UserStatus | 'all'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [statusCounts, setStatusCounts] = useState<StatusCounts>({
+    invited: 0,
+    pending_activation: 0,
+    active: 0,
+    inactive: 0,
+    suspended: 0,
+    locked: 0,
+    deleted: 0,
+  });
   const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
   const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
+
+  // Fetch status counts (runs once on mount and after actions)
+  const fetchStatusCounts = async () => {
+    try {
+      // Fetch a large page without filters to count statuses
+      const response = await identityApi.get<UsersListResult>(`/users?pageSize=1000`);
+      const allUsers = response.data.data;
+      const counts: StatusCounts = {
+        invited: 0,
+        pending_activation: 0,
+        active: 0,
+        inactive: 0,
+        suspended: 0,
+        locked: 0,
+        deleted: 0,
+      };
+      allUsers.forEach(u => {
+        if (counts[u.status] !== undefined) {
+          counts[u.status]++;
+        }
+      });
+      setStatusCounts(counts);
+    } catch (error) {
+      console.error('Failed to fetch status counts:', error);
+    }
+  };
 
   // Fetch users from API
   const fetchUsers = async () => {
@@ -79,7 +120,7 @@ export const UsersListPage: React.FC = () => {
       params.set('page', pagination.page.toString());
       params.set('pageSize', pagination.pageSize.toString());
 
-      const response = await identityApi.get<UsersListResult>(`/tenant-users?${params.toString()}`);
+      const response = await identityApi.get<UsersListResult>(`/users?${params.toString()}`);
       setUsers(response.data.data);
       setPagination(prev => ({
         ...prev,
@@ -93,6 +134,11 @@ export const UsersListPage: React.FC = () => {
     }
   };
 
+  // Fetch status counts on mount
+  useEffect(() => {
+    fetchStatusCounts();
+  }, []);
+
   useEffect(() => {
     fetchUsers();
   }, [searchQuery, statusFilter, departmentFilter, pagination.page]);
@@ -103,27 +149,31 @@ export const UsersListPage: React.FC = () => {
     try {
       switch (action) {
         case 'deactivate':
-          await identityApi.post(`/tenant-users/${userId}/deactivate`);
+          await identityApi.post(`/users/${userId}/deactivate`);
           break;
         case 'reactivate':
-          await identityApi.post(`/tenant-users/${userId}/reactivate`);
+          await identityApi.post(`/users/${userId}/reactivate`);
           break;
         case 'suspend':
-          await identityApi.post(`/tenant-users/${userId}/suspend`, { reason: 'Suspended by admin' });
+          await identityApi.post(`/users/${userId}/suspend`, { reason: 'Suspended by admin' });
           break;
         case 'unsuspend':
-          await identityApi.post(`/tenant-users/${userId}/unsuspend`);
+          await identityApi.post(`/users/${userId}/unsuspend`);
+          break;
+        case 'unlock':
+          await identityApi.post(`/users/${userId}/unlock`);
           break;
         case 'resend-invitation':
-          await identityApi.post(`/tenant-users/${userId}/resend-invitation`);
+          await identityApi.post(`/users/${userId}/resend-invitation`);
           break;
         case 'delete':
-          await identityApi.delete(`/tenant-users/${userId}`);
+          await identityApi.delete(`/users/${userId}`);
           break;
         default:
           return;
       }
       fetchUsers(); // Refresh list
+      fetchStatusCounts(); // Refresh counts after status change
     } catch (error) {
       console.error(`Failed to ${action} user:`, error);
     }
@@ -137,24 +187,24 @@ export const UsersListPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--hw-text)' }}>
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
             Users
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--hw-text-muted)' }}>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Manage user accounts, roles, and permissions
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => fetchUsers()}
-            className="flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
-            style={{ borderColor: 'var(--hw-border)' }}
+            className="btn-secondary flex items-center gap-2 px-3 py-2 rounded-lg"
+            aria-label="Refresh users list"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
           <button
             onClick={() => navigate('/studio/users/invite')}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg"
           >
             <UserPlus className="h-4 w-4" />
             Invite User
@@ -164,27 +214,38 @@ export const UsersListPage: React.FC = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {(['active', 'invited', 'inactive', 'suspended'] as TenantUserStatus[]).map((status) => {
-          const count = users.filter(u => u.status === status).length;
-          const colors = statusColors[status];
+        {(['active', 'invited', 'inactive', 'suspended', 'locked'] as UserStatus[]).map((status) => {
+          const count = statusCounts[status];
+          const colors = statusStyles[status];
+          const isSelected = statusFilter === status;
           return (
             <div
               key={status}
-              className="rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md"
-              style={{ backgroundColor: 'var(--hw-surface)', borderColor: 'var(--hw-border)' }}
+              className="rounded-xl border p-3 cursor-pointer transition-all hover:shadow-md"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: isSelected ? 'var(--border-brand)' : 'var(--border-default)',
+                boxShadow: isSelected ? '0 0 0 1px var(--border-brand)' : undefined,
+              }}
               onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-semibold" style={{ color: 'var(--hw-text)' }}>
+                  <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {count}
                   </div>
-                  <div className="text-sm capitalize" style={{ color: 'var(--hw-text-muted)' }}>
+                  <div className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
                     {statusLabels[status]}
                   </div>
                 </div>
-                <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${colors.bg}`}>
-                  <span className={`h-3 w-3 rounded-full ${colors.dot}`} />
+                <div
+                  className="h-8 w-8 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: colors.bg }}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: colors.dot }}
+                  />
                 </div>
               </div>
             </div>
@@ -195,24 +256,24 @@ export const UsersListPage: React.FC = () => {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
           <input
             type="text"
             placeholder="Search by name, email, or employee ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            style={{ borderColor: 'var(--hw-border)', backgroundColor: 'var(--hw-surface)' }}
+            style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)' }}
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-400" />
+          <Filter className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as TenantUserStatus | 'all')}
+            onChange={(e) => setStatusFilter(e.target.value as UserStatus | 'all')}
             className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            style={{ borderColor: 'var(--hw-border)', backgroundColor: 'var(--hw-surface)' }}
+            style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
           >
             <option value="all">All Status</option>
             {Object.entries(statusLabels).map(([value, label]) => (
@@ -225,7 +286,7 @@ export const UsersListPage: React.FC = () => {
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
               className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              style={{ borderColor: 'var(--hw-border)', backgroundColor: 'var(--hw-surface)' }}
+              style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
             >
               <option value="all">All Departments</option>
               {departments.map((dept) => (
@@ -239,72 +300,78 @@ export const UsersListPage: React.FC = () => {
       {/* Users Table */}
       <div
         className="rounded-xl border overflow-hidden"
-        style={{ backgroundColor: 'var(--hw-surface)', borderColor: 'var(--hw-border)' }}
+        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
       >
         <table className="w-full">
           <thead>
-            <tr className="border-b" style={{ borderColor: 'var(--hw-border)', backgroundColor: 'var(--hw-bg-subtle)' }}>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+            <tr className="border-b" style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface-secondary)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 User
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 Department
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 Status
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 Role
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 Last Activity
               </th>
-              <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--hw-text-muted)' }}>
+              <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y" style={{ borderColor: 'var(--hw-border)' }}>
+          <tbody className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
             {loading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: 'var(--hw-text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--hw-text-muted)' }}>Loading users...</p>
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading users...</p>
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <AlertCircle className="h-8 w-8 mx-auto mb-3" style={{ color: 'var(--hw-text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--hw-text-muted)' }}>No users found</p>
+                  <AlertCircle className="h-8 w-8 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No users found</p>
                 </td>
               </tr>
             ) : (
               users.map((user) => {
-                const colors = statusColors[user.status];
+                const colors = statusStyles[user.status];
                 return (
                   <tr
                     key={user.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                    className="cursor-pointer transition-colors"
+                    style={{ borderBottom: '1px solid var(--border-subtle)' }}
                     onClick={() => navigate(`/studio/users/${user.id}`)}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
+                        <div
+                          className="h-10 w-10 rounded-full flex items-center justify-center overflow-hidden"
+                          style={{ backgroundColor: 'var(--bg-surface-tertiary)' }}
+                        >
                           {user.avatarUrl ? (
                             <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
                           ) : (
-                            <User className="h-5 w-5" style={{ color: 'var(--hw-text-muted)' }} />
+                            <User className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
                           )}
                         </div>
                         <div>
-                          <div className="font-medium" style={{ color: 'var(--hw-text)' }}>
+                          <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
                             {user.displayName}
-                            {user.isTenantAdmin && (
-                              <span title="Administrator"><Shield className="inline-block h-3.5 w-3.5 ml-1.5 text-amber-500" /></span>
+                            {user.isAdmin && (
+                              <span title="Administrator"><Shield className="inline-block h-3.5 w-3.5 ml-1.5" style={{ color: 'var(--text-warning)' }} /></span>
                             )}
                           </div>
-                          <div className="text-sm flex items-center gap-1" style={{ color: 'var(--hw-text-muted)' }}>
+                          <div className="text-sm flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
                             <Mail className="h-3 w-3" />
                             {user.workEmail}
                           </div>
@@ -313,24 +380,30 @@ export const UsersListPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       {user.department ? (
-                        <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--hw-text-secondary)' }}>
+                        <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
                           <Building className="h-3.5 w-3.5" />
                           {user.department}
                         </div>
                       ) : (
-                        <span style={{ color: 'var(--hw-text-muted)' }}>-</span>
+                        <span style={{ color: 'var(--text-muted)' }}>-</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${colors.dot}`} />
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        style={{ backgroundColor: colors.bg, color: colors.text }}
+                      >
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: colors.dot }}
+                        />
                         {statusLabels[user.status]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--hw-text-secondary)' }}>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
                       {user.title || '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--hw-text-muted)' }}>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
                       {user.lastLoginAt
                         ? new Date(user.lastLoginAt).toLocaleDateString()
                         : user.activatedAt
@@ -345,23 +418,33 @@ export const UsersListPage: React.FC = () => {
                           e.stopPropagation();
                           setActionMenuOpen(actionMenuOpen === user.id ? null : user.id);
                         }}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                        className="p-1.5 rounded transition-colors"
+                        style={{ backgroundColor: 'transparent' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        aria-label={`Actions for ${user.displayName}`}
+                        aria-expanded={actionMenuOpen === user.id}
+                        aria-haspopup="menu"
                       >
-                        <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--hw-text-muted)' }} />
+                        <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
                       </button>
 
                       {actionMenuOpen === user.id && (
                         <div
-                          className="absolute right-0 mt-1 w-48 rounded-lg border shadow-lg z-10"
-                          style={{ backgroundColor: 'var(--hw-surface)', borderColor: 'var(--hw-border)' }}
+                          className="absolute right-0 mt-1 w-48 rounded-lg border z-10"
+                          style={{ backgroundColor: 'var(--bg-elevated)', borderColor: 'var(--border-default)', boxShadow: 'var(--shadow-lg)' }}
                           onClick={(e) => e.stopPropagation()}
+                          role="menu"
+                          aria-label={`Actions for ${user.displayName}`}
                         >
                           <div className="py-1">
                             {user.status === 'invited' && (
                               <button
                                 onClick={() => handleAction(user.id, 'resend-invitation')}
-                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                                style={{ color: 'var(--hw-text)' }}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
                                 Resend Invitation
                               </button>
@@ -370,15 +453,19 @@ export const UsersListPage: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => handleAction(user.id, 'suspend')}
-                                  className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                                  style={{ color: 'var(--hw-text)' }}
+                                  className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                  style={{ color: 'var(--text-primary)' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                   Suspend User
                                 </button>
                                 <button
                                   onClick={() => handleAction(user.id, 'deactivate')}
-                                  className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                                  style={{ color: 'var(--hw-text)' }}
+                                  className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                  style={{ color: 'var(--text-primary)' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                   Deactivate User
                                 </button>
@@ -387,8 +474,10 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'inactive' && (
                               <button
                                 onClick={() => handleAction(user.id, 'reactivate')}
-                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                                style={{ color: 'var(--hw-text)' }}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
                                 Reactivate User
                               </button>
@@ -396,16 +485,32 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'suspended' && (
                               <button
                                 onClick={() => handleAction(user.id, 'unsuspend')}
-                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                                style={{ color: 'var(--hw-text)' }}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
                                 Unsuspend User
                               </button>
                             )}
-                            <hr className="my-1" style={{ borderColor: 'var(--hw-border)' }} />
+                            {user.status === 'locked' && (
+                              <button
+                                onClick={() => handleAction(user.id, 'unlock')}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                Unlock User
+                              </button>
+                            )}
+                            <hr className="my-1" style={{ borderColor: 'var(--border-subtle)' }} />
                             <button
                               onClick={() => handleAction(user.id, 'delete')}
-                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                              className="w-full text-left px-4 py-2 text-sm transition-colors"
+                              style={{ color: 'var(--text-danger)' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                               Delete User
                             </button>
@@ -422,24 +527,25 @@ export const UsersListPage: React.FC = () => {
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t" style={{ borderColor: 'var(--hw-border)' }}>
-            <div className="text-sm" style={{ color: 'var(--hw-text-muted)' }}>
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderTop: '1px solid var(--border-default)' }}
+          >
+            <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
               Showing {((pagination.page - 1) * pagination.pageSize) + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} users
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
                 disabled={pagination.page === 1}
-                className="px-3 py-1.5 text-sm border rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
-                style={{ borderColor: 'var(--hw-border)' }}
+                className="btn-secondary px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                 disabled={pagination.page >= pagination.totalPages}
-                className="px-3 py-1.5 text-sm border rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
-                style={{ borderColor: 'var(--hw-border)' }}
+                className="btn-secondary px-3 py-1.5 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
               </button>

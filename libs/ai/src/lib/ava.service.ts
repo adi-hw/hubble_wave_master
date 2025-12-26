@@ -1,9 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { LLMService, LLMChatMessage } from './llm.service';
+import { LLMChatMessage } from './llm.service';
 import { RAGService } from './rag.service';
-import { VectorStoreService } from './vector-store.service';
-import { TenantContextService } from './tenant-context.service';
+import { TenantContextService } from './instance-context.service';
 import { PlatformKnowledgeService } from './platform-knowledge.service';
 import { UpgradeAssistantService } from './upgrade-assistant.service';
 
@@ -14,7 +13,6 @@ import { UpgradeAssistantService } from './upgrade-assistant.service';
 
 export interface AVAContext {
   userId: string;
-  tenantId: string;
   userRole?: string;
   userName?: string;
   currentPage?: string;
@@ -121,14 +119,10 @@ export class AVAService {
   private readonly logger = new Logger(AVAService.name);
 
   constructor(
-    // Reserved for future use (direct LLM calls outside RAG)
-    _llmService: LLMService,
-    private ragService: RAGService,
-    // Reserved for future use (direct vector searches)
-    _vectorStoreService: VectorStoreService,
-    private tenantContextService: TenantContextService,
-    private platformKnowledgeService: PlatformKnowledgeService,
-    private upgradeAssistantService: UpgradeAssistantService
+    private readonly ragService: RAGService,
+    private readonly tenantContextService: TenantContextService,
+    private readonly platformKnowledgeService: PlatformKnowledgeService,
+    private readonly upgradeAssistantService: UpgradeAssistantService,
   ) {}
 
   /**
@@ -376,30 +370,27 @@ export class AVAService {
 
       // Get tenant profile
       const tenantProfile = await this.tenantContextService.getTenantProfile(
-        dataSource,
-        context.tenantId
+        dataSource
       );
 
       // Get user profile for personalization
       const userProfile = await this.tenantContextService.getUserProfile(
         dataSource,
-        context.userId,
-        context.tenantId
+        context.userId
       );
 
       // Build tenant context prompt
       fullContext += this.tenantContextService.buildContextPrompt(tenantProfile, userProfile || undefined);
 
       // Add platform capabilities summary (for admin users)
-      if (context.userRole && ['admin', 'tenant_admin', 'itil_admin'].includes(context.userRole)) {
+      if (context.userRole && ['admin', 'itil_admin'].includes(context.userRole)) {
         fullContext += this.platformKnowledgeService.buildCapabilitiesSummary();
       }
 
       // Add upgrade context
       try {
         const upgradeContext = await this.upgradeAssistantService.buildUpgradeContextForAVA(
-          dataSource,
-          context.tenantId
+          dataSource
         );
         fullContext += upgradeContext;
       } catch {
@@ -428,10 +419,9 @@ export class AVAService {
    */
   async getUpgradeGuidance(
     dataSource: DataSource,
-    tenantId: string,
     phase: 'pre' | 'during' | 'post' = 'pre'
   ) {
-    return this.upgradeAssistantService.generateUpgradeGuidance(dataSource, tenantId, phase);
+    return this.upgradeAssistantService.generateUpgradeGuidance(dataSource, phase);
   }
 
   /**
@@ -439,10 +429,9 @@ export class AVAService {
    */
   async askAboutUpgrade(
     dataSource: DataSource,
-    tenantId: string,
     question: string
   ): Promise<string> {
-    return this.upgradeAssistantService.askAboutUpgrade(dataSource, tenantId, question);
+    return this.upgradeAssistantService.askAboutUpgrade(dataSource, question);
   }
 
   /**

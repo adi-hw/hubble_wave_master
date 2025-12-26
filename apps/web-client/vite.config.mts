@@ -13,57 +13,71 @@ export default defineConfig(() => ({
     // Allow access from any host (localhost, acme.localhost, etc.)
     host: true,
     // Proxy API requests through dev server to avoid cross-origin cookie issues
+    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ai=3004
     proxy: {
       // Service-prefixed routes (primary pattern)
       '/api/identity': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/identity/, '/api'),
       },
       '/api/data': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/data/, '/api'),
       },
       '/api/metadata': {
-        target: 'http://localhost:3002',
+        target: 'http://localhost:3003',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/metadata/, '/api'),
       },
       '/api/ai': {
-        target: 'http://localhost:3003',
+        target: 'http://localhost:3004',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ai/, '/api'),
       },
-      // Studio and admin routes go to svc-data
+      // Studio routes go to svc-data
       '/api/studio': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/studio/, '/api/studio'),
       },
+      // Admin routes (roles, permissions, groups) go to svc-identity
       '/api/admin': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/admin/, '/api/admin'),
       },
       // Direct API routes (for pages using simple /api/... paths)
-      // Collections & Properties → svc-metadata
+      // Collections & Properties & Themes → svc-metadata
       '/api/collections': {
-        target: 'http://localhost:3002',
+        target: 'http://localhost:3003',
         changeOrigin: true,
       },
       '/api/properties': {
-        target: 'http://localhost:3002',
+        target: 'http://localhost:3003',
         changeOrigin: true,
       },
-      // User management → svc-identity
+      '/api/themes': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
+      },
+      // User management & Auth → svc-identity
       '/api/tenant-users': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/auth': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/iam': {
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
       // AVA governance → svc-ai
       '/api/ava': {
-        target: 'http://localhost:3003',
+        target: 'http://localhost:3004',
         changeOrigin: true,
       },
     },

@@ -6,9 +6,8 @@ export const useHasRole = (role: string | string[]) => {
   const roles = user?.roles || [];
   const required = Array.isArray(role) ? role : [role];
 
-  // Check if user has admin flags that satisfy the role requirement
-  if (user?.isPlatformAdmin) return true;
-  if (required.includes('tenant_admin') && user?.isTenantAdmin) return true;
+  // Admin role has access to all protected routes
+  if (roles.includes('admin')) return true;
 
   return required.every((r) => roles.includes(r));
 };

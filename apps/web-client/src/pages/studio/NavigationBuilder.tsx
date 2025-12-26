@@ -16,7 +16,7 @@ import {
   GripVertical,
   EyeOff,
   Edit,
-  Settings,
+
   Layers,
 } from 'lucide-react';
 import { Icon } from '../../components/Icon';
@@ -33,8 +33,6 @@ import { ResolvedNavNode } from '../../types/navigation-v2';
 // Default available roles/permissions for demo
 const DEFAULT_ROLES = [
   'admin',
-  'tenant_admin',
-  'platform_admin',
   'user',
   'manager',
   'viewer',
@@ -80,16 +78,17 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   return (
     <div>
       <div
-        className={`
-          flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors
-          ${isSelected ? 'bg-sky-100 text-sky-800' : 'hover:bg-slate-100'}
-          ${!node.isVisible ? 'opacity-50' : ''}
-        `}
-        style={{ paddingLeft: 8 + depth * 16 }}
+        className="flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors"
+        style={{
+          paddingLeft: 8 + depth * 16,
+          backgroundColor: isSelected ? 'var(--bg-primary-subtle)' : 'transparent',
+          color: isSelected ? 'var(--text-brand)' : 'var(--text-primary)',
+          opacity: !node.isVisible ? 0.5 : 1
+        }}
         onClick={() => onSelect(node)}
       >
         {/* Drag Handle */}
-        <GripVertical className="h-4 w-4 text-slate-300 flex-shrink-0 cursor-grab" />
+        <GripVertical className="h-4 w-4 flex-shrink-0 cursor-grab" style={{ color: 'var(--text-muted)' }} />
 
         {/* Expand/Collapse */}
         {hasChildren ? (
@@ -98,12 +97,12 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               e.stopPropagation();
               onToggleExpand(node.key);
             }}
-            className="p-0.5 hover:bg-slate-200 rounded"
+            className="p-0.5 rounded"
           >
             {isExpanded ? (
-              <ChevronDown className="h-4 w-4 text-slate-400" />
+              <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
             ) : (
-              <ChevronRight className="h-4 w-4 text-slate-400" />
+              <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
             )}
           </button>
         ) : (
@@ -112,9 +111,9 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
         {/* Icon */}
         {node.icon ? (
-          <Icon name={node.icon} className="h-4 w-4 text-slate-500 flex-shrink-0" />
+          <Icon name={node.icon} className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
         ) : node.type === 'group' ? (
-          <FolderOpen className="h-4 w-4 text-slate-500 flex-shrink-0" />
+          <FolderOpen className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
         ) : (
           <span className="w-4" />
         )}
@@ -124,11 +123,11 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
         {/* Visibility indicator */}
         {!node.isVisible && (
-          <EyeOff className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+          <EyeOff className="h-3.5 w-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
         )}
 
         {/* Type badge */}
-        <span className="text-[10px] text-slate-400 uppercase">{node.type}</span>
+        <span className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>{node.type}</span>
       </div>
 
       {/* Children */}
@@ -191,38 +190,39 @@ export const NavigationBuilder: React.FC = () => {
       setLoading(true);
       const data = await navigationAdminService.getProfiles();
       setProfiles(data);
-      if (data.length > 0 && !selectedProfile) {
-        setSelectedProfile(data.find((p) => p.isDefault) || data[0]);
+      if (data.length > 0) {
+        // If we have profiles, select one (prefer default)
+        const def = data.find((p) => p.isDefault) || data[0];
+        if (!selectedProfile || !data.find(p => p.id === selectedProfile.id)) {
+           setSelectedProfile(def);
+        }
+      } else {
+        // No profiles found - clear selection
+        setSelectedProfile(null);
       }
     } catch (err: any) {
       console.error('Failed to load profiles:', err);
       setError(err.message || 'Failed to load navigation profiles');
-      // Use mock data for demo
-      setProfiles([
-        {
-          id: 'demo-1',
-          slug: 'default',
-          name: 'Default Profile',
-          description: 'Standard navigation for all users',
-          isDefault: true,
-          isActive: true,
-          isLocked: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ]);
-      setSelectedProfile({
-        id: 'demo-1',
-        slug: 'default',
-        name: 'Default Profile',
-        description: 'Standard navigation for all users',
-        isDefault: true,
-        isActive: true,
-        isLocked: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      // DO NOT USE MOCK DATA ON ERROR - It hides the real issue
+      setProfiles([]); 
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateDefaultProfile = async () => {
+    try {
+      setLoading(true);
+      await navigationAdminService.createProfile({
+        name: 'Main Navigation',
+        slug: 'main',
+        description: 'Primary application navigation',
+        isDefault: true,
+      });
+      await loadProfiles();
+    } catch (err: any) {
+      console.error('Failed to create default profile:', err);
+      setError(err.message || 'Failed to create default profile');
       setLoading(false);
     }
   };
@@ -305,9 +305,9 @@ export const NavigationBuilder: React.FC = () => {
         { key: 'studio.scripts', label: 'Scripts', type: 'list', icon: 'FileCode', applicationKey: 'Studio' },
         { key: 'studio.workflows', label: 'Workflows', type: 'list', icon: 'GitBranch', applicationKey: 'Studio' },
         { key: 'admin.users', label: 'Users & Roles', type: 'list', icon: 'Users', applicationKey: 'Admin' },
-        { key: 'asset.list', label: 'Asset List', type: 'list', icon: 'Package', applicationKey: 'EAM' },
-        { key: 'asset.dashboard', label: 'Asset Dashboard', type: 'dashboard', icon: 'LayoutDashboard', applicationKey: 'EAM' },
-        { key: 'work_order.list', label: 'Work Orders', type: 'list', icon: 'ClipboardList', applicationKey: 'EAM' },
+        { key: 'asset.list', label: 'Asset List', type: 'list', icon: 'Package' },
+        { key: 'asset.dashboard', label: 'Asset Dashboard', type: 'dashboard', icon: 'LayoutDashboard' },
+        { key: 'work_order.list', label: 'Work Orders', type: 'list', icon: 'ClipboardList' },
       ]);
     }
   };
@@ -343,7 +343,22 @@ export const NavigationBuilder: React.FC = () => {
     });
   };
 
+  const getAllGroups = useCallback((nodes: NavNode[]): { key: string; label: string }[] => {
+    let groups: { key: string; label: string }[] = [];
+    for (const node of nodes) {
+      if (node.type === 'group' && node.key) {
+        groups.push({ key: node.key, label: node.label });
+      }
+      if (node.children) {
+        groups = [...groups, ...getAllGroups(node.children)];
+      }
+    }
+    return groups;
+  }, []);
+
   const handleCreateNode = () => {
+    const parentKey = selectedNode?.type === 'group' ? selectedNode.key : undefined;
+    
     setSelectedNode(null);
     setEditingNode({
       key: '',
@@ -351,12 +366,18 @@ export const NavigationBuilder: React.FC = () => {
       type: 'module',
       order: nodes.length,
       isVisible: true,
+      parentKey,
     });
     setIsCreatingNode(true);
   };
 
   const handleSaveNode = async () => {
-    if (!editingNode || !selectedProfile) return;
+    if (!editingNode) return;
+    
+    if (!selectedProfile) {
+      setError('No navigation profile selected. Please create or select a profile.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -378,6 +399,7 @@ export const NavigationBuilder: React.FC = () => {
           label: editingNode.label,
           icon: editingNode.icon,
           moduleKey: editingNode.moduleKey,
+          parentKey: editingNode.parentKey ?? '', // Send empty string if undefined to allow moving to root
           url: editingNode.url,
           order: editingNode.order,
           isVisible: editingNode.isVisible,
@@ -460,68 +482,115 @@ export const NavigationBuilder: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="h-full flex flex-col" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
       {/* Header */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">
+      <div 
+        className="flex-shrink-0 border-b px-6 py-4"
+        style={{ 
+          backgroundColor: 'var(--bg-surface)', 
+          borderColor: 'var(--border-default)' 
+        }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               to="/studio"
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 border border-slate-200"
+              className="p-2 rounded-lg hover:opacity-80 border transition-colors"
+              style={{ 
+                color: 'var(--text-muted)', 
+                borderColor: 'var(--border-default)' 
+              }}
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <p 
+                className="text-xs font-semibold uppercase tracking-wide"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 Studio
               </p>
-              <h1 className="text-xl font-bold text-slate-800">Navigation Builder</h1>
+              <h1 
+                className="text-2xl font-semibold"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Navigation Builder
+              </h1>
             </div>
           </div>
 
           {/* Profile Selector */}
           <div className="flex items-center gap-3">
-            <select
-              value={selectedProfile?.id || ''}
-              onChange={(e) => {
-                const profile = profiles.find((p) => p.id === e.target.value);
-                setSelectedProfile(profile || null);
-              }}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-            >
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button className="p-2 rounded-lg hover:bg-slate-100 border border-slate-200">
-              <Settings className="h-4 w-4 text-slate-500" />
-            </button>
+            {profiles.length === 0 ? (
+              <button
+                onClick={handleCreateDefaultProfile}
+                className="px-3 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 transition-colors"
+              >
+                Initialize Default Profile
+              </button>
+            ) : (
+              <select
+                value={selectedProfile?.id || ''}
+                onChange={(e) => {
+                  const profile = profiles.find((p) => p.id === e.target.value);
+                  setSelectedProfile(profile || null);
+                }}
+                className="px-3 py-2 border rounded-lg text-sm"
+                style={{ 
+                  backgroundColor: 'var(--bg-surface)', 
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-primary)'
+                }}
+              >
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="flex-shrink-0 bg-red-50 border-b border-red-200 px-6 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div
+          className="flex-shrink-0 border-b px-6 py-3"
+          style={{
+            backgroundColor: 'var(--bg-danger-subtle)',
+            borderColor: 'var(--border-danger)'
+          }}
+        >
+          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>{error}</p>
         </div>
       )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Nav Tree */}
-        <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
+        <div 
+          className="w-80 flex-shrink-0 border-r flex flex-col"
+          style={{ 
+            backgroundColor: 'var(--bg-surface)', 
+            borderColor: 'var(--border-default)' 
+          }}
+        >
           {/* Tree Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+          <div 
+            className="flex items-center justify-between px-4 py-3 border-b"
+            style={{ borderColor: 'var(--border-default)' }}
+          >
             <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-slate-500" />
-              <span className="text-sm font-semibold text-slate-700">Navigation Tree</span>
+              <Layers className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Navigation Tree
+              </span>
             </div>
             <button
               onClick={handleCreateNode}
-              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+              className="p-1.5 rounded-lg hover:bg-black/5"
+              style={{ color: 'var(--text-muted)' }}
               title="Add node"
             >
               <Plus className="h-4 w-4" />
@@ -531,12 +600,13 @@ export const NavigationBuilder: React.FC = () => {
           {/* Tree */}
           <div className="flex-1 overflow-y-auto p-2">
             {nodes.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No navigation items</p>
+              <div className="text-center py-8">
+                <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" style={{ color: 'var(--text-muted)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No navigation items</p>
                 <button
                   onClick={handleCreateNode}
-                  className="mt-2 text-sm text-sky-600 hover:text-sky-700"
+                  className="mt-2 text-sm hover:underline"
+                  style={{ color: 'var(--text-brand)' }}
                 >
                   Add first item
                 </button>
@@ -557,9 +627,15 @@ export const NavigationBuilder: React.FC = () => {
         </div>
 
         {/* Center Panel - Node Editor */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
           {editingNode ? (
-            <div className="max-w-2xl mx-auto bg-white rounded-xl border border-slate-200 p-6">
+            <div 
+              className="max-w-2xl mx-auto rounded-xl border p-6"
+              style={{ 
+                backgroundColor: 'var(--bg-surface)', 
+                borderColor: 'var(--border-default)' 
+              }}
+            >
               <NavNodeEditor
                 node={editingNode}
                 onChange={setEditingNode}
@@ -569,23 +645,24 @@ export const NavigationBuilder: React.FC = () => {
                 availableRoles={DEFAULT_ROLES}
                 availablePermissions={DEFAULT_PERMISSIONS}
                 availableFlags={DEFAULT_FLAGS}
+                parentOptions={getAllGroups(nodes)}
                 isNew={isCreatingNode}
                 disabled={saving}
               />
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center text-slate-400">
+            <div className="h-full flex items-center justify-center">
               <div className="text-center">
-                <Edit className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Select a node to edit</p>
-                <p className="text-xs mt-1">or click + to create a new one</p>
+                <Edit className="h-12 w-12 mx-auto mb-3 opacity-30" style={{ color: 'var(--text-muted)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Select a node to edit</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>or click + to create a new one</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Right Panel - Preview */}
-        <div className="w-80 flex-shrink-0">
+        <div className="w-80 flex-shrink-0" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
           <NavPreview
             nodes={previewNodes}
             loading={previewLoading}

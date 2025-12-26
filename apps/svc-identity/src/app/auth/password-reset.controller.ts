@@ -1,35 +1,25 @@
-import { BadRequestException, Controller, Post, Body, Req } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { PasswordResetService } from './password-reset.service';
-import * as argon2 from 'argon2';
+import { PasswordValidationService } from './password-validation.service';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from './decorators/public.decorator';
-import { TenantDbService, extractTenantSlug } from '@eam-platform/tenant-db';
 
-@Controller('auth/password')
+@Controller('auth/password-reset')
 export class PasswordResetController {
   constructor(
     private passwordResetService: PasswordResetService,
-    private readonly tenantDbService: TenantDbService
+    private readonly passwordValidationService: PasswordValidationService,
   ) {}
 
   @Public()
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('forgot')
-  async forgotPassword(@Req() req: any, @Body() body: { email: string; tenantSlug?: string }) {
-    const tenantSlug = body.tenantSlug || extractTenantSlug(req.headers.host || '');
-    if (!tenantSlug) {
-      throw new BadRequestException('Tenant could not be determined');
-    }
-    const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
+  async forgotPassword(@Body() body: { email: string }) {
     // Always return success to prevent email enumeration
-    const result = await this.passwordResetService.createResetToken(body.email, tenant.id);
+    const result = await this.passwordResetService.createResetToken(body.email);
 
     if (result) {
-      await this.passwordResetService.sendResetEmail(
-        body.email,
-        result.token,
-        tenantSlug
-      );
+      await this.passwordResetService.sendResetEmail(body.email, result.token);
     }
 
     return {
@@ -38,28 +28,63 @@ export class PasswordResetController {
   }
 
   @Public()
-  @Post('reset')
-  async resetPassword(@Req() req: any, @Body() body: { token: string; newPassword: string; tenantSlug?: string }) {
-    const tenantSlug = body.tenantSlug || extractTenantSlug(req.headers.host || '');
-    if (!tenantSlug) {
-      throw new BadRequestException('Tenant could not be determined');
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 validations per minute
+  @Get('validate')
+  async validateTokenGet(@Query('token') token: string) {
+    if (!token) {
+      return { valid: false, code: 'MISSING_TOKEN', message: 'Token is required' };
     }
-    const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
+
+    const user = await this.passwordResetService.validateResetToken(token);
+
+    if (!user) {
+      return { valid: false, code: 'TOKEN_EXPIRED', message: 'Invalid or expired reset token' };
+    }
+
+    return { valid: true };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 validations per minute
+  @Post('validate')
+  async validateTokenPost(@Body() body: { token: string }) {
+    const user = await this.passwordResetService.validateResetToken(body.token);
+
+    return {
+      valid: !!user,
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 reset attempts per minute
+  @Post('confirm')
+  async confirmReset(@Body() body: { token: string; newPassword: string }) {
     // Validate token
-    const user = await this.passwordResetService.validateResetToken(tenant.id, body.token);
+    const user = await this.passwordResetService.validateResetToken(body.token);
 
     if (!user) {
       return {
         success: false,
+        code: 'TOKEN_EXPIRED',
         message: 'Invalid or expired reset token',
       };
     }
 
-    // Hash new password
-    const passwordHash = await argon2.hash(body.newPassword);
+    // Validate password against policy and blocklist
+    const validationResult = await this.passwordValidationService.validatePassword(
+      body.newPassword,
+      { email: user.email, displayName: user.displayName },
+    );
+
+    if (!validationResult.valid) {
+      throw new BadRequestException({
+        message: 'Password does not meet requirements',
+        errors: validationResult.errors,
+      });
+    }
 
     // Use token and update password
-    const success = await this.passwordResetService.useResetToken(tenant.id, body.token, passwordHash);
+    const success = await this.passwordResetService.useResetToken(body.token, body.newPassword);
 
     if (!success) {
       return {
@@ -74,18 +99,10 @@ export class PasswordResetController {
     };
   }
 
+  // Legacy endpoint for backwards compatibility
   @Public()
-  @Post('validate-token')
-  async validateToken(@Req() req: any, @Body() body: { token: string; tenantSlug?: string }) {
-    const tenantSlug = body.tenantSlug || extractTenantSlug(req.headers.host || '');
-    if (!tenantSlug) {
-      throw new BadRequestException('Tenant could not be determined');
-    }
-    const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
-    const user = await this.passwordResetService.validateResetToken(tenant.id, body.token);
-
-    return {
-      valid: !!user,
-    };
+  @Post('reset')
+  async resetPassword(@Body() body: { token: string; newPassword: string }) {
+    return this.confirmReset(body);
   }
 }

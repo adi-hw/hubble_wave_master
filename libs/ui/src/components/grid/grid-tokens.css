@@ -1,0 +1,331 @@
+/* =============================================================================
+   HUBBLE DATA GRID - Design Tokens
+   2070 Generation Glassmorphic Aesthetic
+   ============================================================================= */
+
+:root {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GRID STRUCTURE - Row Heights & Dimensions
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* Row Heights - Support for density modes */
+  --grid-row-height-compact: 36px;
+  --grid-row-height-comfortable: 48px;
+  --grid-row-height-spacious: 60px;
+  --grid-header-height: 44px;
+  --grid-group-row-height: 40px;
+  --grid-toolbar-height: 56px;
+  --grid-status-bar-height: 40px;
+  --grid-ava-bar-height: 48px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GLASSMORPHIC GRID COLORS - Dark Mode (Default)
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* Grid Backgrounds */
+  --grid-bg: var(--bg-base, #0a0a0f);
+  --grid-header-bg: rgba(255, 255, 255, 0.02);
+  --grid-toolbar-bg: rgba(255, 255, 255, 0.01);
+  --grid-row-bg: transparent;
+  --grid-row-alt-bg: rgba(255, 255, 255, 0.01);
+  --grid-row-hover-bg: rgba(255, 255, 255, 0.04);
+  --grid-row-selected-bg: rgba(99, 102, 241, 0.12);
+  --grid-row-focused-bg: rgba(99, 102, 241, 0.08);
+  --grid-group-row-bg: rgba(255, 255, 255, 0.03);
+
+  /* Grid Borders */
+  --grid-border: rgba(255, 255, 255, 0.06);
+  --grid-border-hover: rgba(255, 255, 255, 0.12);
+  --grid-cell-border: rgba(255, 255, 255, 0.04);
+  --grid-resize-handle: var(--primary-500, #6366f1);
+  --grid-resize-handle-hover: var(--primary-400, #818cf8);
+
+  /* Grid Shadows & Glows */
+  --grid-container-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --grid-header-shadow: 0 1px 0 var(--grid-border);
+  --grid-row-glow-selected: 0 0 0 1px rgba(99, 102, 241, 0.3);
+  --grid-sticky-shadow: 4px 0 12px rgba(0, 0, 0, 0.2);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GRID TYPOGRAPHY
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --grid-header-font-size: 0.72rem;
+  --grid-header-font-weight: 600;
+  --grid-header-letter-spacing: 0.08em;
+  --grid-header-text-transform: uppercase;
+  --grid-header-color: var(--text-tertiary, #9ca3af);
+
+  --grid-cell-font-size: 0.875rem;
+  --grid-cell-font-weight: 400;
+  --grid-cell-color: var(--text-primary, #f3f4f6);
+  --grid-cell-muted-color: var(--text-tertiary, #9ca3af);
+
+  --grid-group-font-size: 0.8rem;
+  --grid-group-font-weight: 600;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GRID SPACING
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --grid-cell-padding-x: 16px;
+  --grid-cell-padding-y: 12px;
+  --grid-group-indent: 24px;
+  --grid-checkbox-size: 18px;
+  --grid-expand-icon-size: 16px;
+  --grid-column-gap: 0;
+  --grid-min-column-width: 80px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GRID ANIMATIONS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --grid-transition-fast: 100ms ease-out;
+  --grid-transition-normal: 200ms ease-out;
+  --grid-transition-slow: 300ms ease-out;
+  --grid-row-expand-duration: 200ms;
+  --grid-skeleton-shimmer: 1.5s ease-in-out infinite;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     AVA INTEGRATION COLORS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --grid-ava-bar-bg: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.08) 0%,
+    rgba(99, 102, 241, 0.08) 100%
+  );
+  --grid-ava-bar-border: rgba(6, 182, 212, 0.2);
+  --grid-ava-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+  --grid-ava-text-color: var(--accent-300, #67e8f9);
+  --grid-ava-action-bg: rgba(6, 182, 212, 0.15);
+  --grid-ava-action-hover: rgba(6, 182, 212, 0.25);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     FOOTER TOKENS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --grid-footer-height: 44px;
+  --grid-footer-bg: rgba(255, 255, 255, 0.02);
+  --grid-footer-border: var(--grid-border);
+  --grid-footer-font-size: 0.75rem;
+  --grid-footer-font-weight: 600;
+  --grid-footer-color: var(--text-tertiary, #9ca3af);
+  --grid-footer-aggregation-color: var(--text-primary, #f3f4f6);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     GLASS MORPHISM TOKENS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-bg-hover: rgba(255, 255, 255, 0.06);
+  --glass-bg-active: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.12);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     STATUS COLORS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  --status-open: #3b82f6;
+  --status-in-progress: #f59e0b;
+  --status-completed: #10b981;
+  --status-cancelled: #6b7280;
+  --status-on-hold: #8b5cf6;
+
+  --priority-critical: #ef4444;
+  --priority-high: #f97316;
+  --priority-medium: #eab308;
+  --priority-low: #22c55e;
+  --priority-none: #6b7280;
+}
+
+/* Light Mode Overrides */
+:root.light,
+.light {
+  --grid-bg: var(--bg-base, #ffffff);
+  --grid-header-bg: rgba(0, 0, 0, 0.02);
+  --grid-toolbar-bg: rgba(0, 0, 0, 0.01);
+  --grid-row-alt-bg: rgba(0, 0, 0, 0.01);
+  --grid-row-hover-bg: rgba(0, 0, 0, 0.02);
+  --grid-row-selected-bg: rgba(99, 102, 241, 0.08);
+  --grid-row-focused-bg: rgba(99, 102, 241, 0.05);
+  --grid-group-row-bg: rgba(0, 0, 0, 0.02);
+
+  --grid-border: rgba(0, 0, 0, 0.06);
+  --grid-border-hover: rgba(0, 0, 0, 0.12);
+  --grid-cell-border: rgba(0, 0, 0, 0.04);
+
+  --grid-container-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --grid-sticky-shadow: 4px 0 12px rgba(0, 0, 0, 0.05);
+
+  --grid-header-color: var(--text-tertiary, #6b7280);
+  --grid-cell-color: var(--text-primary, #111827);
+  --grid-cell-muted-color: var(--text-tertiary, #6b7280);
+
+  --glass-bg: rgba(0, 0, 0, 0.02);
+  --glass-bg-hover: rgba(0, 0, 0, 0.04);
+  --glass-bg-active: rgba(0, 0, 0, 0.06);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-border-hover: rgba(0, 0, 0, 0.1);
+}
+
+/* Density Mode Overrides */
+[data-density="compact"] {
+  --grid-row-height: var(--grid-row-height-compact);
+  --grid-cell-padding-x: 12px;
+  --grid-cell-padding-y: 8px;
+  --grid-cell-font-size: 0.8125rem;
+}
+
+[data-density="comfortable"] {
+  --grid-row-height: var(--grid-row-height-comfortable);
+}
+
+[data-density="spacious"] {
+  --grid-row-height: var(--grid-row-height-spacious);
+  --grid-cell-padding-x: 20px;
+  --grid-cell-padding-y: 16px;
+}
+
+/* =============================================================================
+   GRID COMPONENT STYLES
+   ============================================================================= */
+
+.hubble-data-grid {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  color: var(--grid-cell-color);
+  font-size: var(--grid-cell-font-size);
+}
+
+/* Row States */
+.grid-row {
+  transition:
+    background var(--grid-transition-fast),
+    box-shadow var(--grid-transition-fast),
+    transform var(--grid-transition-fast);
+}
+
+.grid-row:hover {
+  background: var(--grid-row-hover-bg);
+}
+
+.grid-row[data-selected="true"] {
+  background: var(--grid-row-selected-bg);
+  box-shadow: var(--grid-row-glow-selected);
+}
+
+.grid-row[data-focused="true"] {
+  background: var(--grid-row-focused-bg);
+  outline: 2px solid var(--primary-500, #6366f1);
+  outline-offset: -2px;
+}
+
+/* Group Row */
+.grid-row-group {
+  background: var(--grid-group-row-bg);
+  font-weight: var(--grid-group-font-weight);
+  cursor: pointer;
+}
+
+.grid-row-group:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Loading State (skeleton) */
+.grid-row-loading {
+  animation: skeleton-shimmer var(--grid-skeleton-shimmer);
+  background: linear-gradient(
+    90deg,
+    var(--grid-row-bg) 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    var(--grid-row-bg) 100%
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Header Styles */
+.grid-header-cell {
+  font-size: var(--grid-header-font-size);
+  font-weight: var(--grid-header-font-weight);
+  letter-spacing: var(--grid-header-letter-spacing);
+  text-transform: var(--grid-header-text-transform);
+  color: var(--grid-header-color);
+  user-select: none;
+}
+
+.grid-header-cell:hover {
+  color: var(--grid-cell-color);
+}
+
+/* Resize Handle */
+.grid-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background var(--grid-transition-fast);
+}
+
+.grid-resize-handle:hover,
+.grid-resize-handle.resizing {
+  background: var(--grid-resize-handle);
+}
+
+/* Cell Styles */
+.grid-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--grid-cell-padding-x);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scrollbar Styles */
+.hubble-data-grid ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.hubble-data-grid ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hubble-data-grid ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.hubble-data-grid ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.light .hubble-data-grid ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.light .hubble-data-grid ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Screen reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

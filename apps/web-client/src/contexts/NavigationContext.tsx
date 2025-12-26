@@ -19,8 +19,8 @@ import {
   ResolvedNavNode,
 } from '../types/navigation-v2';
 
-// Feature flag for V2 navigation
-const NAVIGATION_V2_ENABLED = import.meta.env.VITE_NAVIGATION_V2_ENABLED === 'true';
+// Feature flag for V2 navigation - enabled by default
+const NAVIGATION_V2_ENABLED = import.meta.env.VITE_NAVIGATION_V2_ENABLED !== 'false';
 
 // Context tags based on device/environment
 const getContextTags = (): string[] => {
@@ -76,34 +76,6 @@ const convertLegacyNavigation = (legacy: LegacyNavigationResponse): ResolvedNavi
   };
 };
 
-/**
- * Fallback navigation for immediate display while loading
- */
-const fallbackNavigation: ResolvedNavigation = {
-  profileId: 'fallback',
-  profileName: 'Default',
-  nodes: [
-    {
-      key: 'studio',
-      type: 'group',
-      label: 'Studio',
-      children: [
-        { key: 'studio-dashboard', type: 'module', label: 'Dashboard', icon: 'LayoutDashboard', route: '/studio' },
-        { key: 'tables', type: 'module', label: 'Tables', icon: 'Database', route: '/studio/tables' },
-        { key: 'scripts', type: 'module', label: 'Scripts', icon: 'FileCode', route: '/studio/scripts' },
-      ],
-    },
-  ],
-  favorites: [],
-  recentModules: [],
-  smartGroups: {
-    favorites: [],
-    recent: [],
-    frequent: [],
-  },
-  resolvedAt: new Date().toISOString(),
-};
-
 // Create context with default values
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 
@@ -113,9 +85,9 @@ interface NavigationProviderProps {
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children }) => {
   const { auth } = useAuth();
-  const [navigation, setNavigation] = useState<ResolvedNavigation | null>(fallbackNavigation);
+  const [navigation, setNavigation] = useState<ResolvedNavigation | null>(null);
   const [profiles, setProfiles] = useState<NavProfileSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Track if we've already fetched to prevent duplicate requests
@@ -173,7 +145,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     } catch (err) {
       console.error('Failed to fetch navigation:', err);
       setError('Failed to load navigation');
-      // Keep fallback navigation on error
+      // Navigation stays null on error - no fallback
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
@@ -189,7 +161,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   useEffect(() => {
     if (!isAuthenticated) {
       hasFetchedRef.current = false;
-      setNavigation(fallbackNavigation);
+      setNavigation(null);
       setProfiles([]);
     }
   }, [isAuthenticated]);

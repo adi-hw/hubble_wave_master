@@ -1,7 +1,7 @@
-# EAM Platform
+# HubbleWave Platform
 
 ## Overview
-This is a multi-tenant Enterprise Asset Management (EAM) platform built with:
+This is a multi-tenant platform built with:
 - **Frontend**: React (Vite)
 - **Backend**: NestJS Microservices
 - **Database**: PostgreSQL

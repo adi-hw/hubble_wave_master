@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, IsNull } from 'typeorm';
 import {
-  TenantDbService,
   WorkflowDefinition,
   WorkflowRun,
   WorkflowStepExecution,
-} from '@eam-platform/tenant-db';
-import { IsNull } from 'typeorm';
+} from '@hubblewave/instance-db';
 
 export interface WorkflowStep {
   id: string;
@@ -105,7 +105,7 @@ export interface ConditionalNext {
 }
 
 export interface WorkflowContext {
-  tenantId: string;
+  userId: string; // Removes tenantId
   runId: string;
   workflowId: string;
   triggeredBy?: string;
@@ -119,7 +119,12 @@ export class WorkflowEngineService {
   private readonly logger = new Logger(WorkflowEngineService.name);
 
   constructor(
-    private readonly tenantDb: TenantDbService,
+    @InjectRepository(WorkflowDefinition)
+    private readonly workflowRepo: Repository<WorkflowDefinition>,
+    @InjectRepository(WorkflowRun)
+    private readonly runRepo: Repository<WorkflowRun>,
+    @InjectRepository(WorkflowStepExecution)
+    private readonly stepExecRepo: Repository<WorkflowStepExecution>,
     private readonly eventEmitter: EventEmitter2
   ) {}
 
@@ -127,21 +132,15 @@ export class WorkflowEngineService {
    * Start a new workflow run
    */
   async startWorkflow(
-    tenantId: string,
     workflowCode: string,
     input: Record<string, unknown>,
     triggeredBy?: string,
     correlationId?: string
   ): Promise<WorkflowRun> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const workflowRepo = dataSource.getRepository(WorkflowDefinition);
-    const runRepo = dataSource.getRepository(WorkflowRun);
-
     // Find workflow definition
-    const workflow = await workflowRepo.findOne({
+    const workflow = await this.workflowRepo.findOne({
       where: [
-        { tenantId, code: workflowCode, isActive: true, deletedAt: IsNull() },
-        { tenantId: undefined, code: workflowCode, isActive: true, deletedAt: IsNull() },
+        { code: workflowCode, isActive: true, deletedAt: IsNull() },
       ],
     });
 
@@ -150,9 +149,8 @@ export class WorkflowEngineService {
     }
 
     // Create workflow run
-    const run = runRepo.create({
+    const run = this.runRepo.create({
       workflowId: workflow.id,
-      tenantId,
       triggerType: workflow.triggerType,
       triggeredBy,
       status: 'pending',
@@ -162,13 +160,12 @@ export class WorkflowEngineService {
       executionPath: [],
     });
 
-    await runRepo.save(run);
+    await this.runRepo.save(run);
 
     this.logger.log(`Started workflow run ${run.id} for ${workflowCode}`);
 
     // Emit event
     this.eventEmitter.emit('workflow.started', {
-      tenantId,
       runId: run.id,
       workflowCode,
       input,
@@ -176,10 +173,10 @@ export class WorkflowEngineService {
 
     // Execute workflow based on mode
     if (workflow.executionMode === 'sync') {
-      await this.executeWorkflow(tenantId, run.id);
+      await this.executeWorkflow(run.id);
     } else {
       // Async execution - queue for processing
-      setImmediate(() => this.executeWorkflow(tenantId, run.id));
+      setImmediate(() => this.executeWorkflow(run.id));
     }
 
     return run;
@@ -188,17 +185,13 @@ export class WorkflowEngineService {
   /**
    * Execute a workflow run
    */
-  async executeWorkflow(tenantId: string, runId: string): Promise<void> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const runRepo = dataSource.getRepository(WorkflowRun);
-    const workflowRepo = dataSource.getRepository(WorkflowDefinition);
-
-    const run = await runRepo.findOne({ where: { id: runId } });
+  async executeWorkflow(runId: string): Promise<void> {
+    const run = await this.runRepo.findOne({ where: { id: runId } });
     if (!run) {
       throw new Error(`Workflow run not found: ${runId}`);
     }
 
-    const workflow = await workflowRepo.findOne({ where: { id: run.workflowId } });
+    const workflow = await this.workflowRepo.findOne({ where: { id: run.workflowId } });
     if (!workflow) {
       throw new Error(`Workflow definition not found: ${run.workflowId}`);
     }
@@ -206,11 +199,11 @@ export class WorkflowEngineService {
     // Update run status
     run.status = 'running';
     run.startedAt = new Date();
-    await runRepo.save(run);
+    await this.runRepo.save(run);
 
     // Build workflow context
     const context: WorkflowContext = {
-      tenantId,
+      userId: run.triggeredBy || 'system',
       runId,
       workflowId: workflow.id,
       triggeredBy: run.triggeredBy,
@@ -230,18 +223,17 @@ export class WorkflowEngineService {
       }
 
       // Execute from start step
-      await this.executeStep(tenantId, run, workflow, startStep.id, context);
+      await this.executeStep(run, workflow, startStep.id, context);
 
       // Reload run to get final state
-      const finalRun = await runRepo.findOne({ where: { id: runId } });
+      const finalRun = await this.runRepo.findOne({ where: { id: runId } });
       if (finalRun && finalRun.status === 'running') {
         finalRun.status = 'completed';
         finalRun.completedAt = new Date();
         finalRun.outputData = context.variables;
-        await runRepo.save(finalRun);
+        await this.runRepo.save(finalRun);
 
         this.eventEmitter.emit('workflow.completed', {
-          tenantId,
           runId,
           output: context.variables,
         });
@@ -252,10 +244,9 @@ export class WorkflowEngineService {
       run.status = 'failed';
       run.errorMessage = error.message;
       run.completedAt = new Date();
-      await runRepo.save(run);
+      await this.runRepo.save(run);
 
       this.eventEmitter.emit('workflow.failed', {
-        tenantId,
         runId,
         error: error.message,
       });
@@ -263,7 +254,6 @@ export class WorkflowEngineService {
       // Handle error based on workflow config
       if (workflow.errorHandling === 'notify_admin') {
         this.eventEmitter.emit('notification.send', {
-          tenantId,
           templateCode: 'workflow_error',
           recipients: ['admin'],
           data: { workflowCode: workflow.code, runId, error: error.message },
@@ -276,16 +266,11 @@ export class WorkflowEngineService {
    * Execute a single step
    */
   private async executeStep(
-    tenantId: string,
     run: WorkflowRun,
     workflow: WorkflowDefinition,
     stepId: string,
     context: WorkflowContext
   ): Promise<void> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const runRepo = dataSource.getRepository(WorkflowRun);
-    const stepExecRepo = dataSource.getRepository(WorkflowStepExecution);
-
     const steps: WorkflowStep[] = workflow.steps || [];
     const step = steps.find((s) => s.id === stepId);
 
@@ -294,7 +279,7 @@ export class WorkflowEngineService {
     }
 
     // Create step execution record
-    const stepExec = stepExecRepo.create({
+    const stepExec = this.stepExecRepo.create({
       runId: run.id,
       stepId: step.id,
       stepType: step.type,
@@ -302,12 +287,12 @@ export class WorkflowEngineService {
       inputData: { context: context.variables, input: context.input },
       startedAt: new Date(),
     });
-    await stepExecRepo.save(stepExec);
+    await this.stepExecRepo.save(stepExec);
 
     // Update run current step
     run.currentStepId = stepId;
     run.executionPath = [...(run.executionPath || []), { stepId, timestamp: new Date() }];
-    await runRepo.save(run);
+    await this.runRepo.save(run);
 
     try {
       let nextStepId: string | undefined;
@@ -340,11 +325,11 @@ export class WorkflowEngineService {
           await this.createApprovalTask(step, run, context);
           stepExec.status = 'waiting';
           stepExec.waitingFor = { type: 'approval', approvers: step.config.approvers };
-          await stepExecRepo.save(stepExec);
+          await this.stepExecRepo.save(stepExec);
 
           // Update run status to waiting
           run.status = 'waiting';
-          await runRepo.save(run);
+          await this.runRepo.save(run);
           return; // Workflow paused until approval
 
         case 'wait':
@@ -403,11 +388,10 @@ export class WorkflowEngineService {
       stepExec.completedAt = new Date();
       stepExec.durationMs = Date.now() - stepExec.startedAt!.getTime();
       stepExec.outputData = context.stepOutputs[stepId] as Record<string, any>;
-      await stepExecRepo.save(stepExec);
+      await this.stepExecRepo.save(stepExec);
 
       // Emit step completed event
       this.eventEmitter.emit('workflow.step_completed', {
-        tenantId,
         runId: run.id,
         stepId,
         stepType: step.type,
@@ -416,17 +400,17 @@ export class WorkflowEngineService {
 
       // Continue to next step
       if (nextStepId) {
-        await this.executeStep(tenantId, run, workflow, nextStepId, context);
+        await this.executeStep(run, workflow, nextStepId, context);
       }
     } catch (error: any) {
       stepExec.status = 'failed';
       stepExec.errorMessage = error.message;
       stepExec.completedAt = new Date();
-      await stepExecRepo.save(stepExec);
+      await this.stepExecRepo.save(stepExec);
 
       // Check for error handling step
       if (step.onError) {
-        await this.executeStep(tenantId, run, workflow, step.onError, context);
+        await this.executeStep(run, workflow, step.onError, context);
       } else {
         throw error;
       }
@@ -447,7 +431,6 @@ export class WorkflowEngineService {
       }, 30000);
 
       this.eventEmitter.emit('workflow.action', {
-        tenantId: context.tenantId,
         runId: context.runId,
         stepId: step.id,
         actionType: step.config.actionType,
@@ -500,7 +483,6 @@ export class WorkflowEngineService {
     const approvers = this.resolveApprovers(step.config.approvers, context);
 
     this.eventEmitter.emit('approval.create', {
-      tenantId: context.tenantId,
       workflowRunId: run.id,
       stepId: step.id,
       approvers,
@@ -519,20 +501,16 @@ export class WorkflowEngineService {
     run: WorkflowRun,
     context: WorkflowContext
   ): Promise<void> {
-    const dataSource = await this.tenantDb.getDataSource(context.tenantId);
-    const runRepo = dataSource.getRepository(WorkflowRun);
-    const stepExecRepo = dataSource.getRepository(WorkflowStepExecution);
-
     stepExec.status = 'waiting';
     stepExec.waitingFor = {
       type: step.config.waitType,
       duration: step.config.duration,
       unit: step.config.durationUnit,
     };
-    await stepExecRepo.save(stepExec);
+    await this.stepExecRepo.save(stepExec);
 
     run.status = 'waiting';
-    await runRepo.save(run);
+    await this.runRepo.save(run);
 
     // Schedule resume based on wait type
     if (step.config.waitType === 'duration' && step.config.duration) {
@@ -540,7 +518,7 @@ export class WorkflowEngineService {
 
       // In production, use a job queue
       setTimeout(() => {
-        this.resumeWorkflow(context.tenantId, run.id, step.id);
+        this.resumeWorkflow(run.id, step.id);
       }, ms);
     }
   }
@@ -560,7 +538,7 @@ export class WorkflowEngineService {
       step.config.branches.map(async (branch, index) => {
         const branchContext = { ...context };
         for (const branchStep of branch) {
-          await this.executeStep(context.tenantId, run, workflow, branchStep.id, branchContext);
+          await this.executeStep(run, workflow, branchStep.id, branchContext);
         }
         return { index, output: branchContext.stepOutputs };
       })
@@ -578,7 +556,7 @@ export class WorkflowEngineService {
   ): Promise<unknown> {
     try {
       const fn = new Function(
-        'input', 'variables', 'stepOutputs',
+        'input', 'variables', 'stepOutputs', // Should fix sandbox context later
         `"use strict"; return (async () => { ${script} })();`
       );
       return await fn(context.input, context.variables, context.stepOutputs);
@@ -624,7 +602,6 @@ export class WorkflowEngineService {
     const recipients = this.resolveApprovers(step.config.recipients, context);
 
     this.eventEmitter.emit('notification.send', {
-      tenantId: context.tenantId,
       templateCode: step.config.templateCode,
       recipients,
       channels: step.config.channels || ['email'],
@@ -645,7 +622,6 @@ export class WorkflowEngineService {
     // Emit event for data service to handle
     return new Promise((resolve, reject) => {
       this.eventEmitter.emit('record.operation', {
-        tenantId: context.tenantId,
         operation,
         tableName,
         data: this.interpolateObject(step.config.fieldMapping || {}, context),
@@ -688,7 +664,6 @@ export class WorkflowEngineService {
       : context.variables;
 
     const subRun = await this.startWorkflow(
-      context.tenantId,
       step.config.workflowCode,
       input as Record<string, unknown>,
       context.triggeredBy,
@@ -704,27 +679,21 @@ export class WorkflowEngineService {
    * Resume a paused workflow
    */
   async resumeWorkflow(
-    tenantId: string,
     runId: string,
     fromStepId: string,
     resumeData?: Record<string, unknown>
   ): Promise<void> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const runRepo = dataSource.getRepository(WorkflowRun);
-    const workflowRepo = dataSource.getRepository(WorkflowDefinition);
-    const stepExecRepo = dataSource.getRepository(WorkflowStepExecution);
-
-    const run = await runRepo.findOne({ where: { id: runId } });
+    const run = await this.runRepo.findOne({ where: { id: runId } });
     if (!run || run.status !== 'waiting') {
       this.logger.warn(`Cannot resume workflow ${runId}: not in waiting state`);
       return;
     }
 
-    const workflow = await workflowRepo.findOne({ where: { id: run.workflowId } });
+    const workflow = await this.workflowRepo.findOne({ where: { id: run.workflowId } });
     if (!workflow) return;
 
     // Update waiting step
-    const stepExec = await stepExecRepo.findOne({
+    const stepExec = await this.stepExecRepo.findOne({
       where: { runId, stepId: fromStepId, status: 'waiting' },
     });
 
@@ -732,16 +701,16 @@ export class WorkflowEngineService {
       stepExec.status = 'completed';
       stepExec.completedAt = new Date();
       stepExec.outputData = resumeData;
-      await stepExecRepo.save(stepExec);
+      await this.stepExecRepo.save(stepExec);
     }
 
     // Update run status
     run.status = 'running';
-    await runRepo.save(run);
+    await this.runRepo.save(run);
 
     // Build context
     const context: WorkflowContext = {
-      tenantId,
+      userId: run.triggeredBy || 'system',
       runId,
       workflowId: workflow.id,
       triggeredBy: run.triggeredBy,
@@ -755,7 +724,7 @@ export class WorkflowEngineService {
     const currentStep = steps.find((s) => s.id === fromStepId);
 
     if (currentStep && typeof currentStep.next === 'string') {
-      await this.executeStep(tenantId, run, workflow, currentStep.next, context);
+      await this.executeStep(run, workflow, currentStep.next, context);
     }
   }
 

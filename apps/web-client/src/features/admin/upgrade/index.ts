@@ -1,1 +1,0 @@
-export { UpgradeCenterPage } from './UpgradeCenterPage';

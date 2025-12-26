@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
-import { ApiKey } from '@eam-platform/platform-db';
+import { Repository } from 'typeorm';
+import { ApiKey } from '@hubblewave/instance-db';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
 export interface ValidatedApiKey {
   id: string;
   name: string;
-  tenantId: string;
+  userId: string;
   scopes: string[];
 }
 
@@ -22,11 +22,11 @@ export class ApiKeyService {
   ) {}
 
   /**
-   * Create a new API key for a tenant
+   * Create a new API key for a user (instance-scoped)
    * Returns the plain key (only shown once) and the stored API key record
    */
   async createKey(
-    tenantId: string,
+    userId: string,
     name: string,
     scopes: string[] = [],
     expiresAt?: Date,
@@ -43,13 +43,13 @@ export class ApiKeyService {
       keyPrefix,
       keyHash,
       scopes,
-      tenantId,
+      userId,
       expiresAt,
       isActive: true,
     });
 
     await this.apiKeyRepo.save(apiKey);
-    this.logger.log(`API key created: ${name} for tenant ${tenantId}`);
+    this.logger.log(`API key created: ${name} for user ${userId}`);
 
     return { key: plainKey, apiKey };
   }
@@ -70,7 +70,6 @@ export class ApiKeyService {
       where: {
         keyPrefix,
         isActive: true,
-        deletedAt: IsNull(),
       },
     });
 
@@ -92,7 +91,7 @@ export class ApiKeyService {
         return {
           id: candidate.id,
           name: candidate.name,
-          tenantId: candidate.tenantId,
+          userId: candidate.userId,
           scopes: candidate.scopes,
         };
       }
@@ -104,14 +103,14 @@ export class ApiKeyService {
   /**
    * Revoke an API key (soft disable)
    */
-  async revokeKey(id: string, tenantId: string): Promise<boolean> {
+  async revokeKey(id: string, userId: string): Promise<boolean> {
     const result = await this.apiKeyRepo.update(
-      { id, tenantId },
+      { id, userId },
       { isActive: false },
     );
 
     if (result.affected && result.affected > 0) {
-      this.logger.log(`API key revoked: ${id} for tenant ${tenantId}`);
+      this.logger.log(`API key revoked: ${id} for user ${userId}`);
       return true;
     }
     return false;
@@ -120,11 +119,11 @@ export class ApiKeyService {
   /**
    * List all API keys for a tenant (excluding the hash)
    */
-  async listKeys(tenantId: string): Promise<Omit<ApiKey, 'keyHash'>[]> {
+  async listKeys(userId: string): Promise<Omit<ApiKey, 'keyHash'>[]> {
     const keys = await this.apiKeyRepo.find({
-      where: { tenantId, deletedAt: IsNull() },
+      where: { userId },
       order: { createdAt: 'DESC' },
-      select: ['id', 'name', 'keyPrefix', 'scopes', 'tenantId', 'expiresAt', 'lastUsedAt', 'isActive', 'createdAt', 'updatedAt'],
+      select: ['id', 'name', 'keyPrefix', 'scopes', 'userId', 'expiresAt', 'lastUsedAt', 'isActive', 'createdAt'],
     });
     return keys;
   }
@@ -132,10 +131,10 @@ export class ApiKeyService {
   /**
    * Get a single API key by ID (for details view)
    */
-  async getKey(id: string, tenantId: string): Promise<Omit<ApiKey, 'keyHash'> | null> {
+  async getKey(id: string, userId: string): Promise<Omit<ApiKey, 'keyHash'> | null> {
     const key = await this.apiKeyRepo.findOne({
-      where: { id, tenantId, deletedAt: IsNull() },
-      select: ['id', 'name', 'keyPrefix', 'scopes', 'tenantId', 'expiresAt', 'lastUsedAt', 'isActive', 'createdAt', 'updatedAt'],
+      where: { id, userId },
+      select: ['id', 'name', 'keyPrefix', 'scopes', 'userId', 'expiresAt', 'lastUsedAt', 'isActive', 'createdAt'],
     });
     return key;
   }
@@ -143,14 +142,14 @@ export class ApiKeyService {
   /**
    * Permanently delete an API key
    */
-  async deleteKey(id: string, tenantId: string): Promise<boolean> {
+  async deleteKey(id: string, userId: string): Promise<boolean> {
     const result = await this.apiKeyRepo.update(
-      { id, tenantId },
-      { deletedAt: new Date(), isActive: false },
+      { id, userId },
+      { isActive: false, expiresAt: new Date() },
     );
 
     if (result.affected && result.affected > 0) {
-      this.logger.log(`API key deleted: ${id} for tenant ${tenantId}`);
+      this.logger.log(`API key deleted: ${id} for user ${userId}`);
       return true;
     }
     return false;
@@ -159,11 +158,12 @@ export class ApiKeyService {
   /**
    * Update API key scopes
    */
-  async updateScopes(id: string, tenantId: string, scopes: string[]): Promise<boolean> {
+  async updateScopes(id: string, userId: string, scopes: string[]): Promise<boolean> {
     const result = await this.apiKeyRepo.update(
-      { id, tenantId, deletedAt: IsNull() },
+      { id, userId },
       { scopes },
     );
     return (result.affected ?? 0) > 0;
   }
 }
+

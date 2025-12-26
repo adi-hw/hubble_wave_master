@@ -1,10 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useProfile } from '../auth/useProfile';
-import { LogOut, Settings, User, ChevronDown, Bell, Search } from 'lucide-react';
+import { LogOut, User, ChevronDown, Bell, Search, Palette, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/auth';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
 
 export const AppHeader: React.FC = () => {
   const { auth } = useAuth();
@@ -16,7 +16,7 @@ export const AppHeader: React.FC = () => {
 
   const initials = displayName
     .split(' ')
-    .map((p) => p[0])
+    .map((p: string) => p[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
@@ -66,19 +66,11 @@ export const AppHeader: React.FC = () => {
       {/* Right Side Actions */}
       <div className="flex items-center gap-2">
         {/* Admin Badges */}
-        {user?.isPlatformAdmin && (
-          <span className="hidden sm:inline-flex badge-primary">
-            Platform Admin
-          </span>
-        )}
-        {!user?.isPlatformAdmin && user?.isTenantAdmin && (
+        {user?.isAdmin && (
           <span className="hidden sm:inline-flex badge-neutral">
-            Tenant Admin
+            Admin
           </span>
         )}
-
-        {/* Theme Toggle */}
-        <ThemeToggle variant="dropdown" size="md" />
 
         {/* Notifications */}
         <button
@@ -209,15 +201,28 @@ const UserMenu: React.FC<{
             <button
               onClick={() => {
                 setIsOpen(false);
-                onNavigate('/settings');
+                onNavigate('/settings/appearance');
               }}
               className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
               style={{ color: 'var(--text-secondary)' }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
-              <Settings className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-              Settings
+              <Palette className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              Appearance
+            </button>
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onNavigate('/settings/security');
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              <Shield className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              Security
             </button>
           </div>
 

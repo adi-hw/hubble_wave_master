@@ -10,7 +10,6 @@ import { AVAMessage, AVAContext } from './ava.service';
 export interface Conversation {
   id: string;
   userId: string;
-  tenantId: string;
   title?: string;
   messages: AVAMessage[];
   context: Partial<AVAContext>;
@@ -88,7 +87,6 @@ export class ConversationMemoryService {
   async startConversation(
     dataSource: DataSource,
     userId: string,
-    tenantId: string,
     context?: Partial<AVAContext>
   ): Promise<Conversation> {
     const id = crypto.randomUUID();
@@ -97,7 +95,6 @@ export class ConversationMemoryService {
     const conversation: Conversation = {
       id,
       userId,
-      tenantId,
       messages: [],
       context: context || {},
       createdAt: now,
@@ -144,7 +141,6 @@ export class ConversationMemoryService {
     const conversation: Conversation = {
       id: row.id,
       userId: row.user_id,
-      tenantId: '', // Will be set by caller
       title: row.title,
       messages: row.messages || [],
       context: row.context || {},

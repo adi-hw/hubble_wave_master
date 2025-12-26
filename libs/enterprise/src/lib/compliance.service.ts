@@ -10,7 +10,7 @@ import {
   ComplianceFramework,
   DataClassificationLevel,
   EnforcementAction,
-} from '@eam-platform/tenant-db';
+} from '@hubblewave/instance-db';
 
 export interface ClassificationResult {
   level: DataClassificationLevel;

@@ -3,20 +3,8 @@ import { AuthProvider } from '../auth/AuthContext';
 import { Login } from '../pages/Login';
 import { Unauthorized } from '../pages/Unauthorized';
 import { HomePage } from '../pages/HomePage';
-import { ModuleListPage } from '../pages/ModuleListPage';
-import { ModuleRecordPage } from '../pages/ModuleRecordPage';
-import { ModuleCreatePage } from '../pages/ModuleCreatePage';
-import { SchemaList } from '../pages/studio/SchemaList';
-import { SchemaEditor } from '../pages/studio/SchemaEditor';
 import { NavigationBuilder } from '../pages/studio/NavigationBuilder';
-import { AppShell } from '../components/layout/AppShell';
-import { TableListPage } from '../features/tables/TableListPage';
-import { TableDetailPage } from '../features/tables/TableDetailPage';
-import { NewTablePage } from '../features/tables/NewTablePage';
-import { FieldsTab } from '../features/tables/FieldsTab';
-import { DataTab } from '../features/tables/DataTab';
-import { AccessControlTab } from '../features/tables/AccessControlTab';
-import { LayoutsTab, UsageTab } from '../features/tables/TabsPlaceholders';
+import { AppShellV2 } from '../components/shell/AppShellV2';
 import { ProtectedRoute } from '../routing/ProtectedRoute';
 
 // Admin pages
@@ -27,70 +15,40 @@ import {
   UserDetailPage,
   CollectionsListPage,
   CollectionEditorPage,
-  PropertiesListPage,
-  PropertyEditorPage,
-  ViewsListPage,
-  ViewEditorPage,
-  ScriptsListPage,
-  ScriptEditorPage,
-  BusinessRulesListPage,
-  BusinessRuleEditorPage,
-  WorkflowsListPage,
-  WorkflowEditorPage,
-  ApprovalsListPage,
-  ApprovalEditorPage,
-  EventsListPage,
-  EventEditorPage,
-  NotificationsListPage,
-  NotificationEditorPage,
-  CustomizationsListPage,
-  CustomizationDetailPage,
-  PlatformConfigBrowser,
-  UpgradeCenterPage,
-  SettingsPage,
-  ChangeHistoryPage,
-  // Modern Automations UI
-  BusinessRulesPage,
-  WorkflowsPage,
-  WorkflowRunsPage,
-  // Integrations
-  IntegrationsPage,
-  // Analytics
-  AnalyticsDashboard,
-  // Modules
-  ModulesPage,
-  // Reports
-  ReportsPage,
+  CollectionWizard,
+  PropertiesPage,
+  // Groups
+  GroupsPage,
+  GroupFormPage,
+  GroupMembersPage,
+  GroupRolesPage,
+  // Roles & Permissions
+  RolesPage,
+  // Access Rules
+  AccessRulesPage,
   // Enterprise Features
   SSOConfigPage,
+  LDAPConfigPage,
   AuditLogViewer,
-  ComplianceDashboard,
-  // Commitments (SLA/OLA)
-  CommitmentsListPage,
-  CommitmentEditorPage,
-  // Import/Export
-  ImportPage,
-  ExportPage,
-  ConnectionsPage,
-  // AVA Governance
-  AVAAuditTrailPage,
-  AVAPermissionsPage,
 } from '../features/admin';
 
-// Data pages (Schema Engine runtime)
-import { CollectionListPage, CollectionRecordPage } from '../features/data';
 
-// Service Portal pages
-import {
-  ServicePortalHome,
-  ServiceCatalog,
-  MyItemsPage,
-  KnowledgeBase,
-} from '../features/portal';
+
+// Data pages (Schema Engine runtime)
+import { CollectionRecordPage } from '../features/data';
+
+import { ThemeCustomizerPage } from '../pages/ThemeCustomizer';
+import { SettingsPage as UserSettingsPage } from '../pages/Settings';
+import { SecuritySettingsPage } from '../pages/SecuritySettings';
+import { ProfileSettingsPage } from '../pages/ProfileSettings';
+import { VerifyEmailPage } from '../pages/VerifyEmail';
+import { ResetPassword } from '../pages/ResetPassword';
+import { MfaSetup } from '../pages/MfaSetup';
+import { ListView } from '../pages/ListView';
 
 const ShellRoute = () => (
   <ProtectedRoute>
-    <AppShell />
+    <AppShellV2 />
   </ProtectedRoute>
 );
 
@@ -99,50 +57,18 @@ export function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route element={<ShellRoute />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/studio/schema" element={<SchemaList />} />
-          <Route path="/studio/schema/new" element={<SchemaEditor />} />
-          <Route path="/studio/schema/:tableName" element={<SchemaEditor />} />
-          {/* Studio - Tables & Schema */}
-          <Route
-            path="/studio/tables"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <TableListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/tables/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <NewTablePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/tables/:tableCode"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <TableDetailPage />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="fields" element={<FieldsTab />} />
-            <Route path="data" element={<DataTab />} />
-            <Route path="layouts" element={<LayoutsTab />} />
-            <Route path="access" element={<AccessControlTab />} />
-            <Route path="usage" element={<UsageTab />} />
-          </Route>
 
           {/* Studio Dashboard */}
           <Route
             path="/studio"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <AdminDashboardPage />
               </ProtectedRoute>
             }
@@ -152,7 +78,7 @@ export function App() {
           <Route
             path="/studio/users"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <UsersListPage />
               </ProtectedRoute>
             }
@@ -160,7 +86,7 @@ export function App() {
           <Route
             path="/studio/users/invite"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <UserInvitePage />
               </ProtectedRoute>
             }
@@ -168,17 +94,70 @@ export function App() {
           <Route
             path="/studio/users/:id"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <UserDetailPage />
               </ProtectedRoute>
             }
           />
 
+          {/* Studio - Groups Management */}
+          <Route
+            path="/studio/groups"
+            element={
+              <ProtectedRoute roles="admin">
+                <GroupsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/groups/new"
+            element={
+              <ProtectedRoute roles="admin">
+                <GroupFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/groups/:id/edit"
+            element={
+              <ProtectedRoute roles="admin">
+                <GroupFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/groups/:id/members"
+            element={
+              <ProtectedRoute roles="admin">
+                <GroupMembersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/groups/:id/roles"
+            element={
+              <ProtectedRoute roles="admin">
+                <GroupRolesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Studio - Roles & Permissions */}
+          <Route
+            path="/studio/roles"
+            element={
+              <ProtectedRoute roles="admin">
+                <RolesPage />
+              </ProtectedRoute>
+            }
+          />
+
+
           {/* Studio - Collections (Schema Engine) */}
           <Route
             path="/studio/collections"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <CollectionsListPage />
               </ProtectedRoute>
             }
@@ -186,262 +165,41 @@ export function App() {
           <Route
             path="/studio/collections/new"
             element={
-              <ProtectedRoute roles="tenant_admin">
-                <CollectionEditorPage />
+              <ProtectedRoute roles="admin">
+                <CollectionWizard />
               </ProtectedRoute>
             }
           />
           <Route
             path="/studio/collections/:id"
             element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <CollectionEditorPage />
               </ProtectedRoute>
             }
           />
           <Route
+            path="/studio/collections/:id/access"
+            element={
+              <ProtectedRoute roles="admin">
+                <AccessRulesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/studio/collections/:id/properties"
             element={
-              <ProtectedRoute roles="tenant_admin">
-                <PropertiesListPage />
+              <ProtectedRoute roles="admin">
+                <PropertiesPage />
               </ProtectedRoute>
             }
           />
           <Route
             path="/studio/collections/:id/properties/:propertyId"
             element={
-              <ProtectedRoute roles="tenant_admin">
-                <PropertyEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/collections/:collectionId/views"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ViewsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/collections/:collectionId/views/:viewId"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ViewEditorPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Studio - Automation */}
-          <Route
-            path="/studio/scripts"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ScriptsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/scripts/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ScriptEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/scripts/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ScriptEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/business-rules"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRulesListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/business-rules/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRuleEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/business-rules/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRuleEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/workflows"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/workflows/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/workflows/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/approvals"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ApprovalsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/approvals/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ApprovalEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/approvals/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ApprovalEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/events"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <EventsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/events/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <EventEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/events/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <EventEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/notifications"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <NotificationsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/notifications/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <NotificationEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/notifications/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <NotificationEditorPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Studio - Configuration */}
-          <Route
-            path="/studio/platform-config"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <PlatformConfigBrowser />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/customizations"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CustomizationsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/customizations/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CustomizationDetailPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/customizations/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CustomizationDetailPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/settings"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/history"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ChangeHistoryPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/upgrade"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <UpgradeCenterPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Studio - Navigation Builder */}
-          <Route
-            path="/studio/navigation"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <NavigationBuilder />
+              <ProtectedRoute roles="admin">
+                <PropertiesPage />
               </ProtectedRoute>
             }
           />
@@ -450,243 +208,63 @@ export function App() {
           <Route
             path="/studio/properties"
             element={
-              <ProtectedRoute roles="tenant_admin">
-                <PropertiesListPage />
+              <ProtectedRoute roles="admin">
+                <PropertiesPage />
               </ProtectedRoute>
             }
           />
 
-          {/* Studio - Standalone Views List */}
-          <Route
-            path="/studio/views"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ViewsListPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Studio - Commitments (SLA/OLA) */}
-          <Route
-            path="/studio/commitments"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CommitmentsListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/commitments/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CommitmentEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/commitments/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <CommitmentEditorPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Studio - Import/Export & Connections */}
-          <Route
-            path="/studio/import"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ImportPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/export"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ExportPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/studio/connections"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ConnectionsPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - Automations (Modern UI) */}
-          <Route
-            path="/admin/automations/rules"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRulesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/rules/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRuleEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/rules/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <BusinessRuleEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/workflows"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/workflows/new"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/workflows/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/runs"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowRunsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/automations/runs/:id"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <WorkflowRunsPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - Integrations */}
-          <Route
-            path="/admin/integrations"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <IntegrationsPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - Analytics */}
-          <Route
-            path="/admin/analytics"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <AnalyticsDashboard />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - Modules */}
-          <Route
-            path="/admin/modules"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ModulesPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - Reports */}
-          <Route
-            path="/admin/reports"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ReportsPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Admin - AVA Governance */}
-          <Route
-            path="/admin/ava/permissions"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <AVAPermissionsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/ava/audit"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <AVAAuditTrailPage />
-              </ProtectedRoute>
-            }
-          />
 
           {/* Admin - Enterprise Features */}
           <Route
-            path="/admin/enterprise/audit"
+            path="/studio/sso"
             element={
-              <ProtectedRoute roles="tenant_admin">
-                <AuditLogViewer />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/enterprise/compliance"
-            element={
-              <ProtectedRoute roles="tenant_admin">
-                <ComplianceDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/enterprise/sso"
-            element={
-              <ProtectedRoute roles="tenant_admin">
+              <ProtectedRoute roles="admin">
                 <SSOConfigPage />
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/studio/ldap"
+            element={
+              <ProtectedRoute roles="admin">
+                <LDAPConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/audit"
+            element={
+              <ProtectedRoute roles="admin">
+                <AuditLogViewer />
+              </ProtectedRoute>
+            }
+          />
 
-          {/* Data Engine - Collection Data Pages */}
-          <Route path="/data/:collectionCode" element={<CollectionListPage />} />
-          <Route path="/data/:collectionCode/:recordId" element={<CollectionRecordPage />} />
 
-          {/* Service Portal - End User Self-Service */}
-          <Route path="/portal" element={<ServicePortalHome />} />
-          <Route path="/portal/catalog" element={<ServiceCatalog />} />
-          <Route path="/portal/catalog/:itemId" element={<ServiceCatalog />} />
-          <Route path="/portal/my-items" element={<MyItemsPage />} />
-          <Route path="/portal/requests/:requestId" element={<MyItemsPage />} />
-          <Route path="/portal/knowledge" element={<KnowledgeBase />} />
-          <Route path="/portal/knowledge/:articleId" element={<KnowledgeBase />} />
 
-          {/* Legacy: List view: /table.list */}
-          <Route path="/:tableCode.list" element={<ModuleListPage />} />
-          {/* Legacy: Create: /table.form */}
-          <Route path="/:tableCode.form" element={<ModuleCreatePage />} />
-          {/* Legacy: Record view/edit: /table.form/:id */}
-          <Route path="/:tableCode.form/:id" element={<ModuleRecordPage />} />
+          {/* ListView - ServiceNow-style URL pattern (e.g., /work_orders.list) */}
+          <Route path="/:collectionCode.list" element={<ListView />} />
+          {/* Record detail page (e.g., /work_orders/123) */}
+          <Route path="/:collectionCode/:recordId" element={<CollectionRecordPage />} />
+
+          {/* User Settings */}
+          <Route path="/settings" element={<UserSettingsPage />} />
+          <Route path="/settings/profile" element={<ProfileSettingsPage />} />
+          <Route path="/settings/themes" element={<ThemeCustomizerPage />} />
+          <Route path="/settings/security" element={<SecuritySettingsPage />} />
+          <Route path="/settings/mfa-setup" element={<MfaSetup />} />
+
+          {/* Studio - Navigation */}
+          <Route
+            path="/studio/navigation"
+            element={
+              <ProtectedRoute roles="admin">
+                <NavigationBuilder />
+              </ProtectedRoute>
+            }
+          />
+
         </Route>
 
         {/* Redirect root to default module list */}

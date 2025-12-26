@@ -2,21 +2,21 @@ version: '3.8'
 
 services:
 
-  # 1. Core Database (PostgreSQL)
+  # 1. Core Database (PostgreSQL with pgvector)
   postgres:
-    image: postgres:16-alpine
-    container_name: eam_postgres
+    image: pgvector/pgvector:pg16
+    container_name: hw_postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-eam_global}
+      POSTGRES_USER: ${POSTGRES_USER:-hubblewave}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hubblewave}
+      POSTGRES_DB: ${POSTGRES_DB:-hubblewave}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db:/docker-entrypoint-initdb.d:ro
     networks:
-      - eam_net
+      - hw_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-eam_global}"]
       interval: 10s
@@ -27,14 +27,14 @@ services:
   # 2. Cache & Pub/Sub (Redis)
   redis:
     image: redis:7-alpine
-    container_name: eam_redis
+    container_name: hw_redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
-      - eam_net
+      - hw_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -45,7 +45,7 @@ services:
   # 3. Object Storage (MinIO - S3 Compatible)
   minio:
     image: minio/minio:latest
-    container_name: eam_minio
+    container_name: hw_minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -56,7 +56,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - eam_net
+      - hw_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -67,7 +67,7 @@ services:
   # 4. Full-Text Search (TypeSense)
   typesense:
     image: typesense/typesense:27.1
-    container_name: eam_typesense
+    container_name: hw_typesense
     ports:
       - "8108:8108"
     environment:
@@ -77,7 +77,7 @@ services:
     volumes:
       - typesense_data:/data
     networks:
-      - eam_net
+      - hw_net
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8108/health"]
       interval: 10s
@@ -85,24 +85,8 @@ services:
       retries: 5
       start_period: 10s
 
-  # 5. Vector Database (Qdrant) - Optional, for AI/ML features
-  # qdrant:
-  #   image: qdrant/qdrant:latest
-  #   container_name: eam_qdrant
-  #   ports:
-  #     - "6333:6333"
-  #   volumes:
-  #     - qdrant_data:/qdrant/storage
-  #   networks:
-  #     - eam_net
-  #   healthcheck:
-  #     test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/readyz"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-
 networks:
-  eam_net:
+  hw_net:
     driver: bridge
 
 volumes:

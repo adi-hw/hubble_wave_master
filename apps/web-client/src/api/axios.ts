@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getStoredToken, getTenantSlug } from '../services/token';
+import { getStoredToken } from '../services/token';
 
 // In development, use proxy path to avoid cross-origin cookie issues
 const baseURL =
@@ -22,11 +22,7 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // Add tenant slug header for cross-origin requests
-  const tenantSlug = getTenantSlug();
-  if (tenantSlug) {
-    config.headers['X-Tenant-Slug'] = tenantSlug;
-  }
+  return config;
 
   return config;
 });

@@ -6,7 +6,6 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 export interface RequestUser {
   id: string;
   username: string;
-  tenantId: string;
   roles: string[];
   permissions: string[];
   sessionId?: string;
@@ -36,7 +35,6 @@ export const CurrentUser = createParamDecorator(
     const requestUser: RequestUser = {
       id: user.userId || user.id,
       username: user.username,
-      tenantId: user.tenantId,
       roles: user.roles || [],
       permissions: user.permissions || [],
       sessionId: user.sessionId,

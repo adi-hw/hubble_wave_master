@@ -1,18 +1,18 @@
 import { createApiClient } from '../../../services/api';
 import type {
   PlatformConfig,
-  TenantCustomization,
+  InstanceCustomization,
   CreateCustomizationDto,
   UpdateCustomizationDto,
   ConfigChangeHistory,
   UpgradeManifest,
-  TenantUpgradeImpact,
   ListResponse,
   ConfigListFilters,
   HistoryListFilters,
   UpgradeAnalysis,
   BusinessRule,
   ResolutionStrategy,
+  InstanceUpgradeImpact,
 } from '../types';
 
 // Create a dedicated API client for the metadata service
@@ -58,7 +58,7 @@ export const customizationApi = {
   /**
    * List all tenant customizations
    */
-  list: async (filters?: ConfigListFilters): Promise<ListResponse<TenantCustomization>> => {
+  list: async (filters?: ConfigListFilters): Promise<ListResponse<InstanceCustomization>> => {
     const params = new URLSearchParams();
     if (filters?.configType) params.append('type', filters.configType);
     if (filters?.customizationType) params.append('customizationType', filters.customizationType);
@@ -71,7 +71,7 @@ export const customizationApi = {
   /**
    * Get a specific customization by ID
    */
-  get: async (id: string): Promise<TenantCustomization> => {
+  get: async (id: string): Promise<InstanceCustomization> => {
     const response = await api.get(`/studio/config/customizations/${id}`);
     return response.data;
   },
@@ -79,7 +79,7 @@ export const customizationApi = {
   /**
    * Create a new customization
    */
-  create: async (data: CreateCustomizationDto): Promise<TenantCustomization> => {
+  create: async (data: CreateCustomizationDto): Promise<InstanceCustomization> => {
     const response = await api.post('/studio/config/customizations', data);
     return response.data;
   },
@@ -87,7 +87,7 @@ export const customizationApi = {
   /**
    * Update an existing customization
    */
-  update: async (id: string, data: UpdateCustomizationDto): Promise<TenantCustomization> => {
+  update: async (id: string, data: UpdateCustomizationDto): Promise<InstanceCustomization> => {
     const response = await api.patch(`/studio/config/customizations/${id}`, data);
     return response.data;
   },
@@ -103,7 +103,7 @@ export const customizationApi = {
   /**
    * Get customization history (all versions)
    */
-  getVersionHistory: async (configType: string, resourceKey: string): Promise<TenantCustomization[]> => {
+  getVersionHistory: async (configType: string, resourceKey: string): Promise<InstanceCustomization[]> => {
     const response = await api.get(
       `/studio/config/customizations/history/${configType}/${encodeURIComponent(resourceKey)}`
     );
@@ -114,7 +114,7 @@ export const customizationApi = {
    * Compare customization with platform config
    */
   compareWithPlatform: async (id: string): Promise<{
-    customization: TenantCustomization;
+    customization: InstanceCustomization;
     platformConfig: PlatformConfig;
     diff: any[];
   }> => {
@@ -194,7 +194,7 @@ export const upgradeApi = {
   /**
    * Get upgrade impacts for a manifest
    */
-  getImpacts: async (_manifestId: string): Promise<ListResponse<TenantUpgradeImpact>> => {
+  getImpacts: async (_manifestId: string): Promise<ListResponse<InstanceUpgradeImpact>> => {
     // Backend uses /admin/upgrade/impacts without manifestId filter for now
     const response = await api.get(`/admin/upgrade/impacts`);
     return response.data;
@@ -210,7 +210,7 @@ export const upgradeApi = {
       customValue?: Record<string, any>;
       notes?: string;
     }
-  ): Promise<TenantUpgradeImpact> => {
+  ): Promise<InstanceUpgradeImpact> => {
     const response = await api.post(`/admin/upgrade/impacts/${impactId}/resolve`, resolution);
     return response.data;
   },

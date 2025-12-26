@@ -202,16 +202,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         data-command-palette
         className="relative w-full max-w-xl overflow-hidden rounded-xl shadow-2xl animate-fade-in"
         style={{
-          backgroundColor: 'var(--hw-surface)',
-          border: '1px solid var(--hw-border)',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-default)',
         }}
       >
         {/* Search Input */}
         <div
           className="flex items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: 'var(--hw-border)' }}
+          style={{ borderColor: 'var(--border-default)' }}
         >
-          <Search className="h-5 w-5 flex-shrink-0" style={{ color: 'var(--hw-text-muted)' }} />
+          <Search className="h-5 w-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
           <input
             ref={inputRef}
             type="text"
@@ -223,7 +223,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             className="flex-1 bg-transparent outline-none text-sm"
-            style={{ color: 'var(--hw-text)' }}
+            style={{ color: 'var(--text-primary)' }}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -237,12 +237,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           className="max-h-[60vh] overflow-y-auto scrollbar-thin py-2"
         >
           {isLoading ? (
-            <div className="px-4 py-8 text-center" style={{ color: 'var(--hw-text-muted)' }}>
+            <div className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
               <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin opacity-40" />
               <p className="text-sm">Loading commands...</p>
             </div>
           ) : groupedCommands.length === 0 ? (
-            <div className="px-4 py-8 text-center" style={{ color: 'var(--hw-text-muted)' }}>
+            <div className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
               <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p className="text-sm">{emptyMessage}</p>
             </div>
@@ -251,7 +251,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               <div key={group.label}>
                 <div
                   className="px-4 py-1.5 text-xs font-medium uppercase tracking-wider"
-                  style={{ color: 'var(--hw-text-muted)' }}
+                  style={{ color: 'var(--text-muted)' }}
                 >
                   {group.label}
                 </div>
@@ -270,16 +270,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onMouseEnter={() => setSelectedIndex(currentIndex)}
                       className="w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors"
                       style={{
-                        backgroundColor: isSelected ? 'var(--hw-bg-subtle)' : 'transparent',
-                        color: isSelected ? 'var(--hw-text)' : 'var(--hw-text-secondary)',
+                        backgroundColor: isSelected ? 'var(--bg-surface-secondary)' : 'transparent',
+                        color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                       }}
                     >
                       {cmd.icon && (
                         <span
                           className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{
-                            backgroundColor: 'var(--hw-bg-subtle)',
-                            color: 'var(--hw-text-muted)',
+                            backgroundColor: 'var(--bg-surface-secondary)',
+                            color: 'var(--text-muted)',
                           }}
                         >
                           {cmd.icon}
@@ -290,7 +290,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         {cmd.description && (
                           <div
                             className="text-xs truncate"
-                            style={{ color: 'var(--hw-text-muted)' }}
+                            style={{ color: 'var(--text-muted)' }}
                           >
                             {cmd.description}
                           </div>
@@ -299,7 +299,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       {group.label === 'Favorites' && (
                         <Star
                           className="h-3.5 w-3.5 flex-shrink-0"
-                          style={{ color: 'var(--hw-warning)', fill: 'var(--hw-warning)' }}
+                          style={{ color: 'var(--text-warning)', fill: 'var(--text-warning)' }}
                         />
                       )}
                       {cmd.shortcut && <kbd className="kbd">{cmd.shortcut}</kbd>}
@@ -307,7 +307,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         className="h-4 w-4 flex-shrink-0 opacity-0 transition-opacity"
                         style={{
                           opacity: isSelected ? 0.5 : 0,
-                          color: 'var(--hw-text-muted)',
+                          color: 'var(--text-muted)',
                         }}
                       />
                     </button>
@@ -322,9 +322,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <div
           className="flex items-center justify-between px-4 py-2 border-t text-xs"
           style={{
-            borderColor: 'var(--hw-border)',
-            color: 'var(--hw-text-muted)',
-            backgroundColor: 'var(--hw-bg-subtle)',
+            borderColor: 'var(--border-default)',
+            color: 'var(--text-muted)',
+            backgroundColor: 'var(--bg-surface-secondary)',
           }}
         >
           <div className="flex items-center gap-4">
@@ -381,13 +381,13 @@ export const createAdminCommands = (navigate: (path: string) => void, basePath: 
         action: () => navigate(`${basePath}/admin/workflows`),
       },
       {
-        id: 'goto-acls',
-        label: 'Go to Access Control',
-        description: 'ACL and permissions',
+        id: 'goto-access-rules',
+        label: 'Go to Access Rules',
+        description: 'Access rules and permissions',
         icon: <Shield className="h-4 w-4" />,
         shortcut: 'A',
         category: 'Navigation',
-        action: () => navigate(`${basePath}/admin/acl`),
+        action: () => navigate(`${basePath}/admin/access-rules`),
       },
       {
         id: 'goto-notifications',

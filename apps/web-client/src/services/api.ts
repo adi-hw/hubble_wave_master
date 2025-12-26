@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios';
-import { getTenantSlug, getStoredToken, setStoredToken, refreshAccessToken } from './token';
+import { getStoredToken, setStoredToken, refreshAccessToken } from './token';
 import { hardRedirectToLogin } from './navigation';
 
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -7,7 +7,14 @@ export interface ApiRequestConfig extends AxiosRequestConfig {
   skipAuthRefresh?: boolean;
 }
 
-const TENANT_SLUG = getTenantSlug();
+/**
+ * Get CSRF token from cookie
+ * The backend sets XSRF-TOKEN cookie which we need to send back in X-XSRF-TOKEN header
+ */
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export function createApiClient(baseURL: string): AxiosInstance {
   const api = axios.create({
@@ -18,15 +25,23 @@ export function createApiClient(baseURL: string): AxiosInstance {
   });
 
   api.interceptors.request.use((config) => {
+    config.headers = config.headers ?? {};
+
+    // Add Authorization header if we have a token
     const token = getStoredToken();
     if (token) {
-      config.headers = config.headers ?? {};
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (TENANT_SLUG) {
-      config.headers = config.headers ?? {};
-      config.headers['x-tenant-slug'] = TENANT_SLUG;
+
+    // Add CSRF token for state-changing requests (POST, PUT, PATCH, DELETE)
+    const method = (config.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        config.headers['X-XSRF-TOKEN'] = csrfToken;
+      }
     }
+
     return config;
   });
 

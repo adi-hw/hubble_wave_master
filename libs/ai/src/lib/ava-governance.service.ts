@@ -7,7 +7,7 @@ import {
   AVAGlobalSettings,
   AVAActionType,
   AVAActionStatus,
-} from '@eam-platform/tenant-db';
+} from '@hubblewave/instance-db';
 import { AVAAction, AVAContext } from './ava.service';
 
 /**
@@ -297,8 +297,8 @@ export class AVAGovernanceService {
       const revertedData = await this.performRevert(
         dataSource,
         audit.actionType,
-        audit.targetCollection,
-        audit.targetRecordId,
+        audit.targetCollection ?? null,
+        audit.targetRecordId ?? null,
         audit.beforeData
       );
 

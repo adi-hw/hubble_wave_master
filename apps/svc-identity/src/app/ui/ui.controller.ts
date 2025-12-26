@@ -4,19 +4,6 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { UiService } from './ui.service';
 import { Request } from 'express';
 
-/**
- * Helper to extract tenantId from authenticated request.
- * Single-tenant architecture: gets tenantId from JWT user context.
- */
-function getTenantId(req: Request): string {
-  // Get from JWT token (authenticated user context)
-  const tenantId = (req as any).user?.tenantId;
-  if (!tenantId) {
-    throw new Error('Tenant context required - user must be authenticated');
-  }
-  return tenantId;
-}
-
 @ApiTags('UI')
 @Controller()
 export class UiController {
@@ -25,40 +12,34 @@ export class UiController {
   // All UI endpoints require authentication (no @Public decorator)
   @SkipThrottle()
   @Get('ui/theme')
-  getTheme(@Req() req: Request) {
-    const tenantId = getTenantId(req);
-    return this.uiService.getTheme(tenantId);
+  getTheme() {
+    return this.uiService.getTheme();
   }
 
   @SkipThrottle()
   @Get('ui/navigation')
-  getNavigation(@Req() req: Request) {
-    const tenantId = getTenantId(req);
-    return this.uiService.getNavigation(tenantId);
+  getNavigation() {
+    return this.uiService.getNavigation();
   }
 
   @Get('admin/ui/theme')
-  getAdminTheme(@Req() req: Request) {
-    const tenantId = getTenantId(req);
-    return this.uiService.getTheme(tenantId);
+  getAdminTheme() {
+    return this.uiService.getTheme();
   }
 
   @Put('admin/ui/theme')
   updateAdminTheme(@Req() req: Request, @Body() body: any) {
-    const tenantId = getTenantId(req);
     const userId = (req as any).user?.userId;
-    return this.uiService.updateTheme(tenantId, body ?? {}, userId);
+    return this.uiService.updateTheme(body ?? {}, userId);
   }
 
   @Get('admin/ui/nav-profile')
-  getAdminNavProfile(@Req() req: Request) {
-    const tenantId = getTenantId(req);
-    return this.uiService.getNavigation(tenantId);
+  getAdminNavProfile() {
+    return this.uiService.getNavigation();
   }
 
   @Put('admin/ui/nav-profile')
-  updateAdminNavProfile(@Req() req: Request, @Body() body: any) {
-    const tenantId = getTenantId(req);
-    return this.uiService.updateNavigation(tenantId, body ?? {});
+  updateAdminNavProfile(@Body() body: any) {
+    return this.uiService.updateNavigation(body ?? {});
   }
 }

@@ -29,11 +29,21 @@ export enum ErrorCode {
   RESOURCE_ALREADY_EXISTS = 'RES_4002',
   RESOURCE_CONFLICT = 'RES_4003',
   RESOURCE_DELETED = 'RES_4004',
+  USER_NOT_FOUND = 'RES_4005',
+  TABLE_NOT_FOUND = 'RES_4006',
+  ROLE_NOT_ASSIGNED = 'RES_4007',
 
-  // Tenant errors (5xxx)
-  TENANT_NOT_FOUND = 'TENANT_5001',
-  TENANT_DISABLED = 'TENANT_5002',
-  TENANT_LIMIT_EXCEEDED = 'TENANT_5003',
+  // User status errors (5xxx)
+  USER_ALREADY_INACTIVE = 'USR_5001',
+  USER_NOT_INACTIVE = 'USR_5002',
+  USER_ALREADY_SUSPENDED = 'USR_5003',
+  USER_NOT_SUSPENDED = 'USR_5004',
+  USER_NOT_LOCKED = 'USR_5005',
+  USER_NOT_DELETED = 'USR_5006',
+  USER_NOT_INVITED = 'USR_5007',
+  CANNOT_DELETE_SYSTEM_USER = 'USR_5008',
+
+
 
   // Database errors (6xxx)
   DATABASE_ERROR = 'DB_6001',
@@ -73,10 +83,20 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.RESOURCE_ALREADY_EXISTS]: 'Resource already exists',
   [ErrorCode.RESOURCE_CONFLICT]: 'Resource conflict',
   [ErrorCode.RESOURCE_DELETED]: 'Resource has been deleted',
+  [ErrorCode.USER_NOT_FOUND]: 'User not found',
+  [ErrorCode.TABLE_NOT_FOUND]: 'Table not found',
+  [ErrorCode.ROLE_NOT_ASSIGNED]: 'Role assignment not found',
 
-  [ErrorCode.TENANT_NOT_FOUND]: 'Tenant not found',
-  [ErrorCode.TENANT_DISABLED]: 'Tenant is disabled',
-  [ErrorCode.TENANT_LIMIT_EXCEEDED]: 'Tenant limit exceeded',
+  [ErrorCode.USER_ALREADY_INACTIVE]: 'User is already inactive',
+  [ErrorCode.USER_NOT_INACTIVE]: 'User is not inactive',
+  [ErrorCode.USER_ALREADY_SUSPENDED]: 'User is already suspended',
+  [ErrorCode.USER_NOT_SUSPENDED]: 'User is not suspended',
+  [ErrorCode.USER_NOT_LOCKED]: 'User is not locked',
+  [ErrorCode.USER_NOT_DELETED]: 'User is not deleted',
+  [ErrorCode.USER_NOT_INVITED]: 'User is not in invited status',
+  [ErrorCode.CANNOT_DELETE_SYSTEM_USER]: 'Cannot delete system user',
+
+
 
   [ErrorCode.DATABASE_ERROR]: 'Database error occurred',
   [ErrorCode.TRANSACTION_FAILED]: 'Transaction failed',

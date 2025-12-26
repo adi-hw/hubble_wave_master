@@ -20,9 +20,9 @@ import {
   InsightsService,
   ActionExecutorService,
   AVA_BRANDING,
-} from '@eam-platform/ai';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { JwtAuthGuard, CurrentUser } from '@eam-platform/auth-guard';
+} from '@hubblewave/ai';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 
 interface ChatRequestDto {
   message: string;
@@ -52,7 +52,7 @@ export class AVAController {
     private conversationMemory: ConversationMemoryService,
     private insightsService: InsightsService,
     private actionExecutor: ActionExecutorService,
-    private tenantDbService: TenantDbService
+    private dataSource: DataSource
   ) {}
 
   @Get('status')
@@ -77,13 +77,12 @@ export class AVAController {
   @ApiOperation({ summary: 'Get a greeting from AVA' })
   @ApiResponse({ status: 200, description: 'AVA greeting' })
   async getGreeting(
-    @CurrentUser() user: { tenantId: string; userId: string; name?: string; role?: string }
+    @CurrentUser() user: RequestUser
   ) {
     const context: AVAContext = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userName: user.name,
-      userRole: user.role,
+      userId: user.id,
+      userName: user.username,
+      userRole: user.roles?.[0],
     };
 
     return {
@@ -96,16 +95,15 @@ export class AVAController {
   @ApiOperation({ summary: 'Chat with AVA' })
   @ApiResponse({ status: 200, description: 'AVA response' })
   async chat(
-    @CurrentUser() user: { tenantId: string; userId: string; name?: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Body() dto: ChatRequestDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const context: AVAContext = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userName: user.name,
-      userRole: user.role,
+      userId: user.id,
+      userName: user.username,
+      userRole: user.roles?.[0],
       ...dto.context,
     };
 
@@ -121,8 +119,7 @@ export class AVAController {
     } else {
       const conversation = await this.conversationMemory.startConversation(
         dataSource,
-        user.userId,
-        user.tenantId,
+        user.id,
         context
       );
       conversationId = conversation.id;
@@ -164,17 +161,16 @@ export class AVAController {
   @Post('chat/stream')
   @ApiOperation({ summary: 'Stream chat response from AVA' })
   async chatStream(
-    @CurrentUser() user: { tenantId: string; userId: string; name?: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Body() dto: ChatRequestDto,
     @Res() res: Response
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const context: AVAContext = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userName: user.name,
-      userRole: user.role,
+      userId: user.id,
+      userName: user.username,
+      userRole: user.roles?.[0],
       ...dto.context,
     };
 
@@ -190,8 +186,7 @@ export class AVAController {
     } else {
       const conversation = await this.conversationMemory.startConversation(
         dataSource,
-        user.userId,
-        user.tenantId,
+        user.id,
         context
       );
       conversationId = conversation.id;
@@ -249,14 +244,14 @@ export class AVAController {
   @ApiOperation({ summary: 'Get user conversations' })
   @ApiResponse({ status: 200, description: 'List of conversations' })
   async getConversations(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() user: RequestUser,
     @Query('limit') limit?: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const conversations = await this.conversationMemory.getUserConversations(
       dataSource,
-      user.userId,
+      user.id,
       limit ? parseInt(limit, 10) : 20
     );
 
@@ -267,10 +262,10 @@ export class AVAController {
   @ApiOperation({ summary: 'Get conversation by ID' })
   @ApiResponse({ status: 200, description: 'Conversation details' })
   async getConversation(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: RequestUser,
     @Param('id') conversationId: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const conversation = await this.conversationMemory.getConversation(
       dataSource,
@@ -288,10 +283,10 @@ export class AVAController {
   @ApiOperation({ summary: 'Delete a conversation' })
   @ApiResponse({ status: 200, description: 'Conversation deleted' })
   async deleteConversation(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: RequestUser,
     @Param('id') conversationId: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     await this.conversationMemory.deleteConversation(dataSource, conversationId);
 
@@ -302,15 +297,14 @@ export class AVAController {
   @ApiOperation({ summary: 'Get proactive insights from AVA' })
   @ApiResponse({ status: 200, description: 'List of insights' })
   async getInsights(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Query('limit') limit?: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const context = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userRole: user.role,
+      userId: user.id,
+      userRole: user.roles?.[0],
     };
 
     const insights = await this.insightsService.generateInsights(
@@ -326,15 +320,14 @@ export class AVAController {
   @ApiOperation({ summary: 'Get personalized recommendations' })
   @ApiResponse({ status: 200, description: 'Personalized recommendations' })
   async getRecommendations(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Query('limit') limit?: string
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const context = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userRole: user.role,
+      userId: user.id,
+      userRole: user.roles?.[0],
     };
 
     const recommendations = await this.insightsService.getPersonalizedRecommendations(
@@ -350,13 +343,12 @@ export class AVAController {
   @ApiOperation({ summary: 'Get quick actions based on context' })
   @ApiResponse({ status: 200, description: 'Quick actions' })
   async getQuickActions(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Query('currentPage') currentPage?: string
   ) {
     const context: AVAContext = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userRole: user.role,
+      userId: user.id,
+      userRole: user.roles?.[0],
       currentPage,
     };
 
@@ -369,15 +361,14 @@ export class AVAController {
   @ApiOperation({ summary: 'Execute an action through AVA' })
   @ApiResponse({ status: 200, description: 'Action result' })
   async executeAction(
-    @CurrentUser() user: { tenantId: string; userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Body() dto: ActionRequestDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(user.tenantId);
+    const dataSource = this.dataSource;
 
     const context: AVAContext = {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      userRole: user.role,
+      userId: user.id,
+      userRole: user.roles?.[0],
     };
 
     const result = await this.actionExecutor.execute(dataSource, {
@@ -407,3 +398,4 @@ export class AVAController {
     return AVA_BRANDING;
   }
 }
+

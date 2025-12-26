@@ -156,11 +156,11 @@ export const NavSearch: React.FC<NavSearchProps> = ({
       <div
         className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors"
         style={{
-          backgroundColor: 'var(--hw-bg-subtle, #f8fafc)',
-          borderColor: isOpen ? 'var(--hw-primary, #0ea5e9)' : 'var(--hw-border, #e2e8f0)',
+          backgroundColor: 'var(--bg-surface-secondary)',
+          borderColor: isOpen ? 'var(--border-primary)' : 'var(--border-default)',
         }}
       >
-        <Search className="h-4 w-4 text-slate-400 flex-shrink-0" />
+        <Search className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
         <input
           ref={inputRef}
           type="text"
@@ -170,7 +170,7 @@ export const NavSearch: React.FC<NavSearchProps> = ({
           onFocus={() => query.trim() && setIsOpen(true)}
           placeholder={placeholder}
           className="flex-1 bg-transparent outline-none text-sm"
-          style={{ color: 'var(--hw-text, #1e293b)' }}
+          style={{ color: 'var(--text-primary)' }}
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
@@ -178,7 +178,8 @@ export const NavSearch: React.FC<NavSearchProps> = ({
         {query && (
           <button
             onClick={handleClear}
-            className="text-slate-400 hover:text-slate-600 transition-colors"
+            className="transition-colors"
+            style={{ color: 'var(--text-muted)' }}
           >
             <X className="h-4 w-4" />
           </button>
@@ -190,8 +191,8 @@ export const NavSearch: React.FC<NavSearchProps> = ({
         <div
           className="absolute left-2 right-2 top-full mt-1 z-50 rounded-lg shadow-lg border overflow-hidden"
           style={{
-            backgroundColor: 'var(--hw-surface, white)',
-            borderColor: 'var(--hw-border, #e2e8f0)',
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)',
           }}
         >
           {loading ? (

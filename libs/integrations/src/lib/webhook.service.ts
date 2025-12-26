@@ -1,11 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { TenantDbService } from '@eam-platform/tenant-db';
 import * as crypto from 'crypto';
 
 export interface WebhookConfig {
   id: string;
-  tenantId: string;
   name: string;
   secret?: string;
   signatureHeader?: string;
@@ -29,7 +27,6 @@ export interface WebhookConfig {
 }
 
 export interface WebhookPayload {
-  tenantId: string;
   webhookId: string;
   event?: string;
   headers: Record<string, string>;
@@ -48,7 +45,6 @@ export interface WebhookResponse {
 
 export interface WebhookLog {
   webhookId: string;
-  tenantId: string;
   requestId: string;
   event?: string;
   payload: unknown;
@@ -64,11 +60,9 @@ export class WebhookService {
   private rateLimitCounters: Map<string, { count: number; resetAt: Date }> = new Map();
 
   constructor(
-    private readonly tenantDb: TenantDbService,
     private readonly eventEmitter: EventEmitter2
   ) {
-    // tenantDb is available for loading webhook configs from database
-    this.logger.debug(`WebhookService initialized with tenantDb: ${!!this.tenantDb}`);
+    this.logger.debug(`WebhookService initialized`);
   }
 
   /**
@@ -79,7 +73,7 @@ export class WebhookService {
     config.id = webhookId;
     this.webhookConfigs.set(webhookId, config);
 
-    this.logger.log(`Registered webhook: ${webhookId} for tenant ${config.tenantId}`);
+    this.logger.log(`Registered webhook: ${webhookId}`);
 
     return webhookId;
   }
@@ -151,7 +145,6 @@ export class WebhookService {
 
     // Build payload
     const payload: WebhookPayload = {
-      tenantId: config.tenantId,
       webhookId,
       event: this.extractEvent(headers, body),
       headers,
@@ -200,7 +193,6 @@ export class WebhookService {
       // Log webhook execution
       const log: WebhookLog = {
         webhookId,
-        tenantId: config.tenantId,
         requestId,
         event: payload.event,
         payload: body,
@@ -336,7 +328,6 @@ export class WebhookService {
     }
 
     this.eventEmitter.emit('workflow.trigger', {
-      tenantId: payload.tenantId,
       workflowCode: config.targetConfig.workflowCode,
       input: {
         webhookPayload: payload.body,
@@ -367,7 +358,6 @@ export class WebhookService {
     // Emit event for script execution
     return new Promise((resolve) => {
       this.eventEmitter.emit('script.execute', {
-        tenantId: payload.tenantId,
         scriptCode: config.targetConfig.scriptCode,
         input: payload.body,
         callback: (error: Error | null, result: unknown) => {
@@ -404,7 +394,6 @@ export class WebhookService {
 
     return new Promise((resolve) => {
       this.eventEmitter.emit('record.operation', {
-        tenantId: payload.tenantId,
         operation,
         tableName: collectionCode,
         data: record,
@@ -485,8 +474,8 @@ export class WebhookService {
   /**
    * Generate webhook URL for a tenant
    */
-  generateWebhookUrl(tenantId: string, webhookId: string, baseUrl: string): string {
-    return `${baseUrl}/api/webhooks/${tenantId}/${webhookId}`;
+  generateWebhookUrl(webhookId: string, baseUrl: string): string {
+    return `${baseUrl}/api/webhooks/${webhookId}`;
   }
 
   /**

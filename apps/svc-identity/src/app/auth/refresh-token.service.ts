@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LessThan, MoreThan } from 'typeorm';
-import { RefreshToken } from '@eam-platform/platform-db';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
+import { RefreshToken } from '@hubblewave/instance-db';
 import * as crypto from 'crypto';
-import { TenantDbService } from '@eam-platform/tenant-db';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -11,7 +11,8 @@ export class RefreshTokenService {
   private readonly maxTokensPerUser: number;
 
   constructor(
-    private readonly tenantDbService: TenantDbService,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepo: Repository<RefreshToken>,
     configService: ConfigService,
   ) {
     const max = Number(configService.get('AUTH_MAX_REFRESH_TOKENS_PER_USER') ?? 20);
@@ -24,140 +25,110 @@ export class RefreshTokenService {
 
   async createRefreshToken(
     userId: string,
-    tenantId: string,
     ipAddress?: string,
     userAgent?: string,
     familyId?: string,
   ): Promise<{ token: string; entity: RefreshToken }> {
-    const refreshTokenRepo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    // Generate a secure random token
     const token = crypto.randomBytes(64).toString('hex');
     const tokenHash = this.hashToken(token);
     const family = familyId || crypto.randomUUID();
 
-    // Set expiration to 7 days from now
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    const refreshToken = refreshTokenRepo.create({
+    const refreshToken = this.refreshTokenRepo.create({
       userId,
-      tenantId,
-      familyId: family,
-      tokenHash,
+      family,
+      token: tokenHash, // stored hashed
       expiresAt,
-      createdByIp: ipAddress,
-      createdUserAgent: userAgent,
-      lastIp: ipAddress,
-      lastUserAgent: userAgent,
-      lastUsedAt: new Date(),
+      ipAddress,
+      userAgent,
+      isRevoked: false,
     });
 
-    const entity = await refreshTokenRepo.save(refreshToken);
-    await this.enforceUserLimit(tenantId, userId, this.maxTokensPerUser);
+    const entity = await this.refreshTokenRepo.save(refreshToken);
+    await this.enforceUserLimit(userId, this.maxTokensPerUser);
 
     return { token, entity };
   }
 
-  async findByToken(token: string, tenantId: string): Promise<RefreshToken | null> {
-    const refreshTokenRepo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
+  async findByToken(token: string): Promise<RefreshToken | null> {
     const tokenHash = this.hashToken(token);
 
-    const refreshToken = await refreshTokenRepo.findOne({
-      where: { tokenHash, tenantId },
+    return this.refreshTokenRepo.findOne({
+      where: { token: tokenHash },
       relations: ['user'],
     });
-
-    return refreshToken;
   }
 
   async rotateRefreshToken(
     oldToken: string,
-    tenantId: string,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<{ token: string; entity: RefreshToken } | null> {
-    const oldRefreshToken = await this.findByToken(oldToken, tenantId);
+    const oldRefreshToken = await this.findByToken(oldToken);
 
     if (!oldRefreshToken) {
       return null;
     }
 
-    // Create new refresh token
     const { token, entity } = await this.createRefreshToken(
       oldRefreshToken.userId,
-      tenantId,
       ipAddress,
       userAgent,
-      oldRefreshToken.familyId,
+      oldRefreshToken.family || oldRefreshToken.id,
     );
 
-    // Mark the old token as replaced
-    await this.markReplaced(tenantId, oldRefreshToken.id, entity.id, ipAddress, userAgent);
+    await this.revokeToken(oldRefreshToken.token, 'ROTATED');
 
     return { token, entity };
   }
 
-  async revokeToken(tenantId: string, tokenHash: string, replacedById?: string, reason?: string): Promise<void> {
-    const refreshTokenRepo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await refreshTokenRepo.update(
-      { tokenHash, tenantId },
+  async revokeToken(tokenHash: string, reason?: string): Promise<void> {
+    await this.refreshTokenRepo.update(
+      { token: tokenHash },
       {
+        isRevoked: true,
         revokedAt: new Date(),
-        replacedById,
         revokedReason: reason,
       },
     );
   }
 
-  async revokeAllUserTokens(tenantId: string, userId: string): Promise<void> {
-    const refreshTokenRepo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await refreshTokenRepo.update(
-      { userId, tenantId },
+  async revokeAllUserTokens(userId: string): Promise<void> {
+    await this.refreshTokenRepo.update(
+      { userId },
       {
+        isRevoked: true,
         revokedAt: new Date(),
         revokedReason: 'LOGOUT',
       },
     );
   }
 
-  async cleanupExpiredTokens(tenantId: string): Promise<void> {
-    const refreshTokenRepo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await refreshTokenRepo.delete({
+  async cleanupExpiredTokens(): Promise<void> {
+    await this.refreshTokenRepo.delete({
       expiresAt: LessThan(new Date()),
-      tenantId,
     });
   }
 
-  async markFamilyAsCompromised(tenantId: string, familyId: string, reason: string) {
-    const repo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await repo.update(
-      { familyId },
+  async markFamilyAsCompromised(familyId: string, reason: string) {
+    await this.refreshTokenRepo.update(
+      { family: familyId },
       {
+        isRevoked: true,
         revokedAt: new Date(),
         revokedReason: reason,
-        isReuseSuspect: true,
-      }
+      },
     );
   }
 
-  async markReplaced(tenantId: string, oldTokenId: string, newTokenId: string, ipAddress?: string, userAgent?: string) {
-    const repo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await repo.update(oldTokenId, {
-      replacedById: newTokenId,
-      lastUsedAt: new Date(),
-      lastIp: ipAddress,
-      lastUserAgent: userAgent,
-    });
-  }
-
-  async enforceUserLimit(tenantId: string, userId: string, maxTokens: number) {
+  async enforceUserLimit(userId: string, maxTokens: number) {
     if (maxTokens <= 0) return;
-    const repo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    const active = await repo.find({
+    const active = await this.refreshTokenRepo.find({
       where: {
         userId,
-        tenantId,
-        revokedAt: null as any,
+        isRevoked: false,
         expiresAt: MoreThan(new Date()),
       },
       order: { createdAt: 'ASC' },
@@ -166,21 +137,12 @@ export class RefreshTokenService {
     const toRevoke = active.slice(0, active.length - maxTokens);
     const ids = toRevoke.map((t) => t.id);
     if (ids.length === 0) return;
-    await repo
+    await this.refreshTokenRepo
       .createQueryBuilder()
-      .update(RefreshToken as any)
-      .set({ revokedAt: new Date(), revokedReason: 'MAX_SESSIONS_EXCEEDED' })
+      .update(RefreshToken)
+      .set({ isRevoked: true, revokedAt: new Date(), revokedReason: 'MAX_SESSIONS_EXCEEDED' })
       .whereInIds(ids)
       .execute();
-    this.logger.warn(`Revoked ${ids.length} old refresh tokens due to max session limit`, { userId, tenantId });
-  }
-
-  async updateLastUsed(tenantId: string, tokenId: string, ipAddress?: string, userAgent?: string) {
-    const repo = await this.tenantDbService.getRepository<RefreshToken>(tenantId, RefreshToken as any);
-    await repo.update(tokenId, {
-      lastUsedAt: new Date(),
-      lastIp: ipAddress,
-      lastUserAgent: userAgent,
-    });
+    this.logger.warn(`Revoked ${ids.length} old refresh tokens due to max session limit`, { userId });
   }
 }

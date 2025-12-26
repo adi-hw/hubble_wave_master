@@ -1,1 +1,0 @@
-export { PlatformConfigBrowser } from './PlatformConfigBrowser';

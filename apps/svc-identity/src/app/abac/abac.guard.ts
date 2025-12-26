@@ -26,10 +26,9 @@ export class AbacGuard implements CanActivate {
       user: req.user,
       params: req.params,
       body: req.body,
-      tenantId: req.user.tenantId,
     };
 
-    const allowed = await this.abacService.isAllowed(req.user.tenantId, resource, action, evaluationContext, resourceType);
+    const allowed = await this.abacService.isAllowed(resource, action, evaluationContext, resourceType);
     if (!allowed) throw new ForbiddenException('ABAC policy denied');
     return true;
   }

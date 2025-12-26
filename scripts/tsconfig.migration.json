@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2019",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "datasource-platform.ts",
+    "datasource-control-plane.ts",
+    "../libs/platform-db/src/lib/entities/**/*.ts",
+    "../libs/control-plane-db/src/lib/entities/**/*.ts",
+    "../migrations/**/*.ts"
+  ],
+  "ts-node": {
+    "ignoreDiagnostics": [2451, 7006, 6133]
+  }
+}

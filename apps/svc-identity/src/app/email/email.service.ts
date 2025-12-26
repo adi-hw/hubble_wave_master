@@ -17,7 +17,7 @@ export class EmailService {
 
   constructor(private configService: ConfigService) {
     const emailProvider = this.configService.get('EMAIL_PROVIDER', 'console');
-    this.fromAddress = this.configService.get('EMAIL_FROM', 'noreply@eam-platform.com');
+    this.fromAddress = this.configService.get('EMAIL_FROM', 'noreply@hubblewave.com');
 
     if (emailProvider === 'smtp') {
       this.initializeSMTP();
@@ -88,13 +88,13 @@ export class EmailService {
     }
   }
 
-  async sendPasswordResetEmail(email: string, token: string, tenantSlug: string): Promise<void> {
-    const resetUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:4200')}/reset-password?token=${token}&tenant=${tenantSlug}`;
+  async sendPasswordResetEmail(email: string, token: string): Promise<void> {
+    const resetUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:4200')}/reset-password?token=${token}`;
 
     await this.sendEmail({
       to: email,
       subject: 'Password Reset Request',
-      text: `You requested a password reset for your EAM Platform account.
+      text: `You requested a password reset for your HubbleWave Platform account.
 
 Click the link below to reset your password:
 ${resetUrl}
@@ -104,11 +104,11 @@ This link will expire in 1 hour.
 If you did not request this, please ignore this email and your password will remain unchanged.
 
 Best regards,
-EAM Platform Team`,
+HubbleWave Platform Team`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>Password Reset Request</h2>
-          <p>You requested a password reset for your EAM Platform account.</p>
+          <p>You requested a password reset for your HubbleWave Platform account.</p>
           <p>Click the button below to reset your password:</p>
           <p style="text-align: center; margin: 30px 0;">
             <a href="${resetUrl}" style="background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; display: inline-block;">Reset Password</a>
@@ -117,19 +117,19 @@ EAM Platform Team`,
           <p><strong>This link will expire in 1 hour.</strong></p>
           <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 12px;">Best regards,<br>EAM Platform Team</p>
+          <p style="color: #666; font-size: 12px;">Best regards,<br>HubbleWave Platform Team</p>
         </div>
       `,
     });
   }
 
-  async sendEmailVerification(email: string, token: string, tenantSlug: string): Promise<void> {
-    const verifyUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:4200')}/verify-email?token=${token}&tenant=${tenantSlug}`;
+  async sendEmailVerification(email: string, token: string): Promise<void> {
+    const verifyUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:4200')}/verify-email?token=${token}`;
 
     await this.sendEmail({
       to: email,
       subject: 'Verify Your Email Address',
-      text: `Welcome to EAM Platform!
+      text: `Welcome to HubbleWave Platform!
 
 Please verify your email address to complete your registration.
 
@@ -139,10 +139,10 @@ ${verifyUrl}
 This link will expire in 24 hours.
 
 Best regards,
-EAM Platform Team`,
+HubbleWave Platform Team`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Welcome to EAM Platform!</h2>
+          <h2>Welcome to HubbleWave Platform!</h2>
           <p>Thank you for registering. Please verify your email address to complete your account setup.</p>
           <p style="text-align: center; margin: 30px 0;">
             <a href="${verifyUrl}" style="background-color: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; display: inline-block;">Verify Email</a>
@@ -150,7 +150,7 @@ EAM Platform Team`,
           <p><small>Or copy this link: ${verifyUrl}</small></p>
           <p><strong>This link will expire in 24 hours.</strong></p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 12px;">Best regards,<br>EAM Platform Team</p>
+          <p style="color: #666; font-size: 12px;">Best regards,<br>HubbleWave Platform Team</p>
         </div>
       `,
     });
@@ -165,14 +165,14 @@ EAM Platform Team`,
 If you did not make this change, please contact support immediately.
 
 Best regards,
-EAM Platform Team`,
+HubbleWave Platform Team`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>Password Changed</h2>
           <p>Your password has been changed successfully.</p>
           <p><strong>If you did not make this change, please contact support immediately.</strong></p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 12px;">Best regards,<br>EAM Platform Team</p>
+          <p style="color: #666; font-size: 12px;">Best regards,<br>HubbleWave Platform Team</p>
         </div>
       `,
     });
@@ -181,7 +181,7 @@ EAM Platform Team`,
   async sendInvitationEmail(options: {
     to: string;
     displayName: string;
-    tenantName: string;
+    organizationName?: string;
     inviterName?: string;
     personalMessage?: string;
     activationUrl: string;
@@ -191,6 +191,7 @@ EAM Platform Team`,
       ? `This invitation will expire on ${options.expiresAt.toLocaleDateString()}.`
       : 'This invitation will expire in 72 hours.';
 
+    const orgName = options.organizationName || 'HubbleWave Platform';
     const inviterText = options.inviterName
       ? `${options.inviterName} has invited you to join`
       : 'You have been invited to join';
@@ -203,10 +204,10 @@ EAM Platform Team`,
 
     await this.sendEmail({
       to: options.to,
-      subject: `You're invited to join ${options.tenantName} on EAM Platform`,
+      subject: `You're invited to join ${orgName}`,
       text: `Hello ${options.displayName},
 
-${inviterText} ${options.tenantName} on EAM Platform.
+${inviterText} ${orgName}.
 
 ${options.personalMessage ? `Message: "${options.personalMessage}"\n` : ''}
 Click the link below to accept your invitation and set up your account:
@@ -217,12 +218,12 @@ ${expiryText}
 If you did not expect this invitation, you can safely ignore this email.
 
 Best regards,
-EAM Platform Team`,
+HubbleWave Platform Team`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>You're Invited!</h2>
           <p>Hello ${options.displayName},</p>
-          <p>${inviterText} <strong>${options.tenantName}</strong> on EAM Platform.</p>
+          <p>${inviterText} <strong>${orgName}</strong>.</p>
           ${personalMessageHtml}
           <p>Click the button below to accept your invitation and set up your account:</p>
           <p style="text-align: center; margin: 30px 0;">
@@ -232,7 +233,7 @@ EAM Platform Team`,
           <p><strong>${expiryText}</strong></p>
           <p>If you did not expect this invitation, you can safely ignore this email.</p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 12px;">Best regards,<br>EAM Platform Team</p>
+          <p style="color: #666; font-size: 12px;">Best regards,<br>HubbleWave Platform Team</p>
         </div>
       `,
     });

@@ -1,6 +1,5 @@
-import { Controller, Get, NotFoundException, Param, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext } from '@eam-platform/auth-guard';
-import { AuthorizationService } from '@eam-platform/authorization';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 
 /**
@@ -14,21 +13,11 @@ import { ModelRegistryService } from './model-registry.service';
 @Controller('models')
 @UseGuards(JwtAuthGuard)
 export class ModelController {
-  constructor(
-    private readonly modelRegistry: ModelRegistryService,
-    private readonly authz: AuthorizationService,
-  ) {}
+  constructor(private readonly modelRegistry: ModelRegistryService) {}
 
   @Get(':tableName')
-  async getModel(@Param('tableName') tableName: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    const table = await this.modelRegistry.getTable(tableName, ctx.tenantId);
-    if (!table) {
-      throw new NotFoundException();
-    }
-
-    await this.authz.ensureTableAccess(ctx, table.storageTable, 'read');
-
+  async getModel(@Param('tableName') tableName: string) {
+    const table = await this.modelRegistry.getTable(tableName);
     return {
       id: table.tableName,
       code: table.tableName,
@@ -39,22 +28,15 @@ export class ModelController {
   }
 
   @Get(':tableName/fields')
-  async getModelFields(@Param('tableName') tableName: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Will throw if table not found or not authorized
-    const table = await this.modelRegistry.getTable(tableName, ctx.tenantId);
-    await this.authz.ensureTableAccess(ctx, table.storageTable, 'read');
-    const fields = await this.modelRegistry.getFields(tableName, ctx.tenantId, ctx.roles);
-    return fields;
+  async getModelFields(@Param('tableName') tableName: string) {
+    await this.modelRegistry.getTable(tableName);
+    return this.modelRegistry.getFields(tableName);
   }
 
   @Get(':tableName/layout')
-  async getModelLayout(@Param('tableName') tableName: string, @Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
-    // Validate access; layout is currently dynamic/null
-    const table = await this.modelRegistry.getTable(tableName, ctx.tenantId);
-    await this.authz.ensureTableAccess(ctx, table.storageTable, 'read');
-    const layout = await this.modelRegistry.getLayout(tableName, ctx.tenantId);
+  async getModelLayout(@Param('tableName') tableName: string) {
+    await this.modelRegistry.getTable(tableName);
+    const layout = await this.modelRegistry.getLayout(tableName);
     return layout ?? {};
   }
 }

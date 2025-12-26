@@ -83,6 +83,7 @@ export function CollectionRecordPage() {
       setLoading(true);
       setError(null);
 
+      // Uses /data/collections to route to svc-data via Vite proxy
       const schemaRes = await api.get<{ collection: CollectionDefinition; properties: PropertyDefinition[] }>(`/data/collections/${collectionCode}/schema`);
       setCollection(schemaRes.collection);
       setProperties(schemaRes.properties);
@@ -215,7 +216,7 @@ export function CollectionRecordPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+        <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--text-brand)' }} />
       </div>
     );
   }
@@ -223,7 +224,13 @@ export function CollectionRecordPage() {
   if (error && !record && !isNew) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-lg">
+        <div
+          className="p-4 rounded-lg"
+          style={{
+            backgroundColor: 'var(--bg-danger-subtle)',
+            color: 'var(--text-danger)'
+          }}
+        >
           {error}
         </div>
       </div>
@@ -233,20 +240,29 @@ export function CollectionRecordPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div
+        className="flex items-center justify-between px-6 py-4 border-b"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-default)'
+        }}
+      >
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(`/data/${collectionCode}`)}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: 'transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
-            <ArrowLeft className="w-5 h-5 text-gray-500" />
+            <ArrowLeft className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
           </button>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
               {isNew ? `New ${collection?.label}` : getDisplayTitle()}
             </h1>
             {!isNew && record && 'id' in record && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 ID: {String(record['id']).slice(0, 8)}...
               </p>
             )}
@@ -262,14 +278,21 @@ export function CollectionRecordPage() {
                   setEditing(false);
                   if (isNew) navigate(`/data/${collectionCode}`);
                 }}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="px-4 py-2 rounded-lg transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                style={{
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-on-primary)'
+                }}
               >
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving...' : 'Save'}
@@ -279,14 +302,21 @@ export function CollectionRecordPage() {
             <>
               <button
                 onClick={() => setEditing(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
+                style={{
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-on-primary)'
+                }}
               >
                 Edit
               </button>
               <button
                 onClick={handleDelete}
-                className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                className="p-2 rounded-lg transition-colors"
                 title="Delete"
+                style={{ color: 'var(--text-danger)' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Trash2 className="w-5 h-5" />
               </button>
@@ -297,7 +327,13 @@ export function CollectionRecordPage() {
 
       {/* Error */}
       {error && (
-        <div className="mx-6 mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+        <div
+          className="mx-6 mt-4 p-4 rounded-lg"
+          style={{
+            backgroundColor: 'var(--bg-danger-subtle)',
+            color: 'var(--text-danger)'
+          }}
+        >
           {error}
         </div>
       )}
@@ -314,19 +350,24 @@ export function CollectionRecordPage() {
             return (
               <div
                 key={section.id}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden"
+                className="border rounded-xl overflow-hidden"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-default)'
+                }}
               >
                 <div
-                  className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                  className="flex items-center justify-between px-4 py-3 cursor-pointer"
+                  style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
                   onClick={() => toggleSection(section.id)}
                 >
                   <div className="flex items-center gap-2">
                     {isCollapsed ? (
-                      <ChevronRight className="w-4 h-4 text-gray-500" />
+                      <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
                     ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                      <ChevronDown className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
                     )}
-                    <h2 className="font-medium text-gray-900 dark:text-white">{section.label}</h2>
+                    <h2 className="font-medium" style={{ color: 'var(--text-primary)' }}>{section.label}</h2>
                   </div>
                 </div>
 
@@ -351,7 +392,7 @@ export function CollectionRecordPage() {
 
           {/* Audit Info */}
           {!isNew && record && (
-            <div className="flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400 px-2">
+            <div className="flex items-center gap-6 text-sm px-2" style={{ color: 'var(--text-muted)' }}>
               {record['created_at'] ? (
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4" />
@@ -400,8 +441,11 @@ interface FieldRendererProps {
 function FieldRenderer({ property, value, editing, onChange }: FieldRendererProps) {
   const isReadOnly = !editing || property.isReadOnly;
 
-  const inputClasses =
-    'w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-gray-900';
+  const inputStyles = {
+    backgroundColor: 'var(--bg-surface)',
+    borderColor: 'var(--border-default)',
+    color: 'var(--text-primary)'
+  };
 
   const renderField = () => {
     switch (property.propertyType) {
@@ -413,9 +457,10 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
               checked={Boolean(value)}
               onChange={(e) => onChange(e.target.checked)}
               disabled={isReadOnly}
-              className="w-4 h-4 text-indigo-600 rounded"
+              className="w-4 h-4 rounded"
+              style={{ accentColor: 'var(--bg-primary)' }}
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               {value ? 'Yes' : 'No'}
             </span>
           </label>
@@ -425,7 +470,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
         if (isReadOnly) {
           const choice = property.choiceList?.find((c) => c.value === value);
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
               {choice ? (
                 <span
                   className="px-2 py-0.5 text-sm rounded"
@@ -437,7 +482,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
                   {choice.label}
                 </span>
               ) : (
-                <span className="text-gray-400">—</span>
+                <span style={{ color: 'var(--text-muted)' }}>—</span>
               )}
             </div>
           );
@@ -447,7 +492,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={String(value || '')}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           >
             <option value="">Select...</option>
             {property.choiceList?.map((opt) => (
@@ -461,8 +507,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
       case 'date':
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              {value ? new Date(String(value)).toLocaleDateString() : <span className="text-gray-400">—</span>}
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+              {value ? new Date(String(value)).toLocaleDateString() : <span style={{ color: 'var(--text-muted)' }}>—</span>}
             </div>
           );
         }
@@ -472,15 +518,16 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={value ? String(value).split('T')[0] : ''}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
       case 'datetime':
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              {value ? new Date(String(value)).toLocaleString() : <span className="text-gray-400">—</span>}
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+              {value ? new Date(String(value)).toLocaleString() : <span style={{ color: 'var(--text-muted)' }}>—</span>}
             </div>
           );
         }
@@ -490,7 +537,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={value ? String(value).slice(0, 16) : ''}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
@@ -507,8 +555,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             formatted = `${Number(value).toFixed(1)}%`;
           }
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              {formatted != null ? String(formatted) : <span className="text-gray-400">—</span>}
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+              {formatted != null ? String(formatted) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
             </div>
           );
         }
@@ -519,7 +567,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
             disabled={isReadOnly}
             step={property.propertyType === 'integer' ? '1' : 'any'}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
@@ -528,8 +577,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
       case 'html':
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg min-h-[80px] whitespace-pre-wrap">
-              {value ? String(value) : <span className="text-gray-400">—</span>}
+            <div className="px-3 py-2 rounded-lg min-h-[80px] whitespace-pre-wrap" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+              {value ? String(value) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
             </div>
           );
         }
@@ -539,20 +588,21 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
             rows={4}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
       case 'email':
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
               {value ? (
-                <a href={`mailto:${value}`} className="text-indigo-600 dark:text-indigo-400 hover:underline">
+                <a href={`mailto:${value}`} className="hover:underline" style={{ color: 'var(--text-brand)' }}>
                   {String(value)}
                 </a>
               ) : (
-                <span className="text-gray-400">—</span>
+                <span style={{ color: 'var(--text-muted)' }}>—</span>
               )}
             </div>
           );
@@ -563,26 +613,28 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={String(value || '')}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
       case 'url':
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
               {value ? (
                 <a
                   href={String(value)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                  className="hover:underline flex items-center gap-1"
+                  style={{ color: 'var(--text-brand)' }}
                 >
                   {String(value)}
                   <ExternalLink className="w-3 h-3" />
                 </a>
               ) : (
-                <span className="text-gray-400">—</span>
+                <span style={{ color: 'var(--text-muted)' }}>—</span>
               )}
             </div>
           );
@@ -593,7 +645,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={String(value || '')}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
 
@@ -601,8 +654,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
         // String and other types
         if (isReadOnly) {
           return (
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              {value != null ? String(value) : <span className="text-gray-400">—</span>}
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+              {value != null ? String(value) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
             </div>
           );
         }
@@ -613,7 +666,8 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
             maxLength={property.validationRules?.maxLength}
-            className={inputClasses}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={inputStyles}
           />
         );
     }
@@ -621,13 +675,13 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
 
   return (
     <div className={property.propertyType === 'text' || property.propertyType === 'richtext' ? 'col-span-2' : ''}>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+      <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
         {property.label}
-        {property.isRequired && <span className="text-red-500 ml-1">*</span>}
+        {property.isRequired && <span className="ml-1" style={{ color: 'var(--text-danger)' }}>*</span>}
       </label>
       {renderField()}
       {property.hint && (
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{property.hint}</p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{property.hint}</p>
       )}
     </div>
   );

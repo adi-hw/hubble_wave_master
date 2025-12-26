@@ -806,7 +806,7 @@ export class PlatformKnowledgeService {
       return { available: false, reason: 'Capability not found' };
     }
 
-    if (capability.adminOnly && userRole !== 'admin' && userRole !== 'tenant_admin') {
+    if (capability.adminOnly && userRole !== 'admin') {
       return { available: false, reason: 'This feature is only available to administrators' };
     }
 

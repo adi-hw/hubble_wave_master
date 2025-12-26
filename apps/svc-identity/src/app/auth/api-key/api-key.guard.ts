@@ -47,10 +47,9 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid API Key');
     }
 
-    // Attach user context (similar structure to JWT payload)
+    // Attach user context (instance-scoped)
     request.user = {
       userId: `api-key:${validatedKey.id}`, // Prefixed to distinguish from user IDs
-      tenantId: validatedKey.tenantId,
       username: validatedKey.name,
       email: null,
       roles: ['api-integration'], // Special role for API integrations
@@ -60,13 +59,10 @@ export class ApiKeyGuard implements CanActivate {
       apiKeyId: validatedKey.id,
     };
 
-    // Also set tenantId directly on request for TenantGuard compatibility
-    request.tenantId = validatedKey.tenantId;
-
     // Mark auth type for downstream guards/middleware
     request.authType = 'api-key';
 
-    this.logger.debug(`API key authenticated: ${validatedKey.name} for tenant ${validatedKey.tenantId}`);
+    this.logger.debug(`API key authenticated: ${validatedKey.name} for user ${validatedKey.userId}`);
 
     return true;
   }

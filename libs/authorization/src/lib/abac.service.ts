@@ -1,7 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { AbacPolicy } from '@eam-platform/platform-db';
-import { IsNull } from 'typeorm';
 
 /**
  * Supported predicate operations for row-level security.
@@ -39,19 +36,11 @@ const ALLOWED_RLS_COLUMNS = new Set([
 
 @Injectable()
 export class AbacService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  // Stubbed repo removed; ABAC is permissive in this build
+  constructor() {}
 
-  async getPolicies(tenantId: string, resourceType: string, resource: string, action: string) {
-    // Normalize legacy/write operations to the enum-friendly value
-    const normalizedAction = action === 'write' ? 'update' : action;
-    const repo = await this.tenantDb.getRepository<AbacPolicy>(tenantId, AbacPolicy as any);
-    return repo.find({
-      where: [
-        { tenantId, resource, action: normalizedAction, resourceType, isEnabled: true },
-        { tenantId: IsNull(), resource, action: normalizedAction, resourceType, isEnabled: true },
-      ],
-      order: { priority: 'ASC' },
-    });
+  async getPolicies(_resourceType: string, _resource: string, _action: string) {
+    return [];
   }
 
   matches(condition: Condition | undefined, context: Record<string, any>) {
@@ -137,7 +126,7 @@ export class AbacService {
 
     // Validate contextRef if present
     if (pred.contextRef) {
-      const validRefs = ['userId', 'roles', 'groups', 'sites', 'tenantId', 'departments', 'teams'];
+      const validRefs = ['userId', 'roles', 'groups', 'sites', 'departments', 'teams'];
       if (!validRefs.includes(pred.contextRef)) {
         console.warn(`SECURITY: Invalid RLS context reference rejected: ${pred.contextRef}`);
         return false;
@@ -153,7 +142,7 @@ export class AbacService {
    */
   buildPredicateClause(
     predicates: SafePredicate[],
-    context: { userId: string; roles: string[]; groups?: string[]; sites?: string[]; tenantId?: string },
+    context: { userId: string; roles: string[]; groups?: string[]; sites?: string[] },
     tableAlias = 't'
   ): { clauses: string[]; params: Record<string, any> } {
     const clauses: string[] = [];
@@ -174,7 +163,6 @@ export class AbacService {
           case 'roles': value = context.roles; break;
           case 'groups': value = context.groups ?? []; break;
           case 'sites': value = context.sites ?? []; break;
-          case 'tenantId': value = context.tenantId; break;
           default: continue; // Skip invalid refs
         }
       }

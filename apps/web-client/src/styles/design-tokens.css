@@ -1,15 +1,19 @@
 /**
- * HubbleWave Design System v2.0
+ * HubbleWave Design System v2.1
  *
- * A modern, warm, and distinctive design system that combines
+ * A modern, distinctive design system that combines
  * the depth of space (Hubble) with the fluidity of waves.
  *
  * Design Principles:
- * 1. Warm & Approachable - Violet primary, not cold enterprise blue
+ * 1. Bold & Modern - Indigo primary for professional authority
  * 2. Clear Hierarchy - Obvious visual importance levels
- * 3. Distinctive Brand - Unique violet-to-teal gradient accents
+ * 3. Distinctive Brand - Unique indigo-to-cyan gradient accents
  * 4. Accessible - WCAG 2.1 AA compliant contrast
  * 5. Consistent - Single source of truth for all tokens
+ *
+ * Brand Colors:
+ * - Primary: Indigo (#6366F1) - The "deep space" element
+ * - Accent: Cyan (#06B6D4) - The "wave" / AVA AI color
  *
  * Token Naming Convention:
  * - Colors: --color-{palette}-{shade}
@@ -25,33 +29,33 @@
    ============================================ */
 
 :root {
-  /* --- Primary: Violet ---
-     Sophisticated, modern, distinctive - the "deep space" element */
-  --color-primary-50: #faf5ff;
-  --color-primary-100: #f3e8ff;
-  --color-primary-200: #e9d5ff;
-  --color-primary-300: #d8b4fe;
-  --color-primary-400: #c084fc;
-  --color-primary-500: #a855f7;
-  --color-primary-600: #9333ea;
-  --color-primary-700: #7e22ce;
-  --color-primary-800: #6b21a8;
-  --color-primary-900: #581c87;
-  --color-primary-950: #3b0764;
+  /* --- Primary: Indigo ---
+     The "deep space" element - HubbleWave brand color */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary-950: #1e1b4b;
 
-  /* --- Accent: Teal ---
-     The "wave" - representing flow, insight, and forward motion */
-  --color-accent-50: #f0fdfa;
-  --color-accent-100: #ccfbf1;
-  --color-accent-200: #99f6e4;
-  --color-accent-300: #5eead4;
-  --color-accent-400: #2dd4bf;
-  --color-accent-500: #14b8a6;
-  --color-accent-600: #0d9488;
-  --color-accent-700: #0f766e;
-  --color-accent-800: #115e59;
-  --color-accent-900: #134e4a;
-  --color-accent-950: #042f2e;
+  /* --- Accent: Cyan ---
+     The "wave" - AVA AI color, representing flow and intelligence */
+  --color-accent-50: #ecfeff;
+  --color-accent-100: #cffafe;
+  --color-accent-200: #a5f3fc;
+  --color-accent-300: #67e8f9;
+  --color-accent-400: #22d3ee;
+  --color-accent-500: #06b6d4;
+  --color-accent-600: #0891b2;
+  --color-accent-700: #0e7490;
+  --color-accent-800: #155e75;
+  --color-accent-900: #164e63;
+  --color-accent-950: #083344;
 
   /* --- Neutral: Warm Gray ---
      Slightly warm grays for a friendlier, less sterile feel */
@@ -217,8 +221,8 @@
   --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
 
   /* Colored shadows for brand elements */
-  --shadow-primary: 0 4px 14px -3px rgba(147, 51, 234, 0.35);
-  --shadow-accent: 0 4px 14px -3px rgba(20, 184, 166, 0.35);
+  --shadow-primary: 0 4px 14px -3px rgba(99, 102, 241, 0.35);
+  --shadow-accent: 0 4px 14px -3px rgba(6, 182, 212, 0.35);
 
   /* --- Focus Ring --- */
   --ring-color: var(--color-primary-500);
@@ -241,31 +245,31 @@
 
 .dark {
   /* --- Backgrounds --- */
-  --bg-base: #0a0a0b;
-  --bg-surface: #141416;
-  --bg-surface-secondary: #1c1c1f;
-  --bg-surface-tertiary: #27272a;
-  --bg-elevated: #1c1c1f;
-  --bg-sunken: #0a0a0b;
+  --bg-base: #0f0f14;
+  --bg-surface: #16161d;
+  --bg-surface-secondary: #1c1c26;
+  --bg-surface-tertiary: #252532;
+  --bg-elevated: #1c1c26;
+  --bg-sunken: #0f0f14;
   --bg-overlay: rgba(0, 0, 0, 0.75);
-  --bg-backdrop: rgba(10, 10, 11, 0.8);
+  --bg-backdrop: rgba(15, 15, 20, 0.8);
 
   /* Interactive backgrounds */
-  --bg-hover: #1c1c1f;
-  --bg-active: #27272a;
-  --bg-selected: rgba(168, 85, 247, 0.15);
-  --bg-selected-hover: rgba(168, 85, 247, 0.25);
-  --bg-disabled: #1c1c1f;
+  --bg-hover: #1c1c26;
+  --bg-active: #252532;
+  --bg-selected: rgba(99, 102, 241, 0.15);
+  --bg-selected-hover: rgba(99, 102, 241, 0.25);
+  --bg-disabled: #1c1c26;
 
   /* Brand backgrounds */
   --bg-primary: var(--color-primary-500);
   --bg-primary-hover: var(--color-primary-400);
   --bg-primary-active: var(--color-primary-600);
-  --bg-primary-subtle: rgba(168, 85, 247, 0.15);
+  --bg-primary-subtle: rgba(99, 102, 241, 0.15);
 
   --bg-accent: var(--color-accent-500);
   --bg-accent-hover: var(--color-accent-400);
-  --bg-accent-subtle: rgba(20, 184, 166, 0.15);
+  --bg-accent-subtle: rgba(6, 182, 212, 0.15);
 
   /* Status backgrounds */
   --bg-success: var(--color-success-500);
@@ -278,9 +282,9 @@
   --bg-info-subtle: rgba(59, 130, 246, 0.15);
 
   /* --- Borders --- */
-  --border-default: #27272a;
-  --border-subtle: #1c1c1f;
-  --border-strong: #3f3f46;
+  --border-default: #2a2a3c;
+  --border-subtle: #1c1c26;
+  --border-strong: #3a3a4c;
   --border-hover: #52525b;
   --border-focus: var(--color-primary-400);
   --border-disabled: #27272a;
@@ -335,12 +339,12 @@
   --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
 
   /* Colored shadows with glow effect */
-  --shadow-primary: 0 4px 20px -3px rgba(168, 85, 247, 0.4);
-  --shadow-accent: 0 4px 20px -3px rgba(20, 184, 166, 0.4);
+  --shadow-primary: 0 4px 20px -3px rgba(99, 102, 241, 0.4);
+  --shadow-accent: 0 4px 20px -3px rgba(6, 182, 212, 0.4);
 
   /* --- Focus Ring --- */
   --ring-color: var(--color-primary-400);
-  --ring-offset-color: #0a0a0b;
+  --ring-offset-color: #0f0f14;
 
   /* --- Diff Colors --- */
   --diff-add-bg: rgba(34, 197, 94, 0.15);
@@ -507,13 +511,13 @@
 
 :root {
   /* Sidebar */
-  --sidebar-width: 260px;
-  --sidebar-width-collapsed: 72px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
   --sidebar-width-mobile: 280px;
 
   /* Header */
-  --header-height: 56px;
-  --header-height-mobile: 52px;
+  --header-height: 64px;
+  --header-height-mobile: 56px;
 
   /* Content */
   --content-max-width: 1400px;
@@ -523,7 +527,7 @@
   --content-padding-mobile: var(--space-4);
 
   /* Bottom navigation (mobile) */
-  --bottom-nav-height: 64px;
+  --bottom-nav-height: 56px;
 
   /* Modal widths */
   --modal-width-sm: 400px;
@@ -668,31 +672,34 @@
 
   /* Special effect gradients */
   --gradient-glow: radial-gradient(ellipse at center, var(--color-primary-500) 0%, transparent 70%);
-  --gradient-spotlight: radial-gradient(ellipse at top, rgba(168, 85, 247, 0.15) 0%, transparent 50%);
+  --gradient-spotlight: radial-gradient(ellipse at top, rgba(99, 102, 241, 0.15) 0%, transparent 50%);
 }
 
 .dark {
-  --gradient-brand-subtle: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(20, 184, 166, 0.2) 100%);
-  --gradient-primary-subtle: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.25) 100%);
-  --gradient-accent-subtle: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(20, 184, 166, 0.25) 100%);
+  --gradient-brand-subtle: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%);
+  --gradient-primary-subtle: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.25) 100%);
+  --gradient-accent-subtle: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(6, 182, 212, 0.25) 100%);
 }
 
 /* ============================================
    SCROLLBAR STYLES
+   Modern, sleek, semi-transparent scrollbars
    ============================================ */
 
 :root {
-  --scrollbar-width: 8px;
-  --scrollbar-width-thin: 6px;
-  --scrollbar-track: var(--bg-surface-secondary);
-  --scrollbar-thumb: var(--color-neutral-300);
-  --scrollbar-thumb-hover: var(--color-neutral-400);
+  --scrollbar-width: 6px;
+  --scrollbar-width-thin: 4px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.35);
 }
 
 .dark {
-  --scrollbar-track: var(--bg-surface);
-  --scrollbar-thumb: var(--color-neutral-600);
-  --scrollbar-thumb-hover: var(--color-neutral-500);
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.32);
 }
 
 /* ============================================

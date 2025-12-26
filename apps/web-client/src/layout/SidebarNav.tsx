@@ -29,16 +29,16 @@ export const SidebarNav: React.FC = () => {
       </div>
 
       <div className="mt-4 border-t pt-3">
-        <PermissionGate roles="tenant_admin">
+        <PermissionGate roles="admin">
           <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Studio</div>
-          <NavItem to="/studio/tables" label="Tables" />
+          <NavItem to="/studio/collections" label="Collections" />
           <NavItem to="/studio/scripts" label="Scripts" />
           <NavItem to="/studio/workflows" label="Workflows" />
         </PermissionGate>
       </div>
 
       <div className="mt-4 border-t pt-3">
-        <PermissionGate roles="tenant_admin">
+        <PermissionGate roles="admin">
           <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Administration</div>
           <NavItem to="/admin/users" label="Users & Roles" />
           <NavItem to="/admin/groups" label="Groups" />
@@ -46,9 +46,11 @@ export const SidebarNav: React.FC = () => {
       </div>
 
       <div className="mt-4 border-t pt-3">
-        <PermissionGate roles="platform_admin">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Platform</div>
-          <NavItem to="/admin/platform/tenants" label="Tenants" />
+        <PermissionGate roles="admin">
+          <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Enterprise</div>
+          <NavItem to="/admin/enterprise/sso" label="SSO Configuration" />
+          <NavItem to="/admin/enterprise/ldap" label="LDAP / Active Directory" />
+          <NavItem to="/admin/enterprise/audit" label="Audit Logs" />
         </PermissionGate>
       </div>
     </aside>

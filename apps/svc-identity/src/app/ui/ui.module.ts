@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { UiController } from './ui.controller';
 import { UiService } from './ui.service';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 
 @Module({
   imports: [
-    TenantDbModule,
+    InstanceDbModule,
   ],
   controllers: [UiController],
   providers: [UiService],
 })
 export class UiModule {}
+

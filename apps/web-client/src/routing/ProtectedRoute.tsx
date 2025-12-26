@@ -13,11 +13,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ permissions, rol
   const { auth } = useAuth();
   const location = useLocation();
   const hasPerm = permissions ? useHasPermission(permissions) : true;
-  const hasRole =
-    roles
-      ? useHasRole(roles) ||
-        (Array.isArray(auth.user?.roles) && auth.user?.roles.includes('platform_admin'))
-      : true;
+  const hasRole = roles ? useHasRole(roles) : true;
 
   if (auth.loading) {
     return (

@@ -46,7 +46,7 @@ const SmartGroupSection: React.FC<SmartGroupSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors hover:bg-slate-50"
-          style={{ color: 'var(--hw-text-muted, #94a3b8)' }}
+          style={{ color: 'var(--text-muted)' }}
         >
           <span className="flex-shrink-0">{icon}</span>
           <span className="flex-1 text-left truncate">{title}</span>

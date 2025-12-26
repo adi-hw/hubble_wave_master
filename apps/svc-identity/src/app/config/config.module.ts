@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 import { ConfigServiceLocal } from './config.service';
 import { ConfigController } from './config.controller';
 
 @Module({
-  imports: [TenantDbModule],
+  imports: [InstanceDbModule],
   providers: [ConfigServiceLocal],
   controllers: [ConfigController],
   exports: [ConfigServiceLocal],
 })
 export class SettingsModule {}
+

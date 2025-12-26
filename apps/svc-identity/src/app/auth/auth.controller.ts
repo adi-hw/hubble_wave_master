@@ -4,11 +4,8 @@ import { LoginDto } from './dto/login.dto';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Public } from './decorators/public.decorator';
 import { ApiTags } from '@nestjs/swagger';
-import { extractTenantSlug } from '@eam-platform/tenant-db';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { UserAccount, TenantUserMembership } from '@eam-platform/platform-db';
-import { AuthenticatedRequest, PublicRequest } from '@eam-platform/auth-guard';
+import { AuthenticatedRequest, PublicRequest } from '@hubblewave/auth-guard';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { Response, Request } from 'express';
 
@@ -23,7 +20,6 @@ export class AuthController {
 
   constructor(
     private readonly authService: AuthService,
-    private readonly tenantDbService: TenantDbService,
   ) {}
 
   private parseRefreshFromCookie(req: Request): string | undefined {
@@ -44,25 +40,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   async login(@Req() req: PublicRequest, @Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const tenantSlugFromHost = extractTenantSlug(req.headers.host);
-    const headerSlug = req.headers['x-tenant-slug'];
-    const allowFallback = process.env.ALLOW_DEFAULT_TENANT_FALLBACK === 'true';
-    const defaultSlug = process.env.DEFAULT_TENANT_SLUG || 'acme';
-    const resolvedSlugFromRequest =
-      loginDto.tenantSlug || req?.tenant?.slug || headerSlug || tenantSlugFromHost;
-    const usingDefaultFallback = !resolvedSlugFromRequest && !!defaultSlug;
-
-    if (!resolvedSlugFromRequest && !allowFallback) {
-      this.logger.error('No tenant slug resolved in login request');
-      throw new UnauthorizedException('Tenant could not be determined from request');
-    }
-
-    if (usingDefaultFallback && allowFallback) {
-      // Should be rare; signals missing tenant context in request rather than intentional default
-      this.logger.warn('No tenant slug resolved, using default', { defaultSlug });
-    }
-
-    const resolvedSlug = resolvedSlugFromRequest || defaultSlug;
+    const resolvedSlug = loginDto.tenantSlug || process.env.DEFAULT_INSTANCE_SLUG || 'default';
 
     const normalizedDto: LoginDto = {
       ...loginDto,
@@ -71,11 +49,10 @@ export class AuthController {
     const result = await this.authService.login(normalizedDto, req.ip, req.headers['user-agent']);
 
     if (this.useRefreshCookie && result.refreshToken) {
-      // In development (localhost), cookies must NOT be secure to work over HTTP
       const isProduction = process.env.NODE_ENV === 'production';
       const secure = isProduction || process.env.REFRESH_COOKIE_SECURE === 'true';
       const sameSite: SameSiteOption = (process.env.REFRESH_COOKIE_SAMESITE as SameSiteOption) || 'lax';
-      this.logger.debug(`Setting refresh cookie: secure=${secure}, sameSite=${sameSite}, path=${this.cookiePath}`);
+      
       res.cookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure,
@@ -92,23 +69,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 refreshes per minute
   @Post('refresh')
   async refresh(@Req() req: PublicRequest, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
-    const tenantSlugFromHost = extractTenantSlug(req.headers.host);
-    const headerSlug = req.headers['x-tenant-slug'];
-    const allowFallback = process.env.ALLOW_DEFAULT_TENANT_FALLBACK === 'true';
-    const defaultSlug = process.env.DEFAULT_TENANT_SLUG || 'acme';
-    const resolvedSlugFromRequest = req?.tenant?.slug || headerSlug || tenantSlugFromHost;
-    const usingDefaultFallback = !resolvedSlugFromRequest && !!defaultSlug;
-
-    if (!resolvedSlugFromRequest && !allowFallback) {
-      this.logger.error('No tenant slug resolved in refresh request');
-      throw new UnauthorizedException('Tenant could not be determined from request');
-    }
-
-    if (usingDefaultFallback && allowFallback) {
-      this.logger.warn('No tenant slug resolved for refresh, using default', { defaultSlug });
-    }
-
-    const resolvedSlug = resolvedSlugFromRequest || defaultSlug;
+    const resolvedSlug = process.env.DEFAULT_INSTANCE_SLUG || 'default';
 
     const refreshToken = body.refreshToken || this.parseRefreshFromCookie(req);
     if (!refreshToken) {
@@ -138,11 +99,9 @@ export class AuthController {
 
       return result;
     } catch (error) {
-      // If it's already an UnauthorizedException, rethrow it
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      // Log unexpected errors and return a generic auth error to avoid 500
       this.logger.error('Unexpected error during token refresh', {
         error: (error as Error)?.message,
         stack: (error as Error)?.stack,
@@ -156,7 +115,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
     const response = await this.authService.logout(
-      req.user.tenantId,
       req.user.userId,
       req.ip,
       req.headers['user-agent'],
@@ -181,8 +139,23 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 attempts per minute
   async changePassword(@Req() req: AuthenticatedRequest, @Body() body: { currentPassword: string; newPassword: string }) {
     return this.authService.changePassword(
-      req.user.tenantId,
       req.user.userId,
+      body.currentPassword,
+      body.newPassword
+    );
+  }
+
+  /**
+   * Change password for expired password (no auth required, uses current credentials)
+   */
+  @Public()
+  @Post('change-password-expired')
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 attempts per minute
+  async changeExpiredPassword(
+    @Body() body: { username: string; currentPassword: string; newPassword: string },
+  ) {
+    return this.authService.changeExpiredPassword(
+      body.username,
       body.currentPassword,
       body.newPassword
     );
@@ -192,30 +165,20 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @SkipThrottle() // Profile endpoint called frequently after login
   async getProfile(@Req() req: AuthenticatedRequest): Promise<UserProfileDto> {
-    const { userId, tenantId, roles, permissions } = req.user;
-    if (!userId || !tenantId) {
+    const { userId } = req.user;
+    if (!userId) {
       throw new UnauthorizedException('Invalid user context');
     }
 
-    const userRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount as any);
-    const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenantId, TenantUserMembership as any);
-    const user = await userRepo.findOne({ where: { id: userId } });
-    const membership = await membershipRepo.findOne({ where: { tenantId, userId } });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-    if (!membership || membership.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Membership not active');
-    }
+    const profile = await this.authService.getProfile(userId);
 
     return {
-      id: user.id,
-      username: user.displayName || user.primaryEmail,
-      tenantId,
-      roles: roles ?? [],
-      permissions: permissions ?? [],
-      displayName: user.displayName,
-      email: user.primaryEmail,
+      id: profile.id,
+      username: profile.username,
+      roles: profile.roles,
+      permissions: profile.permissions,
+      displayName: profile.displayName,
+      email: profile.email,
     };
   }
 }

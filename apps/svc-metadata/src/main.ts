@@ -1,8 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
+import { assertSecureConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
+  // SECURITY: Validate configuration before starting
+  assertSecureConfig();
+
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be set in production');
   }
@@ -66,12 +70,13 @@ async function bootstrap() {
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
 
-  // Prefer service-specific port vars and fall back to 3333 to avoid clashing with svc-identity (3000)
+  // Prefer service-specific port vars and fall back to 3003
   const port =
+    process.env.PORT ||
     process.env.METADATA_PORT ||
     process.env.PORT_METADATA ||
     process.env.PORT_SVC_METADATA ||
-    3333;
+    3003;
 
   await app.listen(port);
   Logger.log(

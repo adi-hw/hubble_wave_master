@@ -5,7 +5,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
 
 export interface EmbeddingJob {
-  tenantId: string;
   sourceType: 'knowledge_article' | 'catalog_item' | 'record' | 'bulk_reindex';
   sourceId: string;
   action: 'index' | 'delete' | 'reindex';
@@ -31,6 +30,7 @@ export interface QueueStats {
 @Injectable()
 export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EmbeddingQueueService.name);
+  private readonly tenantId = process.env.INSTANCE_ID || 'default-instance';
   private queue: Queue<EmbeddingJob, EmbeddingJobResult> | null = null;
   private queueEvents: QueueEvents | null = null;
   private connection: Redis | null = null;
@@ -128,10 +128,10 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
 
     const queuedJob = await this.queue.add(
       `${job.action}-${job.sourceType}`,
-      job,
+      { ...job },
       {
         priority: job.priority || 10,
-        jobId: `${job.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
+        jobId: `${this.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
       }
     );
 
@@ -149,10 +149,10 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
 
     const bulkJobs = jobs.map((job) => ({
       name: `${job.action}-${job.sourceType}`,
-      data: job,
+      data: { ...job },
       opts: {
         priority: job.priority || 10,
-        jobId: `${job.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
+        jobId: `${this.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
       },
     }));
 
@@ -161,14 +161,10 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Schedule a reindex job for a tenant
+   * Schedule a full reindex job
    */
-  async scheduleReindex(
-    tenantId: string,
-    sourceTypes?: string[]
-  ): Promise<string | null> {
+  async scheduleReindex(sourceTypes?: string[]): Promise<string | null> {
     return this.addJob({
-      tenantId,
       sourceType: 'bulk_reindex',
       sourceId: 'all',
       action: 'reindex',
@@ -195,28 +191,25 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get jobs for a specific tenant
+   * Get jobs for the embedding queue
    */
-  async getTenantJobs(
-    tenantId: string,
+  async getJobs(
     status: 'waiting' | 'active' | 'completed' | 'failed' = 'active'
   ): Promise<Job<EmbeddingJob, EmbeddingJobResult>[]> {
     if (!this.queue) return [];
 
     const jobs = await this.queue.getJobs([status], 0, 100);
-    return jobs.filter((job) => job.data.tenantId === tenantId);
+    return jobs;
   }
 
   /**
-   * Retry all failed jobs for a tenant
+   * Retry all failed jobs
    */
-  async retryFailedJobs(tenantId?: string): Promise<number> {
+  async retryFailedJobs(): Promise<number> {
     if (!this.queue) return 0;
 
     const failedJobs = await this.queue.getJobs(['failed'], 0, 1000);
-    const jobsToRetry = tenantId
-      ? failedJobs.filter((job) => job.data.tenantId === tenantId)
-      : failedJobs;
+    const jobsToRetry = failedJobs;
 
     let retried = 0;
     for (const job of jobsToRetry) {
@@ -228,9 +221,9 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Clear all jobs for a tenant
+   * Clear all pending/failed jobs
    */
-  async clearTenantJobs(tenantId: string): Promise<number> {
+  async clearJobs(): Promise<number> {
     if (!this.queue) return 0;
 
     const allJobs = await this.queue.getJobs(
@@ -238,13 +231,11 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
       0,
       10000
     );
-    const tenantJobs = allJobs.filter((job) => job.data.tenantId === tenantId);
-
-    for (const job of tenantJobs) {
+    for (const job of allJobs) {
       await job.remove();
     }
 
-    return tenantJobs.length;
+    return allJobs.length;
   }
 
   /**

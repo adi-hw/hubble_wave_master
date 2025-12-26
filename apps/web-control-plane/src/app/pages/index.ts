@@ -1,0 +1,12 @@
+export { LoginPage } from './LoginPage';
+export { DashboardPage } from './DashboardPage';
+export { CustomersPage } from './CustomersPage';
+export { CustomerDetailPage } from './CustomerDetailPage';
+export { CustomerCreatePage } from './CustomerCreatePage';
+export { InstancesPage } from './InstancesPage';
+export { InstanceCreatePage } from './InstanceCreatePage';
+export { AuditPage } from './AuditPage';
+export { TerraformPage } from './TerraformPage';
+export { MetricsPage } from './MetricsPage';
+export { LicensesPage } from './LicensesPage';
+export { SettingsPage } from './SettingsPage';

@@ -2,36 +2,67 @@
  * ThemeProvider - HubbleWave Theme Wrapper
  *
  * Combines CSS-based theming with optional backend-driven theme tokens.
- * Uses useDarkMode hook for system/light/dark preference management.
+ * Uses ThemePreferenceContext for shared state management.
  */
 
 import React, { useEffect } from 'react';
-import { useThemeTokens } from '../../hooks/useThemeTokens';
-import { useDarkMode } from '../../hooks/useDarkMode';
+import { ThemePreferenceProvider, useThemePreferenceContext } from '../../contexts/ThemePreferenceContext';
 
 interface ThemeProviderProps {
   children: React.ReactNode;
 }
 
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const { theme } = useThemeTokens();
-  // Initialize dark mode - this applies the theme class to <html>
-  useDarkMode();
+const ThemeApplicator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { resolved } = useThemePreferenceContext();
+
+  // Apply dark/light class for Tailwind and design-tokens.css
+  useEffect(() => {
+    const root = document.documentElement;
+    const colorScheme = resolved.colorScheme;
+
+    // Add transition class for smooth switching
+    root.classList.add('theme-transitioning');
+
+    if (colorScheme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    root.dataset.theme = colorScheme;
+
+    // Remove transition class after animation
+    const timer = setTimeout(() => {
+      root.classList.remove('theme-transitioning');
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [resolved.colorScheme]);
 
   // Apply backend-driven theme tokens if available
+  // Track applied tokens so we can remove them when they change
   useEffect(() => {
-    if (!theme?.tokens) return;
+    if (!resolved?.tokens) return;
 
     const root = document.documentElement;
-    Object.entries(theme.tokens).forEach(([key, value]) => {
+    const appliedKeys: string[] = [];
+
+    // Apply new tokens
+    Object.entries(resolved.tokens).forEach(([key, value]) => {
       const cssVar = `--${key.replace(/\./g, '-')}`;
-      const stringValue =
-        typeof value === 'number' && key.startsWith('radius')
-          ? `${value}px`
-          : String(value);
+      const stringValue = typeof value === 'number' ? `${value}` : String(value);
       root.style.setProperty(cssVar, stringValue);
+      appliedKeys.push(cssVar);
     });
-  }, [theme]);
+
+    // Cleanup: remove tokens when component unmounts or tokens change
+    return () => {
+      appliedKeys.forEach((cssVar) => {
+        root.style.removeProperty(cssVar);
+      });
+    };
+  }, [resolved.tokens]);
 
   // Add smooth theme transition support
   useEffect(() => {
@@ -48,4 +79,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   }, []);
 
   return <>{children}</>;
+};
+
+export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
+  return (
+    <ThemePreferenceProvider>
+      <ThemeApplicator>{children}</ThemeApplicator>
+    </ThemePreferenceProvider>
+  );
 };

@@ -43,7 +43,7 @@ const badgeConfig: Record<CustomizationType, {
     icon: Sparkles,
     bgColor: 'bg-green-100',
     textColor: 'text-green-700',
-    description: 'Custom tenant configuration',
+    description: 'Custom instance configuration',
   },
   locked: {
     label: 'Locked',
@@ -84,7 +84,7 @@ export const CustomizationBadge: React.FC<CustomizationBadgeProps> = ({
 };
 
 interface SourceIndicatorProps {
-  source: 'platform' | 'module' | 'tenant';
+  source: 'platform' | 'module' | 'instance';
   isModified?: boolean;
   className?: string;
 }
@@ -101,7 +101,7 @@ export const SourceIndicator: React.FC<SourceIndicatorProps> = ({
   switch (source) {
     case 'platform':
       return <CustomizationBadge type="platform" className={className} />;
-    case 'tenant':
+    case 'instance':
       return <CustomizationBadge type="custom" className={className} />;
     default:
       return <CustomizationBadge type="platform" className={className} />;

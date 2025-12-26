@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantDbService, Report } from '@eam-platform/tenant-db';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { Report } from '@hubblewave/instance-db';
 
 export interface RunReportRequest {
-  tenantId: string;
   reportId: string;
   parameters?: Record<string, unknown>;
   page?: number;
@@ -44,7 +45,12 @@ export interface ExportResult {
 export class ReportingService {
   private readonly logger = new Logger(ReportingService.name);
 
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    @InjectRepository(Report)
+    private readonly reportRepo: Repository<Report>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource
+  ) {}
 
   /**
    * Run a report and return results
@@ -52,10 +58,7 @@ export class ReportingService {
   async runReport(request: RunReportRequest): Promise<ReportResult> {
     const startTime = Date.now();
 
-    const dataSource = await this.tenantDb.getDataSource(request.tenantId);
-    const reportRepo = dataSource.getRepository(Report);
-
-    const report = await reportRepo.findOne({
+    const report = await this.reportRepo.findOne({
       where: { id: request.reportId },
     });
 
@@ -65,7 +68,6 @@ export class ReportingService {
 
     // Build and execute query based on report definition
     const { columns, data, totals } = await this.executeReportQuery(
-      request.tenantId,
       report,
       request.parameters || {},
       request.page || 1,
@@ -113,7 +115,6 @@ export class ReportingService {
    * Execute the report query
    */
   private async executeReportQuery(
-    tenantId: string,
     report: Report,
     parameters: Record<string, unknown>,
     page: number,
@@ -123,8 +124,6 @@ export class ReportingService {
     data: Record<string, unknown>[];
     totals?: Record<string, number>;
   }> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-
     // Build columns from report definition
     const columns: ReportResultColumn[] = (report.columns || []).map((col) => ({
       id: col.id,
@@ -145,7 +144,7 @@ export class ReportingService {
       }
 
       // Build dynamic query
-      const queryBuilder = dataSource
+      const queryBuilder = this.dataSource
         .createQueryBuilder()
         .from(collectionCode, 'record');
 
@@ -203,12 +202,12 @@ export class ReportingService {
 
       // Calculate totals if needed
       if (report.grouping?.showGrandTotal) {
-        totals = await this.calculateTotals(dataSource, report);
+        totals = await this.calculateTotals(report);
       }
     } else if (report.dataSource.type === 'query' && report.dataSource.customQuery) {
       // Execute custom SQL (with parameter substitution)
       const query = this.substituteParameters(report.dataSource.customQuery, parameters);
-      data = await dataSource.query(query);
+      data = await this.dataSource.query(query);
     }
 
     return { columns, data, totals };
@@ -265,7 +264,6 @@ export class ReportingService {
    * Calculate totals for aggregatable columns
    */
   private async calculateTotals(
-    dataSource: import('typeorm').DataSource,
     report: Report
   ): Promise<Record<string, number>> {
     const totals: Record<string, number> = {};
@@ -294,7 +292,7 @@ export class ReportingService {
       }
     });
 
-    const result = await dataSource
+    const result = await this.dataSource
       .createQueryBuilder()
       .select(aggregateSelects)
       .from(collectionCode, 'record')
@@ -377,12 +375,8 @@ export class ReportingService {
   /**
    * Get available reports for a tenant
    */
-  async getReports(tenantId: string, moduleId?: string): Promise<Report[]> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const reportRepo = dataSource.getRepository(Report);
-
+  async getReports(moduleId?: string): Promise<Report[]> {
     const where: Record<string, unknown> = {
-      tenantId,
       isActive: true,
     };
 
@@ -390,7 +384,7 @@ export class ReportingService {
       where['moduleId'] = moduleId;
     }
 
-    return reportRepo.find({
+    return this.reportRepo.find({
       where,
       order: { sortOrder: 'ASC', label: 'ASC' },
     });
@@ -399,12 +393,11 @@ export class ReportingService {
   /**
    * Get a single report definition
    */
-  async getReport(tenantId: string, reportId: string): Promise<Report | null> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const reportRepo = dataSource.getRepository(Report);
-
-    return reportRepo.findOne({
-      where: { id: reportId, tenantId },
+  async getReport(reportId: string): Promise<Report | null> {
+    return this.reportRepo.findOne({
+      where: { id: reportId },
     });
   }
 }
+
+

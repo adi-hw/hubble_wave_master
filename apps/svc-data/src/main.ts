@@ -1,8 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
+import { assertSecureConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
+  // SECURITY: Validate configuration before starting
+  // This will throw in production if insecure defaults are detected
+  assertSecureConfig();
+
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be set in production');
   }
@@ -66,10 +71,11 @@ async function bootstrap() {
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
   const port =
+    process.env.PORT ||
     process.env.DATA_PORT ||
     process.env.PORT_DATA ||
     process.env.PORT_SVC_DATA ||
-    3001;
+    3002;
   await app.listen(port);
   Logger.log(
     `🚀 Application is running on: http://localhost:${port}/${globalPrefix}`

@@ -1,13 +1,10 @@
 import { Request } from 'express';
 
 export interface RequestContext {
-  requestId?: string;
-  tenantId: string;
   userId: string;
   roles: string[];
   permissions: string[];
-  isPlatformAdmin: boolean;
-  isTenantAdmin: boolean;
+  isAdmin: boolean;
   attributes?: Record<string, unknown>;
   sessionId?: string;
   username?: string;
@@ -20,22 +17,15 @@ export interface RequestContext {
 export interface AuthenticatedUser {
   userId: string;
   username: string;
-  tenantId: string;
   roles: string[];
   permissions: string[];
   sessionId?: string;
 }
 
 /**
- * Extended Express Request with tenant and context information
+ * Extended Express Request with context information
  */
 export interface TenantRequest extends Request {
-  tenantId: string;
-  tenant?: {
-    id: string;
-    slug: string;
-    name: string;
-  };
   context: RequestContext;
   user?: AuthenticatedUser;
 }
@@ -46,38 +36,25 @@ export interface TenantRequest extends Request {
  */
 export interface AuthenticatedRequest extends Request {
   user: AuthenticatedUser;
-  tenant?: {
-    id: string;
-    slug: string;
-    name: string;
-  };
   ip: string;
   headers: Request['headers'] & {
     'user-agent'?: string;
-    'x-tenant-slug'?: string;
   };
 }
 
 /**
- * Request type for public endpoints that may have optional tenant context
+ * Request type for public endpoints
  */
 export interface PublicRequest extends Request {
-  tenant?: {
-    id: string;
-    slug: string;
-    name: string;
-  };
   ip: string;
   headers: Request['headers'] & {
     'user-agent'?: string;
-    'x-tenant-slug'?: string;
     host?: string;
   };
 }
 
 /**
  * Safely extracts RequestContext from a request object.
- * This handles both TenantRequest.context and fallback scenarios.
  *
  * @param req - The request object (typically from @Req() decorator)
  * @returns RequestContext if available
@@ -95,11 +72,9 @@ export function extractContext(req: TenantRequest | AuthenticatedRequest | Recor
     return {
       userId: user.userId,
       username: user.username,
-      tenantId: user.tenantId,
       roles: user.roles || [],
       permissions: user.permissions || [],
-      isPlatformAdmin: user.roles?.includes('platform_admin') ?? false,
-      isTenantAdmin: user.roles?.includes('tenant_admin') ?? false,
+      isAdmin: user.roles?.includes('admin') ?? false,
       sessionId: user.sessionId,
     };
   }
@@ -115,7 +90,6 @@ function isValidContext(obj: unknown): obj is RequestContext {
   const ctx = obj as Record<string, unknown>;
   return (
     typeof ctx.userId === 'string' &&
-    typeof ctx.tenantId === 'string' &&
     Array.isArray(ctx.roles)
   );
 }
@@ -127,7 +101,6 @@ function isValidAuthenticatedUser(obj: unknown): obj is AuthenticatedUser {
   if (!obj || typeof obj !== 'object') return false;
   const user = obj as Record<string, unknown>;
   return (
-    typeof user.userId === 'string' &&
-    typeof user.tenantId === 'string'
+    typeof user.userId === 'string'
   );
 }

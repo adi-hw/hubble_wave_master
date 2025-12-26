@@ -1,61 +1,71 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { In } from 'typeorm';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import {
-  Tenant,
-  UserAccount,
-  UserRoleAssignment,
-  LdapConfig,
-  PasswordPolicy,
+  User,
+  AuthSettings,
   PasswordHistory,
-  GroupRole,
-  UserGroup,
-  TenantUserMembership,
-  RoleInheritance,
-  Role,
-} from '@eam-platform/platform-db';
-import {
-  UserProfile,
-  TenantUser,
-  TenantUserRole,
-  TenantGroupMember,
-  TenantRole,
-  TenantGroupRole,
-} from '@eam-platform/tenant-db';
+} from '@hubblewave/instance-db';
 import { LoginDto } from './dto/login.dto';
-import { LdapService } from '../ldap/ldap.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { MfaService } from './mfa.service';
-import { TenantDbService } from '@eam-platform/tenant-db';
 import { AuthEventsService } from './auth-events.service';
+import { PasswordValidationService } from './password-validation.service';
+import { PermissionResolverService } from '../roles/permission-resolver.service';
+
+/**
+ * Type-safe user update payload for login-related fields.
+ * Uses Pick to ensure only valid User fields can be updated.
+ */
+type LoginAttemptUpdate = Pick<User, 'failedLoginAttempts' | 'lockedUntil' | 'lastFailedLoginAt'>;
+
+/**
+ * OWASP-recommended Argon2id parameters:
+ * - memoryCost: 64 MB (65536 KB) - resistant to GPU attacks
+ * - timeCost: 3 iterations - balances security/performance
+ * - parallelism: 4 threads - utilizes multi-core
+ * - hashLength: 32 bytes (256 bits)
+ */
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 65536,  // 64 MB
+  timeCost: 3,        // 3 iterations
+  parallelism: 4,     // 4 threads
+  hashLength: 32,     // 256-bit output
+};
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly tenantDbService: TenantDbService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(AuthSettings)
+    private readonly authSettingsRepo: Repository<AuthSettings>,
+    @InjectRepository(PasswordHistory)
+    private readonly passwordHistoryRepo: Repository<PasswordHistory>,
     private readonly jwtService: JwtService,
-    private readonly ldapService: LdapService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly mfaService: MfaService,
     private readonly authEventsService: AuthEventsService,
+    private readonly passwordValidationService: PasswordValidationService,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   private async validatePasswordHistory(
-    tenantId: string,
     userId: string,
     newPassword: string,
-    policy?: PasswordPolicy
+    settings?: AuthSettings
   ): Promise<boolean> {
-    const historyDepth = policy?.passwordHistoryDepth ?? 5;
+    const historyDepth = settings?.passwordHistoryCount ?? 5;
     if (historyDepth <= 0) {
       return true;
     }
 
-    const historyRepo = await this.tenantDbService.getRepository<PasswordHistory>(tenantId, PasswordHistory as any);
-    const history = await historyRepo.find({
+    const history = await this.passwordHistoryRepo.find({
       where: { userId },
       order: { createdAt: 'DESC' },
       take: historyDepth,
@@ -69,55 +79,19 @@ export class AuthService {
     return true;
   }
 
-  private async ensureUserProfile(
-    tenantId: string,
-    membershipId: string,
-    primaryEmail: string,
-    displayName?: string,
-  ): Promise<void> {
-    try {
-      const profileRepo = await this.tenantDbService.getRepository<UserProfile>(tenantId, UserProfile);
-      let profile = await profileRepo.findOne({ where: { tenantUserId: membershipId } });
-      if (!profile) {
-        profile = profileRepo.create({
-          tenantUserId: membershipId,
-          displayName: displayName || primaryEmail,
-          email: primaryEmail,
-          isActive: true,
-        });
-        await profileRepo.save(profile);
-      } else {
-        const updated: Partial<UserProfile> = {};
-        if (profile.email !== primaryEmail) updated.email = primaryEmail;
-        if (displayName && profile.displayName !== displayName) updated.displayName = displayName;
-        if (Object.keys(updated).length > 0) {
-          await profileRepo.update(profile.id, updated);
-        }
-      }
-    } catch (err) {
-      this.logger.warn('Failed to ensure tenant user profile', {
-        tenantId,
-        membershipId,
-        error: (err as Error)?.message,
-      });
-    }
-  }
-
   private async updatePasswordHistory(
-    tenantId: string,
     userId: string,
     newPasswordHash: string,
     maxHistory = 5
   ): Promise<void> {
-    const historyRepo = await this.tenantDbService.getRepository<PasswordHistory>(tenantId, PasswordHistory as any);
-    await historyRepo.insert({
+    await this.passwordHistoryRepo.insert({
       userId,
       passwordHash: newPasswordHash,
     });
 
     const keep = Math.max(maxHistory, 0);
     if (keep > 0) {
-      const idsToKeep = await historyRepo
+      const idsToKeep = await this.passwordHistoryRepo
         .createQueryBuilder('ph')
         .select('ph.id')
         .where('ph.user_id = :userId', { userId })
@@ -126,10 +100,10 @@ export class AuthService {
         .getMany();
       const keepIds = idsToKeep.map((h) => h.id);
       if (keepIds.length > 0) {
-        await historyRepo
+        await this.passwordHistoryRepo
           .createQueryBuilder()
           .delete()
-          .from(PasswordHistory as any)
+          .from(PasswordHistory)
           .where('user_id = :userId', { userId })
           .andWhere('id NOT IN (:...ids)', { ids: keepIds })
           .execute();
@@ -138,9 +112,8 @@ export class AuthService {
   }
 
   private async checkAccountLockout(
-    tenantId: string,
-    user: UserAccount,
-    _policy?: PasswordPolicy
+    user: User,
+    _settings?: AuthSettings
   ): Promise<void> {
     // Check if account is locked
     if (user.lockedUntil && user.lockedUntil > new Date()) {
@@ -152,24 +125,22 @@ export class AuthService {
 
     // If lock period expired, reset failed attempts
     if (user.lockedUntil && user.lockedUntil <= new Date()) {
-      const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount);
-      await usersRepo.update(user.id, {
+      await this.userRepo.update(user.id, {
         failedLoginAttempts: 0,
-        lockedUntil: undefined,
+        lockedUntil: null,
       });
       user.failedLoginAttempts = 0;
       user.lockedUntil = undefined;
     }
   }
 
-  private async handleFailedLogin(tenantId: string, user: UserAccount, policy?: PasswordPolicy): Promise<void> {
-    const maxAttempts = policy?.maxFailedAttempts ?? 5;
-    const lockoutMinutes = policy?.lockoutDurationMinutes ?? 30;
+  private async handleFailedLogin(user: User, settings?: AuthSettings): Promise<void> {
+    const maxAttempts = settings?.maxFailedAttempts ?? 5;
+    const lockoutMinutes = settings?.lockoutDurationMinutes ?? 30;
 
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount);
     const newAttempts = (user.failedLoginAttempts || 0) + 1;
 
-    const updates: Partial<UserAccount> = {
+    const updates: Partial<LoginAttemptUpdate> = {
       failedLoginAttempts: newAttempts,
       lastFailedLoginAt: new Date(),
     };
@@ -187,25 +158,27 @@ export class AuthService {
       });
     }
 
-    await usersRepo.update(user.id, updates);
+    await this.userRepo.update(user.id, updates);
   }
 
-  private async resetFailedLoginAttempts(tenantId: string, userId: string): Promise<void> {
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount);
-    await usersRepo.update(userId, {
+  private async resetFailedLoginAttempts(userId: string): Promise<void> {
+    await this.userRepo.update(userId, {
       failedLoginAttempts: 0,
       lockedUntil: undefined,
       lastFailedLoginAt: undefined,
     });
   }
 
-  private async validateLocalUser(user: UserAccount, password: string, tenantId: string, policy?: PasswordPolicy) {
-    if (user.status !== 'ACTIVE') {
+  private async validateLocalUser(user: User, password: string, settings?: AuthSettings) {
+    if (user.status !== 'active') {
+      if (user.status === 'invited') {
+        throw new UnauthorizedException('Account not activated');
+      }
       throw new UnauthorizedException('Account is not active');
     }
 
     // Check if account is locked
-    await this.checkAccountLockout(tenantId, user, policy);
+    await this.checkAccountLockout(user, settings);
 
     if (!user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
@@ -214,137 +187,53 @@ export class AuthService {
     const isPasswordValid = await argon2.verify(user.passwordHash, password);
     if (!isPasswordValid) {
       // Record failed attempt and potentially lock account
-      await this.handleFailedLogin(tenantId, user, policy);
+      await this.handleFailedLogin(user, settings);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // Reset failed login attempts on successful login
     if (user.failedLoginAttempts && user.failedLoginAttempts > 0) {
-      await this.resetFailedLoginAttempts(tenantId, user.id);
-    }
-
-    return user;
-  }
-
-  async validateLdapUser(tenant: Tenant, username: string, password: string) {
-    const ldapConfigRepo = await this.tenantDbService.getRepository<LdapConfig>(tenant.id, LdapConfig as any);
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenant.id, UserAccount as any);
-    const ldapConfig = await ldapConfigRepo.findOne({
-      where: { enabled: true },
-    });
-
-    if (!ldapConfig) {
-      throw new UnauthorizedException('LDAP not configured');
-    }
-
-    const ldapUser = await this.ldapService.authenticate(
-      ldapConfig,
-      username,
-      password
-    );
-
-    let user = await usersRepo.findOne({
-      where: { primaryEmail: ldapUser.username },
-    });
-
-    if (!user) {
-      user = usersRepo.create({
-        primaryEmail: ldapUser.username,
-        displayName: ldapUser.displayName,
-        status: 'ACTIVE',
-      });
-      await usersRepo.save(user);
+      await this.resetFailedLoginAttempts(user.id);
     }
 
     return user;
   }
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
-    const { tenantSlug, username, password } = dto;
-    this.logger.log('Login attempt', { tenantSlug, username });
+    const { username, password } = dto;
+    const instanceId = process.env.INSTANCE_ID || 'default-instance';
+    this.logger.log('Login attempt', { instanceId, username });
 
     try {
-      if (!tenantSlug) {
-        throw new UnauthorizedException('Tenant could not be determined from host');
-      }
-      const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
-      if (!tenant || tenant.status !== 'ACTIVE') {
-        await this.authEventsService.record({
-          tenantId: tenant?.id,
-          type: 'LOGIN_FAILED',
-          ip: ipAddress,
-          userAgent,
-          metadata: { reason: 'TENANT_INACTIVE_OR_INVALID', tenantSlug },
-        });
-        throw new UnauthorizedException('Tenant is not active');
-      }
+      // 1. Single-customer deployment (no tenant lookup)
 
-      const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenant.id, UserAccount as any);
-      const tenantUserRepo = await this.tenantDbService.getRepository<TenantUser>(tenant.id, TenantUser);
-      const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenant.id, TenantUserMembership as any);
+      // 2. specific Auth Settings
+      const settings = await this.authSettingsRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
 
-      let user = await usersRepo.findOne({
-        where: { primaryEmail: username },
+      // 3. Find User
+      const user = await this.userRepo.findOne({
+        where: { email: username },
       });
-      this.logger.log('User lookup', { user: user ? user.id : null });
+      this.logger.log('User lookup', { userId: user ? user.id : null });
 
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      // Check new TenantUser table first (hybrid model)
-      let tenantUser = await tenantUserRepo.findOne({
-        where: { userAccountId: user.id },
-      });
+      // 4. Validate Credentials
+      await this.validateLocalUser(user, password, settings || undefined);
 
-      // If no TenantUser found, check legacy TenantUserMembership
-      let membership: TenantUserMembership | null = null;
-      let isTenantAdmin = false;
-      let membershipOrTenantUserId: string;
-
-      if (tenantUser) {
-        // Use new TenantUser system
-        if (tenantUser.status !== 'active') {
-          throw new UnauthorizedException('Account is not active in this tenant');
-        }
-        isTenantAdmin = tenantUser.isTenantAdmin;
-        membershipOrTenantUserId = tenantUser.id;
-        this.logger.log('Using TenantUser for auth', { tenantUserId: tenantUser.id });
-      } else {
-        // Fall back to legacy TenantUserMembership
-        membership = await membershipRepo.findOne({
-          where: { tenantId: tenant.id, userId: user.id },
-        });
-
-        if (!membership || membership.status !== 'ACTIVE') {
-          throw new UnauthorizedException('Invalid credentials');
-        }
-        isTenantAdmin = membership.isTenantAdmin;
-        membershipOrTenantUserId = membership.id;
-        this.logger.log('Using legacy TenantUserMembership for auth', { membershipId: membership.id });
-      }
-
-      // Get password policy for lockout enforcement
-      const passwordPolicyRepo = await this.tenantDbService.getRepository<PasswordPolicy>(tenant.id, PasswordPolicy as any);
-      const policy = await passwordPolicyRepo.findOne({
-        where: { tenantId: tenant.id },
-      });
-
-      user = await this.validateLocalUser(user, password, tenant.id, policy ?? undefined);
-
-      // Check if MFA is required
-      const mfaEnabled = await this.mfaService.isMfaEnabled(tenant.id, user.id);
+      // 5. MFA Check
+      const mfaEnabled = await this.mfaService.isMfaEnabled(user.id); 
 
       if (mfaEnabled) {
         if (dto.mfaToken) {
           const isValid = await this.mfaService.verifyTotp(
-            tenant.id,
             user.id,
             dto.mfaToken
           );
           if (!isValid) {
             const isRecoveryValid = await this.mfaService.verifyRecoveryCode(
-              tenant.id,
               user.id,
               dto.mfaToken
             );
@@ -353,13 +242,6 @@ export class AuthService {
             }
           }
         } else {
-          await this.authEventsService.record({
-            tenantId: tenant.id,
-            userId: user.id,
-            type: 'LOGIN_MFA_REQUIRED',
-            ip: ipAddress,
-            userAgent,
-          });
           return {
             mfaRequired: true,
             message: 'MFA verification required',
@@ -367,14 +249,14 @@ export class AuthService {
         }
       }
 
-      // Password expiry check
-      if (policy?.passwordExpiryDays && (user as any).passwordChangedAt) {
+      // 6. Password Expiry Check
+      if (settings?.passwordExpiryDays && user.passwordChangedAt) {
         const daysSinceChange = Math.floor(
-          (Date.now() - new Date((user as any).passwordChangedAt).getTime()) /
+          (Date.now() - new Date(user.passwordChangedAt).getTime()) /
             (1000 * 60 * 60 * 24)
         );
 
-        if (daysSinceChange >= policy.passwordExpiryDays) {
+        if (daysSinceChange >= settings.passwordExpiryDays) {
           return {
             passwordExpired: true,
             message: 'Password has expired. Please change your password.',
@@ -383,250 +265,303 @@ export class AuthService {
         }
       }
 
-      await this.ensureUserProfile(tenant.id, membershipOrTenantUserId, user.primaryEmail, user.displayName);
+      // 7. Resolve Roles
+      const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
 
-      // Resolve roles and permissions based on new or legacy system
-      const { roleNames, permissions } = tenantUser
-        ? await this.resolveRolesAndPermissionsForTenantUser(tenant.id, tenantUser.id)
-        : await this.resolveRolesAndPermissions(tenant.id, membershipOrTenantUserId);
-
-      // Include tenant_admin role if not already in roleNames
-      const allRoles = [...roleNames];
-      if (isTenantAdmin && !allRoles.includes('tenant_admin')) {
-        allRoles.push('tenant_admin');
-      }
-
+      // 8. Generate Token
       const payload = {
         sub: user.id,
-        username: user.displayName || user.primaryEmail,
-        tenant_id: tenant.id,
-        tenant_user_id: tenantUser?.id, // Include new tenant user ID if available
-        roles: allRoles,
+        username: user.displayName || user.email,
+        roles: roleNames,
         permissions: Array.from(permissions),
-        is_tenant_admin: isTenantAdmin,
+        is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
       };
+      
       const accessToken = this.jwtService.sign(payload);
 
       const { token: refreshToken } =
-        await this.refreshTokenService.createRefreshToken(user.id, tenant.id, ipAddress, userAgent);
+        await this.refreshTokenService.createRefreshToken(user.id, ipAddress, userAgent);
 
       await this.authEventsService.record({
-        tenantId: tenant.id,
+        eventType: 'LOGIN_SUCCESS',
+        success: true,
         userId: user.id,
-        type: 'LOGIN_SUCCESS',
-        ip: ipAddress,
+        ipAddress: ipAddress,
         userAgent,
       });
+
       return {
         accessToken,
         refreshToken,
         user: {
           id: user.id,
-          tenantUserId: tenantUser?.id, // Include new tenant user ID if available
-          username: user.displayName || user.primaryEmail,
-          email: user.primaryEmail,
-          displayName: tenantUser?.displayName || user.displayName,
-          tenantId: tenant.id,
-          roles: allRoles,
-          isTenantAdmin,
+          username: user.displayName || user.email,
+          email: user.email,
+          displayName: user.displayName,
+          roles: roleNames,
+          permissions: Array.from(permissions),
+          isAdmin: roleNames.includes('admin'),
         },
       };
+
     } catch (error) {
-      await this.authEventsService.record({
-        tenantId: undefined,
+       await this.authEventsService.record({
+        eventType: 'LOGIN_FAILED',
+        success: false,
         userId: undefined,
-        type: 'LOGIN_FAILED',
-        ip: ipAddress,
+        ipAddress: ipAddress,
         userAgent,
-        metadata: { reason: (error as any)?.message || 'UNKNOWN_ERROR' },
       });
       this.logger.error('Login error', error as any);
       throw error;
     }
   }
 
-  async refreshAccessToken(refreshToken: string, tenantSlug?: string, ipAddress?: string, userAgent?: string) {
-    if (!tenantSlug) {
-      throw new UnauthorizedException('Tenant could not be determined from host');
-    }
-    const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
-    if (!tenant || tenant.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Tenant not active');
-    }
-
-    const tokenEntity = await this.refreshTokenService.findByToken(refreshToken, tenant.id);
-    if (!tokenEntity) {
-      await this.authEventsService.record({
-        tenantId: tenant.id,
-        type: 'REFRESH_FAILED',
-        ip: ipAddress,
-        userAgent,
-        metadata: { reason: 'NOT_FOUND' },
-      });
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    if (tokenEntity.revokedAt || tokenEntity.expiresAt < new Date()) {
-      await this.authEventsService.record({
-        tenantId: tenant.id,
-        userId: tokenEntity.userId,
-        type: 'REFRESH_FAILED',
-        ip: ipAddress,
-        userAgent,
-        metadata: { reason: 'EXPIRED_OR_REVOKED', tokenId: tokenEntity.id },
-      });
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    if (tokenEntity.replacedById) {
-      await this.refreshTokenService.markFamilyAsCompromised(tenant.id, tokenEntity.familyId, 'REUSE_DETECTED');
-      await this.authEventsService.record({
-        tenantId: tenant.id,
-        userId: tokenEntity.userId,
-        type: 'REFRESH_TOKEN_REUSE_DETECTED',
-        ip: ipAddress,
-        userAgent,
-        metadata: { familyId: tokenEntity.familyId, tokenId: tokenEntity.id },
-      });
-      this.logger.warn('Refresh token reuse detected', {
-        familyId: tokenEntity.familyId,
-        tokenId: tokenEntity.id,
-        tenantId: tenant.id,
-        userId: tokenEntity.userId,
-      });
-      throw new UnauthorizedException('Refresh token reuse detected');
-    }
-
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenant.id, UserAccount as any);
-    const user = await usersRepo.findOne({
-      where: { id: tokenEntity.userId },
-    });
-
-    if (!user) {
-      await this.authEventsService.record({
-        tenantId: tenant.id,
-        userId: tokenEntity.userId,
-        type: 'REFRESH_FAILED',
-        ip: ipAddress,
-        userAgent,
-        metadata: { reason: 'USER_NOT_FOUND' },
-      });
-      throw new UnauthorizedException('User not found');
-    }
-
-    // Check new TenantUser table first (hybrid model)
-    const tenantUserRepo = await this.tenantDbService.getRepository<TenantUser>(tenant.id, TenantUser);
-    let tenantUser = await tenantUserRepo.findOne({
-      where: { userAccountId: user.id },
-    });
-
-    // If no TenantUser found, check legacy TenantUserMembership
-    const membershipRepo = await this.tenantDbService.getRepository<TenantUserMembership>(tenant.id, TenantUserMembership as any);
-    let membership: TenantUserMembership | null = null;
-    let isTenantAdmin = false;
-    let membershipOrTenantUserId: string;
-
-    if (tenantUser) {
-      if (tenantUser.status !== 'active') {
-        await this.authEventsService.record({
-          tenantId: tenant.id,
-          userId: tokenEntity.userId,
-          type: 'REFRESH_FAILED',
-          ip: ipAddress,
-          userAgent,
-          metadata: { reason: 'TENANT_USER_INACTIVE' },
-        });
-        throw new UnauthorizedException('User not active in this tenant');
-      }
-      isTenantAdmin = tenantUser.isTenantAdmin;
-      membershipOrTenantUserId = tenantUser.id;
-    } else {
-      membership = await membershipRepo.findOne({ where: { tenantId: tenant.id, userId: tokenEntity.userId } });
-
-      if (!membership || membership.status !== 'ACTIVE') {
-        await this.authEventsService.record({
-          tenantId: tenant.id,
-          userId: tokenEntity.userId,
-          type: 'REFRESH_FAILED',
-          ip: ipAddress,
-          userAgent,
-          metadata: { reason: 'USER_INACTIVE' },
-        });
-        throw new UnauthorizedException('User not found or inactive');
-      }
-      isTenantAdmin = membership.isTenantAdmin;
-      membershipOrTenantUserId = membership.id;
-    }
-
-    await this.ensureUserProfile(tenant.id, membershipOrTenantUserId, user.primaryEmail, user.displayName);
-
-    // Resolve roles and permissions based on new or legacy system
-    const { roleNames, permissions } = tenantUser
-      ? await this.resolveRolesAndPermissionsForTenantUser(tenant.id, tenantUser.id)
-      : await this.resolveRolesAndPermissions(tenant.id, membershipOrTenantUserId);
-
-    // Include tenant_admin role if not already in roleNames
-    const allRoles = [...roleNames];
-    if (isTenantAdmin && !allRoles.includes('tenant_admin')) {
-      allRoles.push('tenant_admin');
-    }
-
-    // Touch last used metadata on the current token
-    await this.refreshTokenService.updateLastUsed(tenant.id, tokenEntity.id, ipAddress, userAgent);
-
-    const rotated = await this.refreshTokenService.rotateRefreshToken(
-      refreshToken,
-      tenant.id,
-      ipAddress,
-      userAgent,
-    );
-    if (!rotated) {
-      await this.refreshTokenService.markFamilyAsCompromised(tenant.id, tokenEntity.familyId, 'ROTATION_FAILED');
-      await this.authEventsService.record({
-        tenantId: tenant.id,
-        userId: user.id,
-        type: 'REFRESH_FAILED',
-        ip: ipAddress,
-        userAgent,
-        metadata: { reason: 'ROTATION_FAILED', familyId: tokenEntity.familyId },
-      });
-      throw new UnauthorizedException('Failed to rotate refresh token');
-    }
-
-    const payload = {
-      sub: user.id,
-      username: user.displayName || user.primaryEmail,
-      tenant_id: tenant.id,
-      tenant_user_id: tenantUser?.id, // Include new tenant user ID if available
-      roles: allRoles,
-      permissions: Array.from(permissions),
-      is_tenant_admin: isTenantAdmin,
-    };
-    const accessToken = this.jwtService.sign(payload);
+  async logout(userId: string, ipAddress?: string, userAgent?: string) {
+    await this.refreshTokenService.revokeAllUserTokens(userId);
 
     await this.authEventsService.record({
-      tenantId: tenant.id,
-      userId: user.id,
-      type: 'REFRESH_SUCCESS',
-      ip: ipAddress,
-      userAgent,
-      metadata: { familyId: tokenEntity.familyId },
+        eventType: 'LOGOUT',
+        success: true,
+        userId,
+        ipAddress,
+        userAgent,
     });
+
+    return { success: true };
+  }
+
+  /**
+   * Generate tokens for a user (used by SSO login flows)
+   * This bypasses password validation since the user is already authenticated by the IdP
+   */
+  async generateTokensForUser(user: User, req?: { ip?: string; headers?: { 'user-agent'?: string; 'x-forwarded-for'?: string } }) {
+    const ipAddress = req?.ip || req?.headers?.['x-forwarded-for'] || undefined;
+    const userAgent = req?.headers?.['user-agent'];
+
+    // Resolve roles and permissions
+    const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
+
+    // Generate JWT payload
+    const payload = {
+      sub: user.id,
+      username: user.displayName || user.email,
+      roles: roleNames,
+      permissions: Array.from(permissions),
+      is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    const { token: refreshToken } = await this.refreshTokenService.createRefreshToken(
+      user.id,
+      ipAddress,
+      userAgent
+    );
+
+    // Record login event
+    await this.authEventsService.record({
+      eventType: 'SSO_LOGIN_SUCCESS',
+      success: true,
+      userId: user.id,
+      ipAddress,
+      userAgent,
+    });
+
+    // Calculate expiry (15 minutes from JWT config)
+    const expiresIn = 15 * 60; // 15 minutes in seconds
 
     return {
       accessToken,
-      refreshToken: rotated.token,
+      refreshToken,
+      expiresIn,
+      user: {
+        id: user.id,
+        username: user.displayName || user.email,
+        email: user.email,
+        displayName: user.displayName,
+        roles: roleNames,
+        permissions: Array.from(permissions),
+        isAdmin: roleNames.includes('admin'),
+      },
+    };
+  }
+
+  async refreshAccessToken(refreshToken: string, _tenantSlug?: string, ipAddress?: string, userAgent?: string) {
+    // 2. Validate Refresh Token
+    const tokenEntity = await this.refreshTokenService.findByToken(refreshToken);
+    if (!tokenEntity) {
+      await this.authEventsService.record({
+        eventType: 'REFRESH_FAILED',
+        success: false,
+        userId: undefined,
+        ipAddress: ipAddress,
+        userAgent,
+      });
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    if (tokenEntity.isRevoked || (tokenEntity.expiresAt && tokenEntity.expiresAt < new Date())) {
+      await this.authEventsService.record({
+        eventType: 'REFRESH_FAILED',
+        success: false,
+        userId: tokenEntity.userId,
+        ipAddress: ipAddress,
+        userAgent,
+      });
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // 3. Find User
+    const user = await this.userRepo.findOne({
+        where: { id: tokenEntity.userId }
+    });
+
+    if (!user || user.status !== 'active') {
+       await this.authEventsService.record({
+        eventType: 'REFRESH_FAILED',
+        success: false,
+        userId: tokenEntity.userId,
+        ipAddress: ipAddress,
+        userAgent,
+      });
+      throw new UnauthorizedException('User not found or inactive');
+    }
+    
+    // 4. Resolve Roles
+    const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
+    
+    // 5. Rotate Token
+    const rotated = await this.refreshTokenService.rotateRefreshToken(
+      refreshToken,
+      ipAddress,
+      userAgent,
+    );
+
+    if (!rotated) {
+        throw new UnauthorizedException('Failed to rotate refresh token');
+    }
+
+    // 6. Generate New Access Token
+    const payload = {
+        sub: user.id,
+        username: user.displayName || user.email,
+        roles: roleNames,
+        permissions: Array.from(permissions),
+        is_admin: roleNames.includes('admin'),
+      };
+      const accessToken = this.jwtService.sign(payload);
+
+      await this.authEventsService.record({
+        eventType: 'REFRESH_SUCCESS',
+        success: true,
+        userId: user.id,
+        ipAddress: ipAddress,
+        userAgent,
+      });
+
+      return {
+        accessToken,
+        refreshToken: rotated.token,
+      };
+  }
+
+  /**
+   * Change expired password (before login, using current credentials)
+   */
+  async changeExpiredPassword(
+    username: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message: string; errors?: string[] }> {
+    // Find user by email/username
+    const user = await this.userRepo.findOne({
+      where: { email: username },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Verify current password
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isValid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    // Check that password is actually expired
+    const settings = await this.authSettingsRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
+    if (settings?.passwordExpiryDays && user.passwordChangedAt) {
+      const daysSinceChange = Math.floor(
+        (Date.now() - new Date(user.passwordChangedAt).getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
+      if (daysSinceChange < settings.passwordExpiryDays) {
+        // Password is not actually expired
+        throw new UnauthorizedException('Password has not expired');
+      }
+    }
+
+    // Validate new password
+    const validationResult = await this.passwordValidationService.validatePassword(
+      newPassword,
+      { email: user.email, displayName: user.displayName },
+    );
+
+    if (!validationResult.valid) {
+      return {
+        success: false,
+        message: 'Password does not meet requirements',
+        errors: validationResult.errors,
+      };
+    }
+
+    // Check password history
+    const historyValid = await this.validatePasswordHistory(user.id, newPassword, settings || undefined);
+    if (!historyValid) {
+      return {
+        success: false,
+        message: 'Password was used recently. Please choose a different password.',
+      };
+    }
+
+    // Hash and save new password with OWASP-recommended parameters
+    const newPasswordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
+
+    await this.updatePasswordHistory(
+      user.id,
+      newPasswordHash,
+      settings?.passwordHistoryCount ?? 5
+    );
+
+    await this.userRepo.update(user.id, {
+      passwordHash: newPasswordHash,
+      passwordChangedAt: new Date(),
+    });
+
+    await this.authEventsService.record({
+      eventType: 'PASSWORD_CHANGED',
+      success: true,
+      userId: user.id,
+    });
+
+    return {
+      success: true,
+      message: 'Password changed successfully. Please log in with your new password.',
     };
   }
 
   async changePassword(
-    tenantId: string,
     userId: string,
     currentPassword: string,
     newPassword: string
-  ): Promise<{ success: boolean; message: string }> {
-    const usersRepo = await this.tenantDbService.getRepository<UserAccount>(tenantId, UserAccount as any);
-    const user = await usersRepo.findOne({ where: { id: userId } });
+  ): Promise<{ success: boolean; message: string; errors?: string[] }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -638,10 +573,23 @@ export class AuthService {
       }
     }
 
-    const passwordPolicyRepo = await this.tenantDbService.getRepository<PasswordPolicy>(tenantId, PasswordPolicy as any);
-    const policy = await passwordPolicyRepo.findOne({ where: { tenantId } });
+    // Validate password against blocklist and policy
+    const validationResult = await this.passwordValidationService.validatePassword(
+      newPassword,
+      { email: user.email, displayName: user.displayName },
+    );
 
-    const historyValid = await this.validatePasswordHistory(tenantId, userId, newPassword, policy || undefined);
+    if (!validationResult.valid) {
+      return {
+        success: false,
+        message: 'Password does not meet requirements',
+        errors: validationResult.errors,
+      };
+    }
+
+    const settings = await this.authSettingsRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
+
+    const historyValid = await this.validatePasswordHistory(userId, newPassword, settings || undefined);
     if (!historyValid) {
       return {
         success: false,
@@ -650,23 +598,24 @@ export class AuthService {
       };
     }
 
-    const newPasswordHash = await argon2.hash(newPassword);
+    // Hash password with OWASP-recommended parameters
+    const newPasswordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
     await this.updatePasswordHistory(
-      tenantId,
       userId,
       newPasswordHash,
-      policy?.passwordHistoryDepth ?? 5
+      settings?.passwordHistoryCount ?? 5
     );
 
-    await usersRepo.update(userId, {
+    await this.userRepo.update(userId, {
       passwordHash: newPasswordHash,
+      passwordChangedAt: new Date(),
     });
 
     await this.authEventsService.record({
-      tenantId,
+      eventType: 'PASSWORD_CHANGED',
+      success: true,
       userId,
-      type: 'PASSWORD_CHANGED',
     });
 
     return {
@@ -675,122 +624,38 @@ export class AuthService {
     };
   }
 
-  async logout(tenantId: string, userId: string, ipAddress?: string, userAgent?: string) {
-    await this.refreshTokenService.revokeAllUserTokens(tenantId, userId);
-    await this.authEventsService.record({
-      tenantId,
-      userId,
-      type: 'LOGOUT',
-      ip: ipAddress,
-      userAgent,
-    });
-    return { success: true };
+  /**
+   * Hash a password using OWASP-recommended Argon2id parameters
+   */
+  async hashPassword(password: string): Promise<string> {
+    return argon2.hash(password, ARGON2_OPTIONS);
   }
 
-  private async resolveRolesAndPermissions(tenantId: string, membershipId: string) {
-    const userRolesRepo = await this.tenantDbService.getRepository<UserRoleAssignment>(tenantId, UserRoleAssignment as any);
-    const inheritanceRepo = await this.tenantDbService.getRepository<RoleInheritance>(tenantId, RoleInheritance as any);
-    const groupRoleRepo = await this.tenantDbService.getRepository<GroupRole>(tenantId, GroupRole as any);
-    const roleRepo = await this.tenantDbService.getRepository<Role>(tenantId, Role as any);
+  async getProfile(userId: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    
+    const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(userId);
 
-    const directAssignments = await userRolesRepo.find({
-      where: { tenantUserMembershipId: membershipId },
-      relations: ['role', 'role.rolePermissions', 'role.rolePermissions.permission'],
-    });
-
-    const groupRoles = await groupRoleRepo
-      .createQueryBuilder('gr')
-      .innerJoin(UserGroup, 'ug', 'ug.group_id = gr.group_id AND ug.tenant_user_membership_id = :membershipId', { membershipId })
-      .leftJoinAndSelect('gr.role', 'role')
-      .leftJoinAndSelect('role.rolePermissions', 'rp')
-      .leftJoinAndSelect('rp.permission', 'perm')
-      .getMany();
-
-    const roleMap = new Map<string, any>();
-    [...directAssignments.map((ra) => ra.role), ...groupRoles.map((gr) => gr.role)]
-      .filter(Boolean)
-      .forEach((r) => roleMap.set(r.id, r));
-
-    const collectInherited = async (roleIds: string[], visited: Set<string>) => {
-      if (!roleIds.length) return;
-      const rows = await inheritanceRepo.find({
-        where: [{ parentRoleId: In(roleIds) }],
-      });
-      const childIds = rows.map((r) => r.childRoleId).filter((id) => !visited.has(id));
-      if (!childIds.length) return;
-      for (const id of childIds) {
-        visited.add(id);
-        const child = await roleRepo.findOne({ where: { id }, relations: ['rolePermissions', 'rolePermissions.permission'] });
-        if (child) roleMap.set(child.id, child);
-      }
-      await collectInherited(childIds, visited);
+    return {
+      id: user.id,
+      username: user.displayName || user.email,
+      email: user.email,
+      displayName: user.displayName,
+      roles: roleNames,
+      permissions: Array.from(permissions),
     };
-
-    await collectInherited(Array.from(roleMap.keys()), new Set());
-
-    const uniqueRoles = Array.from(roleMap.values());
-    const roleNames = uniqueRoles.map((r) => r.slug || r.name);
-    const permissions = new Set<string>();
-    uniqueRoles.forEach((role) => {
-      role.rolePermissions?.forEach((rp: any) => {
-        if (rp.permission?.name) permissions.add(rp.permission.name);
-      });
-    });
-    return { roleNames, permissions };
   }
 
   /**
-   * Resolve roles and permissions for a TenantUser (new hybrid model)
-   * Uses tenant-db entities: TenantUserRole, TenantGroupMember, TenantRole
+   * Resolve roles and permissions for a User using shared PermissionResolverService (with caching)
    */
-  private async resolveRolesAndPermissionsForTenantUser(tenantId: string, tenantUserId: string) {
-    const tenantUserRoleRepo = await this.tenantDbService.getRepository<TenantUserRole>(tenantId, TenantUserRole);
-    const tenantGroupMemberRepo = await this.tenantDbService.getRepository<TenantGroupMember>(tenantId, TenantGroupMember);
-    const tenantGroupRoleRepo = await this.tenantDbService.getRepository<TenantGroupRole>(tenantId, TenantGroupRole);
-
-    // Get direct role assignments with role permissions
-    const directRoles = await tenantUserRoleRepo.find({
-      where: { tenantUserId },
-      relations: ['role', 'role.rolePermissions', 'role.rolePermissions.permission'],
-    });
-
-    // Get group memberships
-    const groupMemberships = await tenantGroupMemberRepo.find({
-      where: { tenantUserId },
-    });
-
-    // Get roles from groups
-    const groupIds = groupMemberships.map((gm) => gm.groupId);
-    let groupRoles: TenantGroupRole[] = [];
-    if (groupIds.length > 0) {
-      groupRoles = await tenantGroupRoleRepo
-        .createQueryBuilder('gr')
-        .where('gr.group_id IN (:...groupIds)', { groupIds })
-        .leftJoinAndSelect('gr.role', 'role')
-        .leftJoinAndSelect('role.rolePermissions', 'rp')
-        .leftJoinAndSelect('rp.permission', 'perm')
-        .getMany();
-    }
-
-    // Collect all roles
-    const roleMap = new Map<string, TenantRole>();
-    [...directRoles.map((r) => r.role), ...groupRoles.map((gr) => gr.role)]
-      .filter(Boolean)
-      .forEach((r) => roleMap.set(r.id, r));
-
-    // Extract role names and permissions
-    const uniqueRoles = Array.from(roleMap.values());
-    const roleNames = uniqueRoles.map((r) => r.slug || r.name);
-    const permissions = new Set<string>();
-
-    uniqueRoles.forEach((role) => {
-      role.rolePermissions?.forEach((rp: any) => {
-        if (rp.permission?.name || rp.permission?.key) {
-          permissions.add(rp.permission.name || rp.permission.key);
-        }
-      });
-    });
-
+  async resolveRolesAndPermissionsForUser(userId: string) {
+    const cached = await this.permissionResolver.getUserPermissions(userId);
+    const roleNames = cached.roles.map(r => r.code || r.name);
+    const permissions = cached.permissions;
     return { roleNames, permissions };
   }
 }

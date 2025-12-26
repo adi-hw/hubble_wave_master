@@ -35,74 +35,37 @@ const routeConfigs: RouteConfig[] = [
     pattern: /^\/home$/,
     getBreadcrumbs: () => [],
   },
-  // Studio - Schema
+  // Studio - Collections
   {
-    pattern: /^\/studio\/schema$/,
-    getBreadcrumbs: () => [
-      { label: 'Studio', href: '/studio/schema' },
-      { label: 'Schema Builder' },
-    ],
-  },
-  {
-    pattern: /^\/studio\/schema\/new$/,
-    getBreadcrumbs: () => [
-      { label: 'Studio', href: '/studio/schema' },
-      { label: 'Schema Builder', href: '/studio/schema' },
-      { label: 'New Table' },
-    ],
-  },
-  {
-    pattern: /^\/studio\/schema\/[^/]+$/,
-    getBreadcrumbs: (params) => [
-      { label: 'Studio', href: '/studio/schema' },
-      { label: 'Schema Builder', href: '/studio/schema' },
-      { label: formatTableCode(params.tableName || 'Table') },
-    ],
-  },
-  // Studio - Tables
-  {
-    pattern: /^\/studio\/tables$/,
+    pattern: /^\/studio\/collections$/,
     getBreadcrumbs: () => [
       { label: 'Studio' },
-      { label: 'Tables' },
+      { label: 'Collections' },
     ],
   },
   {
-    pattern: /^\/studio\/tables\/[^/]+/,
+    pattern: /^\/studio\/collections\/[^/]+/,
     getBreadcrumbs: (params, context) => [
       { label: 'Studio' },
-      { label: 'Tables', href: '/studio/tables' },
-      { label: context?.tableLabel || formatTableCode(params.tableCode || 'Table') },
+      { label: 'Collections', href: '/studio/collections' },
+      { label: context?.tableLabel || formatTableCode(params.collectionCode || params.id || 'Collection') },
     ],
   },
-  // Module List: /:tableCode.list
+  // Data Engine - Collection Data Pages
   {
-    pattern: /^\/[^/]+\.list$/,
+    pattern: /^\/data\/[^/]+$/,
     getBreadcrumbs: (params, context) => [
-      { label: context?.tableLabel || formatTableCode(params.tableCode?.replace('.list', '') || 'Records') },
+      { label: context?.tableLabel || formatTableCode(params.collectionCode || 'Records') },
     ],
   },
-  // Module Create: /:tableCode.form
   {
-    pattern: /^\/[^/]+\.form$/,
+    pattern: /^\/data\/[^/]+\/[^/]+$/,
     getBreadcrumbs: (params, context) => {
-      const tableCode = params.tableCode?.replace('.form', '') || '';
-      const tableLabel = context?.tableLabel || formatTableCode(tableCode);
+      const collectionCode = params.collectionCode || '';
+      const collectionLabel = context?.tableLabel || formatTableCode(collectionCode);
+      const recordLabel = context?.recordLabel || `Record ${params.recordId}`;
       return [
-        { label: tableLabel, href: `/${tableCode}.list` },
-        { label: 'New Record' },
-      ];
-    },
-  },
-  // Module Record: /:tableCode.form/:id
-  {
-    pattern: /^\/[^/]+\.form\/[^/]+$/,
-    getBreadcrumbs: (params, context) => {
-      const tableCode = params.tableCode?.replace('.form', '') || '';
-      const tableLabel = context?.tableLabel || formatTableCode(tableCode);
-      const recordLabel = context?.recordLabel || `Record ${params.id}`;
-      return [
-        { label: tableLabel, href: `/${tableCode}.list` },
+        { label: collectionLabel, href: `/data/${collectionCode}` },
         { label: recordLabel },
       ];
     },

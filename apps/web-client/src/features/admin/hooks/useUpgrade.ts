@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { upgradeApi } from '../services/admin-config.service';
 import type {
   UpgradeManifest,
-  TenantUpgradeImpact,
+  InstanceUpgradeImpact,
   UpgradeAnalysis,
   ListResponse,
   ResolutionStrategy,
@@ -118,7 +118,7 @@ export function useUpgradeManifest(
 }
 
 interface UseUpgradeImpactsReturn {
-  impacts: TenantUpgradeImpact[];
+  impacts: InstanceUpgradeImpact[];
   total: number;
   loading: boolean;
   error: string | null;
@@ -133,7 +133,7 @@ export function useUpgradeImpacts(
   options: UseUpgradeManifestOptions = {}
 ): UseUpgradeImpactsReturn {
   const { enabled = true } = options;
-  const [impacts, setImpacts] = useState<TenantUpgradeImpact[]>([]);
+  const [impacts, setImpacts] = useState<InstanceUpgradeImpact[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +147,7 @@ export function useUpgradeImpacts(
     try {
       setLoading(true);
       setError(null);
-      const response: ListResponse<TenantUpgradeImpact> = await upgradeApi.getImpacts(manifestId);
+      const response: ListResponse<InstanceUpgradeImpact> = await upgradeApi.getImpacts(manifestId);
       setImpacts(response.data);
       setTotal(response.total);
     } catch (err) {
@@ -228,7 +228,7 @@ interface UseUpgradeMutationsReturn {
       customValue?: Record<string, any>;
       notes?: string;
     }
-  ) => Promise<TenantUpgradeImpact | null>;
+  ) => Promise<InstanceUpgradeImpact | null>;
   previewMerge: (
     impactId: string,
     strategy: ResolutionStrategy
@@ -270,7 +270,7 @@ export function useUpgradeMutations(): UseUpgradeMutationsReturn {
         customValue?: Record<string, any>;
         notes?: string;
       }
-    ): Promise<TenantUpgradeImpact | null> => {
+    ): Promise<InstanceUpgradeImpact | null> => {
       try {
         setResolveState({ loading: true, error: null });
         const result = await upgradeApi.resolveImpact(impactId, resolution);

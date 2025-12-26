@@ -7,7 +7,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Moon, Sun, Monitor, Check } from 'lucide-react';
-import { useDarkMode } from '../../hooks/useDarkMode';
+import { useThemePreference } from '../../hooks/useThemePreference';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -34,7 +34,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   size = 'md',
   className = '',
 }) => {
-  const { theme, isDark, setTheme, toggleTheme } = useDarkMode();
+  const { preference, resolved, setColorScheme } = useThemePreference();
+  // Use preference.colorScheme for the dropdown selection state
+  const selectedTheme: Theme = preference?.colorScheme === 'auto' ? 'system' : (preference?.colorScheme || 'system');
+  // Use resolved.colorScheme for the actual visual state (dark or light)
+  const isDark = resolved.colorScheme === 'dark';
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +71,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   if (variant === 'button') {
     return (
       <button
-        onClick={toggleTheme}
+        onClick={() => setColorScheme(isDark ? 'light' : 'dark')}
         className={`
           relative inline-flex items-center justify-center gap-2
           ${showLabel ? 'px-3' : sizeClasses[size]}
@@ -129,12 +133,12 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         {themeOptions.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
-            onClick={() => setTheme(value)}
+            onClick={() => setColorScheme(value === 'system' ? 'auto' : value)}
             className="p-2 rounded-lg transition-all duration-200"
             style={{
-              backgroundColor: theme === value ? 'var(--bg-surface)' : 'transparent',
-              color: theme === value ? 'var(--text-brand)' : 'var(--text-muted)',
-              boxShadow: theme === value ? 'var(--shadow-sm)' : 'none',
+              backgroundColor: selectedTheme === value ? 'var(--bg-surface)' : 'transparent',
+              color: selectedTheme === value ? 'var(--text-brand)' : 'var(--text-muted)',
+              boxShadow: selectedTheme === value ? 'var(--shadow-sm)' : 'none',
             }}
             aria-label={`${label} theme`}
             title={`${label} theme`}
@@ -184,21 +188,21 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             <button
               key={value}
               onClick={() => {
-                setTheme(value);
+                setColorScheme(value === 'system' ? 'auto' : value);
                 setIsOpen(false);
               }}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors"
               style={{
-                backgroundColor: theme === value ? 'var(--bg-primary-subtle)' : 'transparent',
-                color: theme === value ? 'var(--text-brand)' : 'var(--text-secondary)',
+                backgroundColor: selectedTheme === value ? 'var(--bg-primary-subtle)' : 'transparent',
+                color: selectedTheme === value ? 'var(--text-brand)' : 'var(--text-secondary)',
               }}
               onMouseEnter={(e) => {
-                if (theme !== value) {
+                if (selectedTheme !== value) {
                   e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (theme !== value) {
+                if (selectedTheme !== value) {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }
               }}
@@ -213,7 +217,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                   {description}
                 </div>
               </div>
-              {theme === value && (
+              {selectedTheme === value && (
                 <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-brand)' }} />
               )}
             </button>

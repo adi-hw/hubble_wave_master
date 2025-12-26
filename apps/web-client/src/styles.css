@@ -28,10 +28,18 @@
     color-scheme: dark;
   }
 
+  html, body {
+    @apply h-full overflow-hidden;
+  }
+
   body {
     @apply font-sans text-base;
     background-color: var(--bg-base);
     color: var(--text-primary);
+  }
+
+  #root {
+    @apply h-full overflow-hidden;
   }
 
   /* Better focus outlines - only show on keyboard navigation */
@@ -50,10 +58,148 @@
     color: var(--text-brand);
   }
 
-  /* Smooth scrollbar for the page */
-  html {
+  /* ========================================
+     MODERN SCROLLBAR STYLING
+     Sleek, minimal, semi-transparent design
+     ======================================== */
+
+  /* Firefox scrollbar */
+  * {
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  /* Webkit (Chrome, Safari, Edge) scrollbar */
+  ::-webkit-scrollbar {
+    width: var(--scrollbar-width, 6px);
+    height: var(--scrollbar-width, 6px);
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 100px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 100px;
+    transition: background 0.15s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--scrollbar-thumb-active);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Completely hidden scrollbar (still scrollable) */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Auto-hide scrollbar - invisible until hover */
+  .scrollbar-invisible::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
+  .scrollbar-invisible:hover::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+  .scrollbar-invisible:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+
+  /* Thinner scrollbar variant */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: var(--scrollbar-width-thin, 4px);
+    height: var(--scrollbar-width-thin, 4px);
+  }
+
+  /* Gutter scrollbar (visible track) */
+  .scrollbar-gutter::-webkit-scrollbar-track {
+    background: rgba(128, 128, 128, 0.1);
+  }
+
+  /* ========================================
+     FORM SELECT/DROPDOWN STYLING
+     ======================================== */
+
+  /* Base select styling */
+  select,
+  .settings-select {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  /* Option styling - limited browser support but helps where it works */
+  select option,
+  .settings-select option {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    padding: 8px 12px;
+  }
+
+  /* Dark mode overrides for selects */
+  .dark select,
+  .dark .settings-select {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .dark select option,
+  .dark .settings-select option {
+    background-color: #1c1c26;
+    color: #fafafa;
+  }
+
+  /* Light mode overrides for selects */
+  .light select,
+  .light .settings-select {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .light select option,
+  .light .settings-select option {
+    background-color: #ffffff;
+    color: #1c1917;
+  }
+
+  /* Hover state for options (limited browser support) */
+  select option:hover,
+  .settings-select option:hover,
+  select option:checked,
+  .settings-select option:checked {
+    background-color: var(--bg-hover);
+  }
+
+  .dark select option:hover,
+  .dark .settings-select option:hover,
+  .dark select option:checked,
+  .dark .settings-select option:checked {
+    background-color: #2a2a3a;
+  }
+
+  /* Focus state */
+  select:focus,
+  .settings-select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px var(--color-primary-500) / 0.2;
+  }
+
+  /* Remove default arrow appearance for custom styling */
+  select.settings-select::-ms-expand {
+    display: none;
   }
 
   /* Links */
@@ -671,7 +817,8 @@
 
   /* ----- TOOLTIP ----- */
   .tooltip {
-    @apply absolute pointer-events-none z-tooltip;
+    @apply absolute pointer-events-none;
+    z-index: var(--z-tooltip);
     padding: var(--tooltip-padding);
     border-radius: var(--tooltip-radius);
     font-size: var(--tooltip-font-size);
@@ -913,11 +1060,11 @@
 
   /* Glow effect */
   .glow-primary {
-    box-shadow: 0 0 40px -10px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 40px -10px rgba(99, 102, 241, 0.5);
   }
 
   .glow-accent {
-    box-shadow: 0 0 40px -10px rgba(20, 184, 166, 0.5);
+    box-shadow: 0 0 40px -10px rgba(6, 182, 212, 0.5);
   }
 
   /* Line clamp utilities */
@@ -968,6 +1115,515 @@
   .bottom-nav {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+}
+
+/* ============================================
+   GLASSMORPHIC COMPONENTS - 2070 Generation
+   ============================================ */
+
+@layer components {
+  /* Glass surface with backdrop blur */
+  .glass-surface {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .glass-surface {
+    background: rgba(22, 22, 34, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* Elevated glass surface - header, modals */
+  .glass-surface-elevated {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.05),
+      0 2px 4px -2px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+
+  .dark .glass-surface-elevated {
+    background: rgba(22, 22, 34, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.3),
+      0 2px 4px -2px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Sidebar glass */
+  .glass-sidebar {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .dark .glass-sidebar {
+    background: rgba(15, 15, 22, 0.85);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* Subtle glass for cards */
+  .glass-card-subtle {
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .glass-card-subtle {
+    background: rgba(28, 28, 40, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Glow effects for brand elements */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.4);
+  }
+
+  .dark .glow-primary {
+    box-shadow: 0 0 30px -5px rgba(99, 102, 241, 0.5);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.4);
+  }
+
+  .dark .glow-accent {
+    box-shadow: 0 0 30px -5px rgba(6, 182, 212, 0.5);
+  }
+
+  /* Glass card styles */
+  .glass-card {
+    position: relative;
+  }
+
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0) 50%
+    );
+    pointer-events: none;
+  }
+
+  .dark .glass-card::before {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0) 50%
+    );
+  }
+
+  /* Glass input focus glow */
+  .glass-input:focus {
+    box-shadow: 0 0 0 3px var(--bg-primary-subtle),
+                0 0 20px -5px rgba(99, 102, 241, 0.3);
+  }
+
+  .dark .glass-input:focus {
+    box-shadow: 0 0 0 3px var(--bg-primary-subtle),
+                0 0 20px -5px rgba(99, 102, 241, 0.4);
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s ease-out;
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* ============================================
+   DENSITY MODES
+   ============================================ */
+
+/* Compact density - less padding, smaller elements */
+:root[data-density="compact"] {
+  --density-spacing-xs: 0.125rem;
+  --density-spacing-sm: 0.25rem;
+  --density-spacing-md: 0.375rem;
+  --density-spacing-lg: 0.5rem;
+  --density-spacing-xl: 0.75rem;
+  --density-font-size-sm: 0.6875rem;
+  --density-font-size-base: 0.75rem;
+  --density-font-size-lg: 0.8125rem;
+  --density-line-height: 1.4;
+  --density-btn-height: 1.75rem;
+  --density-input-height: 1.75rem;
+  --density-table-row-height: 2rem;
+}
+
+/* Comfortable density - balanced spacing (default) */
+:root[data-density="comfortable"],
+:root:not([data-density]) {
+  --density-spacing-xs: 0.25rem;
+  --density-spacing-sm: 0.5rem;
+  --density-spacing-md: 0.75rem;
+  --density-spacing-lg: 1rem;
+  --density-spacing-xl: 1.5rem;
+  --density-font-size-sm: 0.75rem;
+  --density-font-size-base: 0.875rem;
+  --density-font-size-lg: 1rem;
+  --density-line-height: 1.5;
+  --density-btn-height: 2.25rem;
+  --density-input-height: 2.25rem;
+  --density-table-row-height: 2.75rem;
+}
+
+/* Spacious density - more padding, larger touch targets */
+:root[data-density="spacious"] {
+  --density-spacing-xs: 0.5rem;
+  --density-spacing-sm: 0.75rem;
+  --density-spacing-md: 1rem;
+  --density-spacing-lg: 1.5rem;
+  --density-spacing-xl: 2rem;
+  --density-font-size-sm: 0.875rem;
+  --density-font-size-base: 1rem;
+  --density-font-size-lg: 1.125rem;
+  --density-line-height: 1.6;
+  --density-btn-height: 2.75rem;
+  --density-input-height: 2.75rem;
+  --density-table-row-height: 3.25rem;
+}
+
+/* Apply density variables globally */
+
+/* Base font size adjustments based on density */
+:root[data-density="compact"] body {
+  font-size: 13px;
+}
+
+:root[data-density="comfortable"] body,
+:root:not([data-density]) body {
+  font-size: 14px;
+}
+
+:root[data-density="spacious"] body {
+  font-size: 16px;
+}
+
+/* Apply density to common UI elements */
+:root[data-density="compact"] {
+  /* Sidebar items */
+  --sidebar-item-height: 32px;
+  --sidebar-item-padding: 8px 12px;
+  --sidebar-section-gap: 12px;
+
+  /* Cards and panels */
+  --card-padding: 12px;
+  --panel-gap: 12px;
+
+  /* Navigation */
+  --nav-item-gap: 4px;
+  --breadcrumb-gap: 6px;
+
+  /* Header */
+  --header-height: 52px;
+}
+
+:root[data-density="comfortable"],
+:root:not([data-density]) {
+  /* Sidebar items */
+  --sidebar-item-height: 40px;
+  --sidebar-item-padding: 10px 16px;
+  --sidebar-section-gap: 16px;
+
+  /* Cards and panels */
+  --card-padding: 16px;
+  --panel-gap: 16px;
+
+  /* Navigation */
+  --nav-item-gap: 6px;
+  --breadcrumb-gap: 8px;
+
+  /* Header */
+  --header-height: 64px;
+}
+
+:root[data-density="spacious"] {
+  /* Sidebar items */
+  --sidebar-item-height: 48px;
+  --sidebar-item-padding: 14px 20px;
+  --sidebar-section-gap: 24px;
+
+  /* Cards and panels */
+  --card-padding: 24px;
+  --panel-gap: 24px;
+
+  /* Navigation */
+  --nav-item-gap: 10px;
+  --breadcrumb-gap: 12px;
+
+  /* Header */
+  --header-height: 72px;
+}
+
+/* Apply density to sidebar navigation items */
+.sidebar [role="button"],
+.sidebar button:not(.absolute),
+.sidebar a,
+nav.sidebar [role="button"],
+nav.glass-sidebar [role="button"] {
+  min-height: var(--sidebar-item-height, 40px);
+  padding-top: var(--density-spacing-sm, 0.5rem);
+  padding-bottom: var(--density-spacing-sm, 0.5rem);
+}
+
+/* Sidebar group titles */
+.sidebar-group-title {
+  padding: var(--density-spacing-sm, 0.5rem) var(--density-spacing-md, 0.75rem);
+  font-size: var(--density-font-size-sm, 0.75rem);
+  margin-bottom: var(--density-spacing-xs, 0.25rem);
+}
+
+/* Apply density to cards */
+.card,
+[class*="Card"] {
+  padding: var(--card-padding, 16px);
+}
+
+/* Apply density to main content area */
+.app-shell-v2 main > div {
+  padding: var(--density-spacing-lg, 1rem) var(--density-spacing-xl, 1.5rem);
+}
+
+/* Breadcrumb spacing */
+.app-shell-v2 main .mb-6 {
+  margin-bottom: var(--density-spacing-lg, 1rem);
+}
+
+/* Apply density variables to components (legacy classes) */
+@layer components {
+  .density-aware {
+    font-size: var(--density-font-size-base);
+    line-height: var(--density-line-height);
+  }
+
+  .density-aware-btn {
+    height: var(--density-btn-height);
+    padding-left: var(--density-spacing-lg);
+    padding-right: var(--density-spacing-lg);
+    font-size: var(--density-font-size-base);
+  }
+
+  .density-aware-input {
+    height: var(--density-input-height);
+    padding: var(--density-spacing-sm) var(--density-spacing-md);
+    font-size: var(--density-font-size-base);
+  }
+
+  .density-aware-card {
+    padding: var(--density-spacing-lg);
+  }
+
+  .density-aware-table td,
+  .density-aware-table th {
+    padding: var(--density-spacing-sm) var(--density-spacing-md);
+    height: var(--density-table-row-height);
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY MODES
+   ============================================ */
+
+/* Reduce motion - disable animations */
+.reduce-motion,
+.reduce-motion * {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.force-motion),
+  :root:not(.force-motion) * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* High contrast mode */
+.high-contrast {
+  --text-primary: #ffffff;
+  --text-secondary: #e0e0e0;
+  --text-tertiary: #c0c0c0;
+  --border-default: rgba(255, 255, 255, 0.3);
+  --border-strong: rgba(255, 255, 255, 0.5);
+}
+
+.high-contrast .btn-primary {
+  background: var(--color-primary-500);
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.high-contrast *:focus-visible {
+  outline-width: 3px;
+  outline-offset: 3px;
+}
+
+/* Large text mode */
+.large-text {
+  font-size: 112.5%; /* 18px base */
+}
+
+.large-text h1 { font-size: 2.5rem; }
+.large-text h2 { font-size: 2rem; }
+.large-text h3 { font-size: 1.5rem; }
+.large-text h4 { font-size: 1.25rem; }
+
+/* Enhanced focus indicators */
+:root:not([data-focus-indicators="false"]) *:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   SIDEBAR POSITION
+   ============================================ */
+
+:root[data-sidebar-position="right"] .app-sidebar {
+  order: 1;
+  border-left: 1px solid var(--border-default);
+  border-right: none;
+}
+
+:root[data-sidebar-position="right"] .app-main {
+  order: 0;
+}
+
+:root[data-sidebar-collapsed="true"] .app-sidebar {
+  width: 64px;
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar-label,
+:root[data-sidebar-collapsed="true"] .sidebar-group-title {
+  display: none;
+}
+
+/* ============================================
+   CONTENT WIDTH
+   ============================================ */
+
+:root[data-content-width="narrow"] .content-container {
+  max-width: 48rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+:root[data-content-width="wide"] .content-container {
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+:root[data-content-width="full"] .content-container,
+:root:not([data-content-width]) .content-container {
+  max-width: 100%;
 }
 
 /* ============================================

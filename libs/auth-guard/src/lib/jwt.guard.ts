@@ -9,8 +9,8 @@ export class JwtAuthGuard implements CanActivate {
     private readonly logger: Logger
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+  canActivate(ctx: ExecutionContext): boolean {
+    const request = ctx.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -19,15 +19,14 @@ export class JwtAuthGuard implements CanActivate {
 
     const token = authHeader.split(' ')[1];
 
-    // Use JWT secret from environment with dev fallback
-    const isProd = process.env.NODE_ENV === 'production';
-    const jwtSecret =
-      process.env.JWT_SECRET ||
-      process.env.IDENTITY_JWT_SECRET ||
-      (isProd ? undefined : 'dev-only-insecure-secret');
+    // Use JWT secret from environment - NO fallback for security
+    const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
 
     if (!jwtSecret) {
-      this.logger.error('JWT_SECRET environment variable is not configured');
+      this.logger.error(
+        'SECURITY ERROR: JWT_SECRET environment variable is not configured. ' +
+        'Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
+      );
       throw new UnauthorizedException('Token verification not configured');
     }
 
@@ -45,40 +44,21 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token');
     }
 
-    try {
-      const tenantId = this.resolveTenantId(payload);
+    const roles = Array.isArray(payload.roles) ? payload.roles : [];
+    const permissions = Array.isArray((payload as any).permissions) ? (payload as any).permissions : [];
+    const requestContext: RequestContext = {
+      userId: payload.sub,
+      roles,
+      permissions,
+      isAdmin: roles.includes('admin') || !!payload.is_admin,
+      sessionId: payload.session_id || payload.sessionId,
+      username: payload.username,
+      attributes: payload.attributes,
+      raw: payload,
+    };
 
-      const roles = Array.isArray(payload.roles) ? payload.roles : [];
-      const permissions = Array.isArray((payload as any).permissions) ? (payload as any).permissions : [];
-      const context: RequestContext = {
-        requestId: request.requestId,
-        tenantId,
-        userId: payload.sub,
-        roles,
-        permissions,
-        isPlatformAdmin: roles.includes('platform_admin'),
-        isTenantAdmin: roles.includes('tenant_admin') || !!payload.is_tenant_admin,
-        sessionId: payload.session_id || payload.sessionId,
-        username: payload.username,
-        attributes: payload.attributes,
-        raw: payload,
-      };
-
-      request.user = context;
-      request.context = context;
-      request.tenantId = tenantId;
-      return true;
-    } catch (err) {
-      this.logger.error(`JwtAuthGuard Error: ${(err as any).message}`, (err as Error | undefined)?.stack);
-      throw new UnauthorizedException('Invalid token');
-    }
-  }
-
-  private resolveTenantId(payload: any): string {
-    const tenantId = payload?.tenant_id || payload?.tenantId;
-    if (!tenantId) {
-      throw new UnauthorizedException('Tenant context missing in token');
-    }
-    return tenantId;
+    request.user = requestContext;
+    request.context = requestContext;
+    return true;
   }
 }

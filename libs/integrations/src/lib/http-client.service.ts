@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { TenantDbService } from '@eam-platform/tenant-db';
 
 export interface HttpRequestConfig {
   url: string;
@@ -54,18 +53,16 @@ export class HttpClientService {
   private tokenCache: Map<string, { token: string; expiresAt: Date }> = new Map();
 
   constructor(
-    private readonly tenantDb: TenantDbService,
     private readonly eventEmitter: EventEmitter2
   ) {
-    // tenantDb is available for loading integration configs from database
-    this.logger.debug(`HttpClientService initialized with tenantDb: ${!!this.tenantDb}`);
+    this.logger.debug(`HttpClientService initialized`);
   }
 
   /**
    * Register an integration configuration
    */
-  registerIntegration(tenantId: string, config: IntegrationConfig): void {
-    const key = `${tenantId}:${config.id}`;
+  registerIntegration(config: IntegrationConfig): void {
+    const key = config.id;
     this.integrationConfigs.set(key, config);
   }
 
@@ -73,7 +70,6 @@ export class HttpClientService {
    * Make an HTTP request
    */
   async request<T = unknown>(
-    tenantId: string,
     config: HttpRequestConfig,
     integrationId?: string
   ): Promise<HttpResponse<T>> {
@@ -83,12 +79,11 @@ export class HttpClientService {
 
     while (attempt <= maxRetries) {
       try {
-        const result = await this.executeRequest<T>(tenantId, config, integrationId);
+        const result = await this.executeRequest<T>(config, integrationId);
         result.duration = Date.now() - startTime;
 
         // Log successful request
         this.eventEmitter.emit('integration.request.success', {
-          tenantId,
           integrationId,
           url: config.url,
           method: config.method,
@@ -109,7 +104,6 @@ export class HttpClientService {
 
           // Log failed request
           this.eventEmitter.emit('integration.request.failed', {
-            tenantId,
             integrationId,
             url: config.url,
             method: config.method,
@@ -134,7 +128,6 @@ export class HttpClientService {
    * Execute a single HTTP request
    */
   private async executeRequest<T>(
-    tenantId: string,
     config: HttpRequestConfig,
     integrationId?: string
   ): Promise<HttpResponse<T>> {
@@ -146,7 +139,7 @@ export class HttpClientService {
 
     // Apply integration config if specified
     if (integrationId) {
-      const integration = this.integrationConfigs.get(`${tenantId}:${integrationId}`);
+      const integration = this.integrationConfigs.get(integrationId);
       if (integration) {
         // Prepend base URL if config URL is relative
         if (!url.startsWith('http')) {
@@ -306,46 +299,41 @@ export class HttpClientService {
    * Convenience methods
    */
   async get<T = unknown>(
-    tenantId: string,
     url: string,
     options?: Partial<HttpRequestConfig>
   ): Promise<HttpResponse<T>> {
-    return this.request<T>(tenantId, { url, method: 'GET', ...options });
+    return this.request<T>({ url, method: 'GET', ...options });
   }
 
   async post<T = unknown>(
-    tenantId: string,
     url: string,
     body?: unknown,
     options?: Partial<HttpRequestConfig>
   ): Promise<HttpResponse<T>> {
-    return this.request<T>(tenantId, { url, method: 'POST', body, ...options });
+    return this.request<T>({ url, method: 'POST', body, ...options });
   }
 
   async put<T = unknown>(
-    tenantId: string,
     url: string,
     body?: unknown,
     options?: Partial<HttpRequestConfig>
   ): Promise<HttpResponse<T>> {
-    return this.request<T>(tenantId, { url, method: 'PUT', body, ...options });
+    return this.request<T>({ url, method: 'PUT', body, ...options });
   }
 
   async patch<T = unknown>(
-    tenantId: string,
     url: string,
     body?: unknown,
     options?: Partial<HttpRequestConfig>
   ): Promise<HttpResponse<T>> {
-    return this.request<T>(tenantId, { url, method: 'PATCH', body, ...options });
+    return this.request<T>({ url, method: 'PATCH', body, ...options });
   }
 
   async delete<T = unknown>(
-    tenantId: string,
     url: string,
     options?: Partial<HttpRequestConfig>
   ): Promise<HttpResponse<T>> {
-    return this.request<T>(tenantId, { url, method: 'DELETE', ...options });
+    return this.request<T>({ url, method: 'DELETE', ...options });
   }
 
   private sleep(ms: number): Promise<void> {
@@ -356,7 +344,7 @@ export class HttpClientService {
 
   @OnEvent('api.call')
   async handleApiCall(payload: any): Promise<void> {
-    const result = await this.request(payload.tenantId, {
+    const result = await this.request({
       url: payload.endpoint,
       method: payload.method || 'POST',
       headers: payload.headers,
@@ -370,7 +358,6 @@ export class HttpClientService {
 
     // Emit result event
     this.eventEmitter.emit('api.call.completed', {
-      tenantId: payload.tenantId,
       endpoint: payload.endpoint,
       success: result.success,
       status: result.status,
@@ -380,7 +367,7 @@ export class HttpClientService {
 
   @OnEvent('http.request')
   async handleHttpRequest(payload: any): Promise<void> {
-    const result = await this.request(payload.tenantId || 'system', {
+    const result = await this.request({
       url: payload.url,
       method: payload.method || 'GET',
       headers: payload.headers,

@@ -125,19 +125,19 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     <div
       className={`rounded-xl overflow-hidden ${className}`}
       style={{
-        backgroundColor: 'var(--hw-surface)',
-        border: '1px solid var(--hw-border)',
+        backgroundColor: 'var(--bg-surface)',
+        border: '1px solid var(--border-default)',
       }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: 'var(--hw-border)', backgroundColor: 'var(--hw-bg-subtle)' }}
+        style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface-secondary)' }}
       >
         <button
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 text-sm font-medium"
-          style={{ color: 'var(--hw-text)' }}
+          style={{ color: 'var(--text-primary)' }}
         >
           {expanded ? (
             <ChevronDown className="h-4 w-4" />
@@ -148,8 +148,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <span
             className="px-1.5 py-0.5 rounded text-xs font-normal"
             style={{
-              backgroundColor: hasChanges ? 'var(--hw-primary-subtle)' : 'var(--hw-bg-subtle)',
-              color: hasChanges ? 'var(--hw-primary)' : 'var(--hw-text-muted)',
+              backgroundColor: hasChanges ? 'var(--bg-primary-subtle)' : 'var(--bg-surface-secondary)',
+              color: hasChanges ? 'var(--text-brand)' : 'var(--text-muted)',
             }}
           >
             {changes.length} {changes.length === 1 ? 'change' : 'changes'}
@@ -160,7 +160,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           {showModeToggle && (
             <div
               className="flex items-center rounded-lg p-0.5"
-              style={{ backgroundColor: 'var(--hw-surface)' }}
+              style={{ backgroundColor: 'var(--bg-surface)' }}
             >
               {(['side-by-side', 'unified', 'patch'] as DiffMode[]).map((m) => (
                 <button
@@ -168,8 +168,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                   onClick={() => setMode(m)}
                   className="p-1.5 rounded-md transition-colors"
                   style={{
-                    backgroundColor: mode === m ? 'var(--hw-primary-subtle)' : 'transparent',
-                    color: mode === m ? 'var(--hw-primary)' : 'var(--hw-text-muted)',
+                    backgroundColor: mode === m ? 'var(--bg-primary-subtle)' : 'transparent',
+                    color: mode === m ? 'var(--text-brand)' : 'var(--text-muted)',
                   }}
                   title={m.replace('-', ' ')}
                 >
@@ -181,7 +181,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <button
             onClick={handleCopy}
             className="p-1.5 rounded-md transition-colors"
-            style={{ color: 'var(--hw-text-muted)' }}
+            style={{ color: 'var(--text-muted)' }}
             title="Copy diff"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -193,7 +193,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       {expanded && (
         <div style={{ maxHeight }} className="overflow-auto scrollbar-thin">
           {!hasChanges ? (
-            <div className="py-8 text-center" style={{ color: 'var(--hw-text-muted)' }}>
+            <div className="py-8 text-center" style={{ color: 'var(--text-muted)' }}>
               <p className="text-sm">No changes detected</p>
             </div>
           ) : mode === 'patch' ? (
@@ -223,12 +223,12 @@ interface PatchViewProps {
 
 const PatchView: React.FC<PatchViewProps> = ({ changes, oldValue }) => {
   const opColors: Record<string, { bg: string; text: string }> = {
-    add: { bg: 'var(--hw-success-subtle)', text: 'var(--hw-success)' },
-    remove: { bg: 'var(--hw-danger-subtle)', text: 'var(--hw-danger)' },
-    replace: { bg: 'var(--hw-info-subtle)', text: 'var(--hw-info)' },
-    move: { bg: 'var(--hw-accent-subtle)', text: 'var(--hw-accent)' },
-    copy: { bg: 'var(--hw-warning-subtle)', text: 'var(--hw-warning)' },
-    test: { bg: 'var(--hw-bg-subtle)', text: 'var(--hw-text-muted)' },
+    add: { bg: 'var(--bg-success-subtle)', text: 'var(--text-success)' },
+    remove: { bg: 'var(--bg-danger-subtle)', text: 'var(--text-danger)' },
+    replace: { bg: 'var(--bg-info-subtle)', text: 'var(--text-info)' },
+    move: { bg: 'var(--bg-accent-subtle)', text: 'var(--text-accent)' },
+    copy: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)' },
+    test: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-muted)' },
   };
 
   return (
@@ -241,7 +241,7 @@ const PatchView: React.FC<PatchViewProps> = ({ changes, oldValue }) => {
           <div
             key={idx}
             className="flex items-start gap-3 p-3 rounded-lg"
-            style={{ backgroundColor: 'var(--hw-bg-subtle)' }}
+            style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
           >
             <span
               className="px-2 py-0.5 rounded text-xs font-mono font-medium flex-shrink-0"
@@ -250,21 +250,21 @@ const PatchView: React.FC<PatchViewProps> = ({ changes, oldValue }) => {
               {op.op}
             </span>
             <div className="flex-1 min-w-0">
-              <code className="text-xs break-all" style={{ color: 'var(--hw-text-secondary)' }}>
+              <code className="text-xs break-all" style={{ color: 'var(--text-secondary)' }}>
                 {op.path}
               </code>
               {op.op === 'replace' && oldValue && (
                 <div className="mt-2 flex items-center gap-2 text-xs">
                   <span
                     className="line-through px-2 py-1 rounded"
-                    style={{ backgroundColor: 'var(--hw-danger-subtle)', color: 'var(--hw-danger)' }}
+                    style={{ backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' }}
                   >
                     {formatValue(getValueAtPath(oldValue, op.path)).slice(0, 60)}
                   </span>
-                  <OpIcon className="h-3 w-3 flex-shrink-0" style={{ color: 'var(--hw-text-muted)' }} />
+                  <OpIcon className="h-3 w-3 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
                   <span
                     className="px-2 py-1 rounded"
-                    style={{ backgroundColor: 'var(--hw-success-subtle)', color: 'var(--hw-success)' }}
+                    style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
                   >
                     {formatValue(op.value).slice(0, 60)}
                   </span>
@@ -273,7 +273,7 @@ const PatchView: React.FC<PatchViewProps> = ({ changes, oldValue }) => {
               {op.op === 'add' && op.value !== undefined && (
                 <div
                   className="mt-2 text-xs px-2 py-1 rounded"
-                  style={{ backgroundColor: 'var(--hw-success-subtle)', color: 'var(--hw-success)' }}
+                  style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
                 >
                   {formatValue(op.value).slice(0, 120)}
                 </div>
@@ -302,17 +302,17 @@ const SideBySideView: React.FC<SideBySideViewProps> = ({
   newLabel,
 }) => {
   return (
-    <div className="grid grid-cols-2 divide-x" style={{ borderColor: 'var(--hw-border)' }}>
+    <div className="grid grid-cols-2 divide-x" style={{ borderColor: 'var(--border-default)' }}>
       <div>
         <div
           className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0"
-          style={{ backgroundColor: 'var(--hw-danger-subtle)', color: 'var(--hw-danger)' }}
+          style={{ backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' }}
         >
           {oldLabel}
         </div>
         <pre
           className="p-4 text-xs font-mono overflow-auto"
-          style={{ color: 'var(--hw-text-secondary)' }}
+          style={{ color: 'var(--text-secondary)' }}
         >
           {oldValue ? JSON.stringify(oldValue, null, 2) : '(empty)'}
         </pre>
@@ -320,13 +320,13 @@ const SideBySideView: React.FC<SideBySideViewProps> = ({
       <div>
         <div
           className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0"
-          style={{ backgroundColor: 'var(--hw-success-subtle)', color: 'var(--hw-success)' }}
+          style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
         >
           {newLabel}
         </div>
         <pre
           className="p-4 text-xs font-mono overflow-auto"
-          style={{ color: 'var(--hw-text-secondary)' }}
+          style={{ color: 'var(--text-secondary)' }}
         >
           {newValue ? JSON.stringify(newValue, null, 2) : '(empty)'}
         </pre>
@@ -343,7 +343,7 @@ interface UnifiedViewProps {
 
 const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
   return (
-    <div className="p-4 font-mono text-xs" style={{ backgroundColor: 'var(--hw-code-bg)' }}>
+    <div className="p-4 font-mono text-xs" style={{ backgroundColor: 'var(--code-bg)' }}>
       {changes.map((op, idx) => {
         if (op.op === 'add') {
           return (
@@ -379,7 +379,7 @@ const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
         }
 
         return (
-          <div key={idx} className="px-2 py-0.5" style={{ color: 'var(--hw-text-muted)' }}>
+          <div key={idx} className="px-2 py-0.5" style={{ color: 'var(--text-muted)' }}>
             <span className="mr-2 select-none">~</span>
             {op.op} {op.path}
           </div>

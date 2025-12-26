@@ -13,7 +13,6 @@ import { LLMService } from './llm.service';
  */
 
 export interface UpgradeContext {
-  tenantId: string;
   currentVersion: string;
   targetVersion?: string;
   customizationCount: number;
@@ -87,13 +86,14 @@ export interface ActionItem {
 @Injectable()
 export class UpgradeAssistantService {
   private readonly logger = new Logger(UpgradeAssistantService.name);
+  private readonly tenantId = process.env.INSTANCE_ID || 'default-instance';
 
   constructor(private llmService: LLMService) {}
 
   /**
    * Get upgrade context for the tenant
    */
-  async getUpgradeContext(dataSource: DataSource, tenantId: string): Promise<UpgradeContext> {
+  async getUpgradeContext(dataSource: DataSource): Promise<UpgradeContext> {
     try {
       // Get current version from platform config
       const versionResult = await dataSource.query(
@@ -103,8 +103,8 @@ export class UpgradeAssistantService {
 
       // Count customizations
       const customResult = await dataSource.query(
-        `SELECT COUNT(*) as count FROM tenant_customizations WHERE tenant_id = $1 AND is_active = true`,
-        [tenantId]
+        `SELECT COUNT(*) as count FROM instance_customizations WHERE is_active = true`,
+        [this.tenantId]
       );
       const customizationCount = parseInt(customResult[0]?.count || '0', 10);
 
@@ -112,18 +112,17 @@ export class UpgradeAssistantService {
       const impactResult = await dataSource.query(
         `SELECT COUNT(*) as count FROM tenant_upgrade_impact
          WHERE tenant_id = $1 AND status IN ('pending_analysis', 'analyzed')`,
-        [tenantId]
+        [this.tenantId]
       );
       const pendingImpacts = parseInt(impactResult[0]?.count || '0', 10);
 
       // Get last upgrade date
       const upgradeResult = await dataSource.query(
         `SELECT MAX(completed_at) as last_upgrade FROM upgrade_history WHERE tenant_id = $1`,
-        [tenantId]
+        [this.tenantId]
       );
 
       return {
-        tenantId,
         currentVersion,
         customizationCount,
         pendingImpacts,
@@ -132,7 +131,6 @@ export class UpgradeAssistantService {
     } catch (error) {
       this.logger.debug(`Error getting upgrade context: ${error}`);
       return {
-        tenantId,
         currentVersion: '1.0.0',
         customizationCount: 0,
         pendingImpacts: 0,
@@ -143,8 +141,9 @@ export class UpgradeAssistantService {
   /**
    * Get tenant customizations summary
    */
-  async getCustomizationsSummary(dataSource: DataSource, tenantId: string): Promise<CustomizationSummary[]> {
+  async getCustomizationsSummary(dataSource: DataSource): Promise<CustomizationSummary[]> {
     try {
+      const tenantId = this.tenantId;
       const rows = await dataSource.query(
         `SELECT
           config_type,
@@ -153,7 +152,7 @@ export class UpgradeAssistantService {
           description,
           updated_at,
           updated_by
-        FROM tenant_customizations
+        FROM instance_customizations
         WHERE tenant_id = $1 AND is_active = true
         ORDER BY updated_at DESC
         LIMIT 100`,
@@ -179,9 +178,9 @@ export class UpgradeAssistantService {
    */
   async getUpgradeImpactSummary(
     dataSource: DataSource,
-    tenantId: string,
     upgradeManifestId?: string
   ): Promise<UpgradeImpactSummary> {
+    const tenantId = this.tenantId;
     const summary: UpgradeImpactSummary = {
       totalImpacts: 0,
       bySeverity: {},
@@ -302,12 +301,11 @@ export class UpgradeAssistantService {
    */
   async generateUpgradeGuidance(
     dataSource: DataSource,
-    tenantId: string,
     phase: 'pre' | 'during' | 'post'
   ): Promise<UpgradeGuidance> {
-    const context = await this.getUpgradeContext(dataSource, tenantId);
-    const customizations = await this.getCustomizationsSummary(dataSource, tenantId);
-    const impacts = await this.getUpgradeImpactSummary(dataSource, tenantId);
+    const context = await this.getUpgradeContext(dataSource);
+    const customizations = await this.getCustomizationsSummary(dataSource);
+    const impacts = await this.getUpgradeImpactSummary(dataSource);
 
     const guidance: UpgradeGuidance = {
       phase,
@@ -366,12 +364,11 @@ export class UpgradeAssistantService {
    */
   async askAboutUpgrade(
     dataSource: DataSource,
-    tenantId: string,
     question: string
   ): Promise<string> {
-    const context = await this.getUpgradeContext(dataSource, tenantId);
-    const customizations = await this.getCustomizationsSummary(dataSource, tenantId);
-    const impacts = await this.getUpgradeImpactSummary(dataSource, tenantId);
+    const context = await this.getUpgradeContext(dataSource);
+    const customizations = await this.getCustomizationsSummary(dataSource);
+    const impacts = await this.getUpgradeImpactSummary(dataSource);
 
     // Build context for the LLM
     const upgradeContext = `
@@ -410,9 +407,9 @@ Provide a helpful, concise answer. If there are specific conflicts or issues, ex
   /**
    * Generate customization-aware context for AVA
    */
-  async buildUpgradeContextForAVA(dataSource: DataSource, tenantId: string): Promise<string> {
-    const context = await this.getUpgradeContext(dataSource, tenantId);
-    const impacts = await this.getUpgradeImpactSummary(dataSource, tenantId);
+  async buildUpgradeContextForAVA(dataSource: DataSource): Promise<string> {
+    const context = await this.getUpgradeContext(dataSource);
+    const impacts = await this.getUpgradeImpactSummary(dataSource);
 
     let upgradeInfo = `\n\n## Upgrade Status`;
     upgradeInfo += `\n- Current Platform Version: ${context.currentVersion}`;

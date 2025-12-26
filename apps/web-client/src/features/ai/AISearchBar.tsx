@@ -138,10 +138,6 @@ export function AISearchBar({
   const getSourcePath = (result: SearchResult): string | null => {
     const metadata = result.metadata || {};
     switch (result.sourceType) {
-      case 'knowledge_article':
-        return `/portal/knowledge/${result.sourceId}`;
-      case 'catalog_item':
-        return `/portal/catalog/${result.sourceId}`;
       case 'record':
         if (metadata.collectionName && metadata.recordId) {
           return `/data/${metadata.collectionName}/${metadata.recordId}`;

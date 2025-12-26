@@ -1,15 +1,20 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { HttpModule } from '@nestjs/axios';
 import { OidcService } from './oidc.service';
 import { OidcController } from './oidc.controller';
-import { SsoController } from './sso.controller';
+import { SsoAdminController } from './sso.controller';
 import { AuthModule } from '../auth/auth.module';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 
 @Module({
   imports: [
-    TenantDbModule,
+    InstanceDbModule,
+    HttpModule.register({
+      timeout: 10000,
+      maxRedirects: 5,
+    }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -20,8 +25,9 @@ import { TenantDbModule } from '@eam-platform/tenant-db';
     }),
     AuthModule,
   ],
-  controllers: [OidcController, SsoController],
+  controllers: [OidcController, SsoAdminController],
   providers: [OidcService],
   exports: [OidcService],
 })
 export class OidcModule {}
+

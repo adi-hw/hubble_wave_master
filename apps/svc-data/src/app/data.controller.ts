@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, TenantRequest } from '@eam-platform/auth-guard';
-import { CreateRecordDto, UpdateRecordDto, ListRecordsDto, BulkUpdateDto, BulkDeleteDto } from '@eam-platform/shared-types';
+import { JwtAuthGuard, RequestContext, TenantRequest } from '@hubblewave/auth-guard';
+import { CreateRecordDto, UpdateRecordDto, ListRecordsDto, BulkUpdateDto, BulkDeleteDto } from '@hubblewave/shared-types';
 import { DataService } from './data.service';
 
 @Controller('data')

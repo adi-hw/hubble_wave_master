@@ -1,6 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { TenantDbService } from '@eam-platform/tenant-db';
 
 export type EventType =
   | 'record.before_insert'
@@ -19,7 +18,6 @@ export type EventType =
   | 'custom';
 
 export interface EventPayload {
-  tenantId: string;
   eventType: EventType;
   tableName?: string;
   recordId?: string;
@@ -37,7 +35,6 @@ export interface EventHandler {
 
 interface SubscriptionHandler {
   subscriptionId: string;
-  tenantId: string;
   eventPattern: string;
   handler: EventHandler;
 }
@@ -48,8 +45,7 @@ export class EventBusService implements OnModuleInit {
   private handlers: Map<string, SubscriptionHandler[]> = new Map();
 
   constructor(
-    private readonly eventEmitter: EventEmitter2,
-    private readonly _tenantDb: TenantDbService
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   async onModuleInit() {
@@ -84,7 +80,6 @@ export class EventBusService implements OnModuleInit {
    * Subscribe to events matching a pattern
    */
   subscribe(
-    tenantId: string,
     eventPattern: string,
     handler: EventHandler
   ): string {
@@ -92,7 +87,6 @@ export class EventBusService implements OnModuleInit {
 
     const subscription: SubscriptionHandler = {
       subscriptionId,
-      tenantId,
       eventPattern,
       handler,
     };
@@ -129,11 +123,7 @@ export class EventBusService implements OnModuleInit {
     // Find all matching handlers
     for (const [pattern, handlers] of this.handlers.entries()) {
       if (this.matchesPattern(eventName, pattern)) {
-        // Filter by tenant
-        const tenantHandlers = handlers.filter(
-          (h) => h.tenantId === payload.tenantId || h.tenantId === '*'
-        );
-        matchingHandlers.push(...tenantHandlers);
+        matchingHandlers.push(...handlers);
       }
     }
 
@@ -188,7 +178,7 @@ export class EventBusService implements OnModuleInit {
   private async loadPersistentSubscriptions(): Promise<void> {
     // This will be enhanced to load from EventSubscription entity
     // For now, we just log that the service is ready
-    this.logger.log(`Loading persistent event subscriptions... (TenantDb: ${this._tenantDb ? 'available' : 'not available'})`);
+    this.logger.log(`Loading persistent event subscriptions...`);
   }
 
   /**

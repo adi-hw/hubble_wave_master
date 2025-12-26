@@ -71,7 +71,7 @@ export const NavItem: React.FC<NavItemProps> = ({
     return (
       <div
         className="my-2 mx-3 border-t"
-        style={{ borderColor: 'var(--hw-border, #e2e8f0)' }}
+        style={{ borderColor: 'var(--border-default)' }}
       />
     );
   }
@@ -93,7 +93,7 @@ export const NavItem: React.FC<NavItemProps> = ({
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors hover:bg-slate-50"
             style={{
-              color: 'var(--hw-text-muted, #94a3b8)',
+              color: 'var(--text-muted)',
               paddingLeft,
             }}
           >
@@ -111,7 +111,7 @@ export const NavItem: React.FC<NavItemProps> = ({
               <span
                 className="ml-auto px-1.5 py-0.5 text-[10px] font-medium rounded-full"
                 style={{
-                  backgroundColor: 'var(--hw-primary, #0ea5e9)',
+                  backgroundColor: 'var(--bg-primary)',
                   color: 'white',
                 }}
               >
@@ -186,7 +186,7 @@ export const NavItem: React.FC<NavItemProps> = ({
             <span
               className="px-1.5 py-0.5 text-[10px] font-medium rounded-full"
               style={{
-                backgroundColor: 'var(--hw-primary, #0ea5e9)',
+                backgroundColor: 'var(--bg-primary)',
                 color: 'white',
               }}
             >

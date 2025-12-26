@@ -1,16 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import {
-  TenantDbService,
   NotificationTemplate,
   NotificationChannel,
   NotificationDelivery,
   InAppNotification,
-} from '@eam-platform/tenant-db';
-import { IsNull } from 'typeorm';
+} from '@hubblewave/instance-db';
 
 export interface SendNotificationRequest {
-  tenantId: string;
   templateCode: string;
   recipients: NotificationRecipient[];
   data: Record<string, unknown>;
@@ -43,12 +42,19 @@ export class NotificationService {
   private channelProviders: Map<string, ChannelProvider> = new Map();
 
   constructor(
-    private readonly tenantDb: TenantDbService,
+    @InjectRepository(NotificationTemplate)
+    private readonly templateRepo: Repository<NotificationTemplate>,
+    @InjectRepository(NotificationChannel)
+    private readonly channelRepo: Repository<NotificationChannel>,
+    @InjectRepository(NotificationDelivery)
+    private readonly deliveryRepo: Repository<NotificationDelivery>,
+    @InjectRepository(InAppNotification)
+    private readonly inAppRepo: Repository<InAppNotification>,
     private readonly eventEmitter: EventEmitter2
   ) {
     // Register built-in providers
     this.registerProvider('email', new EmailProvider());
-    this.registerProvider('in_app', new InAppProvider(this.tenantDb));
+    this.registerProvider('in_app', new InAppProvider(this.inAppRepo));
     this.registerProvider('sms', new SmsProvider());
     this.registerProvider('push', new PushProvider());
     this.registerProvider('webhook', new WebhookProvider());
@@ -72,16 +78,10 @@ export class NotificationService {
     };
 
     try {
-      const dataSource = await this.tenantDb.getDataSource(request.tenantId);
-      const templateRepo = dataSource.getRepository(NotificationTemplate);
-      const channelRepo = dataSource.getRepository(NotificationChannel);
-      const deliveryRepo = dataSource.getRepository(NotificationDelivery);
-
       // Find template
-      const template = await templateRepo.findOne({
+      const template = await this.templateRepo.findOne({
         where: [
-          { tenantId: request.tenantId, code: request.templateCode, isActive: true },
-          { tenantId: IsNull(), code: request.templateCode, isActive: true },
+          { code: request.templateCode, isActive: true },
         ],
       });
 
@@ -93,8 +93,8 @@ export class NotificationService {
       const channels = request.channels || template.supportedChannels;
 
       // Get channel configurations
-      const channelConfigs = await channelRepo.find({
-        where: { tenantId: request.tenantId, isActive: true },
+      const channelConfigs = await this.channelRepo.find({
+        where: { isActive: true },
       });
 
       // Create deliveries for each recipient and channel
@@ -110,8 +110,7 @@ export class NotificationService {
             const rendered = this.renderTemplate(template, channel, request.data);
 
             // Create delivery record
-            const delivery = deliveryRepo.create({
-              tenantId: request.tenantId,
+            const delivery = this.deliveryRepo.create({
               triggerType: request.triggerType || 'direct',
               triggerReferenceId: request.triggerReferenceId,
               templateId: template.id,
@@ -129,12 +128,12 @@ export class NotificationService {
               scheduledAt: request.scheduledAt || new Date(),
             });
 
-            await deliveryRepo.save(delivery);
+            await this.deliveryRepo.save(delivery);
             result.deliveryIds.push(delivery.id);
 
             // If not scheduled, send immediately
             if (!request.scheduledAt) {
-              this.processDelivery(request.tenantId, delivery.id);
+              this.processDelivery(delivery.id);
             }
           } catch (error: any) {
             result.errors.push({ recipient, error: error.message });
@@ -154,12 +153,9 @@ export class NotificationService {
   /**
    * Process a delivery (send to channel provider)
    */
-  async processDelivery(tenantId: string, deliveryId: string): Promise<void> {
+  async processDelivery(deliveryId: string): Promise<void> {
     try {
-      const dataSource = await this.tenantDb.getDataSource(tenantId);
-      const deliveryRepo = dataSource.getRepository(NotificationDelivery);
-
-      const delivery = await deliveryRepo.findOne({
+      const delivery = await this.deliveryRepo.findOne({
         where: { id: deliveryId },
         relations: ['channelConfig'],
       });
@@ -171,7 +167,7 @@ export class NotificationService {
 
       // Update status to sending
       delivery.status = 'sending';
-      await deliveryRepo.save(delivery);
+      await this.deliveryRepo.save(delivery);
 
       // Get provider
       const provider = this.channelProviders.get(delivery.channel);
@@ -193,11 +189,10 @@ export class NotificationService {
         delivery.retryCount += 1;
       }
 
-      await deliveryRepo.save(delivery);
+      await this.deliveryRepo.save(delivery);
 
       // Emit event
       this.eventEmitter.emit('notification.delivered', {
-        tenantId,
         deliveryId,
         status: delivery.status,
         channel: delivery.channel,
@@ -271,13 +266,9 @@ export class NotificationService {
   /**
    * Process scheduled deliveries (called by cron job)
    */
-  async processScheduledDeliveries(tenantId: string): Promise<number> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const deliveryRepo = dataSource.getRepository(NotificationDelivery);
-
-    const pendingDeliveries = await deliveryRepo.find({
+  async processScheduledDeliveries(): Promise<number> {
+    const pendingDeliveries = await this.deliveryRepo.find({
       where: {
-        tenantId,
         status: 'pending',
       },
       order: { scheduledAt: 'ASC' },
@@ -289,7 +280,7 @@ export class NotificationService {
     );
 
     for (const delivery of dueDeliveries) {
-      await this.processDelivery(tenantId, delivery.id);
+      await this.processDelivery(delivery.id);
     }
 
     return dueDeliveries.length;
@@ -298,14 +289,10 @@ export class NotificationService {
   /**
    * Retry failed deliveries
    */
-  async retryFailedDeliveries(tenantId: string, maxRetries = 3): Promise<number> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const deliveryRepo = dataSource.getRepository(NotificationDelivery);
-
-    const failedDeliveries = await deliveryRepo
+  async retryFailedDeliveries(maxRetries = 3): Promise<number> {
+    const failedDeliveries = await this.deliveryRepo
       .createQueryBuilder('d')
-      .where('d.tenant_id = :tenantId', { tenantId })
-      .andWhere('d.status = :status', { status: 'failed' })
+      .where('d.status = :status', { status: 'failed' })
       .andWhere('d.retry_count < :maxRetries', { maxRetries })
       .andWhere('d.failed_at < :cutoff', { cutoff: new Date(Date.now() - 5 * 60 * 1000) })
       .orderBy('d.failed_at', 'ASC')
@@ -314,8 +301,8 @@ export class NotificationService {
 
     for (const delivery of failedDeliveries) {
       delivery.status = 'queued';
-      await deliveryRepo.save(delivery);
-      await this.processDelivery(tenantId, delivery.id);
+      await this.deliveryRepo.save(delivery);
+      await this.processDelivery(delivery.id);
     }
 
     return failedDeliveries.length;
@@ -326,7 +313,6 @@ export class NotificationService {
   @OnEvent('notification.process')
   async handleNotificationProcess(payload: any): Promise<void> {
     await this.send({
-      tenantId: payload.tenantId,
       templateCode: payload.templateCode,
       recipients: payload.recipients.map((r: string) => ({ userId: r })),
       data: payload.data,
@@ -346,7 +332,6 @@ export class NotificationService {
     });
 
     await this.send({
-      tenantId: payload.tenantId,
       templateCode: payload.templateCode,
       recipients,
       data: payload.data || {},
@@ -376,7 +361,7 @@ class EmailProvider implements ChannelProvider {
 }
 
 class InAppProvider implements ChannelProvider {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(private readonly inAppRepo: Repository<InAppNotification>) {}
 
   async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
     if (!delivery.recipientId) {
@@ -384,11 +369,7 @@ class InAppProvider implements ChannelProvider {
     }
 
     try {
-      const dataSource = await this.tenantDb.getDataSource(delivery.tenantId);
-      const inAppRepo = dataSource.getRepository(InAppNotification);
-
-      const notification = inAppRepo.create({
-        tenantId: delivery.tenantId,
+      const notification = this.inAppRepo.create({
         userId: delivery.recipientId,
         title: delivery.subject || 'Notification',
         message: delivery.body || '',
@@ -396,7 +377,7 @@ class InAppProvider implements ChannelProvider {
         isRead: false,
       });
 
-      await inAppRepo.save(notification);
+      await this.inAppRepo.save(notification);
 
       return { success: true, externalId: notification.id };
     } catch (error: any) {

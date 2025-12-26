@@ -1,36 +1,34 @@
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
-import { PasswordPolicy } from '@eam-platform/platform-db';
-import { TenantDbService } from '@eam-platform/tenant-db';
+import { PasswordPolicy } from '@hubblewave/instance-db';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
-import { TenantId } from './decorators/tenant.decorator';
 import { Roles } from './decorators/roles.decorator';
 
 @Controller('admin/auth/password-policy')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('tenant_admin', 'platform_admin')
+@Roles('admin')
 export class PasswordPolicyController {
   constructor(
-    private readonly tenantDbService: TenantDbService,
+    @InjectRepository(PasswordPolicy) private readonly passwordPolicyRepo: Repository<PasswordPolicy>,
   ) {}
 
   @Get()
-  async getPolicy(@TenantId() tenantId: string) {
-    const policyRepo = await this.tenantDbService.getRepository(tenantId, PasswordPolicy);
-    return policyRepo.findOne({ where: {} });
+  async getPolicy() {
+    return this.passwordPolicyRepo.findOne({ where: {} });
   }
 
   @Post()
-  async savePolicy(@TenantId() tenantId: string, @Body() policy: Partial<PasswordPolicy>) {
-    const policyRepo = await this.tenantDbService.getRepository(tenantId, PasswordPolicy);
-    let existing = await policyRepo.findOne({ where: {} });
+  async savePolicy(@Body() policy: Partial<PasswordPolicy>) {
+    let existing = await this.passwordPolicyRepo.findOne({ where: {} });
 
     if (existing) {
-      existing = policyRepo.merge(existing, policy);
-      return policyRepo.save(existing);
+      existing = this.passwordPolicyRepo.merge(existing, policy);
+      return this.passwordPolicyRepo.save(existing);
     } else {
-      const newPolicy = policyRepo.create({ ...policy });
-      return policyRepo.save(newPolicy);
+      const newPolicy = this.passwordPolicyRepo.create({ ...policy });
+      return this.passwordPolicyRepo.save(newPolicy);
     }
   }
 }

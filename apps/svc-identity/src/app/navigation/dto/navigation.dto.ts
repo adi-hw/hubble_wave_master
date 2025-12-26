@@ -137,6 +137,26 @@ export class RecordNavigationDto {
   moduleKey!: string;
 }
 
+// === Request/Response DTOs ===
+
+export class SwitchProfileRequest {
+  @ApiProperty()
+  @IsString()
+  profileId!: string;
+}
+
+export class ToggleFavoriteRequest {
+  @ApiProperty()
+  @IsString()
+  moduleKey!: string;
+}
+
+export class RecordNavigationRequest {
+  @ApiProperty()
+  @IsString()
+  moduleKey!: string;
+}
+
 // === Admin DTOs ===
 
 export class VisibilityRulesDto {
@@ -300,6 +320,11 @@ export class UpdateNavNodeDto {
   @IsOptional()
   @IsString()
   moduleKey?: string;
+
+  @ApiPropertyOptional({ description: 'Parent key (send empty string to move to root)' })
+  @IsOptional()
+  @IsString()
+  parentKey?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

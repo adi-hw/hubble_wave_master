@@ -46,8 +46,7 @@ export const CACHE_CONSTANTS = {
   /** Model registry cache TTL in seconds */
   MODEL_REGISTRY_TTL_SECONDS: 300,
 
-  /** Maximum tenant datasources to keep in pool */
-  MAX_TENANT_DATASOURCES: 20,
+
 
   /** Permission cache TTL in seconds */
   PERMISSION_CACHE_TTL_SECONDS: 60,
@@ -101,8 +100,42 @@ export const VALIDATION_CONSTANTS = {
   MAX_FIELD_NAME_LENGTH: 100,
 
   /** Reserved field names that cannot be used */
-  RESERVED_FIELD_NAMES: ['id', 'created_at', 'updated_at', 'deleted_at', 'tenant_id'],
+  RESERVED_FIELD_NAMES: ['id', 'created_at', 'updated_at', 'deleted_at'],
 
   /** Reserved table names */
-  RESERVED_TABLE_NAMES: ['user', 'users', 'role', 'roles', 'permission', 'permissions', 'tenant', 'tenants'],
+  RESERVED_TABLE_NAMES: ['user', 'users', 'role', 'roles', 'permission', 'permissions'],
+} as const;
+
+/**
+ * AVA (AI Assistant) constants
+ */
+export const AVA_CONSTANTS = {
+  /** Maximum conversation history messages to include in context */
+  CONVERSATION_HISTORY_LIMIT: 10,
+
+  /** Maximum RAG documents to retrieve */
+  MAX_RAG_DOCUMENTS: 5,
+
+  /** Similarity threshold for RAG retrieval */
+  SIMILARITY_THRESHOLD: 0.5,
+
+  /** Maximum tokens for model context */
+  MAX_CONTEXT_TOKENS: 8000,
+
+  /** Default temperature for completions */
+  DEFAULT_TEMPERATURE: 0.7,
+} as const;
+
+/**
+ * Bulk operation constants
+ */
+export const BULK_OPERATION_CONSTANTS = {
+  /** Maximum records for bulk update */
+  MAX_BULK_UPDATE_SIZE: 500,
+
+  /** Maximum records for bulk delete */
+  MAX_BULK_DELETE_SIZE: 500,
+
+  /** Maximum records for bulk insert */
+  MAX_BULK_INSERT_SIZE: 1000,
 } as const;

@@ -1,5 +1,7 @@
 // API Utilities for HubbleWave
 
+import { getStoredToken } from '../services/token';
+
 const API_BASE = '/api';
 
 interface FetchOptions extends RequestInit {
@@ -7,7 +9,16 @@ interface FetchOptions extends RequestInit {
 }
 
 /**
- * Enhanced fetch with error handling and JSON support
+ * Get CSRF token from cookie
+ * The backend sets XSRF-TOKEN cookie which we need to send back in X-XSRF-TOKEN header
+ */
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Enhanced fetch with error handling, JSON support, auth, and CSRF protection
  */
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...fetchOptions } = options;
@@ -27,10 +38,30 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     }
   }
 
+  // Get auth token
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  // Add CSRF token for state-changing requests (POST, PUT, PATCH, DELETE)
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      headers['X-XSRF-TOKEN'] = csrfToken;
+    }
+  }
+
   const response = await fetch(url, {
     ...fetchOptions,
+    credentials: 'include', // Include cookies for session management
     headers: {
-      'Content-Type': 'application/json',
+      ...headers,
       ...fetchOptions.headers,
     },
   });
@@ -89,8 +120,11 @@ export async function apiPatch<T>(endpoint: string, data?: unknown): Promise<T> 
 /**
  * DELETE request
  */
-export async function apiDelete<T>(endpoint: string): Promise<T> {
-  return apiFetch<T>(endpoint, { method: 'DELETE' });
+export async function apiDelete<T>(endpoint: string, options?: { data?: unknown }): Promise<T> {
+  return apiFetch<T>(endpoint, {
+    method: 'DELETE',
+    body: options?.data ? JSON.stringify(options.data) : undefined,
+  });
 }
 
 // Metadata API endpoints

@@ -1,17 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, IsNull } from 'typeorm';
 import {
-  TenantDbService,
   BusinessRule,
   RuleTrigger,
   ConditionExpression,
   ActionConfig,
   FieldMapping,
-} from '@eam-platform/tenant-db';
-import { IsNull } from 'typeorm';
+} from '@hubblewave/instance-db';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export interface RuleContext {
-  tenantId: string;
   userId: string;
   tableName: string;
   trigger: RuleTrigger;
@@ -43,7 +42,8 @@ export class RuleEngineService {
   private readonly logger = new Logger(RuleEngineService.name);
 
   constructor(
-    private readonly tenantDb: TenantDbService,
+    @InjectRepository(BusinessRule)
+    private readonly ruleRepo: Repository<BusinessRule>,
     private readonly eventEmitter: EventEmitter2
   ) {}
 
@@ -110,7 +110,6 @@ export class RuleEngineService {
             break;
           } else if (rule.onError === 'notify_admin') {
             this.eventEmitter.emit('rule.error', {
-              tenantId: ctx.tenantId,
               ruleId: rule.id,
               ruleCode: rule.code,
               error: error.message,
@@ -144,15 +143,9 @@ export class RuleEngineService {
    * Get all rules applicable to a given context
    */
   private async getApplicableRules(ctx: RuleContext): Promise<BusinessRule[]> {
-    const dataSource = await this.tenantDb.getDataSource(ctx.tenantId);
-    const ruleRepo = dataSource.getRepository(BusinessRule);
-
-    return ruleRepo.find({
+    return this.ruleRepo.find({
       where: [
-        // Tenant-specific rules
-        { tenantId: ctx.tenantId, targetTable: ctx.tableName, trigger: ctx.trigger, isActive: true, deletedAt: IsNull() },
-        // Platform rules (tenantId is null)
-        { tenantId: IsNull(), targetTable: ctx.tableName, trigger: ctx.trigger, isActive: true, deletedAt: IsNull() },
+        { targetTable: ctx.tableName, trigger: ctx.trigger, isActive: true, deletedAt: IsNull() },
       ],
       order: { executionOrder: 'ASC' },
     });
@@ -425,7 +418,7 @@ export class RuleEngineService {
     // Handle special expressions
     if (expression === '$now') return new Date();
     if (expression === '$userId') return ctx.userId;
-    if (expression === '$tenantId') return ctx.tenantId;
+    // Removed $tenantId support as tenantId is no longer in context
 
     // Template interpolation: {{field_name}}
     return expression.replace(/\{\{(\w+)\}\}/g, (_, field) => {
@@ -546,7 +539,6 @@ export class RuleEngineService {
 
     // Emit event for workflow engine to pick up
     this.eventEmitter.emit('workflow.trigger', {
-      tenantId: ctx.tenantId,
       workflowCode: config.workflowCode,
       input,
       triggeredBy: ctx.userId,
@@ -575,7 +567,6 @@ export class RuleEngineService {
     }
 
     this.eventEmitter.emit('notification.send', {
-      tenantId: ctx.tenantId,
       templateCode: config.templateCode,
       recipients,
       data: record,
@@ -602,7 +593,6 @@ export class RuleEngineService {
     }
 
     this.eventEmitter.emit('api.call', {
-      tenantId: ctx.tenantId,
       endpoint: config.endpoint,
       method: config.method || 'POST',
       headers: config.headers,

@@ -82,7 +82,7 @@ export async function resolveLayout(
     availableLayouts.push({
       id: tenantLayout.id,
       name: tenantLayout.name,
-      source: 'tenant_admin',
+      source: 'admin',
       isActive: false,
       isDefault: tenantLayout.isDefault,
       version: tenantLayout.version,
@@ -201,7 +201,7 @@ function resolveEffectiveLayout(
   if (tenantLayout?.isPublished && tenantLayout.isDefault) {
     return {
       layout: tenantLayout.layout,
-      source: 'tenant_admin',
+      source: 'admin',
       sourceId: tenantLayout.id,
       versionChain,
     };

@@ -2,7 +2,6 @@ import api from './api';
 
 export interface Role {
   id: string;
-  tenantId: string | null;
   name: string;
   description?: string;
   permissions: string[];
@@ -10,7 +9,6 @@ export interface Role {
 
 export interface Group {
   id: string;
-  tenantId: string | null;
   name: string;
   description?: string;
 }

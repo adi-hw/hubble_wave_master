@@ -1,61 +1,90 @@
-import { BadRequestException, Controller, Post, Body, Get, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { EmailVerificationService } from './email-verification.service';
-import { TenantDbService, extractTenantSlug } from '@eam-platform/tenant-db';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+
+interface AuthenticatedUser {
+  id: string;
+  userId: string;
+  username?: string;
+  email?: string;
+}
+
+interface VerifyEmailDto {
+  token: string;
+}
 
 @Controller('auth/email')
 export class EmailVerificationController {
   constructor(
-    private emailVerificationService: EmailVerificationService,
-    private readonly tenantDbService: TenantDbService
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
+  /**
+   * Verify email using token (public - no auth required)
+   * POST /auth/email/verify
+   */
+  @Public()
   @Post('verify')
-  async verifyEmail(@Req() req: any, @Body() body: { token: string; tenantSlug?: string }) {
-    const tenantSlug = body.tenantSlug || extractTenantSlug(req.headers.host || '');
-    if (!tenantSlug) {
-      throw new BadRequestException('Tenant could not be determined');
-    }
-    const tenant = await this.tenantDbService.getTenantOrThrow(tenantSlug);
-    const success = await this.emailVerificationService.verifyEmail(tenant.id, body.token);
-
-    if (!success) {
-      return {
-        success: false,
-        message: 'Invalid or expired verification token',
-      };
-    }
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(
+    @Body() body: VerifyEmailDto,
+  ): Promise<{ success: boolean; message: string }> {
+    const result = await this.emailVerificationService.verifyEmail(body.token);
 
     return {
       success: true,
-      message: 'Email verified successfully',
+      message: `Email ${result.email} has been successfully verified`,
     };
   }
 
-  @Get('resend')
+  /**
+   * Resend verification email (authenticated)
+   * POST /auth/email/resend
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('resend')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
   async resendVerification(
-    @Req() req: any,
-    @Query('userId') userId: string,
-    @Query('tenantSlug') tenantSlug?: string,
-  ) {
-    const slug = tenantSlug || extractTenantSlug(req.headers.host || '');
-    if (!slug) {
-      throw new BadRequestException('Tenant could not be determined');
-    }
-    const tenant = await this.tenantDbService.getTenantOrThrow(slug);
-    try {
-      await this.emailVerificationService.resendVerification(tenant.id, userId);
-      
-      // Get user to send email (in real app, fetch from DB)
-      // For now, just return success
-      return {
-        success: true,
-        message: 'Verification email sent',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: (error as Error).message,
-      };
-    }
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ success: boolean; message: string }> {
+    const userId = user.userId || user.id;
+    await this.emailVerificationService.resendVerification(userId);
+
+    return {
+      success: true,
+      message: 'Verification email sent successfully',
+    };
+  }
+
+  /**
+   * Get email verification status (authenticated)
+   * GET /auth/email/status
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('status')
+  async getVerificationStatus(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{
+    emailVerified: boolean;
+    email: string;
+    emailVerifiedAt: Date | null;
+    canResend: boolean;
+    resendAvailableAt: Date | null;
+  }> {
+    const userId = user.userId || user.id;
+    return this.emailVerificationService.getVerificationStatus(userId);
   }
 }

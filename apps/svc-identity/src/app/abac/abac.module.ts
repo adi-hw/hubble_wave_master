@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TenantDbModule } from '@eam-platform/tenant-db';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 import { AbacService } from './abac.service';
 import { AbacGuard } from './abac.guard';
 
 @Module({
-  imports: [TenantDbModule],
+  imports: [InstanceDbModule],
   providers: [AbacService, AbacGuard],
   exports: [AbacService, AbacGuard],
 })
 export class AbacModule {}
+

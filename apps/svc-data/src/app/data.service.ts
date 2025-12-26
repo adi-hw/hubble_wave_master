@@ -1,15 +1,18 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { AuthorizationService, AuthorizedFieldMeta } from '@eam-platform/authorization';
-import { RequestContext } from '@eam-platform/auth-guard';
-import { ListRecordsDto, PAGINATION_CONSTANTS } from '@eam-platform/shared-types';
+import { DataSource } from 'typeorm';
+import { AuthorizationService, AuthorizedFieldMeta } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
+import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
 import { ModelRegistryService } from './model-registry.service';
+
+// Instance ID for this single-instance deployment
+const INSTANCE_ID = process.env['INSTANCE_ID'] || 'default';
 
 @Injectable()
 export class DataService {
   constructor(
     private readonly modelRegistry: ModelRegistryService,
-    private readonly tenantDb: TenantDbService,
+    private readonly dataSource: DataSource,
     private readonly authz: AuthorizationService,
   ) {}
 
@@ -86,10 +89,10 @@ export class DataService {
     );
     const skip = (page - 1) * limit;
 
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, ctx.tenantId, ctx.roles);
+    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
     if (!readableFields.length) {
       throw new ForbiddenException('No readable fields on this table');
@@ -108,7 +111,7 @@ export class DataService {
 
     // SECURITY: Use safe parameterized row-level security predicates
     const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'read', 't');
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
 
     // Build count query with safe parameterized RLS
     const countQb = ds.createQueryBuilder().select('COUNT(*)', 'total').from(this.buildPhysicalTableForQb(model), 't');
@@ -151,10 +154,10 @@ export class DataService {
 
   // Get single record
   async getOne(ctx: RequestContext, tableCode: string, id: string) {
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, ctx.tenantId, ctx.roles);
+    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
     if (!readableFields.length) {
       throw new ForbiddenException('No readable fields on this table');
@@ -173,7 +176,7 @@ export class DataService {
 
     // SECURITY: Use safe parameterized row-level security predicates
     const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'read', 't');
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
     const qb = ds.createQueryBuilder().select(selectParts).from(this.buildPhysicalTableForQb(model), 't');
     qb.where('t.id = :id', { id });
     rlsClauses.forEach((clause) => qb.andWhere(clause));
@@ -190,10 +193,10 @@ export class DataService {
 
   // Create record
   async create(ctx: RequestContext, tableCode: string, payload: Record<string, any>) {
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'create');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, ctx.tenantId, ctx.roles);
+    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
     const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
     const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
 
@@ -230,21 +233,21 @@ export class DataService {
 
     const physicalTable = this.buildPhysicalTableRaw(model);
     const sql = `INSERT INTO ${physicalTable} (${columns.join(', ')}) VALUES (${values.join(', ')}) RETURNING id`;
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
     const result = await ds.query(sql, params);
     return this.getOne(ctx, tableCode, result[0].id);
   }
 
   // Update record
   async update(ctx: RequestContext, tableCode: string, id: string, payload: Record<string, any>) {
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, ctx.tenantId, ctx.roles);
+    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
     const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
     const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
 
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
 
     // SECURITY: Use TypeORM query builder for safe parameterized updates
     const qb = ds.createQueryBuilder()
@@ -289,10 +292,10 @@ export class DataService {
 
   // Delete record
   async delete(ctx: RequestContext, tableCode: string, id: string) {
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
 
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
 
     // SECURITY: Use TypeORM query builder for safe parameterized deletes
     const qb = ds.createQueryBuilder()
@@ -320,15 +323,20 @@ export class DataService {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided for bulk update');
     }
+    if (ids.length > BULK_OPERATION_CONSTANTS.MAX_BULK_UPDATE_SIZE) {
+      throw new BadRequestException(
+        `Bulk update limited to ${BULK_OPERATION_CONSTANTS.MAX_BULK_UPDATE_SIZE} records. Use pagination for larger operations.`
+      );
+    }
 
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, ctx.tenantId, ctx.roles);
+    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
     const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
     const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
 
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
 
     // SECURITY: Use TypeORM query builder for safe parameterized bulk updates
     const qb = ds.createQueryBuilder()
@@ -384,11 +392,16 @@ export class DataService {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided for bulk delete');
     }
+    if (ids.length > BULK_OPERATION_CONSTANTS.MAX_BULK_DELETE_SIZE) {
+      throw new BadRequestException(
+        `Bulk delete limited to ${BULK_OPERATION_CONSTANTS.MAX_BULK_DELETE_SIZE} records. Use pagination for larger operations.`
+      );
+    }
 
-    const model = await this.modelRegistry.getTable(tableCode, ctx.tenantId);
+    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
 
-    const ds = await this.tenantDb.getDataSource(ctx.tenantId);
+    const ds = this.dataSource;
 
     // SECURITY: Use TypeORM query builder for safe parameterized bulk deletes
     const qb = ds.createQueryBuilder()
@@ -410,3 +423,4 @@ export class DataService {
     };
   }
 }
+

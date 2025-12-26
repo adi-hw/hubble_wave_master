@@ -275,7 +275,7 @@ export interface UserLayoutSummary {
  *    - Serves as ultimate fallback
  *    - Versioned with platform releases
  *
- * 2. TENANT_ADMIN - Configured by tenant administrator
+ * 2. admin - Configured by tenant administrator
  *    - Overrides platform layout
  *    - Applies to all users in tenant by default
  *    - Can be versioned for rollback
@@ -292,7 +292,7 @@ export interface UserLayoutSummary {
 
 export type LayoutSource =
   | 'platform'     // Platform-provided (vendor)
-  | 'tenant_admin' // Tenant administrator configured
+  | 'admin' // Tenant administrator configured
   | 'role'         // Role-based layout
   | 'user';        // User personalized
 

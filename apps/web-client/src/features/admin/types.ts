@@ -6,15 +6,15 @@
 // ========== Config Types ==========
 
 export type ConfigType =
-  | 'table'
-  | 'field'
-  | 'acl'
+  | 'collection'
+  | 'property'
+  | 'access_rule'
   | 'workflow'
   | 'script'
   | 'approval'
   | 'notification'
   | 'event'
-  | 'business_rule';
+  | 'automation_rule';
 
 export type CustomizationType = 'override' | 'extend' | 'new';
 
@@ -26,7 +26,7 @@ export type ImpactSeverity = 'none' | 'low' | 'medium' | 'high' | 'critical';
 
 export type ImpactStatus = 'pending_analysis' | 'analyzed' | 'resolved' | 'acknowledged' | 'auto_resolved';
 
-export type ResolutionStrategy = 'auto_merge' | 'manual_review' | 'keep_tenant' | 'use_platform' | 'custom_merge';
+export type ResolutionStrategy = 'auto_merge' | 'manual_review' | 'keep_instance' | 'use_platform' | 'custom_merge';
 
 // ========== Platform Config ==========
 
@@ -42,9 +42,9 @@ export interface PlatformConfig {
   createdAt: string;
 }
 
-// ========== Tenant Customization ==========
+// ========== Instance Customization ==========
 
-export interface TenantCustomization {
+export interface InstanceCustomization {
   id: string;
   tenantId: string;
   configType: ConfigType;
@@ -173,9 +173,9 @@ export interface PostCheck {
   validationScript?: string;
 }
 
-// ========== Tenant Upgrade Impact ==========
+// ========== Instance Upgrade Impact ==========
 
-export interface TenantUpgradeImpact {
+export interface InstanceUpgradeImpact {
   id: string;
   tenantId: string;
   upgradeManifestId: string;
@@ -185,7 +185,7 @@ export interface TenantUpgradeImpact {
   impactType: 'conflict' | 'override_affected' | 'extension_affected' | 'deprecated' | 'removed' | 'new_available';
   impactSeverity: ImpactSeverity;
   description?: string;
-  currentTenantValue?: Record<string, any>;
+  currentInstanceValue?: Record<string, any>;
   currentPlatformValue?: Record<string, any>;
   newPlatformValue?: Record<string, any>;
   platformDiff?: JsonPatchOperation[];
@@ -235,7 +235,7 @@ export interface BusinessRule {
   actionScript?: string;
   onError: 'abort' | 'log_continue' | 'notify_admin';
   errorMessage?: string;
-  source: 'platform' | 'module' | 'tenant';
+  source: 'platform' | 'module' | 'instance';
   platformVersion?: string;
   isActive: boolean;
   isSystem: boolean;
@@ -273,7 +273,7 @@ export interface ListResponse<T> {
 
 export interface UpgradeAnalysis {
   manifest: UpgradeManifest;
-  impacts: TenantUpgradeImpact[];
+  impacts: InstanceUpgradeImpact[];
   summary: {
     totalImpacts: number;
     criticalCount: number;

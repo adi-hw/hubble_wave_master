@@ -1,0 +1,17 @@
+{
+  "name": "svc-control-plane-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "implicitDependencies": ["svc-control-plane"],
+  "projectType": "application",
+  "targets": {
+    "e2e": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{e2eProjectRoot}"],
+      "options": {
+        "jestConfig": "apps/svc-control-plane-e2e/jest.config.cts",
+        "passWithNoTests": true
+      },
+      "dependsOn": ["svc-control-plane:build", "svc-control-plane:serve"]
+    }
+  }
+}

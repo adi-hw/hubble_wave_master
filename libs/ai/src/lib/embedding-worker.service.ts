@@ -6,12 +6,11 @@ import { EmbeddingService } from './embedding.service';
 import { VectorStoreService } from './vector-store.service';
 import { EmbeddingJob, EmbeddingJobResult } from './embedding-queue.service';
 
-// Callback type for getting tenant data source
-export type GetTenantDataSourceFn = (tenantId: string) => Promise<import('typeorm').DataSource>;
+// Callback type for getting tenant data source (single-instance)
+export type GetTenantDataSourceFn = () => Promise<import('typeorm').DataSource>;
 
 // Callback type for fetching source data
 export type FetchSourceDataFn = (
-  tenantId: string,
   sourceType: string,
   sourceId: string
 ) => Promise<Record<string, unknown> | null>;
@@ -115,10 +114,11 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     job: Job<EmbeddingJob, EmbeddingJobResult>
   ): Promise<EmbeddingJobResult> {
     const startTime = Date.now();
-    const { tenantId, sourceType, sourceId, action, data } = job.data;
+    const { sourceType, sourceId, action, data } = job.data;
+    const instanceTenant = this.getInstanceTenant();
 
     this.logger.debug(
-      `Processing job: ${action} ${sourceType}/${sourceId} for tenant ${tenantId}`
+      `Processing job: ${action} ${sourceType}/${sourceId} for tenant ${instanceTenant}`
     );
 
     if (!this.getTenantDataSource || !this.fetchSourceData) {
@@ -129,7 +129,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const dataSource = await this.getTenantDataSource(tenantId);
+      const dataSource = await this.getTenantDataSource();
 
       if (action === 'delete') {
         await this.vectorStoreService.deleteBySource(
@@ -144,11 +144,11 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (sourceType === 'bulk_reindex') {
-        return this.processBulkReindex(dataSource, tenantId, data);
+        return this.processBulkReindex(dataSource, data);
       }
 
       // Fetch the source data
-      const sourceData = await this.fetchSourceData(tenantId, sourceType, sourceId);
+      const sourceData = await this.fetchSourceData(sourceType, sourceId);
       if (!sourceData) {
         return {
           success: false,
@@ -224,10 +224,10 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async processBulkReindex(
     dataSource: import('typeorm').DataSource,
-    tenantId: string,
     data?: Record<string, unknown>
   ): Promise<EmbeddingJobResult> {
     const startTime = Date.now();
+    const instanceTenant = this.getInstanceTenant();
     const sourceTypes = (data?.['sourceTypes'] as string[]) || [
       'knowledge_article',
       'catalog_item',
@@ -244,7 +244,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
         // Fetch all items of this type and reindex
         // This would need to be implemented in the main app to fetch all items
         this.logger.log(
-          `Bulk reindex scheduled for ${sourceType} in tenant ${tenantId}`
+          `Bulk reindex scheduled for ${sourceType} in tenant ${instanceTenant}`
         );
       } catch (error) {
         errors.push(
@@ -259,5 +259,9 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
       error: errors.length > 0 ? errors.join('; ') : undefined,
       duration: Date.now() - startTime,
     };
+  }
+
+  private getInstanceTenant(): string {
+    return this.configService.get<string>('INSTANCE_ID') || 'default-instance';
   }
 }

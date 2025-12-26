@@ -8,7 +8,7 @@ export const ROLES_KEY = 'roles';
  *
  * @example
  * ```typescript
- * @Roles('tenant_admin', 'platform_admin')
+ * @Roles('admin')
  * @UseGuards(JwtAuthGuard, RolesGuard)
  * @Controller('admin')
  * export class AdminController {}

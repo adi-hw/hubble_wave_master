@@ -11,7 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@eam-platform/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from './collection-data.service';
 
 // Query DTOs
@@ -93,6 +93,15 @@ export class CollectionDataController {
     return options;
   }
 
+  private buildContext(user: RequestUser) {
+    return {
+      userId: user.id,
+      roles: user.roles,
+      permissions: user.permissions,
+      isAdmin: user.roles.includes('admin'),
+    };
+  }
+
   // ============ COLLECTION DATA ============
 
   /**
@@ -105,14 +114,7 @@ export class CollectionDataController {
     @CurrentUser() user: RequestUser
   ) {
     const options = this.parseQueryOptions(query);
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.list(ctx, collectionCode, options);
   }
@@ -126,14 +128,7 @@ export class CollectionDataController {
     @Param('id') id: string,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.getOne(ctx, collectionCode, id);
   }
@@ -147,14 +142,7 @@ export class CollectionDataController {
     @Body() data: Record<string, unknown>,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.create(ctx, collectionCode, data);
   }
@@ -169,14 +157,7 @@ export class CollectionDataController {
     @Body() data: Record<string, unknown>,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.update(ctx, collectionCode, id, data);
   }
@@ -191,14 +172,7 @@ export class CollectionDataController {
     @Param('id') id: string,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     await this.collectionData.delete(ctx, collectionCode, id);
   }
@@ -214,14 +188,7 @@ export class CollectionDataController {
     @Body() body: BulkUpdateDto,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.bulkUpdate(ctx, collectionCode, body.ids, body.data);
   }
@@ -235,14 +202,7 @@ export class CollectionDataController {
     @Body() body: BulkDeleteDto,
     @CurrentUser() user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.bulkDelete(ctx, collectionCode, body.ids);
   }
@@ -256,18 +216,11 @@ export class CollectionDataController {
   async getReferenceOptions(
     @Param('collectionCode') collectionCode: string,
     @Query('displayField') displayField: string,
+    @CurrentUser() user: RequestUser,
     @Query('search') search?: string,
-    @Query('limit') limit?: string,
-    @CurrentUser() user?: RequestUser
+    @Query('limit') limit?: string
   ) {
-    const ctx = {
-      tenantId: user!.tenantId,
-      userId: user!.id,
-      roles: user!.roles,
-      permissions: user!.permissions,
-      isPlatformAdmin: user!.roles.includes('platform_admin'),
-      isTenantAdmin: user!.roles.includes('tenant_admin'),
-    };
+    const ctx = this.buildContext(user);
 
     return this.collectionData.getReferenceOptions(
       ctx,
@@ -286,19 +239,11 @@ export class CollectionDataController {
   @Get(':collectionCode/schema')
   async getSchema(
     @Param('collectionCode') collectionCode: string,
-    @CurrentUser() user: RequestUser
+    @CurrentUser() _user: RequestUser
   ) {
-    const ctx = {
-      tenantId: user.tenantId,
-      userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isPlatformAdmin: user.roles.includes('platform_admin'),
-      isTenantAdmin: user.roles.includes('tenant_admin'),
-    };
-
-    const collection = await this.collectionData.getCollection(ctx.tenantId, collectionCode);
-    const properties = await this.collectionData.getProperties(ctx.tenantId, collection.id);
+    // TODO: Add authorization check for schema access
+    const collection = await this.collectionData.getCollection(collectionCode);
+    const properties = await this.collectionData.getProperties(collection.id);
 
     return {
       collection,

@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { TenantDbService, AnalyticsEvent, AggregatedMetric } from '@eam-platform/tenant-db';
-import { LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
+import { AnalyticsEvent, AggregatedMetric } from '@hubblewave/instance-db';
 
 export interface TrackEventRequest {
-  tenantId: string;
   userId?: string;
   eventType: string;
   eventCategory?: string;
@@ -24,7 +24,6 @@ export interface TrackEventRequest {
 }
 
 export interface QueryMetricsRequest {
-  tenantId: string;
   metricCodes: string[];
   periodType: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   startDate: Date;
@@ -45,7 +44,6 @@ export interface MetricResult {
 }
 
 export interface DashboardDataRequest {
-  tenantId: string;
   dashboardId: string;
   parameters?: Record<string, unknown>;
 }
@@ -55,7 +53,10 @@ export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
   constructor(
-    private readonly tenantDb: TenantDbService,
+    @InjectRepository(AnalyticsEvent)
+    private readonly eventRepo: Repository<AnalyticsEvent>,
+    @InjectRepository(AggregatedMetric)
+    private readonly metricRepo: Repository<AggregatedMetric>,
     private readonly eventEmitter: EventEmitter2
   ) {}
 
@@ -64,11 +65,7 @@ export class AnalyticsService {
    */
   async trackEvent(request: TrackEventRequest): Promise<void> {
     try {
-      const dataSource = await this.tenantDb.getDataSource(request.tenantId);
-      const eventRepo = dataSource.getRepository(AnalyticsEvent);
-
-      const event = eventRepo.create({
-        tenantId: request.tenantId,
+      const event = this.eventRepo.create({
         userId: request.userId,
         eventType: request.eventType,
         eventCategory: request.eventCategory,
@@ -88,11 +85,10 @@ export class AnalyticsService {
         timestamp: new Date(),
       });
 
-      await eventRepo.save(event);
+      await this.eventRepo.save(event);
 
       // Emit event for real-time processing
       this.eventEmitter.emit('analytics.event', {
-        tenantId: request.tenantId,
         event,
       });
     } catch (error: unknown) {
@@ -105,11 +101,7 @@ export class AnalyticsService {
    * Query aggregated metrics
    */
   async queryMetrics(request: QueryMetricsRequest): Promise<MetricResult[]> {
-    const dataSource = await this.tenantDb.getDataSource(request.tenantId);
-    const metricRepo = dataSource.getRepository(AggregatedMetric);
-
     const whereConditions: Record<string, unknown> = {
-      tenantId: request.tenantId,
       metricCode: request.metricCodes.length === 1 ? request.metricCodes[0] : undefined,
       periodType: request.periodType,
       periodStart: MoreThanOrEqual(request.startDate),
@@ -124,7 +116,7 @@ export class AnalyticsService {
       whereConditions['moduleId'] = request.moduleId;
     }
 
-    const metrics = await metricRepo.find({
+    const metrics = await this.metricRepo.find({
       where: whereConditions,
       order: { periodStart: 'ASC' },
     });
@@ -146,12 +138,8 @@ export class AnalyticsService {
    * Get summary metrics for a dashboard
    */
   async getDashboardSummary(
-    tenantId: string,
     period: 'today' | 'week' | 'month' | 'quarter' | 'year'
   ): Promise<DashboardSummary> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const eventRepo = dataSource.getRepository(AnalyticsEvent);
-
     const now = new Date();
     const startDate = this.getPeriodStartDate(now, period);
 
@@ -163,37 +151,32 @@ export class AnalyticsService {
       recordCreates,
       recordUpdates,
     ] = await Promise.all([
-      eventRepo.count({
+      this.eventRepo.count({
         where: {
-          tenantId,
           timestamp: Between(startDate, now),
         },
       }),
-      eventRepo
+      this.eventRepo
         .createQueryBuilder('e')
-        .select('COUNT(DISTINCT e.user_id)', 'count')
-        .where('e.tenant_id = :tenantId', { tenantId })
-        .andWhere('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
-        .andWhere('e.user_id IS NOT NULL')
+        .select('COUNT(DISTINCT e.userId)', 'count')
+        .where('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
+        .andWhere('e.userId IS NOT NULL')
         .getRawOne()
         .then((r: { count: string } | undefined) => parseInt(r?.count || '0', 10)),
-      eventRepo.count({
+      this.eventRepo.count({
         where: {
-          tenantId,
           eventType: 'page_view',
           timestamp: Between(startDate, now),
         },
       }),
-      eventRepo.count({
+      this.eventRepo.count({
         where: {
-          tenantId,
           eventType: 'record_create',
           timestamp: Between(startDate, now),
         },
       }),
-      eventRepo.count({
+      this.eventRepo.count({
         where: {
-          tenantId,
           eventType: 'record_update',
           timestamp: Between(startDate, now),
         },
@@ -201,27 +184,25 @@ export class AnalyticsService {
     ]);
 
     // Get top collections
-    const topCollections = await eventRepo
+    const topCollections = await this.eventRepo
       .createQueryBuilder('e')
-      .select('e.collection_id', 'collectionId')
+      .select('e.collectionId', 'collectionId')
       .addSelect('COUNT(*)', 'count')
-      .where('e.tenant_id = :tenantId', { tenantId })
-      .andWhere('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
-      .andWhere('e.collection_id IS NOT NULL')
-      .groupBy('e.collection_id')
+      .where('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
+      .andWhere('e.collectionId IS NOT NULL')
+      .groupBy('e.collectionId')
       .orderBy('count', 'DESC')
       .limit(5)
       .getRawMany();
 
     // Get top users
-    const topUsers = await eventRepo
+    const topUsers = await this.eventRepo
       .createQueryBuilder('e')
-      .select('e.user_id', 'userId')
+      .select('e.userId', 'userId')
       .addSelect('COUNT(*)', 'count')
-      .where('e.tenant_id = :tenantId', { tenantId })
-      .andWhere('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
-      .andWhere('e.user_id IS NOT NULL')
-      .groupBy('e.user_id')
+      .where('e.timestamp BETWEEN :start AND :end', { start: startDate, end: now })
+      .andWhere('e.userId IS NOT NULL')
+      .groupBy('e.userId')
       .orderBy('count', 'DESC')
       .limit(5)
       .getRawMany();
@@ -250,15 +231,11 @@ export class AnalyticsService {
    * Get time series data for a metric
    */
   async getTimeSeries(
-    tenantId: string,
     eventType: string,
     granularity: 'hour' | 'day' | 'week' | 'month',
     startDate: Date,
     endDate: Date
   ): Promise<TimeSeriesPoint[]> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const eventRepo = dataSource.getRepository(AnalyticsEvent);
-
     let dateTrunc: string;
 
     switch (granularity) {
@@ -276,12 +253,11 @@ export class AnalyticsService {
         break;
     }
 
-    const result = await eventRepo
+    const result = await this.eventRepo
       .createQueryBuilder('e')
       .select(`DATE_TRUNC('${dateTrunc}', e.timestamp)`, 'period')
       .addSelect('COUNT(*)', 'count')
-      .where('e.tenant_id = :tenantId', { tenantId })
-      .andWhere('e.event_type = :eventType', { eventType })
+      .where('e.event_type = :eventType', { eventType })
       .andWhere('e.timestamp BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy('period')
       .orderBy('period', 'ASC')
@@ -297,14 +273,9 @@ export class AnalyticsService {
    * Aggregate metrics for a period (called by scheduler)
    */
   async aggregateMetrics(
-    tenantId: string,
     periodType: 'hourly' | 'daily' | 'weekly' | 'monthly',
     periodStart: Date
   ): Promise<void> {
-    const dataSource = await this.tenantDb.getDataSource(tenantId);
-    const eventRepo = dataSource.getRepository(AnalyticsEvent);
-    const metricRepo = dataSource.getRepository(AggregatedMetric);
-
     const periodEnd = this.getPeriodEnd(periodStart, periodType);
 
     // Define metrics to aggregate
@@ -320,7 +291,6 @@ export class AnalyticsService {
 
     for (const metric of metricDefinitions) {
       const whereConditions: Record<string, unknown> = {
-        tenantId,
         timestamp: Between(periodStart, periodEnd),
       };
 
@@ -328,14 +298,13 @@ export class AnalyticsService {
         whereConditions['eventType'] = metric.eventType;
       }
 
-      const count = await eventRepo.count({ where: whereConditions });
+      const count = await this.eventRepo.count({ where: whereConditions });
 
       // Get previous period value for change calculation
       const previousPeriodStart = this.getPreviousPeriodStart(periodStart, periodType);
       const previousPeriodEnd = periodStart;
 
       const previousWhereConditions: Record<string, unknown> = {
-        tenantId,
         timestamp: Between(previousPeriodStart, previousPeriodEnd),
       };
 
@@ -343,16 +312,15 @@ export class AnalyticsService {
         previousWhereConditions['eventType'] = metric.eventType;
       }
 
-      const previousCount = await eventRepo.count({ where: previousWhereConditions });
+      const previousCount = await this.eventRepo.count({ where: previousWhereConditions });
 
       const changePercent = previousCount > 0
         ? ((count - previousCount) / previousCount) * 100
         : count > 0 ? 100 : 0;
 
       // Upsert metric
-      const existingMetric = await metricRepo.findOne({
+      const existingMetric = await this.metricRepo.findOne({
         where: {
-          tenantId,
           metricCode: metric.code,
           periodType,
           periodStart,
@@ -364,10 +332,9 @@ export class AnalyticsService {
         existingMetric.previousValue = previousCount;
         existingMetric.changePercent = changePercent;
         existingMetric.sampleCount += 1;
-        await metricRepo.save(existingMetric);
+        await this.metricRepo.save(existingMetric);
       } else {
-        const newMetric = metricRepo.create({
-          tenantId,
+        const newMetric = this.metricRepo.create({
           metricCode: metric.code,
           periodType,
           periodStart,
@@ -377,11 +344,11 @@ export class AnalyticsService {
           changePercent,
           sampleCount: 1,
         });
-        await metricRepo.save(newMetric);
+        await this.metricRepo.save(newMetric);
       }
     }
 
-    this.logger.log(`Aggregated ${periodType} metrics for tenant ${tenantId}`);
+    this.logger.log(`Aggregated ${periodType} metrics`);
   }
 
   // ============ Helper Methods ============
@@ -449,9 +416,8 @@ export class AnalyticsService {
   // ============ Event Handlers ============
 
   @OnEvent('record.created')
-  async handleRecordCreated(payload: { tenantId: string; userId?: string; collectionId: string; recordId: string }): Promise<void> {
+  async handleRecordCreated(payload: { userId?: string; collectionId: string; recordId: string }): Promise<void> {
     await this.trackEvent({
-      tenantId: payload.tenantId,
       userId: payload.userId,
       eventType: 'record_create',
       eventCategory: 'data',
@@ -462,9 +428,8 @@ export class AnalyticsService {
   }
 
   @OnEvent('record.updated')
-  async handleRecordUpdated(payload: { tenantId: string; userId?: string; collectionId: string; recordId: string }): Promise<void> {
+  async handleRecordUpdated(payload: { userId?: string; collectionId: string; recordId: string }): Promise<void> {
     await this.trackEvent({
-      tenantId: payload.tenantId,
       userId: payload.userId,
       eventType: 'record_update',
       eventCategory: 'data',
@@ -475,9 +440,8 @@ export class AnalyticsService {
   }
 
   @OnEvent('record.deleted')
-  async handleRecordDeleted(payload: { tenantId: string; userId?: string; collectionId: string; recordId: string }): Promise<void> {
+  async handleRecordDeleted(payload: { userId?: string; collectionId: string; recordId: string }): Promise<void> {
     await this.trackEvent({
-      tenantId: payload.tenantId,
       userId: payload.userId,
       eventType: 'record_delete',
       eventCategory: 'data',
@@ -488,9 +452,8 @@ export class AnalyticsService {
   }
 
   @OnEvent('page.viewed')
-  async handlePageViewed(payload: { tenantId: string; userId?: string; pageUrl: string; sessionId?: string }): Promise<void> {
+  async handlePageViewed(payload: { userId?: string; pageUrl: string; sessionId?: string }): Promise<void> {
     await this.trackEvent({
-      tenantId: payload.tenantId,
       userId: payload.userId,
       eventType: 'page_view',
       eventCategory: 'navigation',
@@ -501,9 +464,8 @@ export class AnalyticsService {
   }
 
   @OnEvent('user.login')
-  async handleUserLogin(payload: { tenantId: string; userId: string; ipAddress?: string; userAgent?: string }): Promise<void> {
+  async handleUserLogin(payload: { userId: string; ipAddress?: string; userAgent?: string }): Promise<void> {
     await this.trackEvent({
-      tenantId: payload.tenantId,
       userId: payload.userId,
       eventType: 'login',
       eventCategory: 'auth',

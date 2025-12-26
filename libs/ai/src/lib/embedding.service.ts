@@ -139,7 +139,6 @@ export class EmbeddingService {
 
       // Create document chunks
       const documents = chunks.map((content, index) => ({
-        tenantId: '', // Will be set by the data source context
         sourceType: 'knowledge_article' as const,
         sourceId: article.id,
         content,
@@ -209,7 +208,6 @@ export class EmbeddingService {
       const chunks = this.chunkText(fullText);
 
       const documents = chunks.map((content, index) => ({
-        tenantId: '',
         sourceType: 'catalog_item' as const,
         sourceId: item.id,
         content,
@@ -270,7 +268,6 @@ export class EmbeddingService {
       const chunks = this.chunkText(fullText, { chunkSize: 300 });
 
       const documents = chunks.map((content, index) => ({
-        tenantId: '',
         sourceType: 'record' as const,
         sourceId,
         content,

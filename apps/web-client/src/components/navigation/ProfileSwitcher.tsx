@@ -89,7 +89,7 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           }
           ${isOpen ? 'bg-slate-100' : ''}
         `}
-        style={{ color: 'var(--hw-text, #1e293b)' }}
+        style={{ color: 'var(--text-primary)' }}
       >
         <Layers className="h-4 w-4 text-slate-400 flex-shrink-0" />
         <span className="flex-1 text-left truncate">
@@ -105,8 +105,8 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
         <div
           className="absolute left-2 right-2 top-full mt-1 z-50 rounded-lg shadow-lg border overflow-hidden"
           style={{
-            backgroundColor: 'var(--hw-surface, white)',
-            borderColor: 'var(--hw-border, #e2e8f0)',
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-default)',
           }}
         >
           <div className="py-1 max-h-64 overflow-y-auto">
@@ -148,8 +148,8 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
                       <span
                         className="px-1.5 py-0.5 text-[10px] font-medium rounded"
                         style={{
-                          backgroundColor: 'var(--hw-bg-subtle, #f1f5f9)',
-                          color: 'var(--hw-text-muted, #64748b)',
+                          backgroundColor: 'var(--bg-surface-secondary)',
+                          color: 'var(--text-muted)',
                         }}
                       >
                         Default

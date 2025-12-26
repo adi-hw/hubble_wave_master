@@ -7,9 +7,16 @@ import { ModulesDrawer } from './ModulesDrawer';
 interface BottomNavBarProps {
   bottomNav: NavItem[];
   sections: NavSection[];
+  onOpenSearch?: () => void;
+  onOpenAva?: () => void;
 }
 
-export const BottomNavBar: React.FC<BottomNavBarProps> = ({ bottomNav, sections }) => {
+export const BottomNavBar: React.FC<BottomNavBarProps> = ({
+  bottomNav,
+  sections,
+  onOpenSearch,
+  onOpenAva,
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isActive = (item: NavItem) => {
@@ -26,16 +33,29 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ bottomNav, sections 
         style={{
           backgroundColor: 'color-mix(in srgb, var(--bg-surface) 95%, transparent)',
           borderTop: '1px solid var(--border-default)',
+          height: 'var(--bottom-nav-height, 56px)',
         }}
       >
         <div className="flex items-center justify-between">
           {bottomNav.map((item) => {
             const isMore = item.code === 'more';
+            const isSearch = item.code === 'search';
+            const isAva = item.code === 'ava';
             const active = isActive(item);
             return (
               <button
                 key={item.code}
-                onClick={() => (isMore ? setOpen(true) : navigate(item.path ?? `/${item.code}.list`))}
+                onClick={() => {
+                  if (isMore) {
+                    setOpen(true);
+                  } else if (isSearch && onOpenSearch) {
+                    onOpenSearch();
+                  } else if (isAva && onOpenAva) {
+                    onOpenAva();
+                  } else {
+                    navigate(item.path ?? `/${item.code}.list`);
+                  }
+                }}
                 className="flex flex-col items-center flex-1 gap-0.5"
               >
                 <span

@@ -6,7 +6,7 @@ import {
   AuditEntry,
   AuditEventCategory,
   AuditSeverity,
-} from '@eam-platform/tenant-db';
+} from '@hubblewave/instance-db';
 
 export interface AuditEventInput {
   category: AuditEventCategory;

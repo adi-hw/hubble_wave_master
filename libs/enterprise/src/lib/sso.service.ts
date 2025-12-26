@@ -4,7 +4,7 @@ import {
   SSOConfig,
   SSOSession,
   SSOIdentity,
-} from '@eam-platform/tenant-db';
+} from '@hubblewave/instance-db';
 
 export interface SAMLAssertion {
   nameId: string;

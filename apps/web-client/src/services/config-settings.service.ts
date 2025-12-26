@@ -1,12 +1,11 @@
 import api from './api';
 
-export type ConfigScope = 'system' | 'tenant' | 'app';
+export type ConfigScope = 'system' | 'instance' | 'app';
 export type ConfigType = 'string' | 'boolean' | 'number' | 'json' | 'list';
 
 export interface ConfigSetting {
   id: string;
   scope: ConfigScope;
-  tenantId: string | null;
   category: string;
   key: string;
   type: ConfigType;

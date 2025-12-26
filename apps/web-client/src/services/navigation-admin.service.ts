@@ -106,6 +106,7 @@ export interface UpdateNavNodeDto {
   icon?: string;
   moduleKey?: string;
   url?: string;
+  parentKey?: string;
   order?: number;
   isVisible?: boolean;
   visibility?: NavNodeData['visibility'];

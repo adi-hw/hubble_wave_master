@@ -20,15 +20,6 @@ export interface TableDefinition {
   createdAt: string; // or Date, depending on backend; we'll treat as string in frontend
   updatedAt?: string;
 }
-
-/**
- * Fetch all tables for the current tenant.
- */
-export const getTables = async (): Promise<TableDefinition[]> => {
-  const response = await api.get<TableDefinition[]>('/tables');
-  return response.data;
-};
-
 /**
  * Create a new table with fields.
  */

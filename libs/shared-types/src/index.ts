@@ -4,3 +4,4 @@ export * from './lib/dto';
 export * from './lib/exceptions';
 export * from './lib/constants';
 export * from './lib/interfaces';
+export * from './lib/security/config-validation';

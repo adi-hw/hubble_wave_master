@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { LLMService } from './llm.service';
 
-// Vector dimension for BGE-large-en is 1024
-const VECTOR_DIMENSION = 1024;
+// Default vector dimension - nomic-embed-text produces 768
+const DEFAULT_VECTOR_DIMENSION = 768;
 
 export interface DocumentChunk {
   id: string;
-  tenantId: string;
   sourceType: 'knowledge_article' | 'catalog_item' | 'record' | 'comment' | 'attachment';
   sourceId: string;
   content: string;
@@ -36,8 +36,17 @@ export interface VectorSearchOptions {
 @Injectable()
 export class VectorStoreService {
   private readonly logger = new Logger(VectorStoreService.name);
+  private vectorDimension: number;
 
-  constructor(private llmService: LLMService) {}
+  constructor(
+    private llmService: LLMService,
+    private configService: ConfigService
+  ) {
+    this.vectorDimension = this.configService.get<number>(
+      'EMBEDDING_DIMENSIONS',
+      DEFAULT_VECTOR_DIMENSION
+    );
+  }
 
   /**
    * Initialize pgvector extension and create vector table for a tenant
@@ -59,7 +68,7 @@ export class VectorStoreService {
           source_id VARCHAR(255) NOT NULL,
           content TEXT NOT NULL,
           metadata JSONB DEFAULT '{}',
-          embedding vector(${VECTOR_DIMENSION}),
+          embedding vector(${this.vectorDimension}),
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           UNIQUE(source_type, source_id, content)

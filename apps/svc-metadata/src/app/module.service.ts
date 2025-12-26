@@ -1,29 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleEntity, TenantDbService } from '@eam-platform/tenant-db';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ModuleEntity } from '@hubblewave/instance-db';
 
 @Injectable()
 export class ModuleService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    @InjectRepository(ModuleEntity)
+    private readonly repo: Repository<ModuleEntity>
+  ) {}
 
-  private async repo(tenantId: string) {
-    const ds = await this.tenantDb.getDataSource(tenantId);
-    return ds.getRepository(ModuleEntity);
-  }
-
-  async listModules(tenantId: string) {
-    const repo = await this.repo(tenantId);
-    return repo.find({ order: { sortOrder: 'ASC', name: 'ASC' } });
+  async listModules() {
+    return this.repo.find({ order: { sortOrder: 'ASC', name: 'ASC' } });
   }
 
   async createModule(
-    tenantId: string,
     input: { name: string; slug: string; description?: string; route?: string; icon?: string; category?: string; sortOrder?: number }
   ) {
-    const repo = await this.repo(tenantId);
-    const module = repo.create({
+    const module = this.repo.create({
       ...input,
       sortOrder: input.sortOrder ?? 0,
     });
-    return repo.save(module);
+    return this.repo.save(module);
   }
 }

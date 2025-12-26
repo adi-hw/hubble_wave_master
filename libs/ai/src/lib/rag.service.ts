@@ -125,12 +125,17 @@ export class RAGService {
       temperature = 0.7,
     } = options;
 
-    // Retrieve documents first
-    const documents = await this.vectorStoreService.search(dataSource, question, {
-      limit: maxDocuments,
-      threshold: similarityThreshold,
-      sourceTypes,
-    });
+    // Try to retrieve documents, fall back to empty if vector store unavailable
+    let documents: SearchResult[] = [];
+    try {
+      documents = await this.vectorStoreService.search(dataSource, question, {
+        limit: maxDocuments,
+        threshold: similarityThreshold,
+        sourceTypes,
+      });
+    } catch (error) {
+      this.logger.debug(`Vector search unavailable, proceeding without context: ${error}`);
+    }
 
     // Yield sources immediately so UI can show them
     const sources = documents.map((doc) => ({

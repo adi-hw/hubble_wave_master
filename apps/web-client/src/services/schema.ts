@@ -1,185 +1,314 @@
-import { FieldDefinition } from '@eam-platform/shared-types';
 import metadataApi from './metadataApi';
 
-// New database-first table info structure
-export interface TableDefinition {
-  tableName: string;
+// Collection definition structure using proper HubbleWave terminology
+export interface CollectionDefinition {
+  id: string;
+  code: string;
   label: string;
-  category: string;
-  isSystem: boolean;
-  isHidden: boolean;
-  columnCount: number;
+  pluralLabel?: string;
   description?: string;
   icon?: string;
-  // Legacy compatibility fields
-  id?: string;
-  displayName?: string;
-  fields?: FieldDefinition[];
+  category: string;
+  moduleId?: string;
+  extendsCollectionId?: string;
+  storageTable: string;
+  isSystem: boolean;
+  isExtensible: boolean;
+  status: string;
+  schemaVersion: number;
+  displayProperty?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
+  // For compatibility
+  propertyCount?: number;
 }
 
-// Response from GET /studio/tables
-export interface TablesResponse {
-  items: TableDefinition[];
-  categories: string[];
-  total: number;
-  filtered: number;
+// Legacy alias for backward compatibility
+export type TableDefinition = CollectionDefinition;
+
+// Response from GET /collections
+export interface CollectionsResponse {
+  items: CollectionDefinition[];
+  categories?: string[];
+  total?: number;
+  filtered?: number;
 }
 
-// Column info from information_schema
-export interface ColumnInfo {
-  columnName: string;
+// Property definition structure
+export interface PropertyDefinition {
+  id: string;
+  collectionId: string;
+  code: string;
   label: string;
   dataType: string;
-  isNullable: boolean;
-  columnDefault: string | null;
-  maxLength: number | null;
-  numericPrecision: number | null;
-  ordinalPosition: number;
-  showInList: boolean;
-  showInForm: boolean;
-  isHidden: boolean;
+  storageColumn: string;
   displayOrder: number;
-  description?: string;
-  placeholder?: string;
-  choices?: Array<{ value: string; label: string }>;
-  referenceTable?: string;
-}
-
-// Response from GET /studio/tables/:tableName/fields
-export interface FieldsResponse {
-  tableName: string;
-  items: ColumnInfo[];
-  total: number;
-  filtered: number;
-}
-
-// Create table DTO
-export interface CreateTableDto {
-  label: string;
-  code: string;
-  description?: string;
-  options?: {
-    enableOwnership?: boolean;
-    enableOptimisticLocking?: boolean;
-    enableOrganization?: boolean;
-    enableTags?: boolean;
-  };
-}
-
-// Create field DTO
-export interface CreateFieldDto {
-  label: string;
-  code: string;
-  type: string;
-  required?: boolean;
-  isUnique?: boolean;
+  isRequired: boolean;
+  isUnique: boolean;
+  isReadonly: boolean;
+  isIndexed: boolean;
+  isSystem: boolean;
+  isAudited: boolean;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  regexPattern?: string;
   defaultValue?: string;
-  showInForms?: boolean;
-  showInLists?: boolean;
-  isInternal?: boolean;
-  config?: {
-    choices?: Array<{ value: string; label: string }>;
-    referenceTable?: string;
-    referenceDisplayField?: string;
-    multiSelect?: boolean;
-    maxLength?: number;
-    minValue?: number;
-    maxValue?: number;
-    precision?: number;
-    dateFormat?: string;
-    allowCustomValues?: boolean;
-  };
+  referenceCollectionId?: string;
+  referenceDisplayProperty?: string;
+  referenceFilter?: Record<string, unknown>;
+  choiceListId?: string;
+  allowOther?: boolean;
+  helpText?: string;
+  placeholder?: string;
+  isCalculated?: boolean;
+  calculationFormula?: string;
+  createdAt: string;
+  updatedAt: string;
 }
+
+// Legacy alias for backward compatibility
+export type ColumnInfo = PropertyDefinition;
+
+// Response from GET /collections/:id/properties
+export interface PropertiesResponse {
+  collectionId: string;
+  items: PropertyDefinition[];
+  total?: number;
+}
+
+// Legacy alias for backward compatibility
+export type FieldsResponse = PropertiesResponse;
+export type TablesResponse = CollectionsResponse;
+
+// Create collection DTO
+export interface CreateCollectionDto {
+  code: string;
+  label: string;
+  pluralLabel?: string;
+  description?: string;
+  icon?: string;
+  category?: string;
+  moduleId?: string;
+  extendsCollectionId?: string;
+  isExtensible?: boolean;
+  displayProperty?: string;
+}
+
+// Create property DTO
+export interface CreatePropertyDto {
+  code: string;
+  label: string;
+  dataType: string;
+  isRequired?: boolean;
+  isUnique?: boolean;
+  isReadonly?: boolean;
+  isIndexed?: boolean;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  regexPattern?: string;
+  defaultValue?: string;
+  referenceCollectionId?: string;
+  referenceDisplayProperty?: string;
+  choiceListId?: string;
+  allowOther?: boolean;
+  helpText?: string;
+  placeholder?: string;
+  displayOrder?: number;
+}
+
+// Legacy aliases
+export type CreateTableDto = CreateCollectionDto;
+export type CreateFieldDto = CreatePropertyDto;
 
 export const schemaService = {
-  // Get all tables from information_schema
-  getTables: async (includeHidden = false, category?: string): Promise<TableDefinition[]> => {
+  // Get all collections
+  getCollections: async (options?: { category?: string; includeSystem?: boolean; search?: string }): Promise<CollectionDefinition[]> => {
     const params = new URLSearchParams();
-    if (includeHidden) params.append('includeHidden', 'true');
-    if (category) params.append('category', category);
+    if (options?.category) params.append('category', options.category);
+    if (options?.includeSystem) params.append('includeSystem', 'true');
+    if (options?.search) params.append('search', options.search);
 
-    const response = await metadataApi.get<TablesResponse>(`/studio/tables?${params.toString()}`);
-    return response.data.items;
+    const response = await metadataApi.get<CollectionsResponse>(`/collections?${params.toString()}`);
+    return response.data.items || [];
   },
 
-  // Get tables with full response including categories
-  getTablesWithMeta: async (includeHidden = false, category?: string): Promise<TablesResponse> => {
-    const params = new URLSearchParams();
-    if (includeHidden) params.append('includeHidden', 'true');
-    if (category) params.append('category', category);
+  // Legacy method - alias for getCollections
+  getTables: async (includeHidden = false, category?: string): Promise<CollectionDefinition[]> => {
+    return schemaService.getCollections({ category, includeSystem: includeHidden });
+  },
 
-    const response = await metadataApi.get<TablesResponse>(`/studio/tables?${params.toString()}`);
+  // Get collections with full response including categories
+  getCollectionsWithMeta: async (options?: { category?: string; includeSystem?: boolean; search?: string }): Promise<CollectionsResponse> => {
+    const params = new URLSearchParams();
+    if (options?.category) params.append('category', options.category);
+    if (options?.includeSystem) params.append('includeSystem', 'true');
+    if (options?.search) params.append('search', options.search);
+
+    const response = await metadataApi.get<CollectionsResponse>(`/collections?${params.toString()}`);
     return response.data;
   },
 
-  // Get table fields from information_schema
-  getTable: async (tableName: string, includeHidden = false): Promise<TableDefinition & { fields: ColumnInfo[] }> => {
-    const params = includeHidden ? '?includeHidden=true' : '';
-    const response = await metadataApi.get<FieldsResponse>(`/studio/tables/${tableName}/fields${params}`);
+  // Legacy method - alias
+  getTablesWithMeta: async (includeHidden = false, category?: string): Promise<CollectionsResponse> => {
+    return schemaService.getCollectionsWithMeta({ category, includeSystem: includeHidden });
+  },
 
-    // Convert ColumnInfo to FieldDefinition-like structure for compatibility
-    const fields = response.data.items.map(col => ({
-      ...col,
-      name: col.columnName,
-      type: col.dataType,
-      required: !col.isNullable,
-    }));
+  // Get property types
+  getPropertyTypes: async () => {
+    const response = await metadataApi.get('/collections/property-types');
+    return response.data;
+  },
 
+  // Get categories
+  getCategories: async (): Promise<string[]> => {
+    const response = await metadataApi.get<{ items: string[] }>('/collections/categories');
+    return response.data.items || [];
+  },
+
+  // Get a single collection by ID
+  getCollection: async (id: string): Promise<CollectionDefinition> => {
+    const response = await metadataApi.get<CollectionDefinition>(`/collections/${id}`);
+    return response.data;
+  },
+
+  // Get a single collection by code
+  getCollectionByCode: async (code: string): Promise<CollectionDefinition> => {
+    const response = await metadataApi.get<CollectionDefinition>(`/collections/by-code/${code}`);
+    return response.data;
+  },
+
+  // Get collection with all properties
+  getCollectionWithProperties: async (id: string): Promise<CollectionDefinition & { properties: PropertyDefinition[] }> => {
+    const response = await metadataApi.get<CollectionDefinition & { properties: PropertyDefinition[] }>(`/collections/${id}/full`);
+    return response.data;
+  },
+
+  // Legacy method - get table by name
+  getTable: async (tableName: string, _includeHidden = false): Promise<CollectionDefinition & { fields: PropertyDefinition[] }> => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    const properties = await schemaService.getCollectionProperties(collection.id);
     return {
-      tableName: response.data.tableName,
-      label: tableName, // Will be populated from table list if needed
-      category: 'application',
-      isSystem: false,
-      isHidden: false,
-      columnCount: response.data.total,
-      fields: fields as any,
+      ...collection,
+      fields: properties,
     };
   },
 
-  // Get just the fields for a table
-  getTableFields: async (tableName: string, includeHidden = false): Promise<FieldsResponse> => {
-    const params = includeHidden ? '?includeHidden=true' : '';
-    const response = await metadataApi.get<FieldsResponse>(`/studio/tables/${tableName}/fields${params}`);
+  // Get properties for a collection
+  getCollectionProperties: async (collectionId: string): Promise<PropertyDefinition[]> => {
+    const response = await metadataApi.get<PropertiesResponse>(`/collections/${collectionId}/properties`);
+    return response.data.items || [];
+  },
+
+  // Legacy method - alias
+  getTableFields: async (tableName: string, _includeHidden = false): Promise<PropertiesResponse> => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    const properties = await schemaService.getCollectionProperties(collection.id);
+    return {
+      collectionId: collection.id,
+      items: properties,
+      total: properties.length,
+    };
+  },
+
+  // Get relationships for a collection
+  getCollectionRelationships: async (collectionId: string) => {
+    const response = await metadataApi.get(`/collections/${collectionId}/relationships`);
     return response.data;
   },
 
-  // Create a new table
-  createTable: async (data: CreateTableDto): Promise<TableDefinition> => {
-    const response = await metadataApi.post<TableDefinition>('/studio/tables', data);
+  // Create a new collection
+  createCollection: async (data: CreateCollectionDto): Promise<CollectionDefinition> => {
+    const response = await metadataApi.post<CollectionDefinition>('/collections', data);
     return response.data;
   },
 
-  // Add a field to a table
-  createField: async (tableName: string, data: CreateFieldDto): Promise<ColumnInfo> => {
-    const response = await metadataApi.post<ColumnInfo>(`/studio/tables/${tableName}/fields`, data);
+  // Legacy method - alias
+  createTable: async (data: CreateCollectionDto): Promise<CollectionDefinition> => {
+    return schemaService.createCollection(data);
+  },
+
+  // Update a collection
+  updateCollection: async (id: string, data: Partial<CollectionDefinition>): Promise<CollectionDefinition> => {
+    const response = await metadataApi.put<CollectionDefinition>(`/collections/${id}`, data);
     return response.data;
   },
 
-  // Update table UI config
-  updateTableConfig: async (tableName: string, config: Partial<TableDefinition>): Promise<TableDefinition> => {
-    const response = await metadataApi.patch<TableDefinition>(`/studio/tables/${tableName}/config`, config);
+  // Legacy method - update table config
+  updateTableConfig: async (tableName: string, config: Partial<CollectionDefinition>): Promise<CollectionDefinition> => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    return schemaService.updateCollection(collection.id, config);
+  },
+
+  // Delete a collection (soft delete)
+  deleteCollection: async (id: string): Promise<void> => {
+    await metadataApi.delete(`/collections/${id}`);
+  },
+
+  // Publish a collection
+  publishCollection: async (id: string): Promise<CollectionDefinition> => {
+    const response = await metadataApi.post<CollectionDefinition>(`/collections/${id}/publish`);
     return response.data;
   },
 
-  // Update field UI config
-  updateFieldConfig: async (tableName: string, columnName: string, config: Partial<ColumnInfo>): Promise<ColumnInfo> => {
-    const response = await metadataApi.patch<ColumnInfo>(`/studio/tables/${tableName}/fields/${columnName}/config`, config);
+  // Clone a collection
+  cloneCollection: async (id: string, code: string, label: string): Promise<CollectionDefinition> => {
+    const response = await metadataApi.post<CollectionDefinition>(`/collections/${id}/clone`, { code, label });
     return response.data;
   },
 
-  // Bulk update fields
-  bulkUpdateFields: async (tableName: string, fieldCodes: string[], property: string, value: any) => {
-    const response = await metadataApi.patch(`/studio/tables/${tableName}/fields/bulk`, {
-      fieldCodes,
-      property,
-      value,
+  // Create a property for a collection
+  createProperty: async (collectionId: string, data: CreatePropertyDto): Promise<PropertyDefinition> => {
+    const response = await metadataApi.post<PropertyDefinition>(`/properties`, {
+      ...data,
+      collectionId,
     });
     return response.data;
   },
 
-  // Hide a field (soft delete)
-  hideField: async (tableName: string, columnName: string) => {
-    const response = await metadataApi.delete(`/studio/tables/${tableName}/fields/${columnName}`);
+  // Legacy method - alias
+  createField: async (tableName: string, data: CreatePropertyDto): Promise<PropertyDefinition> => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    return schemaService.createProperty(collection.id, data);
+  },
+
+  // Update a property
+  updateProperty: async (propertyId: string, data: Partial<PropertyDefinition>): Promise<PropertyDefinition> => {
+    const response = await metadataApi.put<PropertyDefinition>(`/properties/${propertyId}`, data);
     return response.data;
+  },
+
+  // Legacy method - update field config
+  updateFieldConfig: async (tableName: string, columnName: string, config: Partial<PropertyDefinition>): Promise<PropertyDefinition> => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    const properties = await schemaService.getCollectionProperties(collection.id);
+    const property = properties.find(p => p.code === columnName || p.storageColumn === columnName);
+    if (!property) throw new Error(`Property ${columnName} not found`);
+    return schemaService.updateProperty(property.id, config);
+  },
+
+  // Bulk update properties (placeholder - may need backend support)
+  bulkUpdateFields: async (_tableName: string, _fieldCodes: string[], _property: string, _value: unknown) => {
+    // This would need a specific backend endpoint
+    console.warn('bulkUpdateFields is deprecated - use individual updateProperty calls');
+    return { success: false, message: 'Not implemented' };
+  },
+
+  // Delete a property
+  deleteProperty: async (propertyId: string): Promise<void> => {
+    await metadataApi.delete(`/properties/${propertyId}`);
+  },
+
+  // Legacy method - hide field
+  hideField: async (tableName: string, columnName: string) => {
+    const collection = await schemaService.getCollectionByCode(tableName);
+    const properties = await schemaService.getCollectionProperties(collection.id);
+    const property = properties.find(p => p.code === columnName || p.storageColumn === columnName);
+    if (!property) throw new Error(`Property ${columnName} not found`);
+    await schemaService.deleteProperty(property.id);
+    return { success: true };
   },
 };

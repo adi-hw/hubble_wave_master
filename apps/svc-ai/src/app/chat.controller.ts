@@ -13,9 +13,9 @@ import {
   RAGOptions,
   LLMService,
   LLMChatMessage,
-} from '@eam-platform/ai';
-import { TenantDbService } from '@eam-platform/tenant-db';
-import { JwtAuthGuard, CurrentUser } from '@eam-platform/auth-guard';
+} from '@hubblewave/ai';
+import { DataSource } from 'typeorm';
+import { JwtAuthGuard, CurrentUser } from '@hubblewave/auth-guard';
 
 interface QueryDto {
   question: string;
@@ -47,7 +47,7 @@ export class ChatController {
   constructor(
     private ragService: RAGService,
     private llmService: LLMService,
-    private tenantDbService: TenantDbService
+    private dataSource: DataSource
   ) {}
 
   @Get('status')
@@ -72,15 +72,11 @@ export class ChatController {
   @ApiOperation({ summary: 'Ask a question using RAG' })
   @ApiResponse({ status: 200, description: 'RAG response with sources' })
   async query(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: any,
     @Body() dto: QueryDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
     const response = await this.ragService.query(
-      dataSource,
+      this.dataSource,
       dto.question,
       dto.options
     );
@@ -96,14 +92,10 @@ export class ChatController {
   @Post('query/stream')
   @ApiOperation({ summary: 'Stream a RAG response' })
   async queryStream(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: any,
     @Body() dto: QueryDto,
     @Res() res: Response
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -112,7 +104,7 @@ export class ChatController {
 
     try {
       for await (const event of this.ragService.queryStream(
-        dataSource,
+        this.dataSource,
         dto.question,
         dto.options
       )) {
@@ -132,15 +124,11 @@ export class ChatController {
   @ApiOperation({ summary: 'Continue a conversation with RAG context' })
   @ApiResponse({ status: 200, description: 'Conversation response' })
   async chat(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: any,
     @Body() dto: ChatDto
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
     const response = await this.ragService.chat(
-      dataSource,
+      this.dataSource,
       dto.messages,
       dto.options
     );
@@ -183,7 +171,7 @@ export class ChatController {
   @ApiOperation({ summary: 'Get AI-powered suggestions' })
   @ApiResponse({ status: 200, description: 'Suggestions list' })
   async getSuggestions(
-    @CurrentUser() user: { tenantId: string; userId: string },
+    @CurrentUser() _user: any,
     @Body()
     dto: {
       context: string;
@@ -191,12 +179,8 @@ export class ChatController {
       limit?: number;
     }
   ) {
-    const dataSource = await this.tenantDbService.getDataSource(
-      user.tenantId
-    );
-
     const suggestions = await this.ragService.generateSuggestions(
-      dataSource,
+      this.dataSource,
       dto.context,
       dto.type,
       dto.limit
@@ -205,3 +189,4 @@ export class ChatController {
     return { suggestions };
   }
 }
+

@@ -1,16 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
-import { AuthEvent } from '@eam-platform/platform-db';
+import { AuthEvent } from '@hubblewave/instance-db';
 
 export interface AuthEventRecord {
-  tenantId?: string;
   userId?: string;
-  type: string;
-  ip?: string;
+  eventType: string;
+  success: boolean;
+  ipAddress?: string;
   userAgent?: string;
-  correlationId?: string;
-  metadata?: Record<string, any>;
 }
 
 @Injectable()
@@ -23,8 +21,11 @@ export class AuthEventsService {
   async record(evt: AuthEventRecord) {
     await this.repo.save(
       this.repo.create({
-        ...evt,
-        metadata: evt.metadata ?? {},
+        userId: evt.userId,
+        eventType: evt.eventType,
+        success: evt.success,
+        ipAddress: evt.ipAddress,
+        userAgent: evt.userAgent,
       }),
     );
   }
@@ -36,3 +37,4 @@ export class AuthEventsService {
     await this.repo.delete({ createdAt: LessThan(cutoff) as any });
   }
 }
+

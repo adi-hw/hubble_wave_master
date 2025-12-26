@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AVAAction, AVAContext } from './ava.service';
 import { AVAGovernanceService, PermissionCheckResult, AuditEntry } from './ava-governance.service';
-import { AVAActionStatus } from '@eam-platform/tenant-db';
+import { AVAActionStatus } from '@hubblewave/instance-db';
 
 /**
  * Action Executor Service
