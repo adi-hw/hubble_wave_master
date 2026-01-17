@@ -8,9 +8,43 @@ import {
 import { Observable, tap } from 'rxjs';
 import { AuditService } from './audit.service';
 
+const SENSITIVE_FIELDS = [
+  'password',
+  'currentPassword',
+  'newPassword',
+  'confirmPassword',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'secret',
+  'apiKey',
+  'creditCard',
+  'ssn',
+  'socialSecurityNumber',
+];
+
+function sanitizeBody(body: Record<string, unknown>): Record<string, unknown> {
+  if (!body || typeof body !== 'object') {
+    return body;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (SENSITIVE_FIELDS.some(field => key.toLowerCase().includes(field.toLowerCase()))) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeBody(value as Record<string, unknown>);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 /**
   Global audit interceptor to log mutating actions.
   Skips GET/HEAD/OPTIONS to reduce noise.
+  Sanitizes sensitive fields before logging.
 */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -51,7 +85,7 @@ export class AuditInterceptor implements NestInterceptor {
               userAgent,
               correlationId: correlationId as string | undefined,
               durationMs: Date.now() - start,
-              metadata: { body: req.body },
+              metadata: { body: sanitizeBody(req.body) },
             })
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));
         },
@@ -67,7 +101,7 @@ export class AuditInterceptor implements NestInterceptor {
               userAgent,
               correlationId: correlationId as string | undefined,
               durationMs: Date.now() - start,
-              metadata: { body: req.body },
+              metadata: { body: sanitizeBody(req.body) },
               severity: 'error',
             })
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import {
   Search,
@@ -33,9 +33,52 @@ import {
 } from 'lucide-react';
 import { PaletteItem } from './types';
 
-interface FieldPaletteProps {
+interface PropertyPaletteProps {
   items: PaletteItem[];
-  fieldsInLayout: Set<string>;
+  propertiesInLayout: Set<string>;
+}
+
+// Helper function to get type icon classes
+function getTypeIconClasses(type?: string): string {
+  const t = type?.toLowerCase() || '';
+
+  // Text properties - use neutral/surface colors
+  if (['string', 'text', 'rich_text'].includes(t)) {
+    return 'bg-muted text-muted-foreground';
+  }
+
+  // Number properties - use interactive primary (blue-ish)
+  if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(t)) {
+    return 'bg-primary/10 text-primary';
+  }
+
+  // Date/Time properties - use accent colors (purple-ish)
+  if (['date', 'datetime', 'time', 'duration'].includes(t)) {
+    return 'bg-accent/20 text-accent-foreground';
+  }
+
+  // Choice/Selection properties - use warning colors (amber-ish)
+  if (['boolean', 'choice', 'multi_choice', 'tags'].includes(t)) {
+    return 'bg-warning-subtle text-warning-text';
+  }
+
+  // Reference properties - use secondary interactive colors (pink-ish)
+  if (['reference', 'multi_reference', 'user_reference'].includes(t)) {
+    return 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400';
+  }
+
+  // Contact properties (email, phone, url) - use info colors (cyan-ish)
+  if (['email', 'phone', 'url'].includes(t)) {
+    return 'bg-info-subtle text-info-text';
+  }
+
+  // File/Image properties - use success colors (green-ish)
+  if (['file', 'image'].includes(t)) {
+    return 'bg-success-subtle text-success-text';
+  }
+
+  // Default fallback
+  return 'bg-muted text-muted-foreground';
 }
 
 // Draggable palette item component
@@ -49,62 +92,91 @@ const DraggablePaletteItem: React.FC<{
     data: { item },
   });
 
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined;
-
   const Icon = getIconComponent(item.icon);
+
+  const isLocked = item.protection === 'locked';
+
+  // Base transform style for drag
+  const transformStyle = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)${isDragging ? ' scale(0.95)' : ''}` }
+    : {};
+
+  // Determine container classes based on state
+  const getContainerClasses = () => {
+    const base = 'group flex items-center gap-2 px-2.5 py-2 min-h-[44px] border rounded-lg transition-all duration-150';
+
+    if (isLocked) {
+      return `${base} bg-muted border-border cursor-not-allowed opacity-60`;
+    }
+    if (isInLayout) {
+      return `${base} bg-success-subtle border-success-border cursor-grab`;
+    }
+    return `${base} bg-card border-border cursor-grab hover:border-primary hover:shadow-sm`;
+  };
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
       {...attributes}
       {...listeners}
-      className={`
-        group flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all
-        ${isDragging ? 'opacity-50 scale-95' : ''}
-        ${item.protection === 'locked'
-          ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60'
-          : isInLayout
-            ? 'bg-green-50 border-green-200 cursor-grab'
-            : 'bg-white border-slate-200 cursor-grab hover:border-primary-300 hover:shadow-sm'
-        }
-      `}
+      role="listitem"
+      aria-label={`${item.label} property ${isInLayout ? '(in layout)' : ''} ${isLocked ? '(locked)' : ''}`}
+      aria-disabled={isLocked}
+      style={transformStyle}
+      className={`${getContainerClasses()} ${isDragging ? 'opacity-50' : ''}`}
     >
       {/* Drag Handle */}
-      <div className={`text-slate-300 ${item.protection !== 'locked' ? 'group-hover:text-slate-400' : ''}`}>
+      <div className="text-border group-hover:text-muted-foreground">
         <GripVertical className="h-3.5 w-3.5" />
       </div>
 
       {/* Type Icon */}
-      <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${getTypeColor(item.fieldType)}`}>
+      <div
+        className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${getTypeIconClasses(item.propertyType)}`}
+      >
         <Icon className="h-3.5 w-3.5" />
       </div>
 
       {/* Label & Code */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-700 truncate">{item.label}</p>
-        <p className="text-[10px] text-slate-400 truncate">{item.fieldCode}</p>
+        <p className="text-sm font-medium truncate text-foreground">
+          {item.label}
+        </p>
+        <p className="text-[10px] truncate text-muted-foreground">
+          {item.propertyCode}
+        </p>
       </div>
 
       {/* Status Indicators */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        {item.protection === 'locked' && (
-          <div className="w-5 h-5 rounded flex items-center justify-center bg-slate-200" title="System field - Cannot be modified">
-            <Lock className="h-3 w-3 text-slate-500" />
+        {isLocked && (
+          <div
+            role="status"
+            aria-label="System property - Cannot be modified"
+            title="System property - Cannot be modified"
+            className="w-5 h-5 rounded flex items-center justify-center bg-muted"
+          >
+            <Lock className="h-3 w-3 text-muted-foreground" />
           </div>
         )}
         {item.protection === 'required_visible' && (
-          <div className="w-5 h-5 rounded flex items-center justify-center bg-amber-100" title="Required field - Cannot be hidden">
-            <AlertCircle className="h-3 w-3 text-amber-600" />
+          <div
+            role="status"
+            aria-label="Required property - Cannot be hidden"
+            title="Required property - Cannot be hidden"
+            className="w-5 h-5 rounded flex items-center justify-center bg-warning-subtle"
+          >
+            <AlertCircle className="h-3 w-3 text-warning-text" />
           </div>
         )}
         {isInLayout && (
-          <div className="w-5 h-5 rounded flex items-center justify-center bg-green-100" title="In layout">
-            <Check className="h-3 w-3 text-green-600" />
+          <div
+            role="status"
+            aria-label="In layout"
+            title="In layout"
+            className="w-5 h-5 rounded flex items-center justify-center bg-success-subtle"
+          >
+            <Check className="h-3 w-3 text-success-text" />
           </div>
         )}
       </div>
@@ -119,7 +191,7 @@ const layoutElements: PaletteItem[] = [
     type: 'new_section',
     label: 'Section',
     icon: 'layout-grid',
-    description: 'Add a new section to organize fields',
+    description: 'Add a new section to organize properties',
     category: 'layout',
   },
   {
@@ -148,12 +220,12 @@ const layoutElements: PaletteItem[] = [
   },
 ];
 
-export const FieldPalette: React.FC<FieldPaletteProps> = ({
+export const PropertyPalette: React.FC<PropertyPaletteProps> = ({
   items,
-  fieldsInLayout,
+  propertiesInLayout,
 }) => {
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<'all' | 'fields' | 'layout' | 'unused'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'properties' | 'layout' | 'unused'>('all');
 
   // Filter items based on search and category
   const filteredItems = useMemo(() => {
@@ -165,7 +237,7 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
       filtered = filtered.filter(
         (item) =>
           item.label.toLowerCase().includes(term) ||
-          (item.fieldCode?.toLowerCase().includes(term)) ||
+          (item.propertyCode?.toLowerCase().includes(term)) ||
           (item.description?.toLowerCase().includes(term))
       );
     }
@@ -190,16 +262,16 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
     };
 
     filteredItems.forEach((item) => {
-      const fieldType = item.fieldType?.toLowerCase() || '';
-      if (['string', 'text', 'rich_text', 'email', 'phone', 'url'].includes(fieldType)) {
+      const propertyType = item.propertyType?.toLowerCase() || '';
+      if (['string', 'text', 'rich_text', 'email', 'phone', 'url'].includes(propertyType)) {
         groups.text.push(item);
-      } else if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(fieldType)) {
+      } else if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(propertyType)) {
         groups.number.push(item);
-      } else if (['date', 'datetime', 'time', 'duration'].includes(fieldType)) {
+      } else if (['date', 'datetime', 'time', 'duration'].includes(propertyType)) {
         groups.datetime.push(item);
-      } else if (['choice', 'multi_choice', 'tags', 'boolean'].includes(fieldType)) {
+      } else if (['choice', 'multi_choice', 'tags', 'boolean'].includes(propertyType)) {
         groups.choice.push(item);
-      } else if (['reference', 'multi_reference', 'user_reference'].includes(fieldType)) {
+      } else if (['reference', 'multi_reference', 'user_reference'].includes(propertyType)) {
         groups.reference.push(item);
       } else {
         groups.other.push(item);
@@ -218,20 +290,22 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Search */}
-      <div className="p-3 border-b border-slate-100">
+      <div className="p-3 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search fields..."
-            className="w-full h-8 pl-8 pr-8 text-sm border border-slate-200 rounded-lg bg-white focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            placeholder="Search properties..."
+            aria-label="Search properties"
+            className="w-full h-8 pl-8 pr-8 text-sm rounded-lg border border-border bg-card text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -240,31 +314,47 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
       </div>
 
       {/* Category Tabs */}
-      <div className="px-3 py-2 border-b border-slate-100 flex gap-1">
-        {(['all', 'unused'] as const).map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-              activeCategory === cat
-                ? 'bg-primary-100 text-primary-700'
-                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            {cat === 'all' ? `All (${stats.total})` : `Unused (${stats.unused})`}
-          </button>
-        ))}
+      <div
+        className="px-3 py-2 flex gap-1 border-b border-border"
+        role="tablist"
+        aria-label="Property categories"
+      >
+        {(['all', 'unused'] as const).map((cat) => {
+          const isActive = activeCategory === cat;
+
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`${cat}-panel`}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors min-h-[32px] ${
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              {cat === 'all' ? `All (${stats.total})` : `Unused (${stats.unused})`}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Fields List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      {/* Properties List */}
+      <div
+        className="flex-1 overflow-y-auto p-3 space-y-4"
+        role="tabpanel"
+        id={`${activeCategory}-panel`}
+        aria-labelledby={`${activeCategory}-tab`}
+      >
         {/* Layout Elements */}
         {activeCategory === 'all' && !search && (
           <div>
-            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wide mb-2 text-muted-foreground">
               Layout Elements
             </h4>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" role="list" aria-label="Layout elements">
               {layoutElements.map((item) => (
                 <DraggablePaletteItem
                   key={item.id}
@@ -276,20 +366,20 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
           </div>
         )}
 
-        {/* Field Groups */}
+        {/* Property Groups */}
         {Object.entries(groupedItems).map(([group, groupItems]) => {
           if (groupItems.length === 0) return null;
           return (
             <div key={group}>
-              <h4 className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+              <h4 className="text-[10px] font-semibold uppercase tracking-wide mb-2 text-muted-foreground">
                 {getGroupLabel(group)} ({groupItems.length})
               </h4>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5" role="list" aria-label={getGroupLabel(group)}>
                 {groupItems.map((item) => (
                   <DraggablePaletteItem
                     key={item.id}
                     item={item}
-                    isInLayout={fieldsInLayout.has(item.fieldCode || '')}
+                    isInLayout={propertiesInLayout.has(item.propertyCode || '')}
                   />
                 ))}
               </div>
@@ -298,28 +388,44 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
         })}
 
         {filteredItems.length === 0 && (
-          <div className="text-center py-8">
-            <Search className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm text-slate-500">No fields found</p>
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="mt-2 text-xs text-primary-600 hover:text-primary-700"
-              >
-                Clear search
-              </button>
-            )}
-          </div>
+          <EmptyState search={search} onClearSearch={() => setSearch('')} />
         )}
       </div>
 
       {/* Footer Stats */}
-      <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>{stats.inLayout} of {stats.total} in layout</span>
-          <span className="text-slate-400">Drag to add</span>
+      <div className="px-3 py-2 border-t border-border bg-muted">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {stats.inLayout} of {stats.total} in layout
+          </span>
+          <span className="text-muted-foreground/70">
+            Drag to add
+          </span>
         </div>
       </div>
+    </div>
+  );
+};
+
+// Empty state component
+const EmptyState: React.FC<{
+  search: string;
+  onClearSearch: () => void;
+}> = ({ search, onClearSearch }) => {
+  return (
+    <div className="text-center py-8" role="status" aria-live="polite">
+      <Search className="h-8 w-8 mx-auto mb-2 text-border" />
+      <p className="text-sm text-muted-foreground">
+        No properties found
+      </p>
+      {search && (
+        <button
+          onClick={onClearSearch}
+          className="mt-2 text-xs text-primary hover:text-primary/80 min-h-[32px]"
+        >
+          Clear search
+        </button>
+      )}
     </div>
   );
 };
@@ -327,7 +433,7 @@ export const FieldPalette: React.FC<FieldPaletteProps> = ({
 // Helper function to get group label
 function getGroupLabel(group: string): string {
   const labels: Record<string, string> = {
-    text: 'Text Fields',
+    text: 'Text Properties',
     number: 'Numbers',
     datetime: 'Date & Time',
     choice: 'Selection',
@@ -367,31 +473,7 @@ function getIconComponent(iconName: string): React.ComponentType<{ className?: s
   return icons[iconName] || Square;
 }
 
-// Helper function to get type color
-function getTypeColor(type?: string): string {
-  const t = type?.toLowerCase() || '';
-  if (['string', 'text', 'rich_text'].includes(t)) {
-    return 'bg-slate-100 text-slate-600';
-  }
-  if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(t)) {
-    return 'bg-blue-50 text-blue-600';
-  }
-  if (['date', 'datetime', 'time', 'duration'].includes(t)) {
-    return 'bg-purple-50 text-purple-600';
-  }
-  if (['boolean', 'choice', 'multi_choice', 'tags'].includes(t)) {
-    return 'bg-amber-50 text-amber-600';
-  }
-  if (['reference', 'multi_reference', 'user_reference'].includes(t)) {
-    return 'bg-pink-50 text-pink-600';
-  }
-  if (['email', 'phone', 'url'].includes(t)) {
-    return 'bg-cyan-50 text-cyan-600';
-  }
-  if (['file', 'image'].includes(t)) {
-    return 'bg-green-50 text-green-600';
-  }
-  return 'bg-slate-100 text-slate-500';
-}
+// Deprecated alias for backward compatibility
+export const FieldPalette = PropertyPalette;
 
-export default FieldPalette;
+export default PropertyPalette;

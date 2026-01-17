@@ -49,9 +49,9 @@ export class VectorStoreService {
   }
 
   /**
-   * Initialize pgvector extension and create vector table for a tenant
+   * Initialize pgvector extension and create vector table for an instance
    */
-  async initializeTenantVectorStore(dataSource: DataSource): Promise<void> {
+  async initializeVectorStore(dataSource: DataSource): Promise<void> {
     const queryRunner = dataSource.createQueryRunner();
 
     try {
@@ -99,7 +99,7 @@ export class VectorStoreService {
         ON document_chunks USING gin (metadata)
       `);
 
-      this.logger.log('Tenant vector store initialized successfully');
+      this.logger.log('Instance vector store initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize vector store', error);
       throw error;

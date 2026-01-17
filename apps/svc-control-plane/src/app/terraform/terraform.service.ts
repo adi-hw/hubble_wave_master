@@ -117,6 +117,12 @@ export class TerraformService {
     return this.jobRepo.save(job);
   }
 
+  async assignWorkspace(id: string, workspace: string): Promise<TerraformJob> {
+    const job = await this.findOne(id);
+    job.workspace = workspace;
+    return this.jobRepo.save(job);
+  }
+
   async appendOutput(id: string, line: TerraformOutputLine): Promise<TerraformJob> {
     const job = await this.findOne(id);
     job.output = [...job.output, line];

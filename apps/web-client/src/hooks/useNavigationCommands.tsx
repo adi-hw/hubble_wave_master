@@ -1,7 +1,7 @@
 /**
  * useNavigationCommands Hook
  *
- * Generates command palette commands from the V2 navigation system.
+ * Generates command palette commands from the navigation system.
  * Converts navigation nodes to searchable command items.
  */
 
@@ -9,9 +9,9 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { CircleDot } from 'lucide-react';
-import { useNavigationV2 } from './useNavigationV2';
-import { CommandItem, CommandGroup } from '../components/ui/CommandPalette';
-import { ResolvedNavNode } from '../types/navigation-v2';
+import { useNavigation } from '../contexts/NavigationContext';
+import { CommandItem, CommandGroup } from '../components/shell/CommandPalette';
+import { ResolvedNavNode } from '../types/navigation';
 
 // Dynamic icon component resolver
 const getIconComponent = (iconName?: string): React.ReactNode => {
@@ -98,7 +98,7 @@ export function useNavigationCommands(): {
   favoriteCommands: CommandItem[];
   isLoading: boolean;
 } {
-  const { nav, loading } = useNavigationV2();
+  const { nav, loading } = useNavigation();
   const navigate = useNavigate();
 
   const navigationCommands = useMemo(() => {

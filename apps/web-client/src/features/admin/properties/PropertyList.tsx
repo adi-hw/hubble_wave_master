@@ -1,27 +1,21 @@
+/**
+ * PropertyList
+ * HubbleWave Platform - Phase 3
+ *
+ * Draggable list of property definitions with reordering support.
+ */
+
 import React, { useState, useEffect } from 'react';
+import { GripVertical, Pencil, Trash2, Lock, Loader2, AlertCircle } from 'lucide-react';
 import {
-  Box,
-  Card,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Chip,
-  Typography,
-  Tooltip,
-  CircularProgress,
-  Alert
-} from '@mui/material';
-import { 
-  Edit as EditIcon, 
-  Delete as DeleteIcon, 
-  DragIndicator as DragIcon,
-  Lock as SystemIcon
-} from '@mui/icons-material';
-import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+  DroppableProvided,
+  DraggableProvided,
+  DraggableStateSnapshot,
+} from '@hello-pangea/dnd';
 import { PropertyDefinition, propertyApi } from '../../../services/propertyApi';
 
 interface PropertyListProps {
@@ -31,11 +25,29 @@ interface PropertyListProps {
   refreshTrigger: number;
 }
 
+const getTypeBadgeClasses = (type: string): string => {
+  switch (type) {
+    case 'number':
+    case 'currency':
+      return 'border-primary text-primary';
+    case 'date':
+    case 'datetime':
+      return 'border-purple-600 text-purple-600';
+    case 'choice':
+    case 'multi_choice':
+      return 'border-success-border text-success-text';
+    case 'reference':
+      return 'border-warning-border text-warning-text';
+    default:
+      return 'border-muted-foreground text-muted-foreground';
+  }
+};
+
 export const PropertyList: React.FC<PropertyListProps> = ({
   collectionId,
   onEdit,
   onDelete,
-  refreshTrigger
+  refreshTrigger,
 }) => {
   const [properties, setProperties] = useState<PropertyDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,175 +78,179 @@ export const PropertyList: React.FC<PropertyListProps> = ({
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    // Update local state immediately for smooth UI
     const updatedItems = items.map((item, index) => ({
       ...item,
-      displayOrder: index
+      displayOrder: index,
     }));
     setProperties(updatedItems);
 
-    // Persist to backend
     try {
       await propertyApi.reorder(
-        collectionId, 
-        updatedItems.map(p => ({ id: p.id, displayOrder: p.displayOrder }))
+        collectionId,
+        updatedItems.map((p) => ({ id: p.id, displayOrder: p.displayOrder }))
       );
-    } catch (error) {
-      console.error('Failed to reorder properties', error);
-      loadProperties(); // Revert on error
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'text': return 'default';
-      case 'number': 
-      case 'currency': return 'primary';
-      case 'date':
-      case 'datetime': return 'secondary';
-      case 'choice':
-      case 'multi_choice': return 'success';
-      case 'reference': return 'warning';
-      default: return 'default';
+    } catch (err) {
+      console.error('Failed to reorder properties', err);
+      loadProperties();
     }
   };
 
   if (loading) {
     return (
-      <Card variant="outlined">
-        <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-          <CircularProgress />
-        </Box>
-      </Card>
+      <div className="rounded-lg border bg-card border-border">
+        <div className="flex justify-center items-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card variant="outlined">
-        <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>
-      </Card>
+      <div className="rounded-lg border bg-card border-border">
+        <div className="flex items-center gap-2 m-4 p-3 rounded border bg-danger-subtle border-danger-border text-danger-text">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm">{error}</span>
+        </div>
+      </div>
     );
   }
 
   if (properties.length === 0) {
     return (
-      <Card variant="outlined">
-        <Box display="flex" flexDirection="column" alignItems="center" py={4}>
-          <Typography color="text.secondary" gutterBottom>
+      <div className="rounded-lg border bg-card border-border">
+        <div className="flex flex-col items-center py-8">
+          <p className="mb-1 text-muted-foreground">
             No properties defined yet
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </p>
+          <p className="text-sm text-muted-foreground/70">
             Click "New Property" to add your first property to this collection
-          </Typography>
-        </Box>
-      </Card>
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card variant="outlined">
-      <TableContainer>
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell width={50}></TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Code</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell width={100} align="center">Required</TableCell>
-                <TableCell width={100} align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <Droppable droppableId="properties">
-              {(provided: DroppableProvided) => (
-                <TableBody ref={provided.innerRef} {...provided.droppableProps}>
-                  {properties.map((prop, index) => (
-                    <Draggable 
-                      key={prop.id} 
-                      draggableId={prop.id} 
-                      index={index}
-                      isDragDisabled={prop.isSystem}
-                    >
-                      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-                        <TableRow
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          sx={{ 
-                            bgcolor: snapshot.isDragging ? 'action.hover' : 'inherit',
-                            '& td': { borderBottom: snapshot.isDragging ? 'none' : undefined }
-                          }}
-                        >
-                          <TableCell>
+    <div className="rounded-lg border overflow-hidden bg-card border-border">
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted border-border">
+              <th className="w-12 p-3"></th>
+              <th className="p-3 text-left font-semibold text-muted-foreground">
+                Name
+              </th>
+              <th className="p-3 text-left font-semibold text-muted-foreground">
+                Code
+              </th>
+              <th className="p-3 text-left font-semibold text-muted-foreground">
+                Type
+              </th>
+              <th className="p-3 text-center font-semibold w-24 text-muted-foreground">
+                Required
+              </th>
+              <th className="p-3 text-right font-semibold w-24 text-muted-foreground">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <Droppable droppableId="properties">
+            {(provided: DroppableProvided) => (
+              <tbody ref={provided.innerRef} {...provided.droppableProps}>
+                {properties.map((prop, index) => (
+                  <Draggable
+                    key={prop.id}
+                    draggableId={prop.id}
+                    index={index}
+                    isDragDisabled={prop.isSystem}
+                  >
+                    {(
+                      dragProvided: DraggableProvided,
+                      snapshot: DraggableStateSnapshot
+                    ) => (
+                      <tr
+                        ref={dragProvided.innerRef}
+                        {...dragProvided.draggableProps}
+                        className={`border-b border-border transition-colors ${
+                          snapshot.isDragging ? 'bg-muted/60 border-transparent' : ''
+                        }`}
+                        style={dragProvided.draggableProps.style}
+                      >
+                        <td className="p-3">
+                          {!prop.isSystem && (
+                            <div
+                              {...dragProvided.dragHandleProps}
+                              className="cursor-grab flex items-center"
+                            >
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-foreground">
+                              {prop.label}
+                            </span>
+                            {prop.isSystem && (
+                              <span title="System Property">
+                                <Lock className="w-3 h-3 text-muted-foreground/50" />
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <code className="text-xs font-mono text-muted-foreground">
+                            {prop.code}
+                          </code>
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-0.5 text-xs font-medium border rounded ${getTypeBadgeClasses(prop.dataType)}`}
+                          >
+                            {prop.dataType}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          {prop.isRequired && (
+                            <span className="px-2 py-0.5 text-xs font-medium rounded border border-destructive text-destructive">
+                              Req
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onEdit(prop)}
+                              disabled={prop.isSystem && prop.isReadonly}
+                              className="p-1.5 rounded transition-colors hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label="Edit property"
+                            >
+                              <Pencil className="w-4 h-4 text-muted-foreground" />
+                            </button>
                             {!prop.isSystem && (
-                              <Box 
-                                {...provided.dragHandleProps} 
-                                sx={{ cursor: 'grab', display: 'flex', alignItems: 'center' }}
+                              <button
+                                type="button"
+                                onClick={() => onDelete(prop)}
+                                className="p-1.5 rounded transition-colors hover:bg-danger-subtle"
+                                aria-label="Delete property"
                               >
-                                <DragIcon fontSize="small" color="action" />
-                              </Box>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </button>
                             )}
-                          </TableCell>
-                          <TableCell>
-                             <Box display="flex" alignItems="center" gap={1}>
-                               {prop.label}
-                               {prop.isSystem && (
-                                 <Tooltip title="System Property">
-                                   <SystemIcon fontSize="inherit" color="disabled" />
-                                 </Tooltip>
-                               )}
-                             </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" fontFamily="monospace" color="text.secondary">
-                              {prop.code}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={prop.dataType} 
-                              size="small" 
-                              variant="outlined"
-                              color={getTypeColor(prop.dataType) as any}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            {prop.isRequired && (
-                              <Chip label="Req" size="small" color="error" variant="outlined" />
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            <Box display="flex" justifyContent="flex-end">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => onEdit(prop)}
-                                disabled={prop.isSystem && prop.isReadonly}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                              {!prop.isSystem && (
-                                <IconButton 
-                                  size="small" 
-                                  color="error" 
-                                  onClick={() => onDelete(prop)}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </TableBody>
-              )}
-            </Droppable>
-          </Table>
-        </DragDropContext>
-      </TableContainer>
-    </Card>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+              </tbody>
+            )}
+          </Droppable>
+        </table>
+      </DragDropContext>
+    </div>
   );
 };

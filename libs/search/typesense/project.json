@@ -1,0 +1,8 @@
+{
+  "name": "search-typesense",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/search/typesense/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {}
+}

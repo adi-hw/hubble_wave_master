@@ -9,23 +9,23 @@ import {
   ArrowLeft,
   Check,
 } from 'lucide-react';
-import { ModelField } from '../../../services/platform.service';
+import { ModelProperty } from '../../../services/platform.service';
 
 interface DotWalkSelectorProps {
   /**
-   * The base table code to start navigating from
+   * The base collection code to start navigating from
    */
-  baseTableCode: string;
+  baseCollectionCode: string;
 
   /**
-   * Fields of the base table (should include reference fields)
+   * Properties of the base collection (should include reference properties)
    */
-  baseFields: ModelField[];
+  baseProperties: ModelProperty[];
 
   /**
-   * Function to fetch fields for a related table
+   * Function to fetch properties for a related collection
    */
-  onFetchTableFields: (tableCode: string) => Promise<ModelField[]>;
+  onFetchCollectionProperties: (collectionCode: string) => Promise<ModelProperty[]>;
 
   /**
    * Maximum depth of reference traversal (default: 3)
@@ -33,9 +33,9 @@ interface DotWalkSelectorProps {
   maxDepth?: number;
 
   /**
-   * Callback when a field is selected
+   * Callback when a property is selected
    */
-  onSelectField: (fieldPath: string[], displayLabel: string, finalField: ModelField) => void;
+  onSelectProperty: (propertyPath: string[], displayLabel: string, finalProperty: ModelProperty) => void;
 
   /**
    * Callback to close the selector
@@ -44,104 +44,103 @@ interface DotWalkSelectorProps {
 }
 
 interface PathNode {
-  tableCode: string;
-  fieldCode: string;
-  fieldLabel: string;
-  fields: ModelField[];
+  collectionCode: string;
+  propertyCode: string;
+  propertyLabel: string;
+  properties: ModelProperty[];
   isLoading: boolean;
 }
 
 export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
-  baseTableCode,
-  baseFields,
-  onFetchTableFields,
+  baseCollectionCode,
+  baseProperties,
+  onFetchCollectionProperties,
   maxDepth = 3,
-  onSelectField,
+  onSelectProperty,
   onClose,
 }) => {
   const [path, setPath] = useState<PathNode[]>([
     {
-      tableCode: baseTableCode,
-      fieldCode: '',
-      fieldLabel: baseTableCode,
-      fields: baseFields,
+      collectionCode: baseCollectionCode,
+      propertyCode: '',
+      propertyLabel: baseCollectionCode,
+      properties: baseProperties,
       isLoading: false,
     },
   ]);
   const [search, setSearch] = useState('');
-  const [selectedField, setSelectedField] = useState<ModelField | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<ModelProperty | null>(null);
 
   // Get current node
   const currentNode = path[path.length - 1];
   const canGoDeeper = path.length < maxDepth;
 
-  // Filter fields by search
-  const filteredFields = useMemo(() => {
-    if (!currentNode.fields) return [];
-    if (!search.trim()) return currentNode.fields;
+  // Filter properties by search
+  const filteredProperties = useMemo(() => {
+    if (!currentNode.properties) return [];
+    if (!search.trim()) return currentNode.properties;
 
     const term = search.toLowerCase();
-    return currentNode.fields.filter(
-      (f) =>
-        f.label.toLowerCase().includes(term) ||
-        f.code.toLowerCase().includes(term)
+    return currentNode.properties.filter(
+      (p) =>
+        p.label.toLowerCase().includes(term) ||
+        p.code.toLowerCase().includes(term)
     );
-  }, [currentNode.fields, search]);
+  }, [currentNode.properties, search]);
 
-  // Group fields by type
-  const groupedFields = useMemo(() => {
-    const references: ModelField[] = [];
-    const others: ModelField[] = [];
+  // Group properties by type
+  const groupedProperties = useMemo(() => {
+    const references: ModelProperty[] = [];
+    const others: ModelProperty[] = [];
 
-    filteredFields.forEach((field) => {
-      if (isReferenceField(field.type)) {
-        references.push(field);
+    filteredProperties.forEach((property) => {
+      if (isReferenceProperty(property.type)) {
+        references.push(property);
       } else {
-        others.push(field);
+        others.push(property);
       }
     });
 
     return { references, others };
-  }, [filteredFields]);
+  }, [filteredProperties]);
 
-  // Get reference table from field config
-  const getReferenceTable = (field: ModelField): string | undefined => {
-    // Reference table is typically stored in field.config.referenceTable
-    return field.config?.referenceTable || field.config?.reference_table;
+  // Get reference collection from property config
+  const getReferenceCollection = (property: ModelProperty): string | undefined => {
+    return property.config?.referenceCollection;
   };
 
-  // Navigate into a reference field
-  const handleNavigateInto = async (field: ModelField) => {
-    const refTable = getReferenceTable(field);
-    if (!isReferenceField(field.type) || !refTable) return;
+  // Navigate into a reference property
+  const handleNavigateInto = async (property: ModelProperty) => {
+    const refCollection = getReferenceCollection(property);
+    if (!isReferenceProperty(property.type) || !refCollection) return;
     if (!canGoDeeper) return;
 
     // Add new loading node
     const newNode: PathNode = {
-      tableCode: refTable,
-      fieldCode: field.code,
-      fieldLabel: field.label,
-      fields: [],
+      collectionCode: refCollection,
+      propertyCode: property.code,
+      propertyLabel: property.label,
+      properties: [],
       isLoading: true,
     };
     setPath([...path, newNode]);
     setSearch('');
-    setSelectedField(null);
+    setSelectedProperty(null);
 
-    // Fetch fields for the referenced table
+    // Fetch properties for the referenced collection
     try {
-      const fields = await onFetchTableFields(refTable);
+      const properties = await onFetchCollectionProperties(refCollection);
       setPath((prev) => {
         const updated = [...prev];
         const lastNode = updated[updated.length - 1];
-        if (lastNode.tableCode === refTable) {
-          lastNode.fields = fields;
+        if (lastNode.collectionCode === refCollection) {
+          lastNode.properties = properties;
           lastNode.isLoading = false;
         }
         return updated;
       });
     } catch (error) {
-      console.error('Failed to fetch table fields:', error);
+      console.error('Failed to fetch collection properties:', error);
       setPath((prev) => {
         const updated = [...prev];
         const lastNode = updated[updated.length - 1];
@@ -156,7 +155,7 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
     if (path.length <= 1) return;
     setPath(path.slice(0, -1));
     setSearch('');
-    setSelectedField(null);
+    setSelectedProperty(null);
   };
 
   // Navigate to a specific level
@@ -164,55 +163,60 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
     if (index === path.length - 1) return;
     setPath(path.slice(0, index + 1));
     setSearch('');
-    setSelectedField(null);
+    setSelectedProperty(null);
   };
 
-  // Handle field selection
-  const handleSelectField = (field: ModelField) => {
-    if (isReferenceField(field.type)) {
-      // For reference fields, allow both selecting and navigating
-      setSelectedField(field);
+  // Handle property selection
+  const handleSelectProperty = (property: ModelProperty) => {
+    if (isReferenceProperty(property.type)) {
+      // For reference properties, allow both selecting and navigating
+      setSelectedProperty(property);
     } else {
-      setSelectedField(field);
+      setSelectedProperty(property);
     }
   };
 
   // Confirm selection
   const handleConfirmSelection = () => {
-    if (!selectedField) return;
+    if (!selectedProperty) return;
 
     // Build the full path
-    const fieldPath = path.slice(1).map((node) => node.fieldCode);
-    fieldPath.push(selectedField.code);
+    const propertyPath = path.slice(1).map((node) => node.propertyCode);
+    propertyPath.push(selectedProperty.code);
 
     // Build display label
-    const labels = path.slice(1).map((node) => node.fieldLabel);
-    labels.push(selectedField.label);
+    const labels = path.slice(1).map((node) => node.propertyLabel);
+    labels.push(selectedProperty.label);
     const displayLabel = labels.join(' → ');
 
-    onSelectField(fieldPath, displayLabel, selectedField);
+    onSelectProperty(propertyPath, displayLabel, selectedProperty);
   };
 
   // Get breadcrumb path string
-  const pathString = path.slice(1).map((node) => node.fieldCode).join('.');
+  const pathString = path.slice(1).map((node) => node.propertyCode).join('.');
 
   return (
-    <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-96 max-h-[500px] flex flex-col overflow-hidden">
+    <div className="rounded-xl shadow-xl w-96 max-h-[500px] flex flex-col overflow-hidden bg-card border border-border">
       {/* Header */}
-      <div className="p-4 border-b border-slate-100">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center">
-              <Link2 className="h-4 w-4 text-pink-600" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10">
+              <Link2 className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Dot-Walk Field</h3>
-              <p className="text-[10px] text-slate-500">Navigate through references</p>
+              <h3 className="text-sm font-semibold text-foreground">
+                Dot-Walk Property
+              </h3>
+              <p className="text-[10px] text-muted-foreground">
+                Navigate through references
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+            className="p-1.5 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Close dot-walk selector"
           >
             <X className="h-4 w-4" />
           </button>
@@ -223,17 +227,19 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
           {path.map((node, index) => (
             <React.Fragment key={index}>
               {index > 0 && (
-                <ChevronRight className="h-3 w-3 text-slate-300 flex-shrink-0" />
+                <ChevronRight className="h-3 w-3 flex-shrink-0 text-border" />
               )}
               <button
                 onClick={() => handleNavigateTo(index)}
-                className={`px-2 py-1 rounded transition-colors ${
+                className={`px-2 py-1 rounded transition-colors min-h-[44px] flex items-center ${
                   index === path.length - 1
-                    ? 'bg-primary-100 text-primary-700 font-medium'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-muted'
                 }`}
+                aria-label={`Navigate to ${index === 0 ? node.collectionCode : node.propertyLabel}`}
+                aria-current={index === path.length - 1 ? 'location' : undefined}
               >
-                {index === 0 ? node.tableCode : node.fieldLabel}
+                {index === 0 ? node.collectionCode : node.propertyLabel}
               </button>
             </React.Fragment>
           ))}
@@ -241,27 +247,29 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
 
         {/* Current path display */}
         {pathString && (
-          <div className="mt-2 px-2 py-1.5 bg-slate-50 rounded text-xs font-mono text-slate-600">
-            {baseTableCode}.{pathString}
+          <div className="mt-2 px-2 py-1.5 rounded text-xs font-mono bg-muted text-muted-foreground">
+            {baseCollectionCode}.{pathString}
           </div>
         )}
       </div>
 
       {/* Search */}
-      <div className="px-4 py-2 border-b border-slate-100">
+      <div className="px-4 py-2 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search fields..."
-            className="w-full h-8 pl-8 pr-8 text-sm border border-slate-200 rounded-lg focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            placeholder="Search properties..."
+            className="w-full h-8 pl-8 pr-8 text-sm rounded-lg focus:outline-none transition-colors border border-border bg-card text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+            aria-label="Search properties"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
             >
               <X className="h-3 w-3" />
             </button>
@@ -269,17 +277,21 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
         </div>
       </div>
 
-      {/* Fields List */}
-      <div className="flex-1 overflow-y-auto p-2">
+      {/* Properties List */}
+      <div className="flex-1 overflow-y-auto p-2" role="list" aria-label="Available properties">
         {currentNode.isLoading ? (
-          <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+          <div
+            className="flex flex-col items-center justify-center py-8 text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
             <Loader2 className="h-6 w-6 animate-spin mb-2" />
-            <span className="text-sm">Loading fields...</span>
+            <span className="text-sm">Loading properties...</span>
           </div>
-        ) : filteredFields.length === 0 ? (
-          <div className="text-center py-8 text-slate-400">
+        ) : filteredProperties.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground" role="status">
             <Search className="h-6 w-6 mx-auto mb-2" />
-            <p className="text-sm">No fields found</p>
+            <p className="text-sm">No properties found</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -287,48 +299,59 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
             {path.length > 1 && (
               <button
                 onClick={handleGoBack}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-muted-foreground hover:bg-muted min-h-[44px]"
+                aria-label={`Back to ${path[path.length - 2].propertyLabel || path[path.length - 2].collectionCode}`}
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to {path[path.length - 2].fieldLabel || path[path.length - 2].tableCode}
+                Back to {path[path.length - 2].propertyLabel || path[path.length - 2].collectionCode}
               </button>
             )}
 
-            {/* Reference fields (navigable) */}
-            {canGoDeeper && groupedFields.references.length > 0 && (
+            {/* Reference properties (navigable) */}
+            {canGoDeeper && groupedProperties.references.length > 0 && (
               <div>
-                <h4 className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  References ({groupedFields.references.length})
+                <h4 className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  References ({groupedProperties.references.length})
                 </h4>
                 <div className="space-y-1">
-                  {groupedFields.references.map((field) => (
+                  {groupedProperties.references.map((property) => (
                     <div
-                      key={field.code}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                        selectedField?.code === field.code
-                          ? 'bg-primary-50 border border-primary-200'
-                          : 'hover:bg-slate-50 border border-transparent'
+                      key={property.code}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors min-h-[44px] ${
+                        selectedProperty?.code === property.code
+                          ? 'bg-primary/10 border border-primary'
+                          : 'border border-transparent hover:bg-muted'
                       }`}
-                      onClick={() => handleSelectField(field)}
+                      onClick={() => handleSelectProperty(property)}
+                      role="listitem"
+                      aria-label={`Reference property: ${property.label}`}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelectProperty(property);
+                        }
+                      }}
                     >
-                      <div className="w-6 h-6 rounded flex items-center justify-center bg-pink-50 text-pink-600">
+                      <div className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary">
                         <Link2 className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-700 truncate">
-                          {field.label}
+                        <p className="text-sm font-medium truncate text-foreground">
+                          {property.label}
                         </p>
-                        <p className="text-[10px] text-slate-400">
-                          {field.code} → {getReferenceTable(field)}
+                        <p className="text-[10px] text-muted-foreground">
+                          {property.code} → {getReferenceCollection(property)}
                         </p>
                       </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleNavigateInto(field);
+                          handleNavigateInto(property);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                        className="p-1.5 rounded transition-colors text-muted-foreground hover:text-primary hover:bg-primary/10 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         title="Navigate into"
+                        aria-label={`Navigate into ${property.label}`}
                       >
                         <ChevronRight className="h-4 w-4" />
                       </button>
@@ -338,37 +361,51 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
               </div>
             )}
 
-            {/* Other fields */}
-            {groupedFields.others.length > 0 && (
+            {/* Other properties */}
+            {groupedProperties.others.length > 0 && (
               <div>
-                <h4 className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Fields ({groupedFields.others.length})
+                <h4 className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Properties ({groupedProperties.others.length})
                 </h4>
                 <div className="space-y-1">
-                  {groupedFields.others.map((field) => (
-                    <div
-                      key={field.code}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                        selectedField?.code === field.code
-                          ? 'bg-primary-50 border border-primary-200'
-                          : 'hover:bg-slate-50 border border-transparent'
-                      }`}
-                      onClick={() => handleSelectField(field)}
-                    >
-                      <div className={`w-6 h-6 rounded flex items-center justify-center ${getFieldTypeColor(field.type)}`}>
-                        {getFieldTypeIcon(field.type)}
+                  {groupedProperties.others.map((property) => {
+                    const typeClasses = getPropertyTypeClasses(property.type);
+                    return (
+                      <div
+                        key={property.code}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors min-h-[44px] ${
+                          selectedProperty?.code === property.code
+                            ? 'bg-primary/10 border border-primary'
+                            : 'border border-transparent hover:bg-muted'
+                        }`}
+                        onClick={() => handleSelectProperty(property)}
+                        role="listitem"
+                        aria-label={`Property: ${property.label}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleSelectProperty(property);
+                          }
+                        }}
+                      >
+                        <div className={`w-6 h-6 rounded flex items-center justify-center ${typeClasses}`}>
+                          {getPropertyTypeIcon(property.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate text-foreground">
+                            {property.label}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {property.code}
+                          </p>
+                        </div>
+                        {selectedProperty?.code === property.code && (
+                          <Check className="h-4 w-4 text-primary" />
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-700 truncate">
-                          {field.label}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{field.code}</p>
-                      </div>
-                      {selectedField?.code === field.code && (
-                        <Check className="h-4 w-4 text-primary-600" />
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -377,29 +414,36 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
       </div>
 
       {/* Footer with action buttons */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-        <div className="text-xs text-slate-500">
-          {path.length > 1 && selectedField && (
-            <span className="font-mono">{pathString}.{selectedField.code}</span>
+      <div className="p-3 flex items-center justify-between border-t border-border bg-muted">
+        <div className="text-xs text-muted-foreground">
+          {path.length > 1 && selectedProperty && (
+            <span className="font-mono">{pathString}.{selectedProperty.code}</span>
           )}
-          {path.length === 1 && selectedField && (
-            <span className="text-slate-400 italic">Select from a reference table</span>
+          {path.length === 1 && selectedProperty && (
+            <span className="italic text-muted-foreground">
+              Select from a reference collection
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium transition-colors text-muted-foreground hover:text-foreground min-h-[44px]"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirmSelection}
-            disabled={!selectedField || path.length === 1}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-1"
+            disabled={!selectedProperty || path.length === 1}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 min-h-[44px] ${
+              !selectedProperty || path.length === 1
+                ? 'text-muted-foreground bg-muted cursor-not-allowed'
+                : 'text-primary-foreground bg-primary hover:bg-primary/90'
+            }`}
+            aria-label="Add selected property"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add Field
+            Add Property
           </button>
         </div>
       </div>
@@ -408,29 +452,40 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
 };
 
 // Helper functions
-function isReferenceField(type: string): boolean {
+function isReferenceProperty(type: string): boolean {
   return ['reference', 'multi_reference', 'user_reference'].includes(type.toLowerCase());
 }
 
-function getFieldTypeColor(type: string): string {
+function getPropertyTypeClasses(type: string): string {
   const t = type.toLowerCase();
-  if (['string', 'text', 'rich_text'].includes(t)) return 'bg-slate-100 text-slate-600';
-  if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(t)) return 'bg-blue-50 text-blue-600';
-  if (['date', 'datetime', 'time', 'duration'].includes(t)) return 'bg-purple-50 text-purple-600';
-  if (['boolean', 'choice', 'multi_choice', 'tags'].includes(t)) return 'bg-amber-50 text-amber-600';
-  if (['email', 'phone', 'url'].includes(t)) return 'bg-cyan-50 text-cyan-600';
-  if (['file', 'image'].includes(t)) return 'bg-green-50 text-green-600';
-  return 'bg-slate-100 text-slate-500';
+  if (['string', 'text', 'rich_text'].includes(t)) {
+    return 'bg-muted text-muted-foreground';
+  }
+  if (['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(t)) {
+    return 'bg-info-subtle text-info-text';
+  }
+  if (['date', 'datetime', 'time', 'duration'].includes(t)) {
+    return 'bg-primary/10 text-primary';
+  }
+  if (['boolean', 'choice', 'multi_choice', 'tags'].includes(t)) {
+    return 'bg-warning-subtle text-warning-text';
+  }
+  if (['email', 'phone', 'url'].includes(t)) {
+    return 'bg-info-subtle text-info-text';
+  }
+  if (['file', 'image'].includes(t)) {
+    return 'bg-success-subtle text-success-text';
+  }
+  return 'bg-muted text-muted-foreground';
 }
 
-function getFieldTypeIcon(type: string): React.ReactNode {
-  // Simple text representation for now
+function getPropertyTypeIcon(type: string): React.ReactNode {
   const t = type.toLowerCase();
   if (['string', 'text'].includes(t)) return <span className="text-[10px] font-bold">Aa</span>;
   if (['integer', 'long', 'decimal', 'number'].includes(t)) return <span className="text-[10px] font-bold">#</span>;
-  if (['date', 'datetime'].includes(t)) return <span className="text-[10px] font-bold">📅</span>;
-  if (['boolean'].includes(t)) return <span className="text-[10px] font-bold">✓</span>;
-  return <span className="text-[10px] font-bold">•</span>;
+  if (['date', 'datetime'].includes(t)) return <span className="text-[10px] font-bold">D</span>;
+  if (['boolean'].includes(t)) return <span className="text-[10px] font-bold">?</span>;
+  return <span className="text-[10px] font-bold">*</span>;
 }
 
 export default DotWalkSelector;

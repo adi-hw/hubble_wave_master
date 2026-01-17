@@ -89,15 +89,19 @@ export {
   RateLimitCheck,
 } from './lib/ava-governance.service';
 
-// Tenant Context (for tenant-specific AVA behavior)
+// Instance Context (for instance-specific AVA behavior)
 export {
-  TenantContextService,
-  TenantProfile,
+  InstanceContextService,
+  InstanceProfile,
   CollectionContext,
   ModuleContext,
   BusinessRuleContext,
-  TenantMetrics,
+  InstanceMetrics,
   UserProfile,
+  // Deprecated aliases for backward compatibility
+  TenantContextService,
+  TenantProfile,
+  TenantMetrics,
 } from './lib/instance-context.service';
 
 // Platform Knowledge (AVA's knowledge of platform capabilities)
@@ -122,6 +126,45 @@ export {
   ActionItem,
 } from './lib/upgrade-assistant.service';
 
+// AVA Schema Assistance (Phase 2)
+export {
+  AVASchemaService,
+  DesignCollectionDto,
+  RecommendPropertiesDto,
+  CreateFormulaDto,
+  DebugFormulaDto,
+  OptimizeFormulaDto,
+  DesignViewDto,
+  AssessImpactDto,
+  FormulaDebugResult,
+  FormulaOptimization,
+} from './lib/ava-schema.service';
+
+// Phase 1 Intents
+export {
+  Phase1IntentCategory,
+  AvaContext,
+  AvaResponse,
+  matchPhase1Intent,
+  AvaResponseTemplates,
+} from './lib/intents/phase1-intents';
+
+// Phase 2 Intents
+export {
+  Phase2IntentCategory,
+  IntentMatch,
+  FormulaIntent,
+  FormulaResult,
+  SchemaDesignIntent,
+  SchemaRecommendation,
+  PropertyRecommendation,
+  RelationshipRecommendation,
+  ViewDesignIntent,
+  ViewRecommendation,
+  ImpactAssessment,
+  matchIntent,
+} from './lib/intents/phase2-intents';
+
 // Embedding Queue
 export {
   EmbeddingQueueService,
@@ -133,10 +176,49 @@ export {
 // Embedding Worker
 export {
   EmbeddingWorkerService,
-  GetTenantDataSourceFn,
+  GetInstanceDataSourceFn,
   FetchSourceDataFn,
+  // Deprecated alias for backward compatibility
+  GetTenantDataSourceFn,
 } from './lib/embedding-worker.service';
 
-// Legacy exports for backward compatibility (ChatMessage type)
+// Type alias for ChatMessage
 import type { LLMChatMessage } from './lib/llm-provider.interface';
 export type ChatMessage = LLMChatMessage;
+
+// ============================================================
+// Phase 7: Revolutionary Features Services
+// ============================================================
+
+// AVA-Powered Agile Development
+export { AgileDevelopmentService } from './lib/phase7/agile-development.service';
+
+// Living Documentation System
+export { LivingDocsService } from './lib/phase7/living-docs.service';
+
+// Predictive Operations
+export { PredictiveOpsService } from './lib/phase7/predictive-ops.service';
+
+// Digital Twin & IoT/Sensor Integration
+export { DigitalTwinService } from './lib/phase7/digital-twin.service';
+
+// Self-Healing Infrastructure
+export { SelfHealingService } from './lib/phase7/self-healing.service';
+
+// Natural Language Queries
+export { NLQueryService } from './lib/phase7/nl-query.service';
+
+// AI Report Generator
+export { AIReportsService } from './lib/phase7/ai-reports.service';
+
+// Voice Control
+export { VoiceControlService } from './lib/phase7/voice-control.service';
+
+// Predictive UI
+export { PredictiveUIService, UserContext, UISuggestion } from './lib/phase7/predictive-ui.service';
+
+// Zero-Code App Builder
+export { AppBuilderService } from './lib/phase7/app-builder.service';
+
+// Intelligent Upgrade Assistant (Phase 7)
+export { Phase7UpgradeAssistantService } from './lib/phase7/upgrade-assistant.service';

@@ -45,14 +45,20 @@ async function bootstrap() {
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
 
-  // Control Plane runs on port 3100 by default
-  const port = config.get<number>('CONTROL_PLANE_PORT', 3100);
-  await app.listen(port);
+  const httpEnabled = config.get<string>('CONTROL_PLANE_HTTP_ENABLED', 'true') !== 'false';
+  if (httpEnabled) {
+    // Control Plane runs on port 3100 by default
+    const port = config.get<number>('CONTROL_PLANE_PORT', 3100);
+    await app.listen(port);
 
-  Logger.log(
-    `Control Plane API is running on: http://localhost:${port}/${globalPrefix}`,
-    'Bootstrap',
-  );
+    Logger.log(
+      `Control Plane API is running on: http://localhost:${port}/${globalPrefix}`,
+      'Bootstrap',
+    );
+  } else {
+    await app.init();
+    Logger.log('Control Plane runtime started without HTTP listener', 'Bootstrap');
+  }
 }
 
 bootstrap();

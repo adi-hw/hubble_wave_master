@@ -14,6 +14,23 @@ export class MfaController {
     return this.mfaService.getMfaStatus(req.user.userId);
   }
 
+  @Get('setup')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async setup(@Req() req: AuthenticatedRequest) {
+    // This is an alias for enrollTotp that starts the MFA enrollment process
+    const result = await this.mfaService.enrollTotp(
+      req.user.userId,
+      'HubbleWave Platform'
+    );
+
+    return {
+      qrCode: result.qrCode,
+      secret: result.secret,
+      recoveryCodes: result.recoveryCodes,
+      message: 'Scan the QR code with your authenticator app and verify with a code',
+    };
+  }
+
   @Post('enroll/totp')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 enrollments per minute
   async enrollTotp(@Req() req: AuthenticatedRequest, @Body() body: { appName?: string }) {

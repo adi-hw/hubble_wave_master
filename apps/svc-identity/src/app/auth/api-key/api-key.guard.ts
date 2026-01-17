@@ -6,7 +6,7 @@ import { ApiKeyService } from './api-key.service';
  * API Key Guard
  *
  * Validates API keys passed in the `x-api-key` header.
- * If valid, attaches user context with tenant information.
+ * If valid, attaches user context with instance information.
  * If not present, passes through to allow JWT authentication.
  *
  * Guard execution order: ApiKeyGuard runs BEFORE JwtAuthGuard

@@ -40,11 +40,11 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   async login(@Req() req: PublicRequest, @Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const resolvedSlug = loginDto.tenantSlug || process.env.DEFAULT_INSTANCE_SLUG || 'default';
+    const resolvedSlug = loginDto.instanceSlug || process.env.DEFAULT_INSTANCE_SLUG || 'default';
 
     const normalizedDto: LoginDto = {
       ...loginDto,
-      tenantSlug: resolvedSlug,
+      instanceSlug: resolvedSlug,
     };
     const result = await this.authService.login(normalizedDto, req.ip, req.headers['user-agent']);
 
@@ -52,7 +52,15 @@ export class AuthController {
       const isProduction = process.env.NODE_ENV === 'production';
       const secure = isProduction || process.env.REFRESH_COOKIE_SECURE === 'true';
       const sameSite: SameSiteOption = (process.env.REFRESH_COOKIE_SAMESITE as SameSiteOption) || 'lax';
-      
+
+      this.logger.debug('Setting refresh token cookie', {
+        path: this.cookiePath,
+        secure,
+        sameSite,
+        httpOnly: true,
+        tokenLength: result.refreshToken.length,
+      });
+
       res.cookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure,
@@ -62,6 +70,12 @@ export class AuthController {
       });
     }
 
+    this.logger.debug('Login successful', {
+      userId: result.user?.id,
+      hasAccessToken: !!result.accessToken,
+      accessTokenLength: result.accessToken?.length,
+      resultKeys: Object.keys(result),
+    });
     return result;
   }
 
@@ -71,8 +85,17 @@ export class AuthController {
   async refresh(@Req() req: PublicRequest, @Body() body: { refreshToken?: string }, @Res({ passthrough: true }) res: Response) {
     const resolvedSlug = process.env.DEFAULT_INSTANCE_SLUG || 'default';
 
+    const cookies = (req as Request & { cookies?: Record<string, string> })?.cookies;
+    this.logger.debug('Refresh token request', {
+      hasBodyToken: !!body.refreshToken,
+      hasCookies: !!cookies,
+      cookieKeys: Object.keys(cookies || {}),
+      rawCookieHeader: req?.headers?.cookie ? 'present' : 'absent',
+    });
+
     const refreshToken = body.refreshToken || this.parseRefreshFromCookie(req);
     if (!refreshToken) {
+      this.logger.warn('Refresh token missing from both body and cookies');
       throw new UnauthorizedException('Refresh token missing');
     }
 
@@ -105,7 +128,7 @@ export class AuthController {
       this.logger.error('Unexpected error during token refresh', {
         error: (error as Error)?.message,
         stack: (error as Error)?.stack,
-        tenantSlug: resolvedSlug,
+        instanceSlug: resolvedSlug,
       });
       throw new UnauthorizedException('Session expired. Please log in again.');
     }

@@ -25,13 +25,10 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
   return (
     <div className={`field-wrapper ${className}`}>
       {/* Label */}
-      <label
-        className="flex items-center gap-1 text-sm font-medium mb-1.5"
-        style={{ color: 'var(--text-secondary)' }}
-      >
+      <label className="flex items-center gap-1 text-sm font-medium mb-1.5 text-muted-foreground">
         <span>{label}</span>
         {required && (
-          <Asterisk className="h-3 w-3" style={{ color: 'var(--text-danger)' }} aria-label="Required" />
+          <Asterisk className="h-3 w-3 text-destructive" aria-label="Required" />
         )}
       </label>
 
@@ -43,13 +40,13 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
       {/* Error or Help text */}
       {error ? (
         <div className="flex items-start gap-1.5 mt-1.5">
-          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
-          <p className="text-xs" style={{ color: 'var(--text-danger)' }}>{error}</p>
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-destructive" />
+          <p className="text-xs text-destructive">{error}</p>
         </div>
       ) : helpText ? (
         <div className="flex items-start gap-1.5 mt-1.5">
-          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{helpText}</p>
+          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">{helpText}</p>
         </div>
       ) : null}
     </div>

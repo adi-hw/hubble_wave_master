@@ -5,7 +5,7 @@
  */
 
 import { createApiClient } from './api';
-import { ResolvedNavigation } from '../types/navigation-v2';
+import { ResolvedNavigation } from '../types/navigation';
 import { NavNodeData } from '../components/studio/NavNodeEditor';
 import { ModuleOption } from '../components/studio/ModulePicker';
 

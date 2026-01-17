@@ -15,3 +15,13 @@ export {
   ReportResultColumn,
   ExportResult,
 } from './lib/reporting.service';
+export {
+  AnalyticsEvent,
+  AggregatedMetric,
+  Report,
+  ReportColumn,
+  ReportFilter,
+  ReportSorting,
+  ReportGrouping,
+  ReportDataSource,
+} from './lib/analytics-entities';

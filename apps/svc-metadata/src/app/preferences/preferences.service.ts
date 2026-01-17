@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserPreference, PinnedNavigationItem } from '@hubblewave/instance-db';
@@ -8,7 +8,7 @@ import {
   UpdatePinnedItemDto,
   UserPreferencesResponse,
 } from './preferences.dto';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, validate as validateUuid } from 'uuid';
 
 @Injectable()
 export class PreferencesService {
@@ -21,6 +21,7 @@ export class PreferencesService {
    * Get user preferences, creating default if none exist
    */
   async getPreferences(userId: string): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     let pref = await this.prefRepo.findOne({ where: { userId } });
 
     if (!pref) {
@@ -37,6 +38,7 @@ export class PreferencesService {
     userId: string,
     dto: UpdateUserPreferencesDto,
   ): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     let pref = await this.prefRepo.findOne({ where: { userId } });
 
     if (!pref) {
@@ -89,6 +91,9 @@ export class PreferencesService {
       }
     }
 
+    // Increment preference version for sync tracking
+    pref.preferenceVersion = (pref.preferenceVersion || 0) + 1;
+
     pref = await this.prefRepo.save(pref);
     return this.toResponse(pref);
   }
@@ -107,6 +112,7 @@ export class PreferencesService {
    * Reset preferences to defaults
    */
   async resetPreferences(userId: string): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     await this.prefRepo.delete({ userId });
     const pref = await this.createDefaultPreferences(userId);
     return this.toResponse(pref);
@@ -120,6 +126,7 @@ export class PreferencesService {
    * Get pinned navigation items
    */
   async getPinnedNavigation(userId: string): Promise<PinnedNavigationItem[]> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     return pref.pinnedNavigation || [];
   }
@@ -131,6 +138,7 @@ export class PreferencesService {
     userId: string,
     dto: AddPinnedItemDto,
   ): Promise<PinnedNavigationItem[]> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     const pinnedItems = pref.pinnedNavigation || [];
 
@@ -153,6 +161,7 @@ export class PreferencesService {
 
     pinnedItems.push(newItem);
     pref.pinnedNavigation = this.normalizePositions(pinnedItems);
+    pref.preferenceVersion = (pref.preferenceVersion || 0) + 1;
     await this.prefRepo.save(pref);
 
     return pref.pinnedNavigation;
@@ -166,6 +175,7 @@ export class PreferencesService {
     itemId: string,
     dto: UpdatePinnedItemDto,
   ): Promise<PinnedNavigationItem[]> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     const pinnedItems = pref.pinnedNavigation || [];
 
@@ -179,6 +189,7 @@ export class PreferencesService {
     if (dto.position !== undefined) pinnedItems[itemIndex].position = dto.position;
 
     pref.pinnedNavigation = this.normalizePositions(pinnedItems);
+    pref.preferenceVersion = (pref.preferenceVersion || 0) + 1;
     await this.prefRepo.save(pref);
 
     return pref.pinnedNavigation;
@@ -191,6 +202,7 @@ export class PreferencesService {
     userId: string,
     itemId: string,
   ): Promise<PinnedNavigationItem[]> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     const pinnedItems = pref.pinnedNavigation || [];
 
@@ -200,6 +212,7 @@ export class PreferencesService {
     }
 
     pref.pinnedNavigation = this.normalizePositions(filtered);
+    pref.preferenceVersion = (pref.preferenceVersion || 0) + 1;
     await this.prefRepo.save(pref);
 
     return pref.pinnedNavigation;
@@ -212,6 +225,7 @@ export class PreferencesService {
     userId: string,
     order: string[],
   ): Promise<PinnedNavigationItem[]> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     const pinnedItems = pref.pinnedNavigation || [];
 
@@ -235,6 +249,7 @@ export class PreferencesService {
     });
 
     pref.pinnedNavigation = reordered;
+    pref.preferenceVersion = (pref.preferenceVersion || 0) + 1;
     await this.prefRepo.save(pref);
 
     return pref.pinnedNavigation;
@@ -251,6 +266,7 @@ export class PreferencesService {
     userId: string,
     mode: 'compact' | 'comfortable' | 'spacious',
   ): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     return this.updatePreferences(userId, { densityMode: mode });
   }
 
@@ -261,6 +277,7 @@ export class PreferencesService {
     userId: string,
     position: 'left' | 'right',
   ): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     return this.updatePreferences(userId, { sidebarPosition: position });
   }
 
@@ -268,6 +285,7 @@ export class PreferencesService {
    * Toggle sidebar collapsed state
    */
   async toggleSidebarCollapsed(userId: string): Promise<UserPreferencesResponse> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     return this.updatePreferences(userId, {
       sidebarCollapsed: !pref.sidebarCollapsed,
@@ -290,6 +308,7 @@ export class PreferencesService {
     hasChanges: boolean;
     currentVersion: number;
   }> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
 
     const hasChanges = fromVersion ? pref.preferenceVersion > fromVersion : true;
@@ -314,6 +333,7 @@ export class PreferencesService {
     lastSyncedAt?: Date;
     lastSyncDevice?: string;
   }> {
+    this.ensureUserId(userId);
     const pref = await this.getOrCreate(userId);
     return {
       version: pref.preferenceVersion,
@@ -327,11 +347,18 @@ export class PreferencesService {
   // ============================================================================
 
   private async getOrCreate(userId: string): Promise<UserPreference> {
+    this.ensureUserId(userId);
     let pref = await this.prefRepo.findOne({ where: { userId } });
     if (!pref) {
       pref = await this.createDefaultPreferences(userId);
     }
     return pref;
+  }
+
+  private ensureUserId(userId: string) {
+    if (!userId || !validateUuid(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
   }
 
   private async createDefaultPreferences(userId: string): Promise<UserPreference> {

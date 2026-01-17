@@ -28,58 +28,26 @@ const ErrorFallback: React.FC<{
   resetError: () => void;
 }> = ({ error, resetError }) => {
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-6"
-      style={{ backgroundColor: 'var(--bg-base)' }}
-    >
-      <div
-        className="max-w-md w-full rounded-xl p-8 text-center"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-      >
-        {/* Error Icon */}
-        <div
-          className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)' }}
-        >
-          <AlertTriangle className="w-8 h-8" style={{ color: 'var(--text-danger)' }} />
+    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+      <div className="max-w-md w-full rounded-xl p-8 text-center bg-card border border-border shadow-lg">
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center bg-destructive/10">
+          <AlertTriangle className="w-8 h-8 text-destructive" />
         </div>
 
-        {/* Title */}
-        <h1
-          className="text-xl font-semibold mb-2"
-          style={{ color: 'var(--text-primary)' }}
-        >
+        <h1 className="text-xl font-semibold mb-2 text-foreground">
           Something went wrong
         </h1>
 
-        {/* Description */}
-        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-sm mb-6 text-muted-foreground">
           An unexpected error occurred. Please try refreshing the page or return to the home page.
         </p>
 
-        {/* Error Details (collapsed by default in production) */}
         {error && process.env.NODE_ENV === 'development' && (
-          <details
-            className="text-left mb-6 rounded-lg p-3"
-            style={{
-              backgroundColor: 'var(--bg-surface-secondary)',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            <summary
-              className="text-xs font-medium cursor-pointer"
-              style={{ color: 'var(--text-muted)' }}
-            >
+          <details className="text-left mb-6 rounded-lg p-3 bg-muted border border-border">
+            <summary className="text-xs font-medium cursor-pointer text-muted-foreground">
               Error details
             </summary>
-            <pre
-              className="mt-2 text-xs overflow-auto max-h-32"
-              style={{ color: 'var(--text-danger)' }}
-            >
+            <pre className="mt-2 text-xs overflow-auto max-h-32 text-destructive">
               {error.message}
               {'\n\n'}
               {error.stack}
@@ -87,27 +55,17 @@ const ErrorFallback: React.FC<{
           </details>
         )}
 
-        {/* Action Buttons */}
         <div className="flex gap-3 justify-center">
           <button
             onClick={resetError}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-on-primary)',
-            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <RefreshCw className="w-4 h-4" />
             Try Again
           </button>
           <a
             href="/"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: 'var(--bg-surface-secondary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-default)',
-            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-muted text-foreground border border-border hover:bg-muted/80"
           >
             <Home className="w-4 h-4" />
             Go Home

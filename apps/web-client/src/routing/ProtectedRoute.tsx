@@ -18,7 +18,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ permissions, rol
   if (auth.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-sm text-slate-500">Loading...</div>
+        <div className="text-sm text-muted-foreground">Loading...</div>
       </div>
     );
   }

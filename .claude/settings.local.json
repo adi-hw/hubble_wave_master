@@ -4,7 +4,15 @@
       "Bash(find:*)",
       "Bash(npx nx build:*)",
       "Bash(del /f \"C:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\HW Platform\\apps\\svc-metadata\\src\\app\\commitment.controller.ts.disabled\" \"C:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\HW Platform\\apps\\svc-metadata\\src\\app\\commitment.service.ts.disabled\")",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx nx run:*)",
+      "Bash(cat:*)",
+      "Bash(findstr:*)",
+      "Bash(npx nx:*)",
+      "Bash(move \"C:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\HW Platform\\migrations\\tenant\\1800000000001-create-inline-editing-test-table.ts\" \"C:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\HW Platform\\migrations\\instance\\1800000000001-create-inline-editing-test-table.ts\")",
+      "Bash(npm run migration:run:instance:*)",
+      "Bash(npm run migration:revert:instance:*)",
+      "Bash(del \"C:\\Users\\Hubble-Wave\\OneDrive - Hubble Wave\\Desktop\\Project HW\\HW Platform\\libs\\ui\\src\\components\\grid\\editors\\MultiCellEditPopup.tsx\")"
     ]
   }
 }

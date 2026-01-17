@@ -111,12 +111,7 @@ export const GlassPanel: React.FC<GlassPanelProps> = ({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0"
-        style={{
-          backgroundColor: 'var(--bg-overlay)',
-          backdropFilter: 'blur(4px)',
-          WebkitBackdropFilter: 'blur(4px)',
-        }}
+        className="absolute inset-0 bg-overlay/50 backdrop-blur-sm"
         onClick={handleBackdropClick}
       />
 
@@ -138,14 +133,10 @@ export const GlassPanel: React.FC<GlassPanelProps> = ({
         {/* Header */}
         {(title || header || showCloseButton) && (
           <div
-            className="flex items-center justify-between gap-4 px-4 py-3 flex-shrink-0"
-            style={{ borderBottom: '1px solid var(--border-subtle)' }}
+            className="flex items-center justify-between gap-4 px-4 py-3 flex-shrink-0 border-b border-border"
           >
             {header || (
-              <h2
-                className="text-lg font-semibold truncate"
-                style={{ color: 'var(--text-primary)' }}
-              >
+              <h2 className="text-lg font-semibold truncate text-foreground">
                 {title}
               </h2>
             )}
@@ -170,10 +161,7 @@ export const GlassPanel: React.FC<GlassPanelProps> = ({
 
         {/* Footer */}
         {footer && (
-          <div
-            className="flex items-center justify-end gap-3 px-4 py-3 flex-shrink-0"
-            style={{ borderTop: '1px solid var(--border-subtle)' }}
-          >
+          <div className="flex items-center justify-end gap-3 px-4 py-3 flex-shrink-0 border-t border-border">
             {footer}
           </div>
         )}

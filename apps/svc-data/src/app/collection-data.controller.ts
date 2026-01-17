@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from './collection-data.service';
@@ -18,10 +19,10 @@ import { CollectionDataService, QueryOptions } from './collection-data.service';
 interface ListQueryDto {
   page?: string;
   pageSize?: string;
-  sort?: string; // JSON string or comma-separated "field:direction"
+  sort?: string; // JSON string or comma-separated "property:direction"
   filters?: string; // JSON string
   search?: string;
-  searchFields?: string; // comma-separated
+  searchFields?: string; // comma-separated property codes
   viewId?: string;
   groupBy?: string;
 }
@@ -38,6 +39,8 @@ interface BulkDeleteDto {
 @Controller('collections')
 @UseGuards(JwtAuthGuard)
 export class CollectionDataController {
+  private readonly logger = new Logger(CollectionDataController.name);
+
   constructor(private readonly collectionData: CollectionDataService) {}
 
   private parseQueryOptions(query: ListQueryDto): QueryOptions {
@@ -64,7 +67,7 @@ export class CollectionDataController {
     }
 
     if (query.searchFields) {
-      options.searchFields = query.searchFields.split(',').map((s) => s.trim());
+      options.searchProperties = query.searchFields.split(',').map((s) => s.trim());
     }
 
     // Parse sort
@@ -73,10 +76,10 @@ export class CollectionDataController {
         // Try JSON parse first
         options.sort = JSON.parse(query.sort);
       } catch {
-        // Fallback: comma-separated "field:direction"
+        // Fallback: comma-separated "property:direction"
         options.sort = query.sort.split(',').map((s) => {
-          const [field, dir] = s.trim().split(':');
-          return { field, direction: (dir?.toLowerCase() === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc' };
+          const [property, dir] = s.trim().split(':');
+          return { property, direction: (dir?.toLowerCase() === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc' };
         });
       }
     }
@@ -102,6 +105,79 @@ export class CollectionDataController {
     };
   }
 
+  // ============ GROUPED QUERIES ============
+  // NOTE: These routes MUST come before the generic :collectionCode/data routes
+  // because NestJS matches routes in order and :collectionCode/data would match first
+
+  /**
+   * List records grouped by a property - returns group summaries with counts
+   * Optimized for large datasets - only returns group headers, not all data
+   */
+  @Get(':collectionCode/data/grouped')
+  async listGrouped(
+    @Param('collectionCode') collectionCode: string,
+    @Query('groupBy') groupBy: string,
+    @Query() query: ListQueryDto,
+    @CurrentUser() user: RequestUser
+  ) {
+    if (!groupBy) {
+      return { error: 'groupBy parameter is required' };
+    }
+
+    const ctx = this.buildContext(user);
+    const options = this.parseQueryOptions(query);
+    // Remove pagination options - grouped query returns all groups
+    delete (options as Record<string, unknown>).page;
+    delete (options as Record<string, unknown>).pageSize;
+
+    return this.collectionData.listGrouped(ctx, collectionCode, groupBy, options);
+  }
+
+  /**
+   * Get paginated children within a group
+   */
+  @Get(':collectionCode/data/group-children')
+  async getGroupChildren(
+    @Param('collectionCode') collectionCode: string,
+    @Query('groupBy') groupBy: string,
+    @Query('groupValue') groupValue: string,
+    @Query() query: ListQueryDto,
+    @CurrentUser() user: RequestUser
+  ) {
+    this.logger.debug(`[group-children] Request: ${JSON.stringify({ collectionCode, groupBy, groupValue, query })}`);
+
+    if (!groupBy) {
+      return { error: 'groupBy parameter is required' };
+    }
+
+    const ctx = this.buildContext(user);
+    const options = this.parseQueryOptions(query);
+
+    // Parse groupValue - handle null/undefined specially
+    let parsedGroupValue: unknown = groupValue;
+    if (groupValue === 'null' || groupValue === undefined) {
+      parsedGroupValue = null;
+    } else {
+      // Try to parse as JSON for complex values, otherwise use as string
+      try {
+        parsedGroupValue = JSON.parse(groupValue);
+      } catch {
+        // Keep as string
+      }
+    }
+
+    this.logger.debug(`[group-children] Parsed groupValue: ${parsedGroupValue}, type: ${typeof parsedGroupValue}`);
+
+    try {
+      const result = await this.collectionData.getGroupChildren(ctx, collectionCode, groupBy, parsedGroupValue, options);
+      this.logger.debug(`[group-children] Success, returning ${result.data.length} records`);
+      return result;
+    } catch (error) {
+      this.logger.error('[group-children] Error:', error);
+      throw error;
+    }
+  }
+
   // ============ COLLECTION DATA ============
 
   /**
@@ -113,10 +189,15 @@ export class CollectionDataController {
     @Query() query: ListQueryDto,
     @CurrentUser() user: RequestUser
   ) {
-    const options = this.parseQueryOptions(query);
-    const ctx = this.buildContext(user);
+    try {
+      const options = this.parseQueryOptions(query);
+      const ctx = this.buildContext(user);
 
-    return this.collectionData.list(ctx, collectionCode, options);
+      return await this.collectionData.list(ctx, collectionCode, options);
+    } catch (error) {
+      this.logger.error(`Error in list endpoint - Collection: ${collectionCode}, Query: ${JSON.stringify(query)}`, error);
+      throw error;
+    }
   }
 
   /**
@@ -215,7 +296,7 @@ export class CollectionDataController {
   @Get(':collectionCode/references')
   async getReferenceOptions(
     @Param('collectionCode') collectionCode: string,
-    @Query('displayField') displayField: string,
+    @Query('displayProperty') displayProperty: string,
     @CurrentUser() user: RequestUser,
     @Query('search') search?: string,
     @Query('limit') limit?: string
@@ -225,7 +306,7 @@ export class CollectionDataController {
     return this.collectionData.getReferenceOptions(
       ctx,
       collectionCode,
-      displayField || 'name',
+      displayProperty || 'name',
       search,
       limit ? parseInt(limit, 10) : 50
     );
@@ -241,13 +322,15 @@ export class CollectionDataController {
     @Param('collectionCode') collectionCode: string,
     @CurrentUser() _user: RequestUser
   ) {
-    // TODO: Add authorization check for schema access
     const collection = await this.collectionData.getCollection(collectionCode);
     const properties = await this.collectionData.getProperties(collection.id);
 
+    // Enrich properties with reference collection codes for navigation
+    const enrichedProperties = await this.collectionData.enrichPropertiesWithReferences(properties);
+
     return {
       collection,
-      properties,
+      properties: enrichedProperties,
     };
   }
 }

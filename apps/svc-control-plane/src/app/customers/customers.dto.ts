@@ -8,9 +8,10 @@ import {
   MaxLength,
   IsIn,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CustomerSettings } from '@hubblewave/control-plane-db';
 
-const CUSTOMER_STATUS = ['active', 'trial', 'suspended', 'churned'] as const;
+const CUSTOMER_STATUS = ['active', 'trial', 'suspended', 'churned', 'pending', 'terminated'] as const;
 const CUSTOMER_TIER = ['starter', 'professional', 'enterprise'] as const;
 
 export class CustomerQueryParams {
@@ -28,10 +29,12 @@ export class CustomerQueryParams {
 
   @IsOptional()
   @IsPositive()
+  @Type(() => Number)
   page?: number;
 
   @IsOptional()
   @IsPositive()
+  @Type(() => Number)
   limit?: number;
 }
 
@@ -55,16 +58,16 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  contactName?: string;
+  primaryContactName?: string;
 
   @IsOptional()
   @IsEmail()
-  contactEmail?: string;
+  primaryContactEmail?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  contactPhone?: string;
+  primaryContactPhone?: string;
 
   @IsOptional()
   @IsNumber()
@@ -101,16 +104,16 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  contactName?: string;
+  primaryContactName?: string;
 
   @IsOptional()
   @IsEmail()
-  contactEmail?: string;
+  primaryContactEmail?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  contactPhone?: string;
+  primaryContactPhone?: string;
 
   @IsOptional()
   @IsNumber()

@@ -4,10 +4,12 @@
   "sourceRoot": "libs/analytics/src",
   "projectType": "library",
   "tags": [],
+  "implicitDependencies": ["instance-db"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
+      "dependsOn": ["^build"],
       "options": {
         "outputPath": "dist/libs/analytics",
         "main": "libs/analytics/src/index.ts",

@@ -48,7 +48,7 @@ export class GroupsController {
    * List all groups
    */
   @Get()
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async listGroups(
     @Query('search') search?: string,
@@ -73,7 +73,7 @@ export class GroupsController {
    * Get group hierarchy as tree
    */
   @Get('tree')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroupTree(@Query('includeInactive') includeInactive?: string) {
     const tree = await this.groupService.getGroupHierarchy({
@@ -86,7 +86,7 @@ export class GroupsController {
    * Get group statistics
    */
   @Get('stats')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroupStats() {
     const stats = await this.groupService.getGroupStats();
@@ -97,7 +97,7 @@ export class GroupsController {
    * Get group by ID
    */
   @Get(':id')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroup(@Param('id', ParseUUIDPipe) id: string) {
     const group = await this.groupService.getGroupById(id);
@@ -108,7 +108,7 @@ export class GroupsController {
    * Create a new group
    */
   @Post()
-  @RequirePermission('group.create')
+  @RequirePermission('groups.create')
   @UseGuards(PermissionGuard)
   async createGroup(
     @CurrentUser() user: UserContext,
@@ -122,7 +122,7 @@ export class GroupsController {
    * Update a group
    */
   @Put(':id')
-  @RequirePermission('group.update')
+  @RequirePermission('groups.update')
   @UseGuards(PermissionGuard)
   async updateGroup(
     @Param('id', ParseUUIDPipe) id: string,
@@ -138,7 +138,7 @@ export class GroupsController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('group.delete')
+  @RequirePermission('groups.delete')
   @UseGuards(PermissionGuard)
   async deleteGroup(@Param('id', ParseUUIDPipe) id: string) {
     await this.groupService.deleteGroup(id);
@@ -148,7 +148,7 @@ export class GroupsController {
    * Restore a deleted group
    */
   @Post(':id/restore')
-  @RequirePermission('group.update')
+  @RequirePermission('groups.update')
   @UseGuards(PermissionGuard)
   async restoreGroup(@Param('id', ParseUUIDPipe) id: string) {
     const group = await this.groupService.restoreGroup(id);
@@ -163,7 +163,7 @@ export class GroupsController {
    * Get child groups
    */
   @Get(':id/children')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getChildren(@Param('id', ParseUUIDPipe) id: string) {
     const children = await this.groupService.getChildren(id);
@@ -174,7 +174,7 @@ export class GroupsController {
    * Get ancestor groups
    */
   @Get(':id/ancestors')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getAncestors(@Param('id', ParseUUIDPipe) id: string) {
     const ancestors = await this.groupService.getAncestors(id);
@@ -185,7 +185,7 @@ export class GroupsController {
    * Get descendant groups
    */
   @Get(':id/descendants')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getDescendants(@Param('id', ParseUUIDPipe) id: string) {
     const descendants = await this.groupService.getDescendants(id);
@@ -200,7 +200,7 @@ export class GroupsController {
    * Get group members (direct)
    */
   @Get(':id/members')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroupMembers(
     @Param('id', ParseUUIDPipe) id: string,
@@ -222,7 +222,7 @@ export class GroupsController {
    * Get effective group members (including nested groups)
    */
   @Get(':id/members/effective')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getEffectiveMembers(@Param('id', ParseUUIDPipe) id: string) {
     const members = await this.membershipService.getEffectiveGroupMembers(id);
@@ -233,7 +233,7 @@ export class GroupsController {
    * Get group managers
    */
   @Get(':id/managers')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroupManagers(@Param('id', ParseUUIDPipe) id: string) {
     const managers = await this.membershipService.getGroupManagers(id);
@@ -244,7 +244,7 @@ export class GroupsController {
    * Get member count
    */
   @Get(':id/members/count')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getMemberCount(@Param('id', ParseUUIDPipe) id: string) {
     const count = await this.membershipService.getMemberCount(id);
@@ -255,7 +255,7 @@ export class GroupsController {
    * Add a member to a group
    */
   @Post(':id/members')
-  @RequirePermission('group.manage_members')
+  @RequirePermission('groups.manage-members')
   @UseGuards(PermissionGuard)
   async addMember(
     @Param('id', ParseUUIDPipe) id: string,
@@ -270,7 +270,7 @@ export class GroupsController {
    * Bulk add members to a group
    */
   @Post(':id/members/bulk')
-  @RequirePermission('group.manage_members')
+  @RequirePermission('groups.manage-members')
   @UseGuards(PermissionGuard)
   async bulkAddMembers(
     @Param('id', ParseUUIDPipe) id: string,
@@ -285,7 +285,7 @@ export class GroupsController {
    * Update a member
    */
   @Put(':id/members/:userId')
-  @RequirePermission('group.manage_members')
+  @RequirePermission('groups.manage-members')
   @UseGuards(PermissionGuard)
   async updateMember(
     @Param('id', ParseUUIDPipe) groupId: string,
@@ -301,7 +301,7 @@ export class GroupsController {
    */
   @Delete(':id/members/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('group.manage_members')
+  @RequirePermission('groups.manage-members')
   @UseGuards(PermissionGuard)
   async removeMember(
     @Param('id', ParseUUIDPipe) groupId: string,
@@ -314,7 +314,7 @@ export class GroupsController {
    * Bulk remove members from a group
    */
   @Delete(':id/members/bulk')
-  @RequirePermission('group.manage_members')
+  @RequirePermission('groups.manage-members')
   @UseGuards(PermissionGuard)
   async bulkRemoveMembers(
     @Param('id', ParseUUIDPipe) id: string,
@@ -332,7 +332,7 @@ export class GroupsController {
    * Get roles assigned to a group
    */
   @Get(':id/roles')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async getGroupRoles(@Param('id', ParseUUIDPipe) id: string) {
     const { direct, inherited } = await this.groupRoleService.getEffectiveRoles(id);
@@ -350,7 +350,7 @@ export class GroupsController {
    * Assign a role to a group
    */
   @Post(':id/roles')
-  @RequirePermission('role.assign')
+  @RequirePermission('groups.assign-roles')
   @UseGuards(PermissionGuard)
   async assignRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -365,7 +365,7 @@ export class GroupsController {
    * Bulk assign roles to a group
    */
   @Post(':id/roles/bulk')
-  @RequirePermission('role.assign')
+  @RequirePermission('groups.assign-roles')
   @UseGuards(PermissionGuard)
   async bulkAssignRoles(
     @Param('id', ParseUUIDPipe) id: string,
@@ -381,7 +381,7 @@ export class GroupsController {
    */
   @Delete(':id/roles/:roleId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('role.assign')
+  @RequirePermission('groups.assign-roles')
   @UseGuards(PermissionGuard)
   async revokeRole(
     @Param('id', ParseUUIDPipe) groupId: string,
@@ -398,7 +398,7 @@ export class GroupsController {
    * Get groups a user belongs to (direct)
    */
   @Get('user/:userId')
-  @RequirePermission('user.read')
+  @RequirePermission('users.view')
   @UseGuards(PermissionGuard)
   async getUserGroups(@Param('userId', ParseUUIDPipe) userId: string) {
     const groups = await this.membershipService.getUserDirectGroups(userId);
@@ -409,7 +409,7 @@ export class GroupsController {
    * Get all effective groups for a user (including inherited)
    */
   @Get('user/:userId/effective')
-  @RequirePermission('user.read')
+  @RequirePermission('users.view')
   @UseGuards(PermissionGuard)
   async getUserEffectiveGroups(@Param('userId', ParseUUIDPipe) userId: string) {
     const groups = await this.membershipService.getUserEffectiveGroups(userId);
@@ -420,7 +420,7 @@ export class GroupsController {
    * Get all effective roles for a user through group memberships
    */
   @Get('user/:userId/roles')
-  @RequirePermission('user.read')
+  @RequirePermission('users.view')
   @UseGuards(PermissionGuard)
   async getUserGroupRoles(@Param('userId', ParseUUIDPipe) userId: string) {
     const roles = await this.groupRoleService.getUserEffectiveRoles(userId);
@@ -431,7 +431,7 @@ export class GroupsController {
    * Check if user is a member of a group
    */
   @Get(':id/members/:userId/check')
-  @RequirePermission('group.read')
+  @RequirePermission('groups.view')
   @UseGuards(PermissionGuard)
   async checkMembership(
     @Param('id', ParseUUIDPipe) groupId: string,

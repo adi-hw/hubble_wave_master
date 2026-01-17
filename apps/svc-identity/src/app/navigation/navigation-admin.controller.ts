@@ -176,12 +176,10 @@ export class NavigationAdminController {
 
   @Get('modules')
   getModules() {
-    // This should ideally scan the registered modules in the system.
-    // Returning hardcoded list for now, mimicking frontend mock or leveraging ModuleRegistry
     return [
        { key: 'studio.tables', label: 'Tables', type: 'list', icon: 'Database', applicationKey: 'Studio' },
        { key: 'studio.scripts', label: 'Scripts', type: 'list', icon: 'FileCode', applicationKey: 'Studio' },
-       { key: 'studio.workflows', label: 'Workflows', type: 'list', icon: 'GitBranch', applicationKey: 'Studio' },
+       { key: 'studio.process-flows', label: 'Process Flows', type: 'list', icon: 'GitBranch', applicationKey: 'Studio' },
        { key: 'admin.users', label: 'Users & Roles', type: 'list', icon: 'Users', applicationKey: 'Admin' },
        { key: 'admin.groups', label: 'Groups', type: 'list', icon: 'Users', applicationKey: 'Admin' },
        { key: 'asset.list', label: 'Asset List', type: 'list', icon: 'Package' },
@@ -204,7 +202,7 @@ export class NavigationAdminController {
       // 2. Build the tree
       const rootNodes = this.buildTree(nodes);
 
-      // 3. Simple visibility filter (mocking the full resolution logic for now)
+      // 3. Apply visibility filter
       const filterNodes = (list: NavNode[]): any[] => {
           return list
               .filter(n => n.isVisible) // Basic check

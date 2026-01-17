@@ -1,0 +1,655 @@
+/**
+ * SidebarFlyout
+ *
+ * Modern ServiceNow-inspired navigation sidebar with:
+ * - Application filter (All Apps dropdown)
+ * - Smart groups (Favorites, Recent)
+ * - Collapsible groups with icons
+ * - Search functionality
+ * - Profile switching
+ * - Sleek, modern design using HubbleWave design tokens
+ */
+
+import React, { useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Star,
+  Clock,
+  Search,
+  X,
+  Layers,
+  Box,
+  Settings,
+  Paintbrush,
+} from 'lucide-react';
+import { useNavigation } from '../../contexts/NavigationContext';
+import { Icon } from '../Icon';
+import { ResolvedNavNode } from '../../types/navigation';
+import { cn } from '../../lib/utils';
+
+interface SidebarFlyoutProps {
+  collapsed?: boolean;
+  onToggle?: () => void;
+  /** Mobile sheet visibility controlled by parent */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+// Helper to get application icon
+const getAppIcon = (key: string) => {
+  switch (key) {
+    case 'eam':
+      return <Box className="h-4 w-4" />;
+    case 'admin':
+      return <Settings className="h-4 w-4" />;
+    case 'studio':
+      return <Paintbrush className="h-4 w-4" />;
+    default:
+      return <Layers className="h-4 w-4" />;
+  }
+};
+
+// Navigation Item Component
+interface NavItemProps {
+  node: ResolvedNavNode;
+  depth?: number;
+  collapsed?: boolean;
+  favorites: string[];
+  onToggleFavorite?: (moduleKey: string) => void;
+  onNavigate?: (moduleKey: string) => void;
+}
+
+const NavItemComponent: React.FC<NavItemProps> = ({
+  node,
+  depth = 0,
+  collapsed = false,
+  favorites,
+  onToggleFavorite,
+  onNavigate,
+}) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isExpanded, setIsExpanded] = useState(node.isExpanded ?? depth < 2);
+
+  const hasChildren = node.children && node.children.length > 0;
+  const isGroup = node.type === 'group' || node.type === 'smart_group';
+  const isSeparator = node.type === 'separator';
+  const isActive = node.route && location.pathname.startsWith(node.route);
+  const isFavorite = node.moduleKey ? favorites.includes(node.moduleKey) : false;
+
+  // Auto-expand if has active child
+  const hasActiveChild = node.children?.some(
+    (child) => child.route && location.pathname.startsWith(child.route)
+  );
+
+  React.useEffect(() => {
+    if (hasActiveChild && !isExpanded) {
+      setIsExpanded(true);
+    }
+  }, [hasActiveChild]);
+
+  const handleClick = () => {
+    if (hasChildren) {
+      setIsExpanded(!isExpanded);
+    } else if (node.route) {
+      navigate(node.route);
+      if (onNavigate && node.moduleKey) {
+        onNavigate(node.moduleKey);
+      }
+    }
+  };
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleFavorite && node.moduleKey) {
+      onToggleFavorite(node.moduleKey);
+    }
+  };
+
+  if (isSeparator) {
+    return (
+      <div
+        className="my-2 mx-4 border-t border-border"
+      />
+    );
+  }
+
+  // Group header
+  if (isGroup && depth === 0) {
+    return (
+      <div className="mt-6 first:mt-2">
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="sidebar-group-title w-full flex items-center gap-2"
+          >
+            {node.icon && (
+              <span className="text-muted-foreground">
+                <Icon name={node.icon} className="h-3.5 w-3.5" />
+              </span>
+            )}
+            <span className="flex-1 text-left">{node.label}</span>
+            <ChevronDown
+              className={cn(
+                'h-3 w-3 transition-transform duration-200',
+                !isExpanded && '-rotate-90'
+              )}
+            />
+          </button>
+        )}
+
+        {isExpanded && hasChildren && (
+          <div className="mt-1 space-y-0.5">
+            {node.children!.map((child) => (
+              <NavItemComponent
+                key={child.key}
+                node={child}
+                depth={depth + 1}
+                collapsed={collapsed}
+                favorites={favorites}
+                onToggleFavorite={onToggleFavorite}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Nested group (subgroup)
+  if (isGroup && depth > 0) {
+    return (
+      <div className="mt-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+          className={cn(
+            'w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-md mx-2 transition-colors',
+            'text-muted-foreground hover:bg-muted hover:text-foreground'
+          )}
+          style={{ paddingLeft: `${16 + depth * 12}px` }}
+        >
+          <ChevronRight
+            className={cn(
+              'h-3 w-3 transition-transform duration-200 text-muted-foreground',
+              isExpanded && 'rotate-90'
+            )}
+          />
+          <span className="flex-1 text-left">{node.label}</span>
+        </button>
+
+        {isExpanded && hasChildren && (
+          <div className="mt-0.5 space-y-0.5">
+            {node.children!.map((child) => (
+              <NavItemComponent
+                key={child.key}
+                node={child}
+                depth={depth + 1}
+                collapsed={collapsed}
+                favorites={favorites}
+                onToggleFavorite={onToggleFavorite}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Regular nav item (module/link)
+  const paddingLeft = collapsed ? 12 : 16 + depth * 12;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      title={collapsed ? node.label : undefined}
+      className={cn(
+        'group relative flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 border border-transparent',
+        collapsed && 'justify-center mx-1',
+        isActive
+          ? 'bg-primary/10 text-primary font-medium shadow-sm border-primary/20'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      )}
+      style={{ paddingLeft: collapsed ? undefined : paddingLeft }}
+    >
+      {/* Icon */}
+      {node.icon && (
+        <span
+          className={cn(
+            'flex-shrink-0',
+            isActive ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          <Icon name={node.icon} className="h-4 w-4" />
+        </span>
+      )}
+
+      {/* Label */}
+      {!collapsed && (
+        <>
+          <span className="flex-1 truncate">{node.label}</span>
+
+          {/* Favorite star - show on hover or when favorited */}
+          {onToggleFavorite && node.moduleKey && (
+            <button
+              type="button"
+              onClick={handleFavoriteClick}
+              className={cn(
+                'flex-shrink-0 p-0.5 rounded transition-all duration-150',
+                isFavorite
+                  ? 'text-warning-text opacity-100'
+                  : 'text-muted-foreground opacity-40 group-hover:opacity-100'
+              )}
+              title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star
+                className="h-3.5 w-3.5"
+                fill={isFavorite ? 'currentColor' : 'none'}
+              />
+            </button>
+          )}
+
+        </>
+      )}
+    </div>
+  );
+};
+
+// Smart Group Component
+interface SmartGroupProps {
+  title: string;
+  icon: React.ReactNode;
+  items: ResolvedNavNode[];
+  collapsed?: boolean;
+  defaultExpanded?: boolean;
+  favorites: string[];
+  onToggleFavorite?: (moduleKey: string) => void;
+  onNavigate?: (moduleKey: string) => void;
+  emptyMessage?: string;
+}
+
+const SmartGroup: React.FC<SmartGroupProps> = ({
+  title,
+  icon,
+  items,
+  collapsed = false,
+  defaultExpanded = true,
+  favorites,
+  onToggleFavorite,
+  onNavigate,
+  emptyMessage,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  if (collapsed) return null;
+
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsExpanded(!isExpanded);
+        }}
+        className="sidebar-group-title w-full flex items-center gap-2"
+      >
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="flex-1 text-left">{title}</span>
+        {items.length > 0 && (
+          <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-muted text-muted-foreground">
+            {items.length}
+          </span>
+        )}
+        <ChevronDown
+          className={cn(
+            'h-3 w-3 transition-transform duration-200',
+            !isExpanded && '-rotate-90'
+          )}
+        />
+      </button>
+
+      {isExpanded && (
+        <div className="mt-1 space-y-0.5">
+          {items.length > 0 ? (
+            items.map((item) => (
+              <NavItemComponent
+                key={item.key}
+                node={item}
+                depth={1}
+                collapsed={collapsed}
+                favorites={favorites}
+                onToggleFavorite={onToggleFavorite}
+                onNavigate={onNavigate}
+              />
+            ))
+          ) : (
+            <p className="px-4 py-2 text-xs italic text-muted-foreground">
+              {emptyMessage || 'No items'}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
+  collapsed = false,
+  onToggle,
+  // mobileOpen and onMobileClose are kept for API compatibility but handled by AppShell
+  mobileOpen: _mobileOpen = false,
+  onMobileClose: _onMobileClose,
+}) => {
+  void _mobileOpen;
+  void _onMobileClose;
+  const {
+    navigation,
+    loading,
+    error,
+    profiles,
+    activeProfile,
+    switchProfile,
+    toggleFavorite,
+    recordNavigation,
+    refresh,
+  } = useNavigation();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const favorites = navigation?.favorites || [];
+
+  // Get favorite items from navigation
+  const favoriteItems = useMemo(() => {
+    if (!navigation) return [];
+
+    const items: ResolvedNavNode[] = [];
+    const findModules = (nodes: ResolvedNavNode[]) => {
+      for (const node of nodes) {
+        if (node.moduleKey && favorites.includes(node.moduleKey)) {
+          items.push(node);
+        }
+        if (node.children) {
+          findModules(node.children);
+        }
+      }
+    };
+    findModules(navigation.nodes);
+    return items;
+  }, [navigation, favorites]);
+
+  // Get recent items
+  const recentItems = useMemo(() => {
+    if (!navigation?.recentModules) return [];
+    return navigation.recentModules.slice(0, 5).map((r) => ({
+      key: r.key,
+      label: r.label,
+      icon: r.icon,
+      type: 'module' as const,
+      route: r.route,
+      moduleKey: r.key,
+    }));
+  }, [navigation?.recentModules]);
+
+  // Filter navigation by search
+  const filteredNavigation = useMemo(() => {
+    if (!navigation || !searchQuery.trim()) return navigation;
+
+    const query = searchQuery.toLowerCase();
+    const filterNodes = (nodes: ResolvedNavNode[]): ResolvedNavNode[] => {
+      const result: ResolvedNavNode[] = [];
+
+      for (const node of nodes) {
+        const matchesLabel = node.label.toLowerCase().includes(query);
+        const filteredChildren = node.children ? filterNodes(node.children) : [];
+
+        if (matchesLabel || filteredChildren.length > 0) {
+          result.push({
+            ...node,
+            children: filteredChildren.length > 0 ? filteredChildren : node.children,
+            isExpanded: true,
+          });
+        }
+      }
+
+      return result;
+    };
+
+    return {
+      ...navigation,
+      nodes: filterNodes(navigation.nodes),
+    };
+  }, [navigation, searchQuery]);
+
+  const widthClass = collapsed ? 'w-16' : 'w-64';
+
+  const renderNav = () => (
+    <nav
+      className={cn(
+        'sidebar relative flex flex-col flex-shrink-0 h-full transition-all duration-300 ease-out glass-sidebar',
+        widthClass
+      )}
+      aria-label="Main navigation"
+    >
+      {/* Toggle Button (desktop) */}
+      <button
+        onClick={onToggle}
+        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full items-center justify-center transition-all duration-150 hidden md:flex bg-card border border-border text-muted-foreground shadow-sm hover:border-foreground/20 hover:text-muted-foreground"
+        aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+      >
+        {collapsed ? (
+          <ChevronRight className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronLeft className="h-3.5 w-3.5" />
+        )}
+      </button>
+
+      {/* Header with Profile/App Switcher */}
+      {!collapsed && (
+        <div className="px-3 py-3 border-b border-border">
+          {/* Profile Switcher */}
+          {profiles.length > 1 && (
+            <div className="relative mb-2">
+              <button
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-muted text-foreground"
+              >
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1 text-left truncate">
+                  {activeProfile?.name || 'Navigation'}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'h-4 w-4 transition-transform text-muted-foreground',
+                    showProfileMenu && 'rotate-180'
+                  )}
+                />
+              </button>
+
+              {showProfileMenu && (
+                <div
+                  className="dropdown absolute left-0 right-0 top-full mt-1 z-50 py-1"
+                >
+                  {profiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      onClick={() => {
+                        switchProfile(profile.id);
+                        setShowProfileMenu(false);
+                      }}
+                      className={cn(
+                        'dropdown-item w-full',
+                        profile.id === activeProfile?.id && 'active'
+                      )}
+                    >
+                      {profile.id === activeProfile?.id && (
+                        <span className="text-primary">✓</span>
+                      )}
+                      <span className={profile.id === activeProfile?.id ? '' : 'ml-5'}>
+                        {profile.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="input w-full pl-9 pr-8"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Content */}
+      <div className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+        {/* Error State */}
+        {error && !loading && (
+          <div className="px-4 py-6 text-center">
+            <p className="text-sm mb-3 text-destructive">
+              {error}
+            </p>
+            <button onClick={refresh} className="btn-primary btn-sm">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && !navigation && (
+          <div className="px-4 py-4">
+            <div className="animate-pulse space-y-4">
+              <div className="h-8 rounded-lg bg-muted" />
+              <div className="h-8 rounded-lg bg-muted" />
+              <div className="h-8 rounded-lg bg-muted" />
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        {filteredNavigation && !collapsed && (
+          <>
+            {/* Smart Groups */}
+            {!searchQuery && (
+              <>
+                <SmartGroup
+                  title="Favorites"
+                  icon={<Star className="h-3.5 w-3.5" />}
+                  items={favoriteItems}
+                  collapsed={collapsed}
+                  defaultExpanded={true}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                  onNavigate={recordNavigation}
+                  emptyMessage="Click ★ on any item to add favorites"
+                />
+
+                {recentItems.length > 0 && (
+                  <SmartGroup
+                    title="Recent"
+                    icon={<Clock className="h-3.5 w-3.5" />}
+                    items={recentItems}
+                    collapsed={collapsed}
+                    defaultExpanded={false}
+                    favorites={favorites}
+                    onToggleFavorite={toggleFavorite}
+                    onNavigate={recordNavigation}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Main Navigation Tree */}
+            <div>
+              {filteredNavigation.nodes
+                .filter((node) => {
+                  // Filter out smart_group nodes (they're rendered separately above)
+                  if (!searchQuery && node.type === 'smart_group') {
+                    return false;
+                  }
+                  return true;
+                })
+                .map((node) => (
+                  <NavItemComponent
+                    key={node.key}
+                    node={node}
+                    depth={0}
+                    collapsed={collapsed}
+                    favorites={favorites}
+                    onToggleFavorite={toggleFavorite}
+                    onNavigate={recordNavigation}
+                  />
+                ))}
+            </div>
+          </>
+        )}
+
+        {/* Collapsed state - just icons */}
+        {collapsed && filteredNavigation && (
+          <div className="space-y-1 px-1">
+            {filteredNavigation.nodes
+              .filter((node) => node.type === 'group')
+              .map((node) => (
+                <button
+                  key={node.key}
+                  title={node.label}
+                  className="w-full p-3 rounded-lg transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  {node.icon ? (
+                    <Icon name={node.icon} className="h-5 w-5 mx-auto" />
+                  ) : (
+                    getAppIcon(node.key)
+                  )}
+                </button>
+              ))}
+          </div>
+        )}
+      </div>
+
+    </nav>
+  );
+
+  // Mobile backdrop is handled by AppShell
+  return renderNav();
+};
+
+export default SidebarFlyout;

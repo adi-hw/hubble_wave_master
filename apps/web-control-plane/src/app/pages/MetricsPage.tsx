@@ -1,19 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Grid,
-  CircularProgress,
-  Alert,
-  IconButton,
-  Button,
-  LinearProgress,
-  Container
-} from '@mui/material';
-import {
-  BarChart3,
   RefreshCw,
   Users,
   Server,
@@ -23,9 +9,43 @@ import {
   Cpu,
   Zap,
   Globe,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, PlatformMetrics } from '../services/api';
+
+interface ResourceBarProps {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  color: string;
+}
+
+function ResourceBar({ label, value, icon, color }: ResourceBarProps) {
+  return (
+    <div className="text-center">
+      <div className="mb-3" style={{ color: colors.text.secondary }}>
+        {icon}
+      </div>
+      <div className="text-2xl font-bold mb-2" style={{ color: colors.text.primary }}>
+        {value}%
+      </div>
+      <div className="text-sm mb-3" style={{ color: colors.text.tertiary }}>
+        {label}
+      </div>
+      <div
+        className="h-1.5 rounded-full overflow-hidden"
+        style={{ backgroundColor: colors.glass.medium }}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${value}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function MetricsPage() {
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null);
@@ -65,223 +85,220 @@ export function MetricsPage() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 8 }}>
-        <CircularProgress />
-      </Box>
+      <div className="flex justify-center p-8">
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.brand.primary }} />
+      </div>
     );
   }
 
   if (error || !metrics) {
     return (
-      <Box>
-        <Alert severity="error" action={
-          <Button color="inherit" size="small" onClick={fetchMetrics}>
-            Retry
-          </Button>
-        }>
-          {error || 'No metrics data available'}
-        </Alert>
-      </Box>
+      <div
+        className="flex items-center gap-3 p-4 rounded-2xl border"
+        style={{
+          backgroundColor: colors.danger.glow,
+          borderColor: colors.danger.base,
+          color: colors.danger.base,
+        }}
+      >
+        <AlertCircle size={18} />
+        <span>{error || 'No metrics data available'}</span>
+        <button
+          type="button"
+          onClick={fetchMetrics}
+          className="ml-auto px-3 py-1.5 rounded text-sm font-medium"
+          style={{ color: colors.danger.base }}
+        >
+          Retry
+        </button>
+      </div>
     );
   }
 
   const healthScore = calculateHealth(metrics);
+  const customerTotal = metrics.customers.total;
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold" style={{ color: colors.text.primary }}>
           Platform Metrics
-        </Typography>
-        <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={fetchMetrics}>
+        </h1>
+        <button
+          type="button"
+          onClick={fetchMetrics}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors"
+          style={{ borderColor: colors.glass.border, color: colors.text.secondary }}
+        >
+          <RefreshCw size={16} />
           Refresh
-        </Button>
-      </Box>
+        </button>
+      </div>
 
       {/* Top KPIs */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: colors.success.glow }}>
-                  <DollarSign size={20} color={colors.success.base} />
-                </Box>
-                <Typography variant="subtitle2" sx={{ color: colors.text.tertiary }}>
-                  Total MRR
-                </Typography>
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                {formatCurrency(metrics.revenue.totalMrr)}
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.secondary }}>
-                Avg {formatCurrency(metrics.revenue.avgMrr)} / customer
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          {
+            icon: <DollarSign size={20} />,
+            label: 'Total MRR',
+            value: formatCurrency(metrics.revenue.totalMrr),
+            sub: `Avg ${formatCurrency(metrics.revenue.avgMrr)} / customer`,
+            color: colors.success.base,
+          },
+          {
+            icon: <Users size={20} />,
+            label: 'Active Customers',
+            value: metrics.customers.active,
+            sub: `${metrics.customers.total} Total (${metrics.customers.trial} in Trial)`,
+            color: colors.brand.primary,
+          },
+          {
+            icon: <Server size={20} />,
+            label: 'Total Instances',
+            value: metrics.instances.total,
+            sub: `${metrics.instances.provisioning} Provisioning`,
+            color: colors.info.base,
+          },
+          {
+            icon: <Activity size={20} />,
+            label: 'System Health',
+            value: `${healthScore}%`,
+            sub: `${metrics.instances.degraded} Degraded Instances`,
+            color: healthScore > 90 ? colors.success.base : colors.warning.base,
+          },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="p-5 rounded-2xl border"
+            style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: `${stat.color}20`, color: stat.color }}
+              >
+                {stat.icon}
+              </div>
+              <span className="text-sm" style={{ color: colors.text.tertiary }}>
+                {stat.label}
+              </span>
+            </div>
+            <div className="text-2xl font-bold" style={{ color: colors.text.primary }}>
+              {stat.value}
+            </div>
+            <div className="text-xs mt-1" style={{ color: colors.text.secondary }}>
+              {stat.sub}
+            </div>
+          </div>
+        ))}
+      </div>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: colors.brand.glow }}>
-                  <Users size={20} color={colors.brand.primary} />
-                </Box>
-                <Typography variant="subtitle2" sx={{ color: colors.text.tertiary }}>
-                  Active Customers
-                </Typography>
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                {metrics.customers.active}
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.secondary }}>
-                {metrics.customers.total} Total ({metrics.customers.trial} in Trial)
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        {/* Customer Tiers */}
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <h3 className="text-base font-semibold mb-4" style={{ color: colors.text.primary }}>
+            Customer Tiers
+          </h3>
+          {Object.entries(metrics.customers.byTier).map(([tier, count]) => (
+            <div key={tier} className="mb-4">
+              <div className="flex justify-between mb-2">
+                <span className="text-sm capitalize" style={{ color: colors.text.secondary }}>
+                  {tier}
+                </span>
+                <span className="text-sm font-bold" style={{ color: colors.text.primary }}>
+                  {count}
+                </span>
+              </div>
+              <div
+                className="h-2 rounded-full overflow-hidden"
+                style={{ backgroundColor: colors.glass.medium }}
+              >
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${customerTotal > 0 ? (count / customerTotal) * 100 : 0}%`,
+                    backgroundColor:
+                      tier === 'enterprise'
+                        ? colors.brand.primary
+                        : tier === 'professional'
+                        ? colors.info.base
+                        : colors.text.tertiary,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: colors.info.glow }}>
-                  <Server size={20} color={colors.info.base} />
-                </Box>
-                <Typography variant="subtitle2" sx={{ color: colors.text.tertiary }}>
-                  Total Instances
-                </Typography>
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                {metrics.instances.total}
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.secondary }}>
-                {metrics.instances.provisioning} Provisioning
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Region Distribution */}
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <Globe size={20} style={{ color: colors.text.secondary }} />
+            <h3 className="text-base font-semibold" style={{ color: colors.text.primary }}>
+              Region Distribution
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.entries(metrics.instances.byRegion).map(([region, count]) => (
+              <div
+                key={region}
+                className="p-4 rounded-xl"
+                style={{ backgroundColor: colors.glass.subtle }}
+              >
+                <div className="text-xs mb-1" style={{ color: colors.text.tertiary }}>
+                  {region}
+                </div>
+                <div className="text-xl font-bold" style={{ color: colors.text.primary }}>
+                  {count}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: healthScore > 90 ? colors.success.glow : colors.warning.glow }}>
-                  <Activity size={20} color={healthScore > 90 ? colors.success.base : colors.warning.base} />
-                </Box>
-                <Typography variant="subtitle2" sx={{ color: colors.text.tertiary }}>
-                  System Health
-                </Typography>
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                {healthScore}%
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.secondary }}>
-                {metrics.instances.degraded} Degraded Instances
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3}>
-        {/* Customer Breakdown */}
-        <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-                <CardContent>
-                    <Typography variant="h6" sx={{ mb: 3 }}>Customer Tiers</Typography>
-                    {Object.entries(metrics.customers.byTier).map(([tier, count]) => (
-                         <Box key={tier} sx={{ mb: 2 }}>
-                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                 <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{tier}</Typography>
-                                 <Typography variant="body2" fontWeight="bold">{count}</Typography>
-                             </Box>
-                             <LinearProgress 
-                                variant="determinate" 
-                                value={(count / metrics.customers.total) * 100} 
-                                sx={{ 
-                                    height: 8, 
-                                    borderRadius: 4,
-                                    bgcolor: colors.glass.medium,
-                                    '& .MuiLinearProgress-bar': {
-                                        bgcolor: tier === 'enterprise' ? colors.brand.primary : 
-                                                 tier === 'professional' ? colors.info.base : colors.text.tertiary
-                                    }
-                                }}
-                             />
-                         </Box>
-                    ))}
-                </CardContent>
-            </Card>
-        </Grid>
-
-        {/* Global Distribution */}
-        <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-                <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                        <Globe size={20} color={colors.text.secondary} />
-                        <Typography variant="h6">Region Distribution</Typography>
-                    </Box>
-                    <Grid container spacing={2}>
-                        {Object.entries(metrics.instances.byRegion).map(([region, count]) => (
-                            <Grid item xs={6} key={region}>
-                                <Box sx={{ p: 2, borderRadius: 2, bgcolor: colors.glass.subtle }}>
-                                    <Typography variant="caption" color="text.tertiary" display="block">{region}</Typography>
-                                    <Typography variant="h5" fontWeight="bold">{count}</Typography>
-                                </Box>
-                            </Grid>
-                        ))}
-                    </Grid>
-                </CardContent>
-            </Card>
-        </Grid>
-
-        {/* Resource Usage */}
-        <Grid item xs={12}>
-            <Card>
-                <CardContent>
-                    <Typography variant="h6" sx={{ mb: 3 }}>Resource Utilization (Avg)</Typography>
-                    <Grid container spacing={4}>
-                         <Grid item xs={12} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Cpu size={32} color={colors.text.secondary} style={{ marginBottom: 12 }} />
-                                <Typography variant="h4" sx={{ mb: 1 }}>{metrics.resources.avgCpu}%</Typography>
-                                <Typography variant="body2" color="text.tertiary">vCPU Usage</Typography>
-                                <LinearProgress variant="determinate" value={metrics.resources.avgCpu} sx={{ mt: 2 }} />
-                            </Box>
-                         </Grid>
-                         <Grid item xs={12} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Zap size={32} color={colors.text.secondary} style={{ marginBottom: 12 }} />
-                                <Typography variant="h4" sx={{ mb: 1 }}>{metrics.resources.avgMemory}%</Typography>
-                                <Typography variant="body2" color="text.tertiary">Memory Usage</Typography>
-                                <LinearProgress variant="determinate" value={metrics.resources.avgMemory} color="warning" sx={{ mt: 2 }} />
-                            </Box>
-                         </Grid>
-                         <Grid item xs={12} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                <HardDrive size={32} color={colors.text.secondary} style={{ marginBottom: 12 }} />
-                                <Typography variant="h4" sx={{ mb: 1 }}>{metrics.resources.avgDisk}%</Typography>
-                                <Typography variant="body2" color="text.tertiary">Disk Usage</Typography>
-                                <LinearProgress variant="determinate" value={metrics.resources.avgDisk} sx={{ mt: 2 }} />
-                            </Box>
-                         </Grid>
-                         <Grid item xs={12} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Activity size={32} color={colors.text.secondary} style={{ marginBottom: 12 }} />
-                                <Typography variant="h4" sx={{ mb: 1 }}>{metrics.resources.avgNetwork}%</Typography>
-                                <Typography variant="body2" color="text.tertiary">Network Load</Typography>
-                                <LinearProgress variant="determinate" value={metrics.resources.avgNetwork} color="success" sx={{ mt: 2 }} />
-                            </Box>
-                         </Grid>
-                    </Grid>
-                </CardContent>
-            </Card>
-        </Grid>
-      </Grid>
-    </Container>
+      {/* Resource Utilization */}
+      <div
+        className="p-5 rounded-2xl border"
+        style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+      >
+        <h3 className="text-base font-semibold mb-6" style={{ color: colors.text.primary }}>
+          Resource Utilization (Avg)
+        </h3>
+        <div className="grid grid-cols-4 gap-8">
+          <ResourceBar
+            label="vCPU Usage"
+            value={metrics.resources.avgCpu}
+            icon={<Cpu size={32} />}
+            color={colors.brand.primary}
+          />
+          <ResourceBar
+            label="Memory Usage"
+            value={metrics.resources.avgMemory}
+            icon={<Zap size={32} />}
+            color={colors.warning.base}
+          />
+          <ResourceBar
+            label="Disk Usage"
+            value={metrics.resources.avgDisk}
+            icon={<HardDrive size={32} />}
+            color={colors.info.base}
+          />
+          <ResourceBar
+            label="Network Load"
+            value={metrics.resources.avgNetwork}
+            icon={<Activity size={32} />}
+            color={colors.success.base}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -15,8 +15,8 @@ import { useTableExport, ExportFormat } from './useTableExport';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface DynamicTableProps {
-  tableCode: string;
-  tableLabel?: string;
+  collectionCode: string;
+  collectionLabel?: string;
   data: any[];
   onRowClick?: (row: any) => void;
   onRefresh?: () => void;
@@ -34,8 +34,8 @@ interface DynamicTableProps {
 }
 
 export const DynamicTable: React.FC<DynamicTableProps> = ({
-  tableCode,
-  tableLabel,
+  collectionCode,
+  collectionLabel,
   data,
   onRowClick,
   onRefresh,
@@ -46,7 +46,7 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
   onBulkUpdate,
   onBulkDelete,
 }) => {
-  const { fields, loading, error } = useModel(tableCode);
+  const { properties: fields, loading, error } = useModel(collectionCode);
   const initialColumns: TableColumn[] = useMemo(
     () => fields.map((f) => ({ code: f.code, label: f.label, type: f.type, sortable: true })),
     [fields]
@@ -139,8 +139,8 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
   // Export hook - exports the filtered rows (not just current page)
   const { exportAs } = useTableExport({
     columns: visibleColumns,
-    filename: tableLabel || tableCode,
-    title: tableLabel,
+    filename: collectionLabel || collectionCode,
+    title: collectionLabel,
   });
 
   // Handler for export - exports all filtered rows
@@ -221,18 +221,9 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
 
   if (loading) {
     return (
-      <div
-        className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-        }}
-      >
-        <Loader2
-          className="h-10 w-10 animate-spin mb-4"
-          style={{ color: 'var(--text-brand)' }}
-        />
-        <p className="text-base" style={{ color: 'var(--text-muted)' }}>
+      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl bg-card border border-border">
+        <Loader2 className="h-10 w-10 animate-spin mb-4 text-primary" />
+        <p className="text-base text-muted-foreground">
           Loading table data...
         </p>
       </div>
@@ -241,23 +232,14 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
 
   if (error) {
     return (
-      <div
-        className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-danger)',
-        }}
-      >
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)' }}
-        >
-          <AlertCircle className="h-8 w-8" style={{ color: 'var(--text-danger)' }} />
+      <div className="h-[calc(100vh-8rem)] min-h-[500px] flex flex-col items-center justify-center rounded-xl bg-card border border-destructive">
+        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-destructive/10">
+          <AlertCircle className="h-8 w-8 text-destructive" />
         </div>
-        <p className="text-base font-medium" style={{ color: 'var(--text-danger)' }}>
+        <p className="text-base font-medium text-destructive">
           Failed to load table
         </p>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-danger)' }}>
+        <p className="text-sm mt-1 text-destructive">
           {error}
         </p>
         {onRefresh && (
@@ -270,14 +252,7 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
   }
 
   return (
-    <div
-      className="h-[calc(100vh-8rem)] min-h-[500px] w-full flex rounded-xl overflow-hidden"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        boxShadow: 'var(--shadow-sm)',
-      }}
-    >
+    <div className="h-[calc(100vh-8rem)] min-h-[500px] w-full flex rounded-xl overflow-hidden bg-card border border-border shadow-sm">
       {/* Main Table Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Bulk Action Bar - Shows when rows are selected */}
@@ -295,7 +270,7 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
         {/* Fixed Header - Hidden when bulk action bar is visible */}
         {(!selectable || selectedRowIds.size === 0) && (
           <TableHeader
-            title={tableLabel}
+            title={collectionLabel}
             columns={columns}
             onColumnsChange={setColumns}
             search={search}
@@ -357,10 +332,7 @@ export const DynamicTable: React.FC<DynamicTableProps> = ({
 
       {/* Side Panel - Columns only */}
       {showColumnPanel && (
-        <div
-          className="w-80 flex-shrink-0 animate-slide-in-right"
-          style={{ borderLeft: '1px solid var(--border-default)' }}
-        >
+        <div className="w-80 flex-shrink-0 animate-slide-in-right border-l border-border">
           <ColumnPanel
             columns={columns}
             onChange={setColumns}

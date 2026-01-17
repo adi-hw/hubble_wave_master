@@ -75,7 +75,6 @@ export const UserInvitePage: React.FC = () => {
     personalMessage: '',
   });
 
-  // Fetch available roles and groups
   useEffect(() => {
     const fetchRolesAndGroups = async () => {
       try {
@@ -141,20 +140,14 @@ export const UserInvitePage: React.FC = () => {
   if (success) {
     return (
       <div className="p-6 max-w-2xl mx-auto">
-        <div
-          className="rounded-xl border p-8 text-center"
-          style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-        >
-          <div
-            className="h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4"
-            style={{ backgroundColor: 'var(--bg-success-subtle)' }}
-          >
-            <CheckCircle className="h-8 w-8" style={{ color: 'var(--text-success)' }} />
+        <div className="rounded-xl border border-border bg-card p-8 text-center">
+          <div className="h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-success-subtle">
+            <CheckCircle className="h-8 w-8 text-success-text" />
           </div>
-          <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-xl font-semibold mb-2 text-foreground">
             Invitation Sent!
           </h2>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm text-muted-foreground">
             {formData.sendInvitation
               ? `An invitation email has been sent to ${formData.email}`
               : `User has been created. They can be invited later.`}
@@ -166,54 +159,43 @@ export const UserInvitePage: React.FC = () => {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate('/studio/users')}
-          className="p-2 rounded-lg transition-colors"
-          style={{ backgroundColor: 'transparent' }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          className="p-2 rounded-lg transition-colors hover:bg-muted"
         >
-          <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+          <ArrowLeft className="h-5 w-5 text-muted-foreground" />
         </button>
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-2xl font-semibold text-foreground">
             Invite New User
           </h1>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm text-muted-foreground">
             Add a new user to your organization
           </p>
         </div>
       </div>
 
       {error && (
-        <div
-          className="mb-6 p-4 rounded-lg border flex items-start gap-3"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)', borderColor: 'var(--border-danger)' }}
-        >
-          <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>{error}</p>
+        <div className="mb-6 p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-destructive" />
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
-          {/* Basic Info */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Basic Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
-                  Email Address <span style={{ color: 'var(--text-danger)' }}>*</span>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
+                  Email Address <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="email"
                     name="email"
@@ -221,18 +203,17 @@ export const UserInvitePage: React.FC = () => {
                     onChange={handleChange}
                     required
                     placeholder="john.doe@example.com"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
-                  Display Name <span style={{ color: 'var(--text-danger)' }}>*</span>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
+                  Display Name <span className="text-destructive">*</span>
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     name="displayName"
@@ -240,14 +221,13 @@ export const UserInvitePage: React.FC = () => {
                     onChange={handleChange}
                     required
                     placeholder="John Doe"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Employee ID
                 </label>
                 <input
@@ -256,124 +236,113 @@ export const UserInvitePage: React.FC = () => {
                   value={formData.employeeId}
                   onChange={handleChange}
                   placeholder="EMP-12345"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Job Title
                 </label>
                 <div className="relative">
-                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
                     placeholder="Software Engineer"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Department
                 </label>
                 <div className="relative">
-                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     name="department"
                     value={formData.department}
                     onChange={handleChange}
                     placeholder="Engineering"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Location
                 </label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
                     placeholder="San Francisco, CA"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Contact Info */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Contact Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Work Phone
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="tel"
                     name="workPhone"
                     value={formData.workPhone}
                     onChange={handleChange}
                     placeholder="+1 (555) 123-4567"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Mobile Phone
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="tel"
                     name="mobilePhone"
                     value={formData.mobilePhone}
                     onChange={handleChange}
                     placeholder="+1 (555) 987-6543"
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Locale
                 </label>
                 <div className="relative">
-                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <select
                     name="locale"
                     value={formData.locale}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="en">English</option>
                     <option value="es">Spanish</option>
@@ -386,15 +355,14 @@ export const UserInvitePage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Time Zone
                 </label>
                 <select
                   name="timeZone"
                   value={formData.timeZone}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="UTC">UTC</option>
                   <option value="America/New_York">Eastern Time (ET)</option>
@@ -409,24 +377,16 @@ export const UserInvitePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Roles & Groups */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Roles & Groups
             </h3>
 
-            {/* Administrator Toggle */}
-            <div
-              className="flex items-center gap-3 p-4 rounded-lg border mb-4"
-              style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface-secondary)' }}
-            >
-              <Shield className="h-5 w-5" style={{ color: 'var(--text-warning)' }} />
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-muted mb-4">
+              <Shield className="h-5 w-5 text-warning-text" />
               <div className="flex-1">
-                <div className="font-medium" style={{ color: 'var(--text-primary)' }}>Administrator</div>
-                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <div className="font-medium text-foreground">Administrator</div>
+                <div className="text-sm text-muted-foreground">
                   Grant full administrative access to this organization
                 </div>
               </div>
@@ -439,54 +399,46 @@ export const UserInvitePage: React.FC = () => {
                   className="sr-only peer"
                 />
                 <div
-                  className="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-5 after:w-5 after:transition-all"
-                  style={{
-                    backgroundColor: formData.isAdmin ? 'var(--bg-brand)' : 'var(--bg-surface-tertiary)',
-                  }}
+                  className={`toggle-track w-11 h-6 peer-focus-visible:ring-4 peer-focus-visible:ring-primary/30 ${
+                    formData.isAdmin ? 'toggle-track-on' : ''
+                  }`}
                 >
                   <span
-                    className="absolute top-[2px] left-[2px] h-5 w-5 rounded-full transition-transform"
-                    style={{
-                      backgroundColor: 'white',
-                      transform: formData.isAdmin ? 'translateX(20px)' : 'translateX(0)',
-                    }}
+                    className={`toggle-thumb absolute top-[2px] left-[2px] h-5 w-5 transition-transform ${
+                      formData.isAdmin ? 'translate-x-5' : 'translate-x-0'
+                    }`}
                   />
                 </div>
               </label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Roles */}
               <div>
-                <h4 className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-foreground">
                   <Shield className="h-4 w-4" />
                   Roles
                 </h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {roles.length === 0 ? (
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No roles available</p>
+                    <p className="text-sm text-muted-foreground">No roles available</p>
                   ) : (
                     roles.map((role) => (
                       <label
                         key={role.id}
-                        className="flex items-center gap-3 p-2 rounded cursor-pointer transition-colors"
-                        style={{ backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="flex items-center gap-3 p-2 rounded cursor-pointer transition-colors hover:bg-muted"
                       >
                         <input
                           type="checkbox"
                           checked={formData.roleIds.includes(role.id)}
                           onChange={() => handleRoleToggle(role.id)}
-                          className="rounded"
-                          style={{ borderColor: 'var(--border-default)' }}
+                          className="rounded border-border"
                         />
                         <div>
-                          <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          <div className="text-sm font-medium text-foreground">
                             {role.name}
                           </div>
                           {role.description && (
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            <div className="text-xs text-muted-foreground">
                               {role.description}
                             </div>
                           )}
@@ -497,37 +449,32 @@ export const UserInvitePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Groups */}
               <div>
-                <h4 className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-foreground">
                   <Users className="h-4 w-4" />
                   Groups
                 </h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {groups.length === 0 ? (
-                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No groups available</p>
+                    <p className="text-sm text-muted-foreground">No groups available</p>
                   ) : (
                     groups.map((group) => (
                       <label
                         key={group.id}
-                        className="flex items-center gap-3 p-2 rounded cursor-pointer transition-colors"
-                        style={{ backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="flex items-center gap-3 p-2 rounded cursor-pointer transition-colors hover:bg-muted"
                       >
                         <input
                           type="checkbox"
                           checked={formData.groupIds.includes(group.id)}
                           onChange={() => handleGroupToggle(group.id)}
-                          className="rounded"
-                          style={{ borderColor: 'var(--border-default)' }}
+                          className="rounded border-border"
                         />
                         <div>
-                          <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          <div className="text-sm font-medium text-foreground">
                             {group.name}
                           </div>
                           {group.description && (
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            <div className="text-xs text-muted-foreground">
                               {group.description}
                             </div>
                           )}
@@ -540,12 +487,8 @@ export const UserInvitePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Invitation Options */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Invitation
             </h3>
 
@@ -556,17 +499,16 @@ export const UserInvitePage: React.FC = () => {
                 name="sendInvitation"
                 checked={formData.sendInvitation}
                 onChange={handleChange}
-                className="rounded"
-                style={{ borderColor: 'var(--border-default)' }}
+                className="rounded border-border"
               />
-              <label htmlFor="sendInvitation" className="text-sm" style={{ color: 'var(--text-primary)' }}>
+              <label htmlFor="sendInvitation" className="text-sm text-foreground">
                 Send invitation email immediately
               </label>
             </div>
 
             {formData.sendInvitation && (
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                <label className="block text-sm font-medium mb-1.5 text-foreground">
                   Personal Message (optional)
                 </label>
                 <textarea
@@ -575,14 +517,12 @@ export const UserInvitePage: React.FC = () => {
                   onChange={handleChange}
                   rows={3}
                   placeholder="Add a personal message to include in the invitation email..."
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             )}
           </div>
 
-          {/* Actions */}
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"

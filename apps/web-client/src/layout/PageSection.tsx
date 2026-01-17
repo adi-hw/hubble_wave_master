@@ -20,10 +20,10 @@ export const PageSection: React.FC<PageSectionProps> = ({
       <header className="flex items-start justify-between gap-4 mb-4">
         <div>
           {title && (
-            <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
           )}
           {description && (
-            <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>{description}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           )}
         </div>
         {actions && <div className="flex-shrink-0">{actions}</div>}

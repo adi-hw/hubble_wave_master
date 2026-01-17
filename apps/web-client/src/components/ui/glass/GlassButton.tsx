@@ -71,18 +71,15 @@ export const GlassButton = React.forwardRef<HTMLButtonElement, GlassButtonProps>
 
     const variantClasses = {
       solid: cn(
-        'text-white shadow-sm',
-        'bg-gradient-to-r from-[var(--color-primary-500)] to-[var(--color-accent-500)]',
-        'hover:from-[var(--color-primary-600)] hover:to-[var(--color-accent-600)]',
-        'hover:shadow-[var(--shadow-primary)]',
+        'btn-primary',
         'focus-visible:ring-[var(--color-primary-500)]'
       ),
       glass: cn(
         'glass-surface',
-        'border border-white/20 dark:border-white/10',
+        'border border-border/40',
         'text-[var(--text-primary)]',
-        'hover:bg-white/20 dark:hover:bg-white/10',
-        'hover:border-white/30 dark:hover:border-white/15',
+        'hover:bg-hover/60',
+        'hover:border-border/60',
         'focus-visible:ring-[var(--color-primary-500)]'
       ),
       ghost: cn(
@@ -100,20 +97,20 @@ export const GlassButton = React.forwardRef<HTMLButtonElement, GlassButtonProps>
         'focus-visible:ring-[var(--color-primary-500)]'
       ),
       danger: cn(
-        'text-white shadow-sm',
+        'text-[var(--text-on-danger)] shadow-sm',
         'bg-[var(--bg-danger)]',
         'hover:bg-[var(--color-danger-600)]',
         'hover:shadow-[0_4px_14px_-3px_rgba(239,68,68,0.35)]',
         'focus-visible:ring-[var(--color-danger-500)]'
       ),
       success: cn(
-        'text-white shadow-sm',
+        'text-[var(--text-on-success)] shadow-sm',
         'bg-[var(--bg-success)]',
         'hover:bg-[var(--color-success-600)]',
         'focus-visible:ring-[var(--color-success-500)]'
       ),
       accent: cn(
-        'text-white shadow-sm',
+        'text-[var(--text-on-accent)] shadow-sm',
         'bg-[var(--bg-accent)]',
         'hover:bg-[var(--bg-accent-hover)]',
         'hover:shadow-[var(--shadow-accent)]',

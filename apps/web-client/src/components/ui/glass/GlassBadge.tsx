@@ -31,45 +31,45 @@ const sizeClasses = {
 const variantStyles = {
   primary: {
     subtle: 'bg-[var(--bg-primary-subtle)] text-[var(--text-brand)]',
-    solid: 'bg-[var(--bg-primary)] text-white',
+    solid: 'bg-[var(--bg-primary)] text-[var(--text-on-primary)]',
     outline: 'border border-[var(--border-primary)] text-[var(--text-brand)]',
     dot: 'bg-[var(--bg-primary)]',
   },
   accent: {
     subtle: 'bg-[var(--bg-accent-subtle)] text-[var(--text-accent)]',
-    solid: 'bg-[var(--bg-accent)] text-white',
+    solid: 'bg-[var(--bg-accent)] text-[var(--text-on-accent)]',
     outline: 'border border-[var(--border-accent)] text-[var(--text-accent)]',
     dot: 'bg-[var(--bg-accent)]',
   },
   success: {
     subtle: 'bg-[var(--bg-success-subtle)] text-[var(--text-success)]',
-    solid: 'bg-[var(--bg-success)] text-white',
+    solid: 'bg-[var(--bg-success)] text-[var(--text-on-success)]',
     outline: 'border border-[var(--border-success)] text-[var(--text-success)]',
     dot: 'bg-[var(--bg-success)]',
   },
   warning: {
     subtle: 'bg-[var(--bg-warning-subtle)] text-[var(--text-warning)]',
-    solid: 'bg-[var(--bg-warning)] text-white',
+    solid: 'bg-[var(--bg-warning)] text-[var(--text-on-warning)]',
     outline: 'border border-[var(--border-warning)] text-[var(--text-warning)]',
     dot: 'bg-[var(--bg-warning)]',
   },
   danger: {
     subtle: 'bg-[var(--bg-danger-subtle)] text-[var(--text-danger)]',
-    solid: 'bg-[var(--bg-danger)] text-white',
+    solid: 'bg-[var(--bg-danger)] text-[var(--text-on-danger)]',
     outline: 'border border-[var(--border-danger)] text-[var(--text-danger)]',
     dot: 'bg-[var(--bg-danger)]',
   },
   info: {
     subtle: 'bg-[var(--bg-info-subtle)] text-[var(--text-info)]',
-    solid: 'bg-[var(--bg-info)] text-white',
+    solid: 'bg-[var(--bg-info)] text-[var(--text-on-info)]',
     outline: 'border border-[var(--border-info)] text-[var(--text-info)]',
     dot: 'bg-[var(--bg-info)]',
   },
   neutral: {
     subtle: 'bg-[var(--bg-surface-secondary)] text-[var(--text-tertiary)]',
-    solid: 'bg-[var(--color-neutral-500)] text-white',
+    solid: 'bg-[var(--bg-surface-tertiary)] text-[var(--text-primary)]',
     outline: 'border border-[var(--border-default)] text-[var(--text-tertiary)]',
-    dot: 'bg-[var(--color-neutral-400)]',
+    dot: 'bg-[var(--text-muted)]',
   },
 };
 
@@ -96,7 +96,7 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
             variantStyles[variant].dot
           )}
         />
-        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        <span className="text-sm text-muted-foreground">
           {children}
         </span>
       </span>
@@ -121,7 +121,7 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
             e.stopPropagation();
             onRemove?.();
           }}
-          className="flex-shrink-0 -mr-0.5 ml-0.5 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="flex-shrink-0 -mr-0.5 ml-0.5 p-0.5 rounded-full hover:bg-hover transition-colors"
           aria-label="Remove"
         >
           <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
@@ -163,7 +163,7 @@ export const NotificationBadge: React.FC<NotificationBadgeProps> = ({
       className={cn(
         'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5',
         'text-[10px] font-bold rounded-full',
-        'bg-[var(--bg-danger)] text-white',
+        'bg-[var(--bg-danger)] text-[var(--text-on-danger)]',
         className
       )}
     >
@@ -183,10 +183,10 @@ export interface StatusBadgeProps {
 
 const statusConfig = {
   online: { color: 'bg-[var(--bg-success)]', label: 'Online' },
-  offline: { color: 'bg-[var(--color-neutral-400)]', label: 'Offline' },
+  offline: { color: 'bg-[var(--text-muted)]', label: 'Offline' },
   busy: { color: 'bg-[var(--bg-danger)]', label: 'Busy' },
   away: { color: 'bg-[var(--bg-warning)]', label: 'Away' },
-  idle: { color: 'bg-[var(--color-neutral-400)]', label: 'Idle' },
+  idle: { color: 'bg-[var(--text-muted)]', label: 'Idle' },
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
@@ -200,7 +200,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
     <span className="inline-flex items-center gap-1.5">
       <span className={cn('w-2 h-2 rounded-full', config.color)} />
       {showLabel && (
-        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        <span className="text-sm text-muted-foreground">
           {label || config.label}
         </span>
       )}

@@ -80,7 +80,7 @@ export function AISuggestions({
         <button
           onClick={fetchSuggestions}
           disabled={isLoading}
-          className="p-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-800/50 text-indigo-600 dark:text-indigo-400 disabled:opacity-50"
+          className="p-1.5 rounded-lg hover:bg-primary/10 text-primary disabled:opacity-50"
           title="Refresh suggestions"
         >
           <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
@@ -89,10 +89,10 @@ export function AISuggestions({
 
       {isLoading && suggestions.length === 0 ? (
         <div className="flex items-center justify-center py-4">
-          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : error ? (
-        <p className="text-sm text-indigo-600/70 dark:text-indigo-300/70 py-2">
+        <p className="text-sm text-primary/70 py-2">
           {error}
         </p>
       ) : suggestions.length > 0 ? (
@@ -103,20 +103,20 @@ export function AISuggestions({
               onClick={() => onSuggestionClick?.(suggestion)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left',
-                'bg-white dark:bg-slate-800',
-                'border border-indigo-200 dark:border-indigo-700/50',
-                'hover:border-indigo-300 dark:hover:border-indigo-600',
-                'text-sm text-slate-700 dark:text-slate-300',
+                'bg-card',
+                'border border-primary/30',
+                'hover:border-primary/50',
+                'text-sm text-foreground',
                 'transition-colors'
               )}
             >
               <span className="flex-1">{suggestion}</span>
-              <ChevronRight className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+              <ChevronRight className="w-4 h-4 text-primary/70 flex-shrink-0" />
             </button>
           ))}
         </div>
       ) : (
-        <p className="text-sm text-indigo-600/70 dark:text-indigo-300/70 py-2">
+        <p className="text-sm text-primary/70 py-2">
           No suggestions available
         </p>
       )}

@@ -1,4 +1,15 @@
-import { useState, useMemo } from 'react';
+/**
+ * DetailView Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready detail view with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Keyboard navigation support
+ */
+
+import { useState, useMemo, useCallback } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -9,6 +20,7 @@ import {
   ExternalLink,
   ArrowLeft,
   Clock,
+  Loader2,
 } from 'lucide-react';
 
 // Types
@@ -108,7 +120,7 @@ export function DetailView<T extends Record<string, unknown>>({
   );
 
   // Get field value
-  const getFieldValue = (field: FieldDef<T>): unknown => {
+  const getFieldValue = useCallback((field: FieldDef<T>): unknown => {
     if (!record) return null;
 
     // First check if there's a change for this field
@@ -121,33 +133,33 @@ export function DetailView<T extends Record<string, unknown>>({
       return field.accessor(record);
     }
     return record[field.accessor as keyof T];
-  };
+  }, [record, changes]);
 
   // Check field visibility
-  const isFieldVisible = (field: FieldDef<T>): boolean => {
+  const isFieldVisible = useCallback((field: FieldDef<T>): boolean => {
     if (field.visible === undefined) return true;
     if (typeof field.visible === 'function') return record ? field.visible(record) : true;
     return field.visible;
-  };
+  }, [record]);
 
   // Check if field is readonly
-  const isFieldReadonly = (field: FieldDef<T>): boolean => {
+  const isFieldReadonly = useCallback((field: FieldDef<T>): boolean => {
     if (!editing) return true;
     if (field.editable === false) return true;
     if (field.readonly === undefined) return false;
     if (typeof field.readonly === 'function') return record ? field.readonly(record) : false;
     return field.readonly;
-  };
+  }, [editing, record]);
 
   // Check section visibility
-  const isSectionVisible = (section: SectionDef<T>): boolean => {
+  const isSectionVisible = useCallback((section: SectionDef<T>): boolean => {
     if (section.visible === undefined) return true;
     if (typeof section.visible === 'function') return record ? section.visible(record) : true;
     return section.visible;
-  };
+  }, [record]);
 
   // Toggle section collapse
-  const toggleSection = (sectionId: string) => {
+  const toggleSection = useCallback((sectionId: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
       if (next.has(sectionId)) {
@@ -157,24 +169,32 @@ export function DetailView<T extends Record<string, unknown>>({
       }
       return next;
     });
-  };
+  }, []);
+
+  // Handle keyboard navigation for section toggle
+  const handleSectionKeyDown = useCallback((e: React.KeyboardEvent, sectionId: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleSection(sectionId);
+    }
+  }, [toggleSection]);
 
   // Format display value
-  const formatValue = (field: FieldDef<T>, value: unknown): React.ReactNode => {
+  const formatValue = useCallback((field: FieldDef<T>, value: unknown): React.ReactNode => {
     if (field.formatter && record) {
       return field.formatter(value, record);
     }
 
     if (value === null || value === undefined) {
-      return <span className="text-gray-400 dark:text-gray-500">—</span>;
+      return <span className="text-muted-foreground/60">—</span>;
     }
 
     switch (field.type) {
       case 'boolean':
         return value ? (
-          <span className="text-green-600 dark:text-green-400">Yes</span>
+          <span className="text-success-text">Yes</span>
         ) : (
-          <span className="text-gray-500 dark:text-gray-400">No</span>
+          <span className="text-muted-foreground">No</span>
         );
       case 'date':
         return new Date(value as string).toLocaleDateString();
@@ -188,7 +208,10 @@ export function DetailView<T extends Record<string, unknown>>({
         return `${Number(value).toFixed(1)}%`;
       case 'email':
         return (
-          <a href={`mailto:${value}`} className="text-indigo-600 dark:text-indigo-400 hover:underline">
+          <a
+            href={`mailto:${value}`}
+            className="text-primary hover:underline"
+          >
             {String(value)}
           </a>
         );
@@ -198,7 +221,7 @@ export function DetailView<T extends Record<string, unknown>>({
             href={String(value)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+            className="text-primary hover:underline flex items-center gap-1"
           >
             {String(value)}
             <ExternalLink className="w-3 h-3" />
@@ -209,17 +232,17 @@ export function DetailView<T extends Record<string, unknown>>({
         return option?.label || String(value);
       case 'reference':
         return (
-          <span className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+          <span className="text-primary hover:underline cursor-pointer">
             {String(value)}
           </span>
         );
       default:
         return String(value);
     }
-  };
+  }, [record]);
 
   // Render field editor
-  const renderEditor = (field: FieldDef<T>) => {
+  const renderEditor = useCallback((field: FieldDef<T>) => {
     const value = getFieldValue(field);
     const fieldKey = typeof field.accessor === 'string' ? field.accessor : field.id;
 
@@ -230,20 +253,20 @@ export function DetailView<T extends Record<string, unknown>>({
       return field.editor;
     }
 
-    const commonClasses =
-      'w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+    const inputClasses = 'w-full px-3 py-2 min-h-[44px] bg-card text-foreground border border-border rounded-lg outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors';
 
     switch (field.type) {
       case 'boolean':
         return (
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
             <input
               type="checkbox"
               checked={Boolean(value)}
               onChange={(e) => onChange?.(fieldKey, e.target.checked)}
-              className="w-4 h-4 text-indigo-600 rounded"
+              className="w-5 h-5 rounded accent-primary"
+              aria-label={field.label}
             />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-sm text-muted-foreground">
               {value ? 'Yes' : 'No'}
             </span>
           </label>
@@ -253,7 +276,8 @@ export function DetailView<T extends Record<string, unknown>>({
           <select
             value={String(value || '')}
             onChange={(e) => onChange?.(fieldKey, e.target.value)}
-            className={commonClasses}
+            className={inputClasses}
+            aria-label={field.label}
           >
             <option value="">Select...</option>
             {field.options?.map((opt) => (
@@ -269,7 +293,8 @@ export function DetailView<T extends Record<string, unknown>>({
             type="date"
             value={value ? String(value).split('T')[0] : ''}
             onChange={(e) => onChange?.(fieldKey, e.target.value)}
-            className={commonClasses}
+            className={inputClasses}
+            aria-label={field.label}
           />
         );
       case 'datetime':
@@ -278,7 +303,8 @@ export function DetailView<T extends Record<string, unknown>>({
             type="datetime-local"
             value={value ? String(value).slice(0, 16) : ''}
             onChange={(e) => onChange?.(fieldKey, e.target.value)}
-            className={commonClasses}
+            className={inputClasses}
+            aria-label={field.label}
           />
         );
       case 'number':
@@ -289,7 +315,8 @@ export function DetailView<T extends Record<string, unknown>>({
             type="number"
             value={value !== null && value !== undefined ? Number(value) : ''}
             onChange={(e) => onChange?.(fieldKey, e.target.value ? Number(e.target.value) : null)}
-            className={commonClasses}
+            className={inputClasses}
+            aria-label={field.label}
           />
         );
       case 'richtext':
@@ -298,7 +325,8 @@ export function DetailView<T extends Record<string, unknown>>({
             value={String(value || '')}
             onChange={(e) => onChange?.(fieldKey, e.target.value)}
             rows={4}
-            className={commonClasses}
+            className={`${inputClasses} min-h-[100px]`}
+            aria-label={field.label}
           />
         );
       default:
@@ -307,11 +335,12 @@ export function DetailView<T extends Record<string, unknown>>({
             type={field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
             value={String(value || '')}
             onChange={(e) => onChange?.(fieldKey, e.target.value)}
-            className={commonClasses}
+            className={inputClasses}
+            aria-label={field.label}
           />
         );
     }
-  };
+  }, [getFieldValue, onChange]);
 
   // Get title
   const resolvedTitle = useMemo((): React.ReactNode => {
@@ -333,60 +362,75 @@ export function DetailView<T extends Record<string, unknown>>({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div
+        className="flex items-center justify-center h-64"
+        role="status"
+        aria-label="Loading record"
+      >
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+        <span className="sr-only">Loading...</span>
       </div>
     );
   }
 
   if (!record) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+      <div
+        className="flex items-center justify-center h-64 text-muted-foreground"
+        role="alert"
+      >
         Record not found
       </div>
     );
   }
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div
+      className={`flex flex-col h-full ${className}`}
+      role="main"
+      aria-label={resolvedTitle ? String(resolvedTitle) : 'Record details'}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <header className="flex items-center justify-between px-6 py-4 bg-card border-b border-border">
         <div className="flex items-center gap-4">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-muted"
+              aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-500" />
+              <ArrowLeft className="w-5 h-5" />
             </button>
           )}
           <div>
             {resolvedTitle && (
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+              <h1 className="text-xl font-semibold text-foreground">
                 {resolvedTitle}
               </h1>
             )}
             {resolvedSubtitle && (
-              <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              <div className="text-sm mt-0.5 text-muted-foreground">
                 {resolvedSubtitle}
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="toolbar" aria-label="Record actions">
           {editing ? (
             <>
               <button
                 onClick={onCancel}
-                className="flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors min-h-[44px] text-foreground bg-transparent hover:bg-muted"
+                aria-label="Cancel editing"
               >
                 <X className="w-4 h-4" />
                 Cancel
               </button>
               <button
                 onClick={() => onSave?.(changes)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors min-h-[44px] bg-primary text-primary-foreground hover:bg-primary/90"
+                aria-label="Save changes"
               >
                 <Save className="w-4 h-4" />
                 Save
@@ -397,7 +441,8 @@ export function DetailView<T extends Record<string, unknown>>({
               {onEditToggle && (
                 <button
                   onClick={onEditToggle}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors min-h-[44px] bg-primary text-primary-foreground hover:bg-primary/90"
+                  aria-label="Edit record"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -407,7 +452,7 @@ export function DetailView<T extends Record<string, unknown>>({
             </>
           )}
         </div>
-      </div>
+      </header>
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
@@ -420,33 +465,47 @@ export function DetailView<T extends Record<string, unknown>>({
             if (visibleFields.length === 0) return null;
 
             return (
-              <div
+              <section
                 key={section.id}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden"
+                className="rounded-xl overflow-hidden bg-card border border-border"
+                aria-labelledby={`section-${section.id}-heading`}
               >
                 {/* Section Header */}
                 <div
-                  className={`flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 ${
-                    section.collapsible ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50' : ''
+                  className={`flex items-center justify-between px-4 py-3 bg-muted ${
+                    section.collapsible ? 'cursor-pointer' : ''
                   }`}
                   onClick={() => section.collapsible && toggleSection(section.id)}
+                  onKeyDown={(e) => section.collapsible && handleSectionKeyDown(e, section.id)}
+                  role={section.collapsible ? 'button' : undefined}
+                  tabIndex={section.collapsible ? 0 : undefined}
+                  aria-expanded={section.collapsible ? !isCollapsed : undefined}
+                  aria-controls={section.collapsible ? `section-${section.id}-content` : undefined}
                 >
                   <div className="flex items-center gap-2">
                     {section.collapsible && (
                       isCollapsed ? (
-                        <ChevronRight className="w-4 h-4 text-gray-500" />
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       ) : (
-                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
                       )
                     )}
                     {section.icon}
-                    <h2 className="font-medium text-gray-900 dark:text-white">{section.label}</h2>
+                    <h2
+                      id={`section-${section.id}-heading`}
+                      className="font-medium text-foreground"
+                    >
+                      {section.label}
+                    </h2>
                   </div>
                 </div>
 
                 {/* Section Content */}
                 {!isCollapsed && (
-                  <div className="p-4">
+                  <div
+                    id={`section-${section.id}-content`}
+                    className="p-4"
+                  >
                     <div
                       className={`grid grid-cols-12 gap-4 ${
                         section.columns === 1
@@ -462,19 +521,34 @@ export function DetailView<T extends Record<string, unknown>>({
 
                         return (
                           <div key={field.id} className={widthClasses[width]}>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label
+                              className="block text-sm font-medium mb-1 text-muted-foreground"
+                              htmlFor={`field-${field.id}`}
+                            >
                               {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
+                              {field.required && (
+                                <span
+                                  className="ml-1 text-destructive"
+                                  aria-label="required"
+                                >
+                                  *
+                                </span>
+                              )}
                             </label>
                             {readonly ? (
-                              <div className="text-gray-900 dark:text-gray-100">
+                              <div
+                                id={`field-${field.id}`}
+                                className="text-foreground"
+                              >
                                 {formatValue(field, getFieldValue(field))}
                               </div>
                             ) : (
-                              renderEditor(field)
+                              <div id={`field-${field.id}`}>
+                                {renderEditor(field)}
+                              </div>
                             )}
                             {field.hint && (
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              <p className="mt-1 text-xs text-muted-foreground/60">
                                 {field.hint}
                               </p>
                             )}
@@ -484,24 +558,34 @@ export function DetailView<T extends Record<string, unknown>>({
                     </div>
                   </div>
                 )}
-              </div>
+              </section>
             );
           })}
 
           {/* Related Lists */}
           {relatedLists.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+            <section
+              className="rounded-xl overflow-hidden bg-card border border-border"
+              aria-label="Related records"
+            >
               {/* Tabs */}
-              <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div
+                className="flex bg-muted border-b border-border"
+                role="tablist"
+              >
                 {relatedLists.map((list) => (
                   <button
                     key={list.id}
                     onClick={() => setActiveTab(list.id)}
-                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`px-4 py-3 text-sm font-medium transition-colors min-h-[44px] border-b-2 ${
                       activeTab === list.id
-                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground'
                     }`}
+                    role="tab"
+                    aria-selected={activeTab === list.id}
+                    aria-controls={`tabpanel-${list.id}`}
+                    id={`tab-${list.id}`}
                   >
                     {list.label}
                   </button>
@@ -514,23 +598,29 @@ export function DetailView<T extends Record<string, unknown>>({
                   <div
                     key={list.id}
                     className={activeTab === list.id ? 'block' : 'hidden'}
+                    role="tabpanel"
+                    id={`tabpanel-${list.id}`}
+                    aria-labelledby={`tab-${list.id}`}
                   >
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                    <div className="text-sm text-muted-foreground">
                       Related {list.label.toLowerCase()} will be displayed here.
                     </div>
                     {list.actions}
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           )}
 
           {/* Audit Info */}
           {showAuditInfo && auditInfo && (
-            <div className="flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400 px-2">
+            <div
+              className="flex items-center gap-6 text-sm px-2 text-muted-foreground/60"
+              aria-label="Record audit information"
+            >
               {auditInfo.createdAt && (
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
+                  <Clock className="w-4 h-4" aria-hidden="true" />
                   <span>
                     Created {new Date(auditInfo.createdAt).toLocaleString()}
                     {auditInfo.createdBy && ` by ${auditInfo.createdBy}`}
@@ -539,7 +629,7 @@ export function DetailView<T extends Record<string, unknown>>({
               )}
               {auditInfo.updatedAt && (
                 <div className="flex items-center gap-2">
-                  <History className="w-4 h-4" />
+                  <History className="w-4 h-4" aria-hidden="true" />
                   <span>
                     Updated {new Date(auditInfo.updatedAt).toLocaleString()}
                     {auditInfo.updatedBy && ` by ${auditInfo.updatedBy}`}

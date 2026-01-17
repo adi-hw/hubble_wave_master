@@ -2,22 +2,29 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import {
-  TenantInstance,
+  Customer,
+  Instance,
   InstanceHealth,
 } from '@hubblewave/control-plane-db';
 import { AuditService } from '../audit/audit.service';
 import { CreateInstanceDto, UpdateInstanceDto, InstanceQueryParams } from './instances.dto';
 import { TerraformService } from '../terraform/terraform.service';
+import { TerraformWorkspaceService } from '../terraform/terraform.workspace.service';
 import { LicensesService } from '../licenses/licenses.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class InstancesService {
   constructor(
-    @InjectRepository(TenantInstance)
-    private readonly instanceRepo: Repository<TenantInstance>,
+    @InjectRepository(Instance)
+    private readonly instanceRepo: Repository<Instance>,
+    @InjectRepository(Customer)
+    private readonly customerRepo: Repository<Customer>,
     private readonly auditService: AuditService,
     private readonly terraformService: TerraformService,
+    private readonly terraformWorkspaceService: TerraformWorkspaceService,
     private readonly licensesService: LicensesService,
+    private readonly configService: ConfigService,
   ) {}
 
   async findAll(params: InstanceQueryParams = {}) {
@@ -59,7 +66,7 @@ export class InstancesService {
     };
   }
 
-  async findOne(id: string): Promise<TenantInstance> {
+  async findOne(id: string): Promise<Instance> {
     const instance = await this.instanceRepo.findOne({
       where: { id, deletedAt: IsNull() },
       relations: ['customer'],
@@ -72,14 +79,14 @@ export class InstancesService {
     return instance;
   }
 
-  async findByCustomer(customerId: string): Promise<TenantInstance[]> {
+  async findByCustomer(customerId: string): Promise<Instance[]> {
     return this.instanceRepo.find({
       where: { customerId, deletedAt: IsNull() },
       order: { environment: 'ASC' },
     });
   }
 
-  async create(dto: CreateInstanceDto, createdBy?: string): Promise<TenantInstance> {
+  async create(dto: CreateInstanceDto, createdBy?: string): Promise<Instance> {
     // Check if instance already exists for this customer/environment
     const existing = await this.instanceRepo.findOne({
       where: {
@@ -95,12 +102,26 @@ export class InstancesService {
       );
     }
 
+    const customer = await this.customerRepo.findOne({
+      where: { id: dto.customerId, deletedAt: IsNull() },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Customer with ID ${dto.customerId} not found`);
+    }
+
+    const identity = this.terraformWorkspaceService.buildIdentity(customer.code, dto.environment);
+    const clusterName = this.configService.get<string>('INSTANCE_K8S_CLUSTER');
+
     const instance = this.instanceRepo.create({
       ...dto,
       status: 'provisioning',
       health: 'unknown',
       resourceTier: dto.resourceTier || 'standard',
-      databaseName: `eam_tenant_${dto.customerId.split('-')[0]}`,
+      databaseName: identity.databaseName,
+      domain: identity.domain,
+      k8sNamespace: identity.namespace,
+      k8sCluster: clusterName || undefined,
+      terraformWorkspace: identity.instanceName,
       provisioningStartedAt: new Date(),
       createdBy,
     });
@@ -122,23 +143,73 @@ export class InstancesService {
     return savedInstance;
   }
 
+  private async resolveCustomer(instance: Instance): Promise<Customer> {
+    if (instance.customer) {
+      return instance.customer;
+    }
+    const customer = await this.customerRepo.findOne({
+      where: { id: instance.customerId, deletedAt: IsNull() },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Customer with ID ${instance.customerId} not found`);
+    }
+    return customer;
+  }
+
+  private async ensureWorkspace(
+    instance: Instance,
+    workspaceOverride?: string,
+    requireActiveLicense = true,
+  ) {
+    const customer = await this.resolveCustomer(instance);
+    const licenseKey = requireActiveLicense
+      ? (await this.licensesService.ensureActiveLicenseForCustomer(instance.customerId)).licenseKey
+      : (await this.licensesService.getLatestLicenseForCustomer(instance.customerId)).licenseKey;
+    const workspaceName = workspaceOverride
+      || instance.terraformWorkspace
+      || `${customer.code}-${instance.environment}`;
+
+    const workspace = await this.terraformWorkspaceService.ensureWorkspace({
+      instance,
+      customerCode: customer.code,
+      customerName: customer.name,
+      licenseKey,
+      workspace: workspaceName,
+    });
+
+    instance.terraformWorkspace = workspace.workspace;
+    instance.domain = instance.domain || workspace.identity.domain;
+    instance.k8sNamespace = instance.k8sNamespace || workspace.identity.namespace;
+    instance.databaseName = workspace.identity.databaseName;
+    const clusterName = this.configService.get<string>('INSTANCE_K8S_CLUSTER');
+    if (clusterName) {
+      instance.k8sCluster = instance.k8sCluster || clusterName;
+    }
+    await this.instanceRepo.save(instance);
+
+    return { customer, workspace };
+  }
+
+  async ensureWorkspaceForJob(job: { instanceId: string; workspace?: string; operation?: string }) {
+    const instance = await this.findOne(job.instanceId);
+    const requireActiveLicense = job.operation !== 'destroy';
+    return this.ensureWorkspace(instance, job.workspace, requireActiveLicense);
+  }
+
   /**
    * Trigger provisioning by creating a Terraform job and marking instance as provisioning.
    */
   async provision(id: string, triggeredBy?: string) {
     const instance = await this.findOne(id);
-    const customerCode = instance.customer?.code;
-    if (!customerCode) {
-      throw new BadRequestException('Instance missing customer context');
-    }
+    const { customer, workspace } = await this.ensureWorkspace(instance);
 
     const job = await this.terraformService.create(
       {
         instanceId: instance.id,
-        customerCode,
+        customerCode: customer.code,
         environment: instance.environment,
         operation: 'apply',
-        workspace: instance.terraformWorkspace || `${customerCode}-${instance.environment}`,
+        workspace: workspace.workspace,
       },
       triggeredBy,
     );
@@ -160,7 +231,7 @@ export class InstancesService {
     return { instance, jobId: job.id };
   }
 
-  async update(id: string, dto: UpdateInstanceDto, updatedBy?: string): Promise<TenantInstance> {
+  async update(id: string, dto: UpdateInstanceDto, updatedBy?: string): Promise<Instance> {
     const instance = await this.findOne(id);
 
     Object.assign(instance, dto, { updatedBy });
@@ -183,7 +254,7 @@ export class InstancesService {
     return saved;
   }
 
-  async updateHealth(id: string, health: InstanceHealth, details?: Record<string, unknown>): Promise<TenantInstance> {
+  async updateHealth(id: string, health: InstanceHealth, details?: Record<string, unknown>): Promise<Instance> {
     const instance = await this.findOne(id);
 
     instance.health = health;
@@ -203,13 +274,13 @@ export class InstancesService {
     return saved;
   }
 
-  async updateMetrics(id: string, metrics: TenantInstance['resourceMetrics']): Promise<TenantInstance> {
+  async updateMetrics(id: string, metrics: Instance['resourceMetrics']): Promise<Instance> {
     const instance = await this.findOne(id);
     instance.resourceMetrics = metrics;
     return this.instanceRepo.save(instance);
   }
 
-  async setDomain(id: string, domain: string, updatedBy?: string): Promise<TenantInstance> {
+  async setDomain(id: string, domain: string, updatedBy?: string): Promise<Instance> {
     const instance = await this.findOne(id);
     instance.domain = domain;
     instance.updatedBy = updatedBy;

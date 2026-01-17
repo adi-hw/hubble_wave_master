@@ -20,6 +20,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { CollectionDefinition } from '@hubblewave/instance-db';
+import type { PropertyType } from '@hubblewave/shared-types';
 
 // ============================================================================
 // Types & Interfaces
@@ -67,26 +68,6 @@ export interface DetectedProperty {
     matchScore: number;
   };
 }
-
-/**
- * Supported property types for detection.
- */
-export type PropertyType =
-  | 'text'
-  | 'longtext'
-  | 'number'
-  | 'decimal'
-  | 'currency'
-  | 'boolean'
-  | 'date'
-  | 'datetime'
-  | 'time'
-  | 'email'
-  | 'url'
-  | 'phone'
-  | 'choice'
-  | 'reference'
-  | 'json';
 
 /**
  * Result of analyzing an import file.

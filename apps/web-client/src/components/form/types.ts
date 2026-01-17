@@ -1,7 +1,7 @@
-import type { ModelField } from '../../services/platform.service';
+import type { ModelProperty } from '../../services/platform.service';
 
 export interface FieldComponentProps<TValue = unknown> {
-  field: ModelField;
+  field: ModelProperty;
   value: TValue | undefined;
   onChange: (value: TValue | undefined) => void;
   disabled?: boolean;

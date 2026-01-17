@@ -4,10 +4,12 @@ import { ControlPlaneRole } from '@hubblewave/control-plane-db';
 import { ROLES_KEY } from './roles.decorator';
 
 const roleHierarchy: Record<ControlPlaneRole, number> = {
-  super_admin: 4,
-  admin: 3,
-  operator: 2,
-  viewer: 1,
+  super_admin: 6,
+  admin: 5,
+  operator: 4,
+  support: 3,
+  viewer: 2,
+  readonly: 1,
 };
 
 @Injectable()

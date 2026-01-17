@@ -52,11 +52,11 @@ export const platformConfigApi = {
   },
 };
 
-// ========== Tenant Customization API ==========
+// ========== Instance Customization API ==========
 
 export const customizationApi = {
   /**
-   * List all tenant customizations
+   * List all instance customizations
    */
   list: async (filters?: ConfigListFilters): Promise<ListResponse<InstanceCustomization>> => {
     const params = new URLSearchParams();
@@ -184,7 +184,7 @@ export const upgradeApi = {
   },
 
   /**
-   * Analyze upgrade impact for current tenant
+   * Analyze upgrade impact for current instance
    */
   analyzeImpact: async (manifestId: string): Promise<UpgradeAnalysis> => {
     const response = await api.get(`/admin/upgrade/analyze/${manifestId}`);
@@ -195,7 +195,6 @@ export const upgradeApi = {
    * Get upgrade impacts for a manifest
    */
   getImpacts: async (_manifestId: string): Promise<ListResponse<InstanceUpgradeImpact>> => {
-    // Backend uses /admin/upgrade/impacts without manifestId filter for now
     const response = await api.get(`/admin/upgrade/impacts`);
     return response.data;
   },

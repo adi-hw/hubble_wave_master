@@ -1,0 +1,24 @@
+manifest: hubblewave.pack
+manifest_revision: 1
+pack:
+  code: modelops_monitoring
+  name: ModelOps Monitoring
+  release_id: "20260111.003"
+  publisher: HubbleWave
+  description: ModelOps monitoring metrics and dashboards for insights.
+  license: Proprietary
+  installable_by_client: true
+compatibility:
+  platform_min_release_id: "20260108.001"
+  platform_max_release_id: "20261231.999"
+assets:
+  - type: insights
+    path: insights/modelops-monitoring.yaml
+    sha256: d1976bfd0ee464739a8ef6e798fd36892437e390158907e8347bc3987b3af581
+install:
+  lock_key: modelops_monitoring
+  apply_order:
+    - insights
+signing:
+  algorithm: ed25519
+  public_key_id: hw-pack-signing-primary

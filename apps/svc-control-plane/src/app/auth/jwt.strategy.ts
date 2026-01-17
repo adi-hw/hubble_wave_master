@@ -10,10 +10,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     configService: ConfigService,
     private readonly authService: AuthService,
   ) {
+    const jwtSecret = configService.get<string>('JWT_SECRET');
+
+    if (!jwtSecret) {
+      throw new Error(
+        'JWT_SECRET environment variable is required. ' +
+        'Set JWT_SECRET to a secure random string (min 32 chars) before starting the application.'
+      );
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET', 'control-plane-jwt-secret-change-in-production'),
+      secretOrKey: jwtSecret,
     });
   }
 

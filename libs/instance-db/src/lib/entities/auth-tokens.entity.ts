@@ -359,3 +359,133 @@ export class MfaMethod {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }
+
+// ============================================================
+// SAML AUTH STATE ENTITY
+// ============================================================
+
+/**
+ * SAMLAuthState entity - persists SAML relay state for SSO callbacks
+ *
+ * Stored in database instead of memory to support multi-instance deployments
+ * and survive service restarts.
+ */
+@Entity('saml_auth_states')
+@Index(['relayState'], { unique: true })
+@Index(['expiresAt'])
+export class SAMLAuthState {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  /** SSO Provider ID */
+  @Column({ name: 'provider_id', type: 'uuid' })
+  providerId!: string;
+
+  /** Relay state token (for CSRF protection) */
+  @Column({ name: 'relay_state', type: 'varchar', length: 255, unique: true })
+  relayState!: string;
+
+  /** Redirect URI after authentication */
+  @Column({ name: 'redirect_uri', type: 'varchar', length: 2048 })
+  redirectUri!: string;
+
+  /** State expiry (typically 10 minutes) */
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
+
+  /** When state was consumed */
+  @Column({ name: 'consumed_at', type: 'timestamptz', nullable: true })
+  consumedAt?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+}
+
+// ============================================================
+// LOGIN ATTEMPT ENTITY
+// ============================================================
+
+/**
+ * Login attempt result
+ */
+export type LoginAttemptResult = 'success' | 'invalid_credentials' | 'account_locked' | 'account_disabled' | 'mfa_required' | 'mfa_failed' | 'rate_limited';
+
+/**
+ * LoginAttempt entity - tracks individual login attempts for audit and rate limiting
+ *
+ * Provides per-attempt audit trail with IP/device analysis capability
+ * instead of just a counter on the user record.
+ */
+@Entity('login_attempts')
+@Index(['userId'])
+@Index(['ipAddress'])
+@Index(['email'])
+@Index(['createdAt'])
+@Index(['result'])
+export class LoginAttempt {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  /** User ID (null if user not found) */
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
+  userId?: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'user_id' })
+  user?: User | null;
+
+  /** Email used in attempt */
+  @Column({ type: 'varchar', length: 320 })
+  email!: string;
+
+  /** IP address */
+  @Column({ name: 'ip_address', type: 'varchar', length: 45 })
+  ipAddress!: string;
+
+  /** User agent */
+  @Column({ name: 'user_agent', type: 'text', nullable: true })
+  userAgent?: string | null;
+
+  /** Device fingerprint (if available) */
+  @Column({ name: 'device_fingerprint', type: 'varchar', length: 255, nullable: true })
+  deviceFingerprint?: string | null;
+
+  /** Geographic location (derived from IP) */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  location?: string | null;
+
+  /** Country code (derived from IP) */
+  @Column({ name: 'country_code', type: 'varchar', length: 2, nullable: true })
+  countryCode?: string | null;
+
+  /** Attempt result */
+  @Column({ type: 'varchar', length: 30 })
+  result!: LoginAttemptResult;
+
+  /** Failure reason (for failed attempts) */
+  @Column({ name: 'failure_reason', type: 'text', nullable: true })
+  failureReason?: string | null;
+
+  /** Authentication method used */
+  @Column({ name: 'auth_method', type: 'varchar', length: 30, default: 'password' })
+  authMethod!: string;
+
+  /** SSO provider (if SSO login) */
+  @Column({ name: 'sso_provider', type: 'varchar', length: 100, nullable: true })
+  ssoProvider?: string | null;
+
+  /** Request ID for correlation */
+  @Column({ name: 'request_id', type: 'varchar', length: 100, nullable: true })
+  requestId?: string | null;
+
+  /** Risk score (0-100, for anomaly detection) */
+  @Column({ name: 'risk_score', type: 'integer', nullable: true })
+  riskScore?: number | null;
+
+  /** Risk factors identified */
+  @Column({ name: 'risk_factors', type: 'jsonb', nullable: true })
+  riskFactors?: string[] | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+}

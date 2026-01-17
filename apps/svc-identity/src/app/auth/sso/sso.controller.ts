@@ -120,7 +120,7 @@ export class SsoController {
   }
 
   /**
-   * Legacy status endpoint for backwards compatibility
+   * Get SSO status and configuration summary
    */
   @Public()
   @Get('status')
@@ -266,8 +266,7 @@ export class SsoController {
     try {
       const callbackUrl = `${baseUrl}/api/auth/oidc/callback`;
 
-      // Extract provider from state (we need to find which provider this is for)
-      // For now, we'll look up all OIDC providers and try to find a match
+      // Extract provider from state and find matching OIDC provider
       const providers = await this.ssoProviderRepo.find({
         where: { type: 'oidc', enabled: true },
       });
@@ -400,7 +399,7 @@ export class SsoController {
   }
 
   /**
-   * Legacy POST callback for backwards compatibility
+   * Handle SSO callback via POST (used by some SAML providers)
    */
   @Public()
   @Post('callback/:provider')

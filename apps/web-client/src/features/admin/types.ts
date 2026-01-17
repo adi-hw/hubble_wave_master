@@ -9,7 +9,7 @@ export type ConfigType =
   | 'collection'
   | 'property'
   | 'access_rule'
-  | 'workflow'
+  | 'process_flow'
   | 'script'
   | 'approval'
   | 'notification'
@@ -46,7 +46,7 @@ export interface PlatformConfig {
 
 export interface InstanceCustomization {
   id: string;
-  tenantId: string;
+  instanceId: string;
   configType: ConfigType;
   resourceKey: string;
   customizationType: CustomizationType;
@@ -81,7 +81,7 @@ export interface UpdateCustomizationDto {
 
 export interface ConfigChangeHistory {
   id: string;
-  tenantId?: string;
+  instanceId?: string;
   configType: ConfigType;
   resourceKey: string;
   changeType: ChangeType;
@@ -177,7 +177,7 @@ export interface PostCheck {
 
 export interface InstanceUpgradeImpact {
   id: string;
-  tenantId: string;
+  instanceId: string;
   upgradeManifestId: string;
   customizationId?: string;
   configType: ConfigType;
@@ -206,7 +206,7 @@ export interface InstanceUpgradeImpact {
 export interface ConflictDetail {
   path: string;
   conflictType: 'value_changed' | 'property_removed' | 'property_added' | 'type_mismatch';
-  tenantValue: any;
+  instanceValue: any;
   platformOldValue: any;
   platformNewValue: any;
   description?: string;
@@ -215,19 +215,19 @@ export interface ConflictDetail {
 // ========== Business Rules ==========
 
 export type RuleTrigger = 'before_insert' | 'after_insert' | 'before_update' | 'after_update' | 'before_delete' | 'after_delete' | 'async';
-export type RuleActionType = 'set_value' | 'validate' | 'abort' | 'script' | 'workflow' | 'notification' | 'api_call';
+export type RuleActionType = 'set_value' | 'validate' | 'abort' | 'script' | 'process_flow' | 'notification' | 'api_call';
 
 export interface BusinessRule {
   id: string;
-  tenantId?: string;
+  instanceId?: string;
   code: string;
   name: string;
   description?: string;
-  targetTable: string;
+  targetCollection: string;
   trigger: RuleTrigger;
   executionOrder: number;
-  conditionType: 'always' | 'field_changed' | 'condition_met' | 'script';
-  watchFields?: string[];
+  conditionType: 'always' | 'property_changed' | 'condition_met' | 'script';
+  watchProperties?: string[];
   conditionExpression?: ConditionExpression;
   conditionScript?: string;
   actionType: RuleActionType;
@@ -248,7 +248,7 @@ export interface BusinessRule {
 export interface ConditionExpression {
   operator: 'and' | 'or' | 'not';
   conditions?: ConditionExpression[];
-  field?: string;
+  property?: string;
   comparison?: string;
   value?: any;
 }

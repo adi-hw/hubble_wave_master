@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getModelFields, getModelLayout, ModelField, ModelLayout } from '../services/platform.service';
+import { getModelProperties, getModelLayout, ModelProperty, ModelLayout } from '../services/platform.service';
 
-export const useModel = (tableCode: string) => {
-  const [fields, setFields] = useState<ModelField[]>([]);
+export const useModel = (collectionCode: string) => {
+  const [properties, setProperties] = useState<ModelProperty[]>([]);
   const [layout, setLayout] = useState<ModelLayout | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -11,11 +11,11 @@ export const useModel = (tableCode: string) => {
     const fetchModel = async () => {
       try {
         setLoading(true);
-        const [fieldsData, layoutData] = await Promise.all([
-          getModelFields(tableCode),
-          getModelLayout(tableCode)
+        const [propertiesData, layoutData] = await Promise.all([
+          getModelProperties(collectionCode),
+          getModelLayout(collectionCode)
         ]);
-        setFields(fieldsData);
+        setProperties(propertiesData);
         setLayout(layoutData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load model');
@@ -25,7 +25,7 @@ export const useModel = (tableCode: string) => {
     };
 
     fetchModel();
-  }, [tableCode]);
+  }, [collectionCode]);
 
-  return { fields, layout, loading, error };
+  return { properties, layout, loading, error };
 };

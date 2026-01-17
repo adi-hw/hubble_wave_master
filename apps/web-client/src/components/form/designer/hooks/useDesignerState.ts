@@ -441,27 +441,27 @@ export function useDesignerState(initialLayout?: DesignerLayout) {
     return state.layout.tabs.find((t) => t.id === state.selectedItemId) || null;
   }, [state.layout, state.selectedItemId, state.selectedItemType]);
 
-  // Get all field codes currently in the layout
-  const fieldsInLayout = useMemo(() => {
-    const fieldCodes = new Set<string>();
+  // Get all property codes currently in the layout
+  const propertiesInLayout = useMemo(() => {
+    const propertyCodes = new Set<string>();
     for (const tab of state.layout.tabs) {
       for (const section of tab.sections) {
         for (const item of section.items) {
-          if (item.type === 'field') {
-            fieldCodes.add(item.fieldCode);
+          if (item.type === 'property') {
+            propertyCodes.add(item.propertyCode);
           } else if (item.type === 'dot_walk') {
-            fieldCodes.add(`${item.basePath}.${item.fieldCode}`);
+            propertyCodes.add(`${item.basePath}.${item.propertyCode}`);
           } else if (item.type === 'group') {
-            for (const field of item.fields) {
-              if (field.type === 'field') {
-                fieldCodes.add(field.fieldCode);
+            for (const property of item.properties) {
+              if (property.type === 'property') {
+                propertyCodes.add(property.propertyCode);
               }
             }
           }
         }
       }
     }
-    return fieldCodes;
+    return propertyCodes;
   }, [state.layout]);
 
   return {
@@ -479,7 +479,7 @@ export function useDesignerState(initialLayout?: DesignerLayout) {
     selectedItem,
     selectedSection,
     selectedTab,
-    fieldsInLayout,
+    propertiesInLayout,
 
     // Actions
     setLayout,

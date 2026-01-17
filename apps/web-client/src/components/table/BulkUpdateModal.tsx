@@ -1,4 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+/**
+ * BulkUpdateModal Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready bulk update modal with:
+ * - Theme-aware styling using Tailwind CSS
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Focus trap and keyboard navigation
+ * - Screen reader announcements
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { X, AlertTriangle, ChevronDown, Check, Loader2 } from 'lucide-react';
 import { TableColumn } from './types';
@@ -23,20 +35,31 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
 
-  // Reset state when modal opens
+  const filteredColumns = columns.filter(c => !c.hidden);
+  const selectedColumnObj = columns.find(c => c.code === selectedColumn);
+
   useEffect(() => {
     if (isOpen) {
+      previousActiveElement.current = document.activeElement as HTMLElement;
       setSelectedColumn('');
       setNewValue('');
       setError(null);
       setIsUpdating(false);
+      setTimeout(() => {
+        closeButtonRef.current?.focus();
+      }, 0);
+    } else {
+      previousActiveElement.current?.focus();
     }
   }, [isOpen]);
 
-  // Handle click outside dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -47,22 +70,98 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isUpdating) {
-        onClose();
+      if (e.key === 'Escape') {
+        if (showColumnDropdown) {
+          setShowColumnDropdown(false);
+        } else if (!isUpdating) {
+          onClose();
+        }
       }
     };
-    document.addEventListener('keydown', handleEscape);
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose, isUpdating]);
+  }, [onClose, isUpdating, isOpen, showColumnDropdown]);
 
-  // Get the selected column object
-  const selectedColumnObj = columns.find(c => c.code === selectedColumn);
+  useEffect(() => {
+    if (!isOpen || !modalRef.current) return;
 
-  // Handle update
-  const handleUpdate = async () => {
+    const modal = modalRef.current;
+    const focusableElements = modal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    modal.addEventListener('keydown', handleTabKey);
+    return () => modal.removeEventListener('keydown', handleTabKey);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  const handleDropdownKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!showColumnDropdown) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setShowColumnDropdown(true);
+        setHighlightedIndex(0);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.min(prev + 1, filteredColumns.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.max(prev - 1, 0));
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (filteredColumns[highlightedIndex]) {
+          setSelectedColumn(filteredColumns[highlightedIndex].code);
+          setNewValue('');
+          setShowColumnDropdown(false);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowColumnDropdown(false);
+        dropdownButtonRef.current?.focus();
+        break;
+    }
+  }, [showColumnDropdown, filteredColumns, highlightedIndex]);
+
+  const handleUpdate = useCallback(async () => {
     if (!selectedColumn) {
       setError('Please select a column to update');
       return;
@@ -79,9 +178,14 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
     } finally {
       setIsUpdating(false);
     }
-  };
+  }, [selectedColumn, newValue, onUpdate, onClose]);
 
-  // Render input based on column type
+  const handleBackdropClick = useCallback(() => {
+    if (!isUpdating) {
+      onClose();
+    }
+  }, [isUpdating, onClose]);
+
   const renderValueInput = () => {
     if (!selectedColumnObj) {
       return (
@@ -89,36 +193,41 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
           type="text"
           disabled
           placeholder="Select a column first"
-          className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 text-sm"
+          className="w-full px-3 py-2.5 rounded-lg text-sm min-h-[44px] bg-muted text-muted-foreground border border-border"
         />
       );
     }
 
     const type = selectedColumnObj.type?.toLowerCase() || 'string';
+    const baseInputClass = "w-full px-3 py-2.5 rounded-lg text-sm min-h-[44px] transition-colors focus:outline-none bg-card text-foreground border border-border focus:border-primary focus:ring-1 focus:ring-primary";
 
     switch (type) {
       case 'boolean':
         return (
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="flex items-center gap-4" role="radiogroup" aria-label="Boolean value">
+            <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
               <input
                 type="radio"
                 name="boolValue"
                 checked={newValue === 'true'}
                 onChange={() => setNewValue('true')}
-                className="w-4 h-4 text-primary-600 border-slate-300 focus:ring-primary-500"
+                className="w-5 h-5 accent-primary"
               />
-              <span className="text-sm text-slate-700">Yes / True</span>
+              <span className="text-sm text-foreground">
+                Yes / True
+              </span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
               <input
                 type="radio"
                 name="boolValue"
                 checked={newValue === 'false'}
                 onChange={() => setNewValue('false')}
-                className="w-4 h-4 text-primary-600 border-slate-300 focus:ring-primary-500"
+                className="w-5 h-5 accent-primary"
               />
-              <span className="text-sm text-slate-700">No / False</span>
+              <span className="text-sm text-foreground">
+                No / False
+              </span>
             </label>
           </div>
         );
@@ -133,7 +242,7 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
             placeholder="Enter numeric value"
-            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            className={baseInputClass}
           />
         );
 
@@ -143,7 +252,7 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             type="date"
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            className={baseInputClass}
           />
         );
 
@@ -153,7 +262,7 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             type="datetime-local"
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            className={baseInputClass}
           />
         );
 
@@ -165,7 +274,7 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             onChange={(e) => setNewValue(e.target.value)}
             placeholder="Enter new value"
             rows={4}
-            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors resize-none"
+            className="w-full px-3 py-2.5 rounded-lg text-sm transition-colors focus:outline-none resize-none bg-card text-foreground border border-border focus:border-primary focus:ring-1 focus:ring-primary"
           />
         );
 
@@ -176,7 +285,7 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
             placeholder="Enter new value"
-            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+            className={baseInputClass}
           />
         );
     }
@@ -186,67 +295,92 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
 
   const modalContent = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={() => !isUpdating && onClose()}
+        className="absolute inset-0 backdrop-blur-sm bg-overlay/50"
+        onClick={handleBackdropClick}
+        aria-hidden="true"
       />
 
-      {/* Modal */}
       <div
         ref={modalRef}
-        className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden"
-        style={{ animation: 'modalFadeIn 0.2s ease-out' }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-update-title"
+        aria-describedby="bulk-update-description"
+        className="relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden bg-card animate-in fade-in zoom-in-95 duration-200"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Bulk Update</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2
+            id="bulk-update-title"
+            className="text-lg font-semibold text-foreground"
+          >
+            Bulk Update
+          </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             disabled={isUpdating}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close dialog"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 space-y-5">
-          {/* Warning */}
-          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div id="bulk-update-description" className="px-6 py-5 space-y-5">
+          <div
+            className="flex items-start gap-3 p-4 rounded-xl bg-warning-subtle border border-warning-border"
+            role="alert"
+          >
+            <AlertTriangle
+              className="h-5 w-5 flex-shrink-0 mt-0.5 text-warning-text"
+              aria-hidden="true"
+            />
             <div className="text-sm">
-              <p className="font-medium text-amber-800">
+              <p className="font-medium text-foreground">
                 You are about to update {selectedCount} record{selectedCount !== 1 ? 's' : ''}
               </p>
-              <p className="text-amber-700 mt-1">
+              <p className="mt-1 text-muted-foreground">
                 This action will modify all selected records. Make sure to verify your selection before proceeding.
               </p>
             </div>
           </div>
 
-          {/* Column Selection */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label
+              id="column-select-label"
+              className="block text-sm font-medium mb-2 text-foreground"
+            >
               Select Column to Update
             </label>
             <div ref={dropdownRef} className="relative">
               <button
+                ref={dropdownButtonRef}
                 type="button"
                 onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-left hover:border-slate-300 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none transition-colors"
+                onKeyDown={handleDropdownKeyDown}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-colors min-h-[44px] bg-card border ${showColumnDropdown ? 'border-primary' : 'border-border'} ${selectedColumnObj ? 'text-foreground' : 'text-muted-foreground'}`}
+                aria-haspopup="listbox"
+                aria-expanded={showColumnDropdown}
+                aria-labelledby="column-select-label"
               >
-                <span className={selectedColumnObj ? 'text-slate-900' : 'text-slate-400'}>
+                <span>
                   {selectedColumnObj?.label || 'Choose a column...'}
                 </span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showColumnDropdown ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform text-muted-foreground ${showColumnDropdown ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
               </button>
 
-              {/* Dropdown */}
               {showColumnDropdown && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-xl py-1 max-h-60 overflow-y-auto">
-                  {columns.filter(c => !c.hidden).map((col) => (
+                <div
+                  className="absolute left-0 right-0 top-full mt-1 z-10 rounded-lg py-1 max-h-60 overflow-y-auto bg-card border border-border shadow-xl"
+                  role="listbox"
+                  aria-label="Select column"
+                >
+                  {filteredColumns.map((col, index) => (
                     <button
                       key={col.code}
                       type="button"
@@ -255,14 +389,20 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
                         setNewValue('');
                         setShowColumnDropdown(false);
                       }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                        selectedColumn === col.code
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors min-h-[44px] ${
+                        highlightedIndex === index || selectedColumn === col.code ? 'bg-muted' : ''
+                      } ${selectedColumn === col.code ? 'text-primary' : 'text-foreground'}`}
+                      role="option"
+                      aria-selected={selectedColumn === col.code}
                     >
                       <span>{col.label}</span>
-                      {selectedColumn === col.code && <Check className="h-4 w-4" />}
+                      {selectedColumn === col.code && (
+                        <Check
+                          className="h-4 w-4 text-primary"
+                          aria-hidden="true"
+                        />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -270,37 +410,37 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             </div>
           </div>
 
-          {/* Value Input */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium mb-2 text-foreground">
               New Value
               {selectedColumnObj && (
-                <span className="text-slate-400 font-normal ml-2">
+                <span className="font-normal ml-2 text-muted-foreground">
                   ({selectedColumnObj.type || 'text'})
                 </span>
               )}
             </label>
             {renderValueInput()}
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs mt-1.5 text-muted-foreground">
               Leave empty to clear the field value for all selected records.
             </p>
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="p-3 bg-danger-50 border border-danger-200 rounded-lg text-sm text-danger-700">
+            <div
+              className="p-3 rounded-lg text-sm bg-destructive/10 border border-destructive text-destructive"
+              role="alert"
+            >
               {error}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 bg-slate-50 border-t border-slate-200">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 bg-muted border-t border-border">
           <button
             type="button"
             onClick={onClose}
             disabled={isUpdating}
-            className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors min-h-[44px] disabled:opacity-50 text-muted-foreground hover:bg-card hover:text-foreground"
           >
             Cancel
           </button>
@@ -308,30 +448,26 @@ export const BulkUpdateModal: React.FC<BulkUpdateModalProps> = ({
             type="button"
             onClick={handleUpdate}
             disabled={!selectedColumn || isUpdating}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed ${
+              !selectedColumn || isUpdating
+                ? 'bg-muted text-muted-foreground'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
           >
             {isUpdating ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 <span>Updating...</span>
               </>
             ) : (
               <>
-                <Check className="h-4 w-4" />
+                <Check className="h-4 w-4" aria-hidden="true" />
                 <span>Update {selectedCount} Record{selectedCount !== 1 ? 's' : ''}</span>
               </>
             )}
           </button>
         </div>
       </div>
-
-      {/* Animation styles */}
-      <style>{`
-        @keyframes modalFadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   );
 

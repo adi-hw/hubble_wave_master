@@ -1,6 +1,15 @@
+import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import * as argon2 from 'argon2';
 import { v4 as uuidv4 } from 'uuid';
+
+function requireEnv(key: string): string {
+  const value = process.env[key];
+  if (!value) {
+    throw new Error(`${key} must be set before seeding admin`);
+  }
+  return value;
+}
 
 /**
  * Default permissions to seed
@@ -40,9 +49,9 @@ async function seed() {
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
-    username: process.env.POSTGRES_USER || 'hubblewave',
-    password: process.env.POSTGRES_PASSWORD || 'hubblewave',
-    database: process.env.POSTGRES_DB || 'hubblewave',
+    username: process.env.DB_USER || 'hubblewave',
+    password: process.env.DB_PASSWORD || 'hubblewave',
+    database: process.env.DB_NAME || 'hubblewave',
     synchronize: false,
   });
 
@@ -90,8 +99,11 @@ async function seed() {
     }
 
     // 3. Create requested user
-    const email = 'adityasingampally@hubblewave.com';
-    const password = 'password123';
+    const email = requireEnv('ADMIN_EMAIL');
+    const password = requireEnv('ADMIN_PASSWORD');
+    const firstName = requireEnv('ADMIN_FIRST_NAME');
+    const lastName = requireEnv('ADMIN_LAST_NAME');
+    const displayName = process.env.ADMIN_DISPLAY_NAME || `${firstName} ${lastName}`;
     console.log(`\n👤 Creating user: ${email}...`);
 
     let userId: string;
@@ -102,8 +114,16 @@ async function seed() {
     if (userRes.length > 0) {
       userId = userRes[0].id;
       await dataSource.query(
-        `UPDATE users SET password_hash = $1, status = 'active' WHERE id = $2`,
-        [passwordHash, userId]
+        `UPDATE users
+         SET password_hash = $1,
+             status = 'active',
+             display_name = $2,
+             first_name = $3,
+             last_name = $4,
+             email_verified = true,
+             is_admin = true
+         WHERE id = $5`,
+        [passwordHash, displayName, firstName, lastName, userId]
       );
       console.log(`✅ Updated existing user ${email}`);
     } else {
@@ -114,8 +134,8 @@ async function seed() {
            display_name, first_name, last_name,
            email_verified, is_admin, failed_login_attempts, created_at, updated_at
          )
-         VALUES ($1, $2, $3, 'active', 'Aditya Singampally', 'Aditya', 'Singampally', true, true, 0, NOW(), NOW())`,
-        [userId, email, passwordHash]
+         VALUES ($1, $2, $3, 'active', $4, $5, $6, true, true, 0, NOW(), NOW())`,
+        [userId, email, passwordHash, displayName, firstName, lastName]
       );
       console.log(`✅ Created user ${email}`);
     }

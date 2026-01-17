@@ -8,10 +8,10 @@ export type EventType =
   | 'record.after_update'
   | 'record.before_delete'
   | 'record.after_delete'
-  | 'workflow.started'
-  | 'workflow.completed'
-  | 'workflow.failed'
-  | 'workflow.step_completed'
+  | 'processFlow.started'
+  | 'processFlow.completed'
+  | 'processFlow.failed'
+  | 'processFlow.step_completed'
   | 'notification.send'
   | 'api.call'
   | 'rule.error'
@@ -19,11 +19,11 @@ export type EventType =
 
 export interface EventPayload {
   eventType: EventType;
-  tableName?: string;
+  collectionCode?: string;
   recordId?: string;
   record?: Record<string, unknown>;
   previousRecord?: Record<string, unknown>;
-  changedFields?: string[];
+  changedProperties?: string[];
   userId?: string;
   metadata?: Record<string, unknown>;
   timestamp: Date;
@@ -62,7 +62,7 @@ export class EventBusService implements OnModuleInit {
       timestamp: new Date(),
     };
 
-    const eventName = this.buildEventName(event.eventType, event.tableName);
+    const eventName = this.buildEventName(event.eventType, event.collectionCode);
 
     this.logger.debug(`Publishing event: ${eventName}`);
 
@@ -143,11 +143,11 @@ export class EventBusService implements OnModuleInit {
   }
 
   /**
-   * Build event name from type and optional table
+   * Build event name from type and optional collection
    */
-  private buildEventName(eventType: EventType, tableName?: string): string {
-    if (tableName) {
-      return `${eventType}:${tableName}`;
+  private buildEventName(eventType: EventType, collectionCode?: string): string {
+    if (collectionCode) {
+      return `${eventType}:${collectionCode}`;
     }
     return eventType;
   }
@@ -177,7 +177,6 @@ export class EventBusService implements OnModuleInit {
    */
   private async loadPersistentSubscriptions(): Promise<void> {
     // This will be enhanced to load from EventSubscription entity
-    // For now, we just log that the service is ready
     this.logger.log(`Loading persistent event subscriptions...`);
   }
 
@@ -203,11 +202,11 @@ export class EventBusService implements OnModuleInit {
     // Delegate to HTTP service (will be implemented)
   }
 
-  @OnEvent('workflow.trigger')
-  async handleWorkflowTrigger(payload: any): Promise<void> {
-    this.logger.debug(`Workflow trigger: ${payload.workflowCode}`);
-    // Delegate to workflow engine
-    this.eventEmitter.emit('workflow.start', payload);
+  @OnEvent('processFlow.trigger')
+  async handleProcessFlowTrigger(payload: any): Promise<void> {
+    this.logger.debug(`Process flow trigger: ${payload.processFlowCode}`);
+    // Delegate to process flow engine
+    this.eventEmitter.emit('processFlow.start', payload);
   }
 
   @OnEvent('rule.error')

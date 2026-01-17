@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
 /**
- * Simplified model registry used for build-time compatibility.
- * It no longer introspects the database; instead it returns lightweight
- * placeholders that satisfy controllers and callers.
+ * Model registry service providing collection metadata for build-time compatibility.
+ * Returns lightweight metadata structures for schema-driven operations.
  */
 @Injectable()
 export class ModelRegistryService {
-  async getTable(tableName: string, _tenantId?: string): Promise<{
-    tableName: string;
+  async getCollection(collectionCode: string): Promise<{
+    collectionCode: string;
     label: string;
     storageTable: string;
     storageSchema: string;
@@ -16,16 +15,16 @@ export class ModelRegistryService {
     isSystem: boolean;
   }> {
     return {
-      tableName,
-      label: this.formatName(tableName),
-      storageTable: tableName,
+      collectionCode,
+      label: this.formatName(collectionCode),
+      storageTable: collectionCode,
       storageSchema: 'public',
       category: 'application',
       isSystem: false,
     };
   }
 
-  async getFields(tableName: string, _tenantId?: string, _roles?: string[]): Promise<any[]> {
+  async getProperties(collectionCode: string, _roles?: string[]): Promise<any[]> {
     return [
       {
         code: 'id',
@@ -33,7 +32,7 @@ export class ModelRegistryService {
         type: 'uuid',
         backendType: 'uuid',
         uiWidget: 'text',
-        storagePath: `column:${tableName}.id`,
+        storagePath: `column:${collectionCode}.id`,
         nullable: false,
         isUnique: true,
         defaultValue: null,
@@ -48,12 +47,12 @@ export class ModelRegistryService {
     ];
   }
 
-  async getLayout(_tableName: string): Promise<any> {
+  async getLayout(_collectionCode: string): Promise<any> {
     return {};
   }
 
   clearCache() {
-    // no-op placeholder
+    // Cache clearing is handled at the repository level
   }
 
   private formatName(value: string): string {

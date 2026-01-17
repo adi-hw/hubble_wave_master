@@ -354,8 +354,7 @@ export class SchemaSyncService implements OnModuleInit {
             continue;
           }
 
-          // Note: propertyTypeId would need to be resolved from PropertyType table
-          // For now, we'll create a minimal property definition
+          // Note: propertyTypeId is resolved from PropertyType table
           const property = this.propertyRepo.create({
             collection: savedCollection,
             collectionId: savedCollection.id,

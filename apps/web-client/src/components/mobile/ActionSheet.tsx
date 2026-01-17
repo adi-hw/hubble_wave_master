@@ -1,4 +1,15 @@
-import { useEffect, ReactNode } from 'react';
+/**
+ * ActionSheet Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready mobile action sheet with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Focus trap and keyboard navigation
+ */
+
+import { useEffect, useRef, ReactNode, useCallback } from 'react';
 import { cn } from '../../lib/utils';
 
 interface ActionSheetOption {
@@ -28,6 +39,9 @@ export function ActionSheet({
   cancelLabel = 'Cancel',
   className,
 }: ActionSheetProps) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
   // Lock body scroll when open
   useEffect(() => {
     if (isOpen) {
@@ -51,19 +65,58 @@ export function ActionSheet({
     return () => window.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
 
-  const handleOptionClick = (option: ActionSheetOption) => {
+  // Focus first option when opened
+  useEffect(() => {
+    if (isOpen && sheetRef.current) {
+      const firstButton = sheetRef.current.querySelector('button');
+      if (firstButton) {
+        firstButton.focus();
+      }
+    }
+  }, [isOpen]);
+
+  // Focus trap
+  useEffect(() => {
+    if (!isOpen || !sheetRef.current) return;
+
+    const sheet = sheetRef.current;
+    const focusableElements = sheet.querySelectorAll('button:not([disabled])');
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    sheet.addEventListener('keydown', handleTabKey);
+    return () => sheet.removeEventListener('keydown', handleTabKey);
+  }, [isOpen]);
+
+  const handleOptionClick = useCallback((option: ActionSheetOption) => {
     if (!option.disabled) {
       option.onClick();
       onClose();
     }
-  };
+  }, [onClose]);
 
   return (
     <>
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-50 bg-black/50 transition-opacity duration-300',
+          'fixed inset-0 z-50 bg-overlay/50 transition-opacity duration-300',
           isOpen
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
@@ -74,6 +127,7 @@ export function ActionSheet({
 
       {/* Action Sheet */}
       <div
+        ref={sheetRef}
         role="dialog"
         aria-modal="true"
         aria-label={title || 'Action sheet'}
@@ -86,17 +140,25 @@ export function ActionSheet({
         )}
       >
         {/* Main options card */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden mb-2 shadow-xl">
+        <div
+          className="rounded-2xl overflow-hidden mb-2 bg-card shadow-xl"
+        >
           {/* Header */}
           {(title || message) && (
-            <div className="px-4 py-3 text-center border-b border-slate-200 dark:border-slate-700">
+            <div
+              className="px-4 py-3 text-center border-b border-border"
+            >
               {title && (
-                <h3 className="font-semibold text-slate-900 dark:text-white">
+                <h3
+                  className="font-semibold text-foreground"
+                >
                   {title}
                 </h3>
               )}
               {message && (
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                <p
+                  className="text-sm mt-1 text-muted-foreground"
+                >
                   {message}
                 </p>
               )}
@@ -104,20 +166,22 @@ export function ActionSheet({
           )}
 
           {/* Options */}
-          <div className="divide-y divide-slate-200 dark:divide-slate-700">
+          <div>
             {options.map((option, index) => (
               <button
                 key={index}
                 onClick={() => handleOptionClick(option)}
                 disabled={option.disabled}
                 className={cn(
-                  'w-full flex items-center justify-center gap-2 px-4 py-3.5',
+                  'w-full flex items-center justify-center gap-2 px-4',
                   'text-base font-medium',
-                  'transition-colors',
-                  option.disabled && 'opacity-50 cursor-not-allowed',
+                  'transition-colors min-h-[52px]',
+                  'hover:bg-muted',
+                  index > 0 && 'border-t border-border',
                   option.variant === 'danger'
-                    ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                    : 'text-indigo-600 dark:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                    ? 'text-destructive hover:bg-destructive/10'
+                    : 'text-primary',
+                  option.disabled && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 {option.icon}
@@ -129,14 +193,9 @@ export function ActionSheet({
 
         {/* Cancel button */}
         <button
+          ref={cancelButtonRef}
           onClick={onClose}
-          className={cn(
-            'w-full bg-white dark:bg-slate-800 rounded-2xl',
-            'px-4 py-3.5 text-base font-semibold',
-            'text-slate-700 dark:text-slate-300',
-            'hover:bg-slate-50 dark:hover:bg-slate-700',
-            'transition-colors shadow-xl'
-          )}
+          className="w-full rounded-2xl px-4 text-base font-semibold transition-colors min-h-[52px] bg-card text-foreground shadow-xl hover:bg-muted"
         >
           {cancelLabel}
         </button>

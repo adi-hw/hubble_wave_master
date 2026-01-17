@@ -7,6 +7,7 @@
 
 /* Import design tokens */
 @import './styles/design-tokens.css';
+@import '../../../libs/ui/src/components/grid/grid-tokens.css';
 
 /* Tailwind directives */
 @tailwind base;
@@ -24,22 +25,57 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 
-  html.dark {
+  html.dark,
+  html[data-theme="dark"] {
     color-scheme: dark;
   }
 
   html, body {
-    @apply h-full overflow-hidden;
+    @apply h-full;
+  }
+
+  *, ::before, ::after {
+    border-color: var(--border-default);
+  }
+
+  /* ShadCN/UI Compatible Utility Classes */
+  .text-foreground {
+    color: var(--foreground);
+  }
+  .text-muted-foreground {
+    color: var(--muted-foreground);
+  }
+  .text-primary {
+    color: var(--text-primary);
+  }
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+  .bg-muted {
+    background-color: var(--muted);
+  }
+  .bg-accent {
+    background-color: var(--accent);
+  }
+
+  /* Theme-aware gradient backgrounds */
+  .bg-gradient-brand {
+    background: var(--gradient-brand);
+  }
+  .bg-gradient-brand-subtle {
+    background: var(--gradient-brand-subtle);
   }
 
   body {
     @apply font-sans text-base;
     background-color: var(--bg-base);
     color: var(--text-primary);
+    min-height: 100%;
+    overflow-x: hidden;
   }
 
   #root {
-    @apply h-full overflow-hidden;
+    min-height: 100%;
   }
 
   /* Better focus outlines - only show on keyboard navigation */
@@ -194,7 +230,7 @@
   .settings-select:focus {
     outline: none;
     border-color: var(--border-focus);
-    box-shadow: 0 0 0 2px var(--color-primary-500) / 0.2;
+    box-shadow: 0 0 0 2px rgb(var(--ring-color-rgb) / 0.25);
   }
 
   /* Remove default arrow appearance for custom styling */
@@ -290,7 +326,7 @@
 
   /* Button Variants */
   .btn-primary {
-    @apply btn text-white shadow-sm;
+    @apply btn text-primary-foreground shadow-sm;
     background: var(--gradient-brand);
   }
 
@@ -301,6 +337,21 @@
 
   .btn-primary:active:not(:disabled) {
     transform: translateY(1px);
+  }
+
+  /* Align primary CTA buttons with brand gradient */
+  button.bg-primary,
+  a.bg-primary,
+  [role="button"].bg-primary {
+    background: var(--gradient-brand);
+    color: var(--text-on-primary);
+  }
+
+  button.bg-primary:hover:not(:disabled),
+  a.bg-primary:hover,
+  [role="button"].bg-primary:hover:not(:disabled) {
+    background: var(--gradient-brand-hover);
+    box-shadow: var(--shadow-primary);
   }
 
   .btn-secondary {
@@ -329,7 +380,7 @@
   }
 
   .btn-danger {
-    @apply btn text-white shadow-sm;
+    @apply btn text-danger-foreground shadow-sm;
     background-color: var(--bg-danger);
   }
 
@@ -339,7 +390,7 @@
   }
 
   .btn-success {
-    @apply btn text-white shadow-sm;
+    @apply btn text-success-foreground shadow-sm;
     background-color: var(--bg-success);
   }
 
@@ -348,7 +399,7 @@
   }
 
   .btn-accent {
-    @apply btn text-white shadow-sm;
+    @apply btn text-accent-foreground shadow-sm;
     background-color: var(--bg-accent);
   }
 
@@ -366,6 +417,23 @@
 
   .btn-outline:hover:not(:disabled) {
     background-color: var(--bg-primary-subtle);
+  }
+
+  .toggle-track {
+    @apply relative inline-flex items-center rounded-full transition-colors border border-border;
+    background-color: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .toggle-track-on {
+    background: var(--gradient-brand);
+    color: var(--text-on-primary);
+    border-color: transparent;
+    box-shadow: var(--shadow-primary);
+  }
+
+  .toggle-thumb {
+    @apply rounded-full bg-primary-foreground shadow-sm transition-transform;
   }
 
   /* Button Sizes */
@@ -595,22 +663,22 @@
 
   /* Solid badges */
   .badge-primary-solid {
-    @apply badge text-white;
+    @apply badge text-primary-foreground;
     background-color: var(--bg-primary);
   }
 
   .badge-accent-solid {
-    @apply badge text-white;
+    @apply badge text-accent-foreground;
     background-color: var(--bg-accent);
   }
 
   .badge-success-solid {
-    @apply badge text-white;
+    @apply badge text-success-foreground;
     background-color: var(--bg-success);
   }
 
   .badge-danger-solid {
-    @apply badge text-white;
+    @apply badge text-danger-foreground;
     background-color: var(--bg-danger);
   }
 
@@ -629,7 +697,7 @@
   .badge-dot-warning::before { background-color: var(--bg-warning); }
   .badge-dot-danger::before { background-color: var(--bg-danger); }
   .badge-dot-info::before { background-color: var(--bg-info); }
-  .badge-dot-neutral::before { background-color: var(--color-neutral-400); }
+  .badge-dot-neutral::before { background-color: var(--text-muted); }
 
   /* ----- SURFACE LAYERS ----- */
   .surface {
@@ -1148,8 +1216,8 @@
   }
 
   .dark .glass-surface-elevated {
-    background: rgba(22, 22, 34, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+    border: 1px solid var(--glass-border);
     box-shadow:
       0 4px 6px -1px rgba(0, 0, 0, 0.3),
       0 2px 4px -2px rgba(0, 0, 0, 0.2),
@@ -1165,8 +1233,8 @@
   }
 
   .dark .glass-sidebar {
-    background: rgba(15, 15, 22, 0.85);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+    border-right: 1px solid var(--glass-border);
   }
 
   /* Subtle glass for cards */
@@ -1645,3 +1713,4 @@ nav.glass-sidebar [role="button"] {
     border: 1px solid #ddd;
   }
 }
+

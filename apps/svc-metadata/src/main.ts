@@ -33,7 +33,7 @@ async function bootstrap() {
     return origin;
   });
 
-  // Support *.localhost patterns for tenant subdomains in development
+  // Support *.localhost patterns for instance subdomains in development
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
   }
@@ -64,7 +64,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       process.env.CORS_ALLOWED_HEADERS ??
-      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Tenant-Slug',
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
   const globalPrefix = 'api';

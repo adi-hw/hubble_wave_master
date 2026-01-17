@@ -199,6 +199,34 @@ export class PropertyDefinition {
   isFilterable!: boolean;
 
   // ─────────────────────────────────────────────────────────────────
+  // Sensitive Data & Security
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Contains Protected Health Information (PHI/HIPAA) */
+  @Column({ name: 'is_phi', type: 'boolean', default: false })
+  isPhi!: boolean;
+
+  /** Contains Personally Identifiable Information (PII) */
+  @Column({ name: 'is_pii', type: 'boolean', default: false })
+  isPii!: boolean;
+
+  /** Contains sensitive data requiring masking */
+  @Column({ name: 'is_sensitive', type: 'boolean', default: false })
+  isSensitive!: boolean;
+
+  /** Masking strategy for sensitive data */
+  @Column({ name: 'masking_strategy', type: 'varchar', length: 20, default: 'none' })
+  maskingStrategy!: 'none' | 'partial' | 'full';
+
+  /** Custom mask value (e.g., '****' or 'REDACTED') */
+  @Column({ name: 'mask_value', type: 'varchar', length: 50, nullable: true })
+  maskValue?: string | null;
+
+  /** Requires break-glass access for viewing */
+  @Column({ name: 'requires_break_glass', type: 'boolean', default: false })
+  requiresBreakGlass!: boolean;
+
+  // ─────────────────────────────────────────────────────────────────
   // Metadata
   // ─────────────────────────────────────────────────────────────────
 

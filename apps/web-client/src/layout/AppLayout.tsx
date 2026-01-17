@@ -26,7 +26,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const shouldShowHeader = showHeader && hasHeaderContent;
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-background">
       <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
         {breadcrumbs && breadcrumbs.length > 0 && (
@@ -41,14 +41,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 <div className="min-w-0">
                   {title && (
                     <div className="flex items-center gap-3">
-                      <h1 className="text-xl font-semibold text-slate-900 truncate">{title}</h1>
+                      <h1 className="text-xl font-semibold text-foreground truncate">{title}</h1>
                       {subtitle && (
                         <span className="hidden sm:inline-flex badge-neutral">{subtitle}</span>
                       )}
                     </div>
                   )}
                   {headerMeta && (
-                    <p className="mt-1 text-sm text-slate-500">{headerMeta}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{headerMeta}</p>
                   )}
                 </div>
               )}

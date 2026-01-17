@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { LLMChatMessage } from './llm.service';
+import { LLMChatMessage, LLMService } from './llm.service';
 import { RAGService } from './rag.service';
-import { TenantContextService } from './instance-context.service';
+import { InstanceContextService } from './instance-context.service';
 import { PlatformKnowledgeService } from './platform-knowledge.service';
 import { UpgradeAssistantService } from './upgrade-assistant.service';
 
@@ -26,6 +26,7 @@ export interface AVAMessage {
   timestamp: Date;
   sources?: AVASource[];
   actions?: AVAAction[];
+  cards?: AVACard[];
 }
 
 export interface AVASource {
@@ -42,11 +43,20 @@ export interface AVAAction {
   params?: Record<string, unknown>;
 }
 
+export interface AVACard {
+  code: string;
+  name: string;
+  description?: string | null;
+  layout: Record<string, unknown>;
+  actionBindings?: Record<string, unknown>;
+}
+
 export interface AVAResponse {
   message: string;
   sources: AVASource[];
   suggestedActions: AVAAction[];
   followUpQuestions?: string[];
+  cards?: AVACard[];
   confidence: number;
   model: string;
   duration?: number;
@@ -100,7 +110,7 @@ const AVA_SYSTEM_PROMPT = `You are AVA (AI Virtual Assistant), the intelligent a
 - Ask for clarification when the request is ambiguous
 - NEVER share platform source code, internal implementation details, or system configurations
 - NEVER discuss how the HubbleWave platform is built, its architecture, or proprietary algorithms
-- Focus only on helping users with their tenant data and operations`;
+- Focus only on helping users with their instance data and operations`;
 
 const AVA_GREETING_TEMPLATES = [
   "Hi! I'm AVA, your HubbleWave assistant. How can I help you today?",
@@ -120,9 +130,10 @@ export class AVAService {
 
   constructor(
     private readonly ragService: RAGService,
-    private readonly tenantContextService: TenantContextService,
+    private readonly instanceContextService: InstanceContextService,
     private readonly platformKnowledgeService: PlatformKnowledgeService,
     private readonly upgradeAssistantService: UpgradeAssistantService,
+    private readonly llmService: LLMService,
   ) {}
 
   /**
@@ -149,9 +160,9 @@ export class AVAService {
     context: AVAContext,
     history: AVAMessage[] = []
   ): Promise<AVAResponse> {
-    // Get tenant-specific context for personalization
-    const tenantContext = await this.getTenantContextForPrompt(dataSource, context);
-    const systemPrompt = this.buildSystemPrompt(context, tenantContext);
+    // Get instance-specific context for personalization
+    const instanceContext = await this.getInstanceContextForPrompt(dataSource, context);
+    const systemPrompt = this.buildSystemPrompt(context, instanceContext);
 
     // Build conversation history for LLM
     const messages: LLMChatMessage[] = [
@@ -190,6 +201,8 @@ export class AVAService {
       context
     );
 
+    const groundedMessage = this.buildGroundedAnswer(ragResponse.answer, sources);
+
     // Generate follow-up questions
     const followUpQuestions = await this.generateFollowUpQuestions(
       message,
@@ -197,7 +210,7 @@ export class AVAService {
     );
 
     return {
-      message: ragResponse.answer,
+      message: groundedMessage,
       sources,
       suggestedActions,
       followUpQuestions,
@@ -219,6 +232,9 @@ export class AVAService {
     // Build context-aware system prompt
     const systemPrompt = this.buildSystemPrompt(context);
 
+    // Accumulate response chunks to generate actions after streaming completes
+    let fullResponse = '';
+
     // Stream RAG response
     for await (const event of this.ragService.queryStream(dataSource, message, {
       maxDocuments: 5,
@@ -235,13 +251,14 @@ export class AVAService {
         }));
         yield { type: 'sources', data: sources };
       } else if (event.type === 'chunk') {
+        fullResponse += event.data as string;
         yield { type: 'chunk', data: event.data };
       } else if (event.type === 'done') {
-        // Generate actions after response is complete
+        // Generate actions after response is complete with full accumulated response
         const actions = await this.generateSuggestedActions(
           dataSource,
           message,
-          '', // We don't have the full response here
+          fullResponse,
           context
         );
         yield { type: 'actions', data: actions };
@@ -252,16 +269,188 @@ export class AVAService {
 
   /**
    * Get proactive insights for a user
+   *
+   * Aggregates insights from multiple sources:
+   * - Active anomalies (detected by pattern analysis)
+   * - Predictions that may require attention
+   * - Personalized suggestions based on user behavior
    */
   async getInsights(
-    _dataSource: DataSource,
+    dataSource: DataSource,
     context: AVAContext,
-    _limit = 5
+    limit = 5
   ): Promise<AVAInsight[]> {
-    // This will be implemented with the proactive insights engine
-    // For now, return empty array
     this.logger.debug(`Getting insights for user ${context.userId}`);
-    return [];
+    const insights: AVAInsight[] = [];
+
+    try {
+      // Get recent anomalies
+      const anomalyInsights = await this.getAnomalyInsights(dataSource, context, Math.ceil(limit / 2));
+      insights.push(...anomalyInsights);
+
+      // Get prediction-based insights
+      const predictionInsights = await this.getPredictionInsights(dataSource, context, Math.ceil(limit / 3));
+      insights.push(...predictionInsights);
+
+      // Get personalized suggestions
+      const suggestionInsights = await this.getSuggestionInsights(dataSource, context, Math.ceil(limit / 3));
+      insights.push(...suggestionInsights);
+
+      // Sort by priority and creation date
+      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      insights.sort((a, b) => {
+        const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+        if (priorityDiff !== 0) return priorityDiff;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+
+      return insights.slice(0, limit);
+    } catch (error: any) {
+      this.logger.error(`Error getting insights: ${error.message}`, error.stack);
+      return [];
+    }
+  }
+
+  /**
+   * Get insights from detected anomalies
+   */
+  private async getAnomalyInsights(
+    dataSource: DataSource,
+    _context: AVAContext,
+    limit: number
+  ): Promise<AVAInsight[]> {
+    const anomalyRepo = dataSource.getRepository('AVAAnomaly');
+
+    const anomalies = await anomalyRepo.find({
+      where: {
+        isResolved: false,
+      },
+      order: {
+        severity: 'DESC',
+        detectedAt: 'DESC',
+      },
+      take: limit,
+    });
+
+    return anomalies.map((anomaly: any) => ({
+      type: 'anomaly' as const,
+      title: `Anomaly Detected: ${anomaly.anomalyType}`,
+      description: anomaly.description,
+      priority: anomaly.severity,
+      category: anomaly.affectedEntity || 'system',
+      actions: anomaly.affectedEntityId
+        ? [
+            {
+              type: 'navigate' as const,
+              label: `View ${anomaly.affectedEntity}`,
+              target: `/${anomaly.affectedEntity}s/${anomaly.affectedEntityId}`,
+            },
+          ]
+        : undefined,
+      createdAt: new Date(anomaly.detectedAt),
+    }));
+  }
+
+  /**
+   * Get insights from predictions
+   */
+  private async getPredictionInsights(
+    dataSource: DataSource,
+    _context: AVAContext,
+    limit: number
+  ): Promise<AVAInsight[]> {
+    const predictionRepo = dataSource.getRepository('AVAPrediction');
+    const now = new Date();
+    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const predictions = await predictionRepo
+      .createQueryBuilder('p')
+      .where('p.is_active = true')
+      .andWhere('p.target_date BETWEEN :now AND :weekFromNow', { now, weekFromNow })
+      .andWhere('p.confidence >= 0.7')
+      .orderBy('p.target_date', 'ASC')
+      .take(limit)
+      .getMany();
+
+    return predictions.map((prediction: any) => {
+      const value = prediction.predictionValue as Record<string, any>;
+      const predictionType = prediction.predictionType;
+
+      let title = 'Upcoming Prediction';
+      let description = '';
+      let priority: AVAInsight['priority'] = 'medium';
+
+      switch (predictionType) {
+        case 'capacity':
+          title = 'Capacity Alert';
+          description = `Predicted ${value.metric || 'resource'} will reach ${value.threshold || 'threshold'} by ${new Date(prediction.targetDate).toLocaleDateString()}`;
+          priority = value.urgency === 'high' ? 'high' : 'medium';
+          break;
+        case 'maintenance':
+          title = 'Maintenance Recommended';
+          description = `${value.asset || 'Asset'} may require maintenance based on predicted wear patterns`;
+          priority = 'medium';
+          break;
+        case 'trend':
+          title = 'Trend Insight';
+          description = value.description || `Trend detected in ${value.metric || 'metrics'}`;
+          priority = 'low';
+          break;
+        default:
+          description = JSON.stringify(value).substring(0, 100);
+      }
+
+      return {
+        type: 'trend' as const,
+        title,
+        description,
+        priority,
+        category: predictionType,
+        createdAt: new Date(prediction.createdAt),
+      };
+    });
+  }
+
+  /**
+   * Get personalized suggestion insights
+   */
+  private async getSuggestionInsights(
+    dataSource: DataSource,
+    context: AVAContext,
+    limit: number
+  ): Promise<AVAInsight[]> {
+    const suggestionRepo = dataSource.getRepository('AVASuggestion');
+
+    const suggestions = await suggestionRepo.find({
+      where: {
+        userId: context.userId,
+        status: 'pending',
+      },
+      order: {
+        relevanceScore: 'DESC',
+        createdAt: 'DESC',
+      },
+      take: limit,
+    });
+
+    return suggestions.map((suggestion: any) => ({
+      type: 'recommendation' as const,
+      title: suggestion.title || 'Suggestion',
+      description: suggestion.description,
+      priority: 'low' as const,
+      category: suggestion.suggestionType || 'general',
+      actions: suggestion.actionPayload
+        ? [
+            {
+              type: (suggestion.actionType || 'navigate') as AVAAction['type'],
+              label: suggestion.actionLabel || 'Take Action',
+              target: suggestion.actionTarget || '/',
+              params: suggestion.actionPayload,
+            },
+          ]
+        : undefined,
+      createdAt: new Date(suggestion.createdAt),
+    }));
   }
 
   /**
@@ -330,14 +519,14 @@ export class AVAService {
   }
 
   /**
-   * Build context-aware system prompt with tenant-specific information
+   * Build context-aware system prompt with instance-specific information
    */
-  private buildSystemPrompt(context: AVAContext, tenantContext?: string): string {
+  private buildSystemPrompt(context: AVAContext, instanceContext?: string): string {
     let prompt = AVA_SYSTEM_PROMPT;
 
-    // Add tenant-specific context if available
-    if (tenantContext) {
-      prompt += tenantContext;
+    // Add instance-specific context if available
+    if (instanceContext) {
+      prompt += instanceContext;
     }
 
     // Add user context
@@ -359,28 +548,28 @@ export class AVAService {
   }
 
   /**
-   * Get tenant-specific context for AVA prompts
+   * Get instance-specific context for AVA prompts
    */
-  async getTenantContextForPrompt(
+  async getInstanceContextForPrompt(
     dataSource: DataSource,
     context: AVAContext
   ): Promise<string> {
     try {
       let fullContext = '';
 
-      // Get tenant profile
-      const tenantProfile = await this.tenantContextService.getTenantProfile(
+      // Get instance profile
+      const instanceProfile = await this.instanceContextService.getInstanceProfile(
         dataSource
       );
 
       // Get user profile for personalization
-      const userProfile = await this.tenantContextService.getUserProfile(
+      const userProfile = await this.instanceContextService.getUserProfile(
         dataSource,
         context.userId
       );
 
-      // Build tenant context prompt
-      fullContext += this.tenantContextService.buildContextPrompt(tenantProfile, userProfile || undefined);
+      // Build instance context prompt
+      fullContext += this.instanceContextService.buildContextPrompt(instanceProfile, userProfile || undefined);
 
       // Add platform capabilities summary (for admin users)
       if (context.userRole && ['admin', 'itil_admin'].includes(context.userRole)) {
@@ -399,7 +588,7 @@ export class AVAService {
 
       return fullContext;
     } catch (error) {
-      this.logger.debug(`Error building tenant context: ${error}`);
+      this.logger.debug(`Error building instance context: ${error}`);
       return '';
     }
   }
@@ -415,7 +604,7 @@ export class AVAService {
   }
 
   /**
-   * Get upgrade guidance for the tenant
+   * Get upgrade guidance for the instance
    */
   async getUpgradeGuidance(
     dataSource: DataSource,
@@ -527,7 +716,53 @@ export class AVAService {
 
     return Math.min(confidence, 1);
   }
+
+  private buildGroundedAnswer(answer: string, sources: AVASource[]): string {
+    if (sources.length === 0) {
+      return 'I do not have enough grounded information to answer that yet. Please provide more context or point me to a record, collection, or knowledge article.';
+    }
+
+    if (answer.includes('[Source:')) {
+      return answer;
+    }
+
+    const citationLines = sources.map((source) => `- [Source: ${source.title}]`);
+    return `${answer}\n\nSources:\n${citationLines.join('\n')}`;
+  }
+  /**
+   * Transform text using AI instructions
+   */
+  async transformText(
+    text: string,
+    instruction: string,
+    context?: any
+  ): Promise<string> {
+    const prompt = `
+You are an expert editor and writing assistant.
+Transform the following text according to the instruction: "${instruction}".
+
+TEXT TO TRANSFORM:
+${text}
+
+CONTEXT:
+${context ? JSON.stringify(context) : 'None'}
+
+RULES:
+- Maintain the original meaning.
+- Adjust tone and length as requested.
+- Return ONLY the transformed text.
+- Do not include explanations or quotes around the result.
+`;
+
+    const response = await this.llmService.complete(prompt, undefined, {
+       temperature: 0.3, 
+       maxTokens: 500,
+    });
+    
+    return response.trim();
+  }
 }
+
 
 // Export AVA branding constants
 export const AVA_BRANDING = {

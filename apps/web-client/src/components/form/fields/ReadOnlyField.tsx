@@ -8,7 +8,7 @@ const fieldTypeIcons: Record<string, React.ElementType> = {
   formula: Calculator,
   condition: GitBranch,
   script_ref: Code,
-  workflow_stage: Workflow,
+  process_flow_stage: Workflow,
   auto_number: Binary,
   guid: Fingerprint,
   password_hashed: Key,
@@ -46,7 +46,7 @@ export const ReadOnlyField: React.FC<FieldComponentProps<any>> = ({
       case 'formula': return 'Calculated';
       case 'condition': return 'Condition';
       case 'script_ref': return 'Script Reference';
-      case 'workflow_stage': return 'Workflow Stage';
+      case 'process_flow_stage': return 'Process Flow Stage';
       case 'auto_number': return 'Auto-generated';
       case 'guid': return 'System ID';
       case 'password_hashed': return 'Encrypted';
@@ -65,24 +65,15 @@ export const ReadOnlyField: React.FC<FieldComponentProps<any>> = ({
       required={false}
       helpText={field.config?.helpText}
     >
-      <div
-        className="flex items-start gap-3 px-4 py-3 rounded-lg"
-        style={{
-          backgroundColor: 'var(--bg-surface-secondary)',
-          border: '1px solid var(--border-subtle)',
-        }}
-      >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: 'var(--bg-elevated)' }}
-        >
-          <Icon className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
+      <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-card border border-border">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted">
+          <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm break-words font-mono" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm break-words font-mono text-foreground">
             {formatValue(value)}
           </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{getTypeLabel()}</p>
+          <p className="text-xs mt-1 text-muted-foreground">{getTypeLabel()}</p>
         </div>
       </div>
     </FieldWrapper>

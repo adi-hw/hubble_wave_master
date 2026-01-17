@@ -90,7 +90,7 @@ const protocolLabels: Record<SSOProtocol, string> = {
 
 const protocolColors: Record<SSOProtocol, string> = {
   saml: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  oidc: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  oidc: 'bg-info-subtle text-info-text',
 };
 
 export const SSOConfigPage: React.FC = () => {
@@ -194,7 +194,7 @@ export const SSOConfigPage: React.FC = () => {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--bg-primary, #6366f1)' }} />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -204,26 +204,24 @@ export const SSOConfigPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+          <h1 className="text-2xl font-semibold text-foreground">
             Single Sign-On (SSO)
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted, #52525b)' }}>
+          <p className="text-sm mt-1 text-muted-foreground">
             Configure enterprise identity providers for secure authentication
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={fetchConfigs}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:opacity-80"
-            style={{ color: 'var(--text-secondary, #a1a1aa)', border: '1px solid var(--border-default, #2a2a3c)' }}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-muted-foreground border border-border hover:bg-muted"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors"
-            style={{ backgroundColor: 'var(--bg-primary, #6366f1)' }}
+            className="btn-primary px-4 py-2 rounded-lg"
           >
             <Plus className="h-4 w-4" />
             Add Provider
@@ -233,12 +231,12 @@ export const SSOConfigPage: React.FC = () => {
 
       {/* Error Banner */}
       {error && (
-        <div className="mb-6 rounded-xl p-4 flex items-start gap-3" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-          <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <div className="mb-6 rounded-xl p-4 flex items-start gap-3 bg-danger-subtle">
+          <XCircle className="h-5 w-5 text-danger-text flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-medium text-red-600">{error}</p>
+            <p className="font-medium text-danger-text">{error}</p>
           </div>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
+          <button onClick={() => setError(null)} className="text-danger-text hover:text-danger-text">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -247,20 +245,19 @@ export const SSOConfigPage: React.FC = () => {
       {/* Test Result Banner */}
       {testResult && (
         <div
-          className="mb-6 rounded-xl p-4 flex items-start gap-3"
-          style={{ backgroundColor: testResult.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}
+          className={`mb-6 rounded-xl p-4 flex items-start gap-3 ${testResult.success ? 'bg-success-subtle' : 'bg-danger-subtle'}`}
         >
           {testResult.success ? (
-            <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <CheckCircle className="h-5 w-5 text-success-text flex-shrink-0 mt-0.5" />
           ) : (
-            <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <XCircle className="h-5 w-5 text-danger-text flex-shrink-0 mt-0.5" />
           )}
           <div className="flex-1">
-            <p className={`font-medium ${testResult.success ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`font-medium ${testResult.success ? 'text-success-text' : 'text-danger-text'}`}>
               {testResult.message}
             </p>
             {testResult.errors && testResult.errors.length > 0 && (
-              <ul className="mt-2 text-sm text-red-600 list-disc list-inside">
+              <ul className="mt-2 text-sm text-danger-text list-disc list-inside">
                 {testResult.errors.map((err, idx) => (
                   <li key={idx}>{err}</li>
                 ))}
@@ -269,7 +266,7 @@ export const SSOConfigPage: React.FC = () => {
           </div>
           <button
             onClick={() => setTestResult(null)}
-            className={testResult.success ? 'text-green-600' : 'text-red-600'}
+            className={testResult.success ? 'text-success-text' : 'text-danger-text'}
           >
             <X className="h-4 w-4" />
           </button>
@@ -277,34 +274,32 @@ export const SSOConfigPage: React.FC = () => {
       )}
 
       {/* Service Provider Info */}
-      <div className="rounded-xl p-6 mb-6" style={{ backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', border: '1px solid var(--border-default, #2a2a3c)' }}>
-        <h3 className="font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary, #fafafa)' }}>
-          <FileText className="h-5 w-5" style={{ color: 'var(--bg-primary, #6366f1)' }} />
+      <div className="rounded-xl p-6 mb-6 bg-muted border border-border">
+        <h3 className="font-semibold mb-4 flex items-center gap-2 text-foreground">
+          <FileText className="h-5 w-5 text-primary" />
           Service Provider Configuration
         </h3>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-muted, #52525b)' }}>
+        <p className="text-sm mb-4 text-muted-foreground">
           Use these URLs when configuring your identity provider to connect with this application.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-3">
             <div>
-              <label className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 SAML Metadata URL
               </label>
               <div className="flex items-center gap-2 mt-1">
                 <code
-                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono"
-                  style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-primary, #fafafa)' }}
+                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono bg-card border border-border text-foreground"
                 >
                   {spMetadataUrl}
                 </code>
                 <button
                   onClick={() => handleCopy(spMetadataUrl, 'metadata')}
-                  className="p-2 rounded hover:opacity-80"
-                  style={{ color: 'var(--bg-primary, #6366f1)' }}
+                  className="p-2 rounded text-primary hover:bg-muted"
                 >
                   {copiedField === 'metadata' ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success-text" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -312,23 +307,21 @@ export const SSOConfigPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 SAML ACS URL
               </label>
               <div className="flex items-center gap-2 mt-1">
                 <code
-                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono"
-                  style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-primary, #fafafa)' }}
+                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono bg-card border border-border text-foreground"
                 >
                   {acsUrl}
                 </code>
                 <button
                   onClick={() => handleCopy(acsUrl, 'acs')}
-                  className="p-2 rounded hover:opacity-80"
-                  style={{ color: 'var(--bg-primary, #6366f1)' }}
+                  className="p-2 rounded text-primary hover:bg-muted"
                 >
                   {copiedField === 'acs' ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success-text" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -338,23 +331,21 @@ export const SSOConfigPage: React.FC = () => {
           </div>
           <div className="space-y-3">
             <div>
-              <label className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 OIDC Callback URL
               </label>
               <div className="flex items-center gap-2 mt-1">
                 <code
-                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono"
-                  style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-primary, #fafafa)' }}
+                  className="flex-1 text-sm px-3 py-2 rounded truncate font-mono bg-card border border-border text-foreground"
                 >
                   {oidcCallbackUrl}
                 </code>
                 <button
                   onClick={() => handleCopy(oidcCallbackUrl, 'oidc')}
-                  className="p-2 rounded hover:opacity-80"
-                  style={{ color: 'var(--bg-primary, #6366f1)' }}
+                  className="p-2 rounded text-primary hover:bg-muted"
                 >
                   {copiedField === 'oidc' ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success-text" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -370,20 +361,18 @@ export const SSOConfigPage: React.FC = () => {
         {configs.map((config) => (
           <div
             key={config.id}
-            className="rounded-xl p-6"
-            style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}
+            className="rounded-xl p-6 bg-card border border-border"
           >
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
                 <div
-                  className="h-12 w-12 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--bg-surface-secondary, #1c1c26)' }}
+                  className="h-12 w-12 rounded-xl flex items-center justify-center bg-muted"
                 >
-                  <Shield className="h-6 w-6" style={{ color: 'var(--text-secondary, #a1a1aa)' }} />
+                  <Shield className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div>
                   <div className="flex items-center gap-3">
-                    <h3 className="font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+                    <h3 className="font-semibold text-foreground">
                       {config.name}
                     </h3>
                     <span
@@ -392,18 +381,18 @@ export const SSOConfigPage: React.FC = () => {
                       {protocolLabels[config.provider]}
                     </span>
                     {config.enabled ? (
-                      <span className="flex items-center gap-1 text-xs text-green-600">
-                        <span className="w-2 h-2 bg-green-500 rounded-full" />
+                      <span className="flex items-center gap-1 text-xs text-success-text">
+                        <span className="w-2 h-2 bg-success rounded-full" />
                         Active
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--text-muted, #52525b)' }} />
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <span className="w-2 h-2 rounded-full bg-muted-foreground" />
                         Disabled
                       </span>
                     )}
                   </div>
-                  <div className="text-sm mt-1 space-y-1" style={{ color: 'var(--text-muted, #52525b)' }}>
+                  <div className="text-sm mt-1 space-y-1 text-muted-foreground">
                     {config.provider === 'saml' && config.entityId && (
                       <p>Entity ID: {config.entityId}</p>
                     )}
@@ -414,7 +403,7 @@ export const SSOConfigPage: React.FC = () => {
                       <p>Domains: {config.allowedDomains.join(', ')}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 mt-2 text-sm" style={{ color: 'var(--text-muted, #52525b)' }}>
+                  <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                     {config.jitEnabled && (
                       <span className="flex items-center gap-1">
                         <Users className="h-4 w-4" />
@@ -433,8 +422,7 @@ export const SSOConfigPage: React.FC = () => {
                 <button
                   onClick={() => handleToggleEnabled(config)}
                   disabled={actionLoading === config.id}
-                  className={`p-2 rounded-lg transition-colors ${config.enabled ? 'text-green-600' : ''}`}
-                  style={!config.enabled ? { color: 'var(--text-muted, #52525b)' } : undefined}
+                  className={`p-2 rounded-lg transition-colors ${config.enabled ? 'text-success-text' : 'text-muted-foreground'} hover:bg-muted`}
                   title={config.enabled ? 'Disable' : 'Enable'}
                 >
                   {actionLoading === config.id ? (
@@ -447,16 +435,14 @@ export const SSOConfigPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setSelectedConfig(config)}
-                  className="p-2 rounded-lg hover:opacity-80"
-                  style={{ color: 'var(--text-muted, #52525b)' }}
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted"
                   title="Configure"
                 >
                   <Settings className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => setSelectedConfig(config)}
-                  className="p-2 rounded-lg hover:opacity-80"
-                  style={{ color: 'var(--text-muted, #52525b)' }}
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted"
                   title="Edit"
                 >
                   <Edit className="h-5 w-5" />
@@ -464,7 +450,7 @@ export const SSOConfigPage: React.FC = () => {
                 <button
                   onClick={() => handleDelete(config.id)}
                   disabled={actionLoading === config.id}
-                  className="p-2 text-red-500 rounded-lg hover:opacity-80"
+                  className="p-2 text-danger-text rounded-lg hover:bg-muted"
                   title="Delete"
                 >
                   {actionLoading === config.id ? (
@@ -477,12 +463,11 @@ export const SSOConfigPage: React.FC = () => {
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center gap-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--border-default, #2a2a3c)' }}>
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
               <button
                 onClick={() => handleTestConnection(config)}
                 disabled={testingId === config.id}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg disabled:opacity-50 hover:opacity-80"
-                style={{ color: 'var(--bg-primary, #6366f1)' }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg disabled:opacity-50 text-primary hover:bg-muted"
               >
                 {testingId === config.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -492,8 +477,7 @@ export const SSOConfigPage: React.FC = () => {
                 Test Connection
               </button>
               <button
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:opacity-80"
-                style={{ color: 'var(--bg-primary, #6366f1)' }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-primary hover:bg-muted"
               >
                 <ExternalLink className="h-4 w-4" />
                 View Docs
@@ -506,21 +490,19 @@ export const SSOConfigPage: React.FC = () => {
       {/* Empty State */}
       {configs.length === 0 && !loading && (
         <div
-          className="rounded-xl p-12 text-center"
-          style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}
+          className="rounded-xl p-12 text-center bg-card border border-border"
         >
-          <Shield className="h-12 w-12 mx-auto mb-4" style={{ color: 'var(--text-muted, #52525b)' }} />
-          <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary, #fafafa)' }}>
+          <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-medium mb-2 text-foreground">
             No SSO Providers Configured
           </h3>
-          <p className="mb-6 max-w-md mx-auto" style={{ color: 'var(--text-muted, #52525b)' }}>
+          <p className="mb-6 max-w-md mx-auto text-muted-foreground">
             Configure enterprise identity providers to enable single sign-on for
             your organization.
           </p>
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors"
-            style={{ backgroundColor: 'var(--bg-primary, #6366f1)' }}
+            className="inline-flex items-center gap-2 px-4 py-2 text-primary-foreground rounded-lg bg-primary hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" />
             Add First Provider
@@ -531,15 +513,14 @@ export const SSOConfigPage: React.FC = () => {
       {/* Warning Banner */}
       {configs.some((c) => !c.enabled) && configs.length > 0 && (
         <div
-          className="mt-6 rounded-xl p-4 flex items-start gap-3"
-          style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+          className="mt-6 rounded-xl p-4 flex items-start gap-3 bg-warning-subtle border border-warning-border"
         >
-          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <AlertTriangle className="h-5 w-5 text-warning-text flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium text-amber-600">
+            <p className="font-medium text-warning-text">
               Disabled Providers
             </p>
-            <p className="text-sm text-amber-600 mt-1 opacity-80">
+            <p className="text-sm text-warning-text mt-1 opacity-80">
               Some identity providers are currently disabled. Users from these
               domains will not be able to sign in using SSO.
             </p>
@@ -576,7 +557,6 @@ export const SSOConfigPage: React.FC = () => {
   );
 };
 
-// Modal Component for Add/Edit SSO Config
 interface SSOConfigModalProps {
   config: SSOConfig | null;
   providers: SSOProvider[];
@@ -586,7 +566,6 @@ interface SSOConfigModalProps {
 
 const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
   config,
-  // providers, // Unused
   onClose,
   onSave,
 }) => {
@@ -650,31 +629,23 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0"
-        style={{ backgroundColor: 'var(--bg-overlay, rgba(0, 0, 0, 0.75))' }}
+        className="absolute inset-0 bg-overlay/75"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div
-        className="relative rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
-        style={{
-          backgroundColor: 'var(--bg-surface, #16161d)',
-          border: '1px solid var(--border-default, #2a2a3c)',
-          boxShadow: 'var(--shadow-2xl)',
-        }}
+        className="relative rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden bg-card border border-border"
       >
         <div
-          className="flex items-center justify-between px-6 py-4"
-          style={{ borderBottom: '1px solid var(--border-default, #2a2a3c)' }}
+          className="flex items-center justify-between px-6 py-4 border-b border-border"
         >
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+          <h2 className="text-lg font-semibold text-foreground">
             {config ? 'Edit SSO Provider' : 'Add SSO Provider'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:opacity-80"
-            style={{ color: 'var(--text-muted, #52525b)' }}
+            className="p-2 rounded-lg text-muted-foreground hover:bg-muted"
           >
             <X className="h-5 w-5" />
           </button>
@@ -682,7 +653,7 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           {error && (
-            <div className="mb-4 rounded-lg p-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'rgb(239, 68, 68)' }}>
+            <div className="mb-4 rounded-lg p-3 text-sm bg-danger-subtle text-danger-text">
               {error}
             </div>
           )}
@@ -691,28 +662,26 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Name *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg"
-                  style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                   placeholder="Corporate SSO"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Provider Type *
                 </label>
                 <select
                   value={formData.provider}
                   onChange={(e) => setFormData({ ...formData, provider: e.target.value as SSOProtocol })}
-                  className="w-full px-3 py-2 rounded-lg"
-                  style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                   disabled={!!config}
                 >
                   <option value="saml">SAML 2.0</option>
@@ -724,61 +693,57 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
             {/* SAML Fields */}
             {formData.provider === 'saml' && (
               <div className="space-y-4">
-                <h3 className="font-medium" style={{ color: 'var(--text-primary, #fafafa)' }}>SAML Configuration</h3>
+                <h3 className="font-medium text-foreground">SAML Configuration</h3>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     Entity ID (Issuer)
                   </label>
                   <input
                     type="text"
                     value={formData.entityId}
                     onChange={(e) => setFormData({ ...formData, entityId: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                     placeholder="https://idp.example.com/saml"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     SSO URL *
                   </label>
                   <input
                     type="url"
                     value={formData.ssoUrl}
                     onChange={(e) => setFormData({ ...formData, ssoUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                     placeholder="https://idp.example.com/saml/sso"
                     required={formData.provider === 'saml'}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     SLO URL (Optional)
                   </label>
                   <input
                     type="url"
                     value={formData.sloUrl}
                     onChange={(e) => setFormData({ ...formData, sloUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                     placeholder="https://idp.example.com/saml/slo"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     IdP Certificate (X.509)
                   </label>
                   <textarea
                     value={formData.certificate}
                     onChange={(e) => setFormData({ ...formData, certificate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg font-mono text-xs"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg font-mono text-xs border border-border bg-muted text-foreground"
                     rows={4}
                     placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
                   />
                   {config?.certificate === '*** Certificate Configured ***' && !formData.certificate && (
-                    <p className="mt-1 text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>Certificate is configured. Leave empty to keep existing.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Certificate is configured. Leave empty to keep existing.</p>
                   )}
                 </div>
               </div>
@@ -787,87 +752,81 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
             {/* OIDC Fields */}
             {formData.provider === 'oidc' && (
               <div className="space-y-4">
-                <h3 className="font-medium" style={{ color: 'var(--text-primary, #fafafa)' }}>OIDC Configuration</h3>
+                <h3 className="font-medium text-foreground">OIDC Configuration</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                    <label className="block text-sm font-medium mb-1 text-muted-foreground">
                       Client ID *
                     </label>
                     <input
                       type="text"
                       value={formData.clientId}
                       onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg"
-                      style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                       required={formData.provider === 'oidc'}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                    <label className="block text-sm font-medium mb-1 text-muted-foreground">
                       Client Secret {config?.hasClientSecret ? '(configured)' : ''}
                     </label>
                     <input
                       type="password"
                       value={clientSecret}
                       onChange={(e) => setClientSecret(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg"
-                      style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                       placeholder={config?.hasClientSecret ? '••••••••' : 'Enter client secret'}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     Authorization URL *
                   </label>
                   <input
                     type="url"
                     value={formData.authorizationUrl}
                     onChange={(e) => setFormData({ ...formData, authorizationUrl: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                     placeholder="https://login.example.com/oauth2/authorize"
                     required={formData.provider === 'oidc'}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                    <label className="block text-sm font-medium mb-1 text-muted-foreground">
                       Token URL
                     </label>
                     <input
                       type="url"
                       value={formData.tokenUrl}
                       onChange={(e) => setFormData({ ...formData, tokenUrl: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg"
-                      style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                       placeholder="https://login.example.com/oauth2/token"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                    <label className="block text-sm font-medium mb-1 text-muted-foreground">
                       UserInfo URL
                     </label>
                     <input
                       type="url"
                       value={formData.userinfoUrl}
                       onChange={(e) => setFormData({ ...formData, userinfoUrl: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg"
-                      style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                       placeholder="https://login.example.com/oauth2/userinfo"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label className="block text-sm font-medium mb-1 text-muted-foreground">
                     Scopes
                   </label>
                   <input
                     type="text"
                     value={formData.scopes}
                     onChange={(e) => setFormData({ ...formData, scopes: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg"
-                    style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                     placeholder="openid profile email"
                   />
                 </div>
@@ -876,17 +835,16 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
 
             {/* JIT Provisioning */}
             <div className="space-y-4">
-              <h3 className="font-medium" style={{ color: 'var(--text-primary, #fafafa)' }}>Just-In-Time (JIT) Provisioning</h3>
+              <h3 className="font-medium text-foreground">Just-In-Time (JIT) Provisioning</h3>
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   id="jitEnabled"
                   checked={formData.jitEnabled}
                   onChange={(e) => setFormData({ ...formData, jitEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: 'var(--bg-primary, #6366f1)' }}
+                  className="w-4 h-4 rounded accent-primary"
                 />
-                <label htmlFor="jitEnabled" className="text-sm" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                <label htmlFor="jitEnabled" className="text-sm text-muted-foreground">
                   Automatically create user accounts on first login
                 </label>
               </div>
@@ -897,10 +855,9 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
                     id="jitUpdateProfile"
                     checked={formData.jitUpdateProfile}
                     onChange={(e) => setFormData({ ...formData, jitUpdateProfile: e.target.checked })}
-                    className="w-4 h-4 rounded"
-                    style={{ accentColor: 'var(--bg-primary, #6366f1)' }}
+                    className="w-4 h-4 rounded accent-primary"
                   />
-                  <label htmlFor="jitUpdateProfile" className="text-sm" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                  <label htmlFor="jitUpdateProfile" className="text-sm text-muted-foreground">
                     Update user profile on each login
                   </label>
                 </div>
@@ -909,33 +866,31 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
 
             {/* Allowed Domains */}
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+              <label className="block text-sm font-medium mb-1 text-muted-foreground">
                 Allowed Domains (comma-separated)
               </label>
               <input
                 type="text"
                 value={domainsInput}
                 onChange={(e) => setDomainsInput(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg"
-                style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                 placeholder="example.com, company.org"
               />
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Only users with email addresses from these domains can use this SSO provider
               </p>
             </div>
 
             {/* Button Customization */}
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+              <label className="block text-sm font-medium mb-1 text-muted-foreground">
                 Login Button Text
               </label>
               <input
                 type="text"
                 value={formData.buttonText}
                 onChange={(e) => setFormData({ ...formData, buttonText: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg"
-                style={{ border: '1px solid var(--border-default, #2a2a3c)', backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-primary, #fafafa)' }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-foreground"
                 placeholder="Sign in with Corporate SSO"
               />
             </div>
@@ -947,10 +902,9 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
                 id="enabled"
                 checked={formData.enabled}
                 onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="w-4 h-4 rounded"
-                style={{ accentColor: 'var(--bg-primary, #6366f1)' }}
+                className="w-4 h-4 rounded accent-primary"
               />
-              <label htmlFor="enabled" className="text-sm" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+              <label htmlFor="enabled" className="text-sm text-muted-foreground">
                 Enable this SSO provider
               </label>
             </div>
@@ -958,22 +912,19 @@ const SSOConfigModal: React.FC<SSOConfigModalProps> = ({
         </form>
 
         <div
-          className="flex items-center justify-end gap-3 px-6 py-4"
-          style={{ borderTop: '1px solid var(--border-default, #2a2a3c)' }}
+          className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border"
         >
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg hover:opacity-80"
-            style={{ color: 'var(--text-secondary, #a1a1aa)', border: '1px solid var(--border-default, #2a2a3c)' }}
+            className="px-4 py-2 rounded-lg text-muted-foreground border border-border hover:bg-muted"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: 'var(--bg-primary, #6366f1)' }}
+            className="flex items-center gap-2 px-4 py-2 text-primary-foreground rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {config ? 'Update' : 'Create'} Provider

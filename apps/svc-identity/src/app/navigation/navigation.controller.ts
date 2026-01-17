@@ -42,8 +42,8 @@ export class NavigationController {
   }
 
   @Post('profiles/switch')
-  async switchProfile(@Body() _body: SwitchProfileRequest) {
-    // TODO: Implement session persistence for profile choice
+  async switchProfile(@Body() body: SwitchProfileRequest) {
+    await this.preferenceService.setActiveProfile(body.profileId);
     return { success: true };
   }
 

@@ -52,11 +52,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     <div className="relative" ref={containerRef}>
       {/* Trigger */}
       <div
-        className={`min-h-[38px] w-full px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-        }}
+        className={`min-h-[38px] w-full px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors bg-card border border-border ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <div className="flex flex-wrap gap-1.5">
@@ -66,18 +62,13 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               return (
                 <span
                   key={v}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                  style={{
-                    backgroundColor: 'var(--bg-primary-subtle)',
-                    color: 'var(--text-brand)',
-                  }}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary"
                 >
                   {label}
                   <button
                     type="button"
                     onClick={(e) => removeOption(e, v)}
-                    className="ml-1 focus:outline-none"
-                    style={{ color: 'var(--text-brand)' }}
+                    className="ml-1 focus:outline-none text-primary"
                   >
                     <X size={12} />
                   </button>
@@ -85,24 +76,19 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               );
             })
           ) : (
-            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{placeholder}</span>
+            <span className="text-sm text-muted-foreground">{placeholder}</span>
           )}
         </div>
         <ChevronDown
           size={16}
-          className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          style={{ color: 'var(--text-muted)' }}
+          className={`transition-transform text-muted-foreground ${isOpen ? 'rotate-180' : ''}`}
         />
       </div>
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
         <div
-          className="absolute z-10 w-full mt-1 rounded-lg shadow-lg max-h-60 overflow-auto"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-          }}
+          className="absolute z-10 w-full mt-1 rounded-lg shadow-lg max-h-60 overflow-auto bg-card border border-border"
         >
           {options.length > 0 ? (
             options.map((option) => {
@@ -110,17 +96,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               return (
                 <div
                   key={option.value}
-                  className="px-3 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors"
-                  style={{
-                    backgroundColor: isSelected ? 'var(--bg-primary-subtle)' : 'transparent',
-                    color: isSelected ? 'var(--text-brand)' : 'var(--text-primary)',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
+                  className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors ${isSelected ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
                   onClick={() => toggleOption(option.value)}
                 >
                   <span>{option.label}</span>
@@ -129,7 +105,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               );
             })
           ) : (
-            <div className="px-3 py-2 text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
+            <div className="px-3 py-2 text-sm text-center text-muted-foreground">
               No options available
             </div>
           )}

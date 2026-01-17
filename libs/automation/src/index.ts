@@ -1,8 +1,7 @@
 // Automation Library - HubbleWave
-// Business Rules, Workflows, and Event Handling
+// Business Rules, Process Flows, and Event Handling
 
 export * from './lib/automation.module';
-export * from './lib/rule-engine.service';
 export * from './lib/event-bus.service';
-export * from './lib/workflow-engine.service';
-export * from './lib/script-sandbox.service';
+export * from './lib/process-flow-engine.service';
+export * from './lib/process-flow-queue.service';

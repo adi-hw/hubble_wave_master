@@ -2,9 +2,16 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Parser } from 'expr-eval';
 import { PropertyDefinition } from '@hubblewave/instance-db';
 import {
+  isCanonicalPropertyType,
+  isLegacyPropertyType,
+  normalizePropertyType,
+  type CanonicalPropertyType,
+  type PropertyType,
+} from '@hubblewave/shared-types';
+import {
   AnyValidationRule,
   ValidationContext,
-  FieldValidationResult,
+  PropertyValidationResult,
   RecordValidationResult,
   ValidationRuleResult,
   PropertyValidationRules,
@@ -140,11 +147,11 @@ export class ValidationService {
     properties: PropertyDefinition[],
     context: ValidationContext
   ): Promise<RecordValidationResult> {
-    const fieldResults: FieldValidationResult[] = [];
+    const propertyResults: PropertyValidationResult[] = [];
     let totalErrors = 0;
 
     for (const property of properties) {
-      const fieldResult = await this.validateField(
+      const propertyResult = await this.validateProperty(
         property.code,
         property.name || property.code,
         data[property.code],
@@ -152,42 +159,47 @@ export class ValidationService {
         context
       );
 
-      fieldResults.push(fieldResult);
-      totalErrors += fieldResult.errors.length;
+      propertyResults.push(propertyResult);
+      totalErrors += propertyResult.errors.length;
     }
 
-    const invalidFields = fieldResults.filter((f) => !f.isValid);
+    const invalidProperties = propertyResults.filter((p) => !p.isValid);
 
     return {
-      isValid: invalidFields.length === 0,
-      fields: fieldResults,
+      isValid: invalidProperties.length === 0,
+      properties: propertyResults,
       summary: {
-        totalFields: properties.length,
-        validFields: properties.length - invalidFields.length,
-        invalidFields: invalidFields.length,
+        totalProperties: properties.length,
+        validProperties: properties.length - invalidProperties.length,
+        invalidProperties: invalidProperties.length,
         errorCount: totalErrors,
       },
     };
   }
 
   /**
-   * Validate a single field value
+   * Validate a single property value
    */
-  async validateField(
-    fieldCode: string,
-    fieldLabel: string,
+  async validateProperty(
+    propertyCode: string,
+    propertyLabel: string,
     value: unknown,
     property: PropertyDefinition,
     context: ValidationContext
-  ): Promise<FieldValidationResult> {
+  ): Promise<PropertyValidationResult> {
     const errors: ValidationRuleResult[] = [];
 
     // Check required first (from property definition)
     if (property.isRequired) {
-      const requiredResult = this.validateRequired(value, fieldLabel);
+      const requiredResult = this.validateRequired(value, propertyLabel);
       if (!requiredResult.passed) {
         errors.push(requiredResult);
       }
+    }
+
+    const typeResult = this.validateDataType(value, propertyLabel, property);
+    if (typeResult && !typeResult.passed) {
+      errors.push(typeResult);
     }
 
     // Parse validation rules from property
@@ -196,8 +208,8 @@ export class ValidationService {
     // Skip other validations if value is empty and not required
     if (this.isEmpty(value) && !property.isRequired) {
       return {
-        field: fieldCode,
-        fieldLabel,
+        property: propertyCode,
+        propertyLabel,
         isValid: true,
         errors: [],
       };
@@ -207,15 +219,15 @@ export class ValidationService {
     for (const rule of rules) {
       if (rule.enabled === false) continue;
 
-      const result = await this.validateRule(value, rule, fieldLabel, context);
+      const result = await this.validateRule(value, rule, propertyLabel, context);
       if (!result.passed) {
         errors.push(result);
       }
     }
 
     return {
-      field: fieldCode,
-      fieldLabel,
+      property: propertyCode,
+      propertyLabel,
       isValid: errors.length === 0,
       errors,
     };
@@ -251,6 +263,163 @@ export class ValidationService {
     if (typeof value === 'string' && value.trim() === '') return true;
     if (Array.isArray(value) && value.length === 0) return true;
     return false;
+  }
+
+  private validateDataType(
+    value: unknown,
+    fieldLabel: string,
+    property: PropertyDefinition
+  ): ValidationRuleResult | null {
+    if (this.isEmpty(value)) {
+      return null;
+    }
+
+    const rawType = property.propertyType?.code
+      ?? (property.config as Record<string, unknown> | undefined)?.dataType;
+
+    if (typeof rawType !== 'string') {
+      return null;
+    }
+
+    const normalized = this.normalizeTypeCode(rawType);
+    if (!normalized) {
+      return null;
+    }
+
+    switch (normalized) {
+      case 'text':
+      case 'rich-text':
+        return typeof value === 'string'
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be text` };
+
+      case 'number':
+      case 'currency':
+      case 'duration':
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          return null;
+        }
+        if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
+          return null;
+        }
+        return { rule: 'type', passed: false, message: `${fieldLabel} must be a number` };
+
+      case 'boolean':
+        return typeof value === 'boolean'
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be true or false` };
+
+      case 'date':
+      case 'datetime':
+        return this.isValidDate(value)
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be a valid date` };
+
+      case 'choice':
+        return this.validateChoiceValue(value, fieldLabel, property, false);
+
+      case 'multi-choice':
+        return this.validateChoiceValue(value, fieldLabel, property, true);
+
+      case 'reference':
+      case 'user':
+        return this.isValidUuid(value)
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be a valid reference` };
+
+      case 'multi-reference':
+      case 'multi-user':
+        return Array.isArray(value) && value.every((entry) => this.isValidUuid(entry))
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be a list of references` };
+
+      case 'json':
+      case 'hierarchical':
+        return typeof value === 'object' && value !== null
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be structured data` };
+
+      case 'attachment':
+      case 'geolocation':
+        return typeof value === 'object' && value !== null
+          ? null
+          : { rule: 'type', passed: false, message: `${fieldLabel} must be a structured value` };
+
+      default:
+        return null;
+    }
+  }
+
+  private normalizeTypeCode(rawType: string): CanonicalPropertyType | null {
+    if (isCanonicalPropertyType(rawType as CanonicalPropertyType)) {
+      return rawType as CanonicalPropertyType;
+    }
+
+    if (isLegacyPropertyType(rawType as PropertyType)) {
+      return normalizePropertyType(rawType as PropertyType);
+    }
+
+    return null;
+  }
+
+  private isValidDate(value: unknown): boolean {
+    if (value instanceof Date) {
+      return !Number.isNaN(value.getTime());
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      return !Number.isNaN(parsed.getTime());
+    }
+
+    return false;
+  }
+
+  private isValidUuid(value: unknown): boolean {
+    if (typeof value !== 'string') {
+      return false;
+    }
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  }
+
+  private validateChoiceValue(
+    value: unknown,
+    fieldLabel: string,
+    property: PropertyDefinition,
+    multi: boolean
+  ): ValidationRuleResult | null {
+    const config = property.config as Record<string, unknown> | undefined;
+    const choices = Array.isArray(config?.choices)
+      ? (config?.choices as Array<{ value?: unknown }>)
+      : null;
+    const validValues = choices
+      ? new Set(choices.map((choice) => String(choice.value)))
+      : null;
+
+    if (multi) {
+      if (!Array.isArray(value)) {
+        return { rule: 'type', passed: false, message: `${fieldLabel} must be a list of choices` };
+      }
+
+      if (validValues) {
+        const invalid = value.find((entry) => !validValues.has(String(entry)));
+        if (invalid !== undefined) {
+          return { rule: 'type', passed: false, message: `${fieldLabel} has an invalid choice` };
+        }
+      }
+
+      return null;
+    }
+
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return { rule: 'type', passed: false, message: `${fieldLabel} must be a valid choice` };
+    }
+
+    if (validValues && !validValues.has(String(value))) {
+      return { rule: 'type', passed: false, message: `${fieldLabel} has an invalid choice` };
+    }
+
+    return null;
   }
 
   /**
@@ -690,8 +859,8 @@ export class ValidationService {
   getErrorMessages(result: RecordValidationResult): string[] {
     const messages: string[] = [];
 
-    for (const field of result.fields) {
-      for (const error of field.errors) {
+    for (const prop of result.properties) {
+      for (const error of prop.errors) {
         if (error.message) {
           messages.push(error.message);
         }

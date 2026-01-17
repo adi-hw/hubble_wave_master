@@ -6,10 +6,13 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { AuditService, CreateAuditLogDto, AuditLogQueryParams } from './audit.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('audit-logs')
+@UseGuards(JwtAuthGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

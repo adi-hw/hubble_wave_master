@@ -38,8 +38,8 @@ interface LayoutCanvasProps {
   onUpdateSection: (id: string, updates: Partial<DesignerSection>) => void;
 }
 
-// Sortable Field Item Component
-const SortableFieldItem: React.FC<{
+// Sortable Property Item Component
+const SortablePropertyItem: React.FC<{
   item: DesignerItem;
   isSelected: boolean;
   onSelect: () => void;
@@ -72,17 +72,19 @@ const SortableFieldItem: React.FC<{
 
   const renderItemContent = () => {
     switch (item.type) {
-      case 'field':
+      case 'property':
         return (
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${getFieldTypeColor(item.fieldCode)}`}>
-              {getFieldTypeIcon(item.fieldCode)}
+            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground">
+              {getPropertyTypeIcon(item.propertyCode)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-700 truncate">
-                {item.labelOverride || item.fieldCode}
+              <p className="text-sm font-medium truncate text-foreground">
+                {item.labelOverride || item.propertyCode}
               </p>
-              <p className="text-[10px] text-slate-400 truncate">{item.fieldCode}</p>
+              <p className="text-[10px] truncate text-muted-foreground/70">
+                {item.propertyCode}
+              </p>
             </div>
           </div>
         );
@@ -90,12 +92,16 @@ const SortableFieldItem: React.FC<{
       case 'dot_walk':
         return (
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-pink-50 text-pink-600">
+            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-primary/10 text-primary">
               <Link2 className="h-3.5 w-3.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-700 truncate">{item.displayLabel}</p>
-              <p className="text-[10px] text-slate-400 truncate">{item.basePath}.{item.fieldCode}</p>
+              <p className="text-sm font-medium truncate text-foreground">
+                {item.displayLabel}
+              </p>
+              <p className="text-[10px] truncate text-muted-foreground/70">
+                {item.basePath}.{item.propertyCode}
+              </p>
             </div>
           </div>
         );
@@ -103,13 +109,15 @@ const SortableFieldItem: React.FC<{
       case 'embedded_list':
         return (
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-indigo-50 text-indigo-600">
+            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-primary/10 text-primary">
               <Layers className="h-3.5 w-3.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-700 truncate">{item.label}</p>
-              <p className="text-[10px] text-slate-400 truncate">
-                {item.tableCode} ({item.columns.length} columns)
+              <p className="text-sm font-medium truncate text-foreground">
+                {item.label}
+              </p>
+              <p className="text-[10px] truncate text-muted-foreground/70">
+                {item.collectionCode} ({item.columns.length} columns)
               </p>
             </div>
           </div>
@@ -118,24 +126,30 @@ const SortableFieldItem: React.FC<{
       case 'spacer':
         return (
           <div className="flex items-center gap-2 flex-1">
-            <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-[10px] text-slate-400">Spacer</span>
-            <div className="flex-1 h-px bg-slate-200" />
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-[10px] text-muted-foreground/70">
+              Spacer
+            </span>
+            <div className="flex-1 h-px bg-border" />
           </div>
         );
 
       case 'divider':
         return (
           <div className="flex items-center gap-2 flex-1">
-            <div className="flex-1 h-px bg-slate-300" />
-            {item.label && <span className="text-xs text-slate-500">{item.label}</span>}
-            <div className="flex-1 h-px bg-slate-300" />
+            <div className="flex-1 h-px bg-border" />
+            {item.label && (
+              <span className="text-xs text-muted-foreground">
+                {item.label}
+              </span>
+            )}
+            <div className="flex-1 h-px bg-border" />
           </div>
         );
 
       case 'info_box':
         return (
-          <div className={`flex-1 p-2 rounded-lg ${getInfoBoxColor(item.variant)}`}>
+          <div className={`flex-1 p-2 rounded-lg ${getInfoBoxClasses(item.variant)}`}>
             {item.title && <p className="text-xs font-medium mb-0.5">{item.title}</p>}
             <p className="text-xs truncate">{item.content}</p>
           </div>
@@ -144,18 +158,26 @@ const SortableFieldItem: React.FC<{
       case 'group':
         return (
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-slate-100 text-slate-600">
+            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground">
               <Layers className="h-3.5 w-3.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-700 truncate">{item.label || 'Field Group'}</p>
-              <p className="text-[10px] text-slate-400 truncate">{item.fields.length} fields</p>
+              <p className="text-sm font-medium truncate text-foreground">
+                {item.label || 'Field Group'}
+              </p>
+              <p className="text-[10px] truncate text-muted-foreground/70">
+                {item.properties.length} properties
+              </p>
             </div>
           </div>
         );
 
       default:
-        return <span className="text-sm text-slate-500">Unknown item</span>;
+        return (
+          <span className="text-sm text-muted-foreground">
+            Unknown item
+          </span>
+        );
     }
   };
 
@@ -170,7 +192,7 @@ const SortableFieldItem: React.FC<{
   if (mode === 'preview') {
     return (
       <div className={`${getSpanClass(getItemSpan())}`}>
-        <div className="p-3 bg-white border border-slate-200 rounded-lg">
+        <div className="p-3 rounded-lg bg-card border border-border">
           {renderItemContent()}
         </div>
       </div>
@@ -185,22 +207,26 @@ const SortableFieldItem: React.FC<{
         ${getSpanClass(getItemSpan())}
         ${isDragging ? 'opacity-50 z-50' : ''}
       `}
+      aria-grabbed={isDragging}
     >
       <div
         onClick={onSelect}
         className={`
-          group relative flex items-center gap-2 px-2.5 py-2 bg-white rounded-lg border cursor-pointer transition-all
+          group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all
+          bg-card border
           ${isSelected
-            ? 'border-primary-400 ring-2 ring-primary-100 shadow-sm'
-            : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
-          }
+            ? 'border-primary ring-2 ring-primary/20'
+            : 'border-border hover:border-border/80 hover:shadow-sm'}
         `}
+        role="listitem"
+        aria-selected={isSelected}
       >
         {/* Drag Handle */}
         <div
           {...attributes}
           {...listeners}
-          className="text-slate-300 hover:text-slate-400 cursor-grab active:cursor-grabbing"
+          className="cursor-grab active:cursor-grabbing text-border hover:text-muted-foreground/70"
+          aria-label="Drag to reorder"
         >
           <GripVertical className="h-4 w-4" />
         </div>
@@ -214,7 +240,8 @@ const SortableFieldItem: React.FC<{
             e.stopPropagation();
             onRemove();
           }}
-          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-danger-600 transition-opacity"
+          className="opacity-0 group-hover:opacity-100 p-1 transition-opacity text-muted-foreground/70 hover:text-destructive"
+          aria-label={`Remove ${item.type === 'property' ? item.propertyCode : item.type}`}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -266,17 +293,18 @@ const SectionComponent: React.FC<{
         onSelectItem(section.id, 'section');
       }}
       className={`
-        rounded-xl border bg-white transition-all
+        rounded-xl transition-all border
+        ${isOver ? 'bg-primary/5 border-primary' : 'bg-card border-border'}
         ${isSelected
-          ? 'border-primary-400 ring-2 ring-primary-100 shadow-md'
-          : 'border-slate-200 hover:shadow-sm'
-        }
-        ${isOver ? 'border-primary-300 bg-primary-50/50' : ''}
+          ? 'border-primary ring-2 ring-primary/20 shadow-sm'
+          : 'hover:shadow-sm'}
       `}
+      role="region"
+      aria-label={section.label || 'Untitled Section'}
     >
       {/* Section Header */}
       {(section.label || mode === 'edit') && (
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white rounded-t-xl">
+        <div className="flex items-center justify-between px-4 py-3 rounded-t-xl border-b border-border bg-gradient-to-r from-muted to-card">
           <div className="flex items-center gap-2">
             {section.collapsible && (
               <button
@@ -284,7 +312,9 @@ const SectionComponent: React.FC<{
                   e.stopPropagation();
                   setIsCollapsed(!isCollapsed);
                 }}
-                className="p-0.5 text-slate-400 hover:text-slate-600"
+                className="p-0.5 text-muted-foreground/70 hover:text-muted-foreground"
+                aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+                aria-expanded={!isCollapsed}
               >
                 {isCollapsed ? (
                   <ChevronRight className="h-4 w-4" />
@@ -293,11 +323,11 @@ const SectionComponent: React.FC<{
                 )}
               </button>
             )}
-            <div className="w-1 h-4 rounded-full bg-primary-500" />
-            <h3 className="text-sm font-semibold text-slate-900">
+            <div className="w-1 h-4 rounded-full bg-primary" />
+            <h3 className="text-sm font-semibold text-foreground">
               {section.label || 'Untitled Section'}
             </h3>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-muted-foreground/70">
               {section.items.length} field{section.items.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -305,7 +335,7 @@ const SectionComponent: React.FC<{
           {mode === 'edit' && (
             <div className="flex items-center gap-1">
               {/* Column Toggle */}
-              <div className="flex items-center bg-slate-100 rounded-md p-0.5 mr-2">
+              <div className="flex items-center rounded-md p-0.5 mr-2 bg-muted">
                 {([1, 2, 3, 4] as const).map((cols) => (
                   <button
                     key={cols}
@@ -313,11 +343,14 @@ const SectionComponent: React.FC<{
                       e.stopPropagation();
                       onUpdateSection({ columns: cols });
                     }}
-                    className={`w-6 h-5 flex items-center justify-center rounded transition-colors ${
-                      section.columns === cols
-                        ? 'bg-white text-primary-600 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-600'
-                    }`}
+                    className={`
+                      w-6 h-5 flex items-center justify-center rounded transition-colors
+                      ${section.columns === cols
+                        ? 'bg-card text-primary shadow-sm'
+                        : 'text-muted-foreground/70 hover:text-muted-foreground'}
+                    `}
+                    aria-label={`Set ${cols} column${cols > 1 ? 's' : ''}`}
+                    aria-pressed={section.columns === cols}
                   >
                     {cols === 1 && <Square className="h-3 w-3" />}
                     {cols === 2 && <Columns2 className="h-3 w-3" />}
@@ -332,7 +365,8 @@ const SectionComponent: React.FC<{
                   e.stopPropagation();
                   onSelectItem(section.id, 'section');
                 }}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                className="p-1.5 rounded transition-colors text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted"
+                aria-label="Section settings"
               >
                 <Settings className="h-3.5 w-3.5" />
               </button>
@@ -342,7 +376,8 @@ const SectionComponent: React.FC<{
                   e.stopPropagation();
                   onRemoveSection();
                 }}
-                className="p-1.5 text-slate-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
+                className="p-1.5 rounded transition-colors text-muted-foreground/70 hover:text-destructive hover:bg-destructive/10"
+                aria-label="Remove section"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -355,11 +390,18 @@ const SectionComponent: React.FC<{
       {!isCollapsed && (
         <div className="p-4">
           {section.items.length === 0 ? (
-            <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              isOver ? 'border-primary-300 bg-primary-50' : 'border-slate-200'
-            }`}>
-              <Layers className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-500">
+            <div
+              className={`
+                border-2 border-dashed rounded-lg p-8 text-center transition-colors
+                ${isOver
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border'}
+              `}
+              role="list"
+              aria-label="Empty field list"
+            >
+              <Layers className="h-8 w-8 mx-auto mb-2 text-border" />
+              <p className="text-sm text-muted-foreground">
                 {mode === 'edit' ? 'Drag fields here' : 'No fields in this section'}
               </p>
             </div>
@@ -368,13 +410,17 @@ const SectionComponent: React.FC<{
               items={section.items.map((i) => i.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className={`grid gap-3 ${getColumnsClass()}`}>
+              <div
+                className={`grid gap-3 ${getColumnsClass()}`}
+                role="list"
+                aria-label={`${section.label || 'Section'} fields`}
+              >
                 {section.items.map((item) => (
-                  <SortableFieldItem
+                  <SortablePropertyItem
                     key={item.id}
                     item={item}
                     isSelected={selectedItemId === item.id}
-                    onSelect={() => onSelectItem(item.id, 'field')}
+                    onSelect={() => onSelectItem(item.id, 'property')}
                     onRemove={() => onRemoveItem(item.id)}
                     mode={mode}
                   />
@@ -399,13 +445,15 @@ export const LayoutCanvas: React.FC<LayoutCanvasProps> = ({
   onUpdateSection,
 }) => {
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-5xl 2xl:max-w-6xl mx-auto space-y-5">
       {/* Tab Header (Preview mode) */}
       {mode === 'preview' && tab.label && (
         <div className="text-center mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">{tab.label}</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            {tab.label}
+          </h2>
           {tab.sections.length > 0 && (
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm mt-1 text-muted-foreground">
               {tab.sections.reduce((acc, s) => acc + s.items.length, 0)} fields
             </p>
           )}
@@ -430,7 +478,8 @@ export const LayoutCanvas: React.FC<LayoutCanvasProps> = ({
       {mode === 'edit' && (
         <button
           onClick={onAddSection}
-          className="w-full p-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 hover:text-primary-600 hover:border-primary-300 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2"
+          className="w-full p-4 border-2 border-dashed rounded-xl transition-all flex items-center justify-center gap-2 border-border text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5"
+          aria-label="Add new section"
         >
           <Plus className="h-5 w-5" />
           <span className="text-sm font-medium">Add Section</span>
@@ -441,23 +490,22 @@ export const LayoutCanvas: React.FC<LayoutCanvasProps> = ({
 };
 
 // Helper functions
-function getFieldTypeColor(_fieldCode: string): string {
-  // This would typically look up the actual field type
-  return 'bg-slate-100 text-slate-600';
-}
-
-function getFieldTypeIcon(_fieldCode: string): React.ReactNode {
-  // This would typically look up the actual field type
+function getPropertyTypeIcon(_propertyCode: string): React.ReactNode {
   return <Type className="h-3.5 w-3.5" />;
 }
 
-function getInfoBoxColor(variant: string): string {
+function getInfoBoxClasses(variant: string): string {
   switch (variant) {
-    case 'info': return 'bg-blue-50 text-blue-700';
-    case 'warning': return 'bg-amber-50 text-amber-700';
-    case 'success': return 'bg-green-50 text-green-700';
-    case 'error': return 'bg-red-50 text-red-700';
-    default: return 'bg-slate-50 text-slate-700';
+    case 'info':
+      return 'bg-info-subtle text-info-text';
+    case 'warning':
+      return 'bg-warning-subtle text-warning-text';
+    case 'success':
+      return 'bg-success-subtle text-success-text';
+    case 'error':
+      return 'bg-danger-subtle text-danger-text';
+    default:
+      return 'bg-muted text-foreground';
   }
 }
 

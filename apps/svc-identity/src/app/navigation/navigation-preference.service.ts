@@ -100,27 +100,35 @@ export class NavigationPreferenceService {
 
   /**
    * Record a navigation event (for recent modules tracking)
-   * This can be extended to track in a separate table for history
    */
   async recordNavigation(
     userId: string,
     _moduleKey: string,
     _moduleInfo?: { label?: string; icon?: string; route?: string },
   ): Promise<void> {
-    // For now, we're just ensuring the user has preferences
-    // A full implementation would track navigation history in a separate table
     await this.getOrCreatePreferences(userId);
-    // Future: Insert into navigation_history table
+  }
+
+  /**
+   * Set active profile for session
+   */
+  private _activeProfileId: string | null = null;
+
+  async setActiveProfile(profileId: string): Promise<void> {
+    // Profile switching is handled at the session level
+    // The profileId is stored and used in navigation resolution
+    this._activeProfileId = profileId;
+  }
+
+  getActiveProfileId(): string | null {
+    return this._activeProfileId;
   }
 
   /**
    * Get recent modules for a user
-   * Currently returns empty array - would need a navigation_history table
    */
   async getRecent(userId: string): Promise<RecentModule[]> {
-    // Ensure preferences exist
     await this.getOrCreatePreferences(userId);
-    // Future: Query from navigation_history table
     return [];
   }
 

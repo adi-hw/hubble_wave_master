@@ -68,25 +68,21 @@ const ContextMenu: React.FC<ContextMenuProps> = memo(({ x, y, column, value, onF
   const menuContent = (
     <div
       ref={menuRef}
-      className="fixed z-[9999] rounded-lg py-1 min-w-[200px]"
+      className="fixed z-[9999] rounded-lg py-1 min-w-[200px] bg-card border border-border shadow-xl animate-in fade-in duration-100"
       style={{
         left: adjustedX,
         top: adjustedY,
-        animation: 'contextMenuFadeIn 0.1s ease-out',
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        boxShadow: 'var(--shadow-xl)',
       }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* Header */}
-      <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+      <div className="px-3 py-2 border-b border-border/50">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
           Filter by {column.label}
         </div>
         {hasValue && (
-          <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }} title={String(value)}>
+          <div className="text-xs mt-0.5 truncate text-muted-foreground" title={String(value)}>
             "{displayValue}"
           </div>
         )}
@@ -99,113 +95,61 @@ const ContextMenu: React.FC<ContextMenuProps> = memo(({ x, y, column, value, onF
             <button
               type="button"
               onClick={() => onFilter('equals')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                e.currentTarget.style.color = 'var(--text-brand)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
             >
-              <Equal className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Equal className="h-4 w-4 text-muted-foreground/70" />
               <span>Filter by this value</span>
             </button>
             <button
               type="button"
               onClick={() => onFilter('not_equals')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                e.currentTarget.style.color = 'var(--text-brand)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
             >
-              <Ban className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Ban className="h-4 w-4 text-muted-foreground/70" />
               <span>Exclude this value</span>
             </button>
             <button
               type="button"
               onClick={() => onFilter('contains')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                e.currentTarget.style.color = 'var(--text-brand)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
             >
-              <Filter className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Filter className="h-4 w-4 text-muted-foreground/70" />
               <span>Contains this value</span>
             </button>
           </>
         )}
 
-        <div className="my-1" style={{ borderTop: '1px solid var(--border-subtle)' }} />
+        <div className="my-1 border-t border-border/50" />
 
         <button
           type="button"
           onClick={() => onFilter('is_empty')}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-          style={{ color: 'var(--text-secondary)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-            e.currentTarget.style.color = 'var(--text-brand)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--text-secondary)';
-          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
         >
-          <FilterX className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <FilterX className="h-4 w-4 text-muted-foreground/70" />
           <span>Show empty values</span>
         </button>
         <button
           type="button"
           onClick={() => onFilter('is_not_empty')}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-          style={{ color: 'var(--text-secondary)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-            e.currentTarget.style.color = 'var(--text-brand)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--text-secondary)';
-          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
         >
-          <Filter className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <Filter className="h-4 w-4 text-muted-foreground/70" />
           <span>Show non-empty values</span>
         </button>
 
         {hasValue && (
           <>
-            <div className="my-1" style={{ borderTop: '1px solid var(--border-subtle)' }} />
+            <div className="my-1 border-t border-border/50" />
             <button
               type="button"
               onClick={() => {
                 navigator.clipboard.writeText(String(value));
                 onClose();
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-muted"
             >
-              <Copy className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Copy className="h-4 w-4 text-muted-foreground/70" />
               <span>Copy value</span>
             </button>
           </>
@@ -309,7 +253,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
     const fieldType = col.type?.toLowerCase() || '';
 
     if (raw === null || raw === undefined || raw === '') {
-      return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+      return <span className="text-muted-foreground/70">—</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -346,32 +290,31 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'date') {
       try {
-        return <span style={{ color: 'var(--text-primary)' }}>{new Date(raw).toLocaleDateString()}</span>;
+        return <span className="text-foreground">{new Date(raw).toLocaleDateString()}</span>;
       } catch {
-        return <span style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>;
+        return <span className="text-foreground">{String(raw)}</span>;
       }
     }
 
     if (fieldType === 'datetime' || fieldType === 'timestamp') {
       try {
-        return <span style={{ color: 'var(--text-primary)' }}>{new Date(raw).toLocaleString()}</span>;
+        return <span className="text-foreground">{new Date(raw).toLocaleString()}</span>;
       } catch {
-        return <span style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>;
+        return <span className="text-foreground">{String(raw)}</span>;
       }
     }
 
     if (fieldType === 'time') {
-      return <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>;
+      return <span className="font-mono text-xs text-foreground">{String(raw)}</span>;
     }
 
     if (fieldType === 'duration') {
-      // Format duration nicely
       const str = String(raw);
       if (str.match(/^\d+:\d+$/)) {
         const [h, m] = str.split(':').map(Number);
-        return <span style={{ color: 'var(--text-primary)' }}>{h}h {m}m</span>;
+        return <span className="text-foreground">{h}h {m}m</span>;
       }
-      return <span style={{ color: 'var(--text-primary)' }}>{str}</span>;
+      return <span className="text-foreground">{str}</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -380,28 +323,28 @@ export const TableBody: React.FC<TableBodyProps> = ({
     if (fieldType === 'currency') {
       const num = typeof raw === 'number' ? raw : parseFloat(raw);
       if (!isNaN(num)) {
-        return <span className="font-medium" style={{ color: 'var(--text-primary)' }}>${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+        return <span className="font-medium text-foreground">${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
       }
     }
 
     if (fieldType === 'percent') {
       const num = typeof raw === 'number' ? raw : parseFloat(raw);
       if (!isNaN(num)) {
-        return <span style={{ color: 'var(--text-primary)' }}>{num}%</span>;
+        return <span className="text-foreground">{num}%</span>;
       }
     }
 
     if (fieldType === 'integer' || fieldType === 'long') {
       const num = typeof raw === 'number' ? raw : parseInt(raw);
       if (!isNaN(num)) {
-        return <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{num.toLocaleString()}</span>;
+        return <span className="font-mono text-foreground">{num.toLocaleString()}</span>;
       }
     }
 
     if (fieldType === 'decimal' || fieldType === 'number') {
       const num = typeof raw === 'number' ? raw : parseFloat(raw);
       if (!isNaN(num)) {
-        return <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{num.toLocaleString()}</span>;
+        return <span className="font-mono text-foreground">{num.toLocaleString()}</span>;
       }
     }
 
@@ -410,7 +353,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'email') {
       return (
-        <a href={`mailto:${raw}`} className="hover:underline truncate max-w-xs block" style={{ color: 'var(--text-brand)' }} onClick={(e) => e.stopPropagation()}>
+        <a href={`mailto:${raw}`} className="hover:underline truncate max-w-xs block text-primary" onClick={(e) => e.stopPropagation()}>
           {String(raw)}
         </a>
       );
@@ -418,7 +361,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
 
     if (fieldType === 'url') {
       return (
-        <a href={String(raw)} target="_blank" rel="noopener noreferrer" className="hover:underline truncate max-w-xs block" style={{ color: 'var(--text-brand)' }} onClick={(e) => e.stopPropagation()}>
+        <a href={String(raw)} target="_blank" rel="noopener noreferrer" className="hover:underline truncate max-w-xs block text-primary" onClick={(e) => e.stopPropagation()}>
           {String(raw).replace(/^https?:\/\//, '')}
         </a>
       );
@@ -426,25 +369,25 @@ export const TableBody: React.FC<TableBodyProps> = ({
 
     if (fieldType === 'phone') {
       return (
-        <a href={`tel:${raw}`} className="hover:underline" style={{ color: 'var(--text-brand)' }} onClick={(e) => e.stopPropagation()}>
+        <a href={`tel:${raw}`} className="hover:underline text-primary" onClick={(e) => e.stopPropagation()}>
           {String(raw)}
         </a>
       );
     }
 
     if (fieldType === 'ip_address') {
-      return <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>;
+      return <span className="font-mono text-xs text-foreground">{String(raw)}</span>;
     }
 
     if (fieldType === 'mac_address') {
-      return <span className="font-mono text-xs uppercase" style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>;
+      return <span className="font-mono text-xs uppercase text-foreground">{String(raw)}</span>;
     }
 
     if (fieldType === 'color') {
       return (
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded" style={{ backgroundColor: String(raw), border: '1px solid var(--border-default)' }} />
-          <span className="font-mono text-xs uppercase" style={{ color: 'var(--text-secondary)' }}>{String(raw)}</span>
+          <div className="w-5 h-5 rounded border border-border" style={{ backgroundColor: String(raw) }} />
+          <span className="font-mono text-xs uppercase text-muted-foreground">{String(raw)}</span>
         </div>
       );
     }
@@ -454,9 +397,9 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'reference' || fieldType === 'user_reference' || fieldType === 'group_reference' || fieldType === 'location_reference') {
       if (typeof raw === 'object' && raw !== null) {
-        return <span style={{ color: 'var(--text-primary)' }}>{raw.label || raw.name || raw.id}</span>;
+        return <span className="text-foreground">{raw.label || raw.name || raw.id}</span>;
       }
-      return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{String(raw).slice(0, 8)}...</span>;
+      return <span className="text-xs font-mono text-muted-foreground/70">{String(raw).slice(0, 8)}...</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -466,10 +409,10 @@ export const TableBody: React.FC<TableBodyProps> = ({
       if (typeof raw === 'object') {
         const entries = Object.entries(raw);
         if (entries.length === 0) {
-          return <span style={{ color: 'var(--text-muted)' }}>{'{ }'}</span>;
+          return <span className="text-muted-foreground/70">{'{ }'}</span>;
         }
         return (
-          <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }} title={JSON.stringify(raw, null, 2)}>
+          <span className="text-xs font-mono text-muted-foreground/70" title={JSON.stringify(raw, null, 2)}>
             {entries.length} key{entries.length !== 1 ? 's' : ''}
           </span>
         );
@@ -480,20 +423,20 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // SECURITY / ENCRYPTED TYPES
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'password_hashed' || fieldType === 'secret_encrypted') {
-      return <span style={{ color: 'var(--text-muted)' }}>••••••••</span>;
+      return <span className="text-muted-foreground/70">••••••••</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // IDENTITY TYPES
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'guid' || fieldType === 'auto_number') {
-      return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{String(raw)}</span>;
+      return <span className="text-xs font-mono text-muted-foreground/70">{String(raw)}</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // WORKFLOW STAGE
+    // PROCESS FLOW STAGE
     // ═══════════════════════════════════════════════════════════════════════════
-    if (fieldType === 'workflow_stage') {
+    if (fieldType === 'process_flow_stage') {
       const stage = typeof raw === 'object' ? (raw.label || raw.name) : String(raw);
       return <span className="badge badge-primary">{stage}</span>;
     }
@@ -503,9 +446,9 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // ═══════════════════════════════════════════════════════════════════════════
     if (fieldType === 'geo_point') {
       if (typeof raw === 'object' && raw.lat !== undefined && raw.lng !== undefined) {
-        return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{raw.lat.toFixed(4)}, {raw.lng.toFixed(4)}</span>;
+        return <span className="text-xs font-mono text-muted-foreground/70">{raw.lat.toFixed(4)}, {raw.lng.toFixed(4)}</span>;
       }
-      return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{String(raw)}</span>;
+      return <span className="text-xs font-mono text-muted-foreground/70">{String(raw)}</span>;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -514,14 +457,14 @@ export const TableBody: React.FC<TableBodyProps> = ({
     if (fieldType === 'image') {
       if (typeof raw === 'string' && raw.startsWith('http')) {
         return (
-          <div className="w-10 h-10 rounded overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
+          <div className="w-10 h-10 rounded overflow-hidden border border-border">
             <img src={raw} alt="" className="w-full h-full object-cover" />
           </div>
         );
       }
       if (typeof raw === 'object' && raw.url) {
         return (
-          <div className="w-10 h-10 rounded overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
+          <div className="w-10 h-10 rounded overflow-hidden border border-border">
             <img src={raw.url} alt={raw.name || ''} className="w-full h-full object-cover" />
           </div>
         );
@@ -530,7 +473,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
 
     if (fieldType === 'file' || fieldType === 'audio' || fieldType === 'video') {
       if (typeof raw === 'object' && raw.name) {
-        return <span className="truncate max-w-xs block" style={{ color: 'var(--text-primary)' }}>{raw.name}</span>;
+        return <span className="truncate max-w-xs block text-foreground">{raw.name}</span>;
       }
     }
 
@@ -539,7 +482,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // ═══════════════════════════════════════════════════════════════════════════
     if (typeof raw === 'object') {
       return (
-        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }} title={JSON.stringify(raw)}>
+        <span className="text-xs font-mono text-muted-foreground/70" title={JSON.stringify(raw)}>
           {JSON.stringify(raw).slice(0, 40)}...
         </span>
       );
@@ -567,20 +510,20 @@ export const TableBody: React.FC<TableBodyProps> = ({
     // DEFAULT TEXT
     // ═══════════════════════════════════════════════════════════════════════════
     return (
-      <span className="truncate max-w-xs block" style={{ color: 'var(--text-primary)' }}>{String(raw)}</span>
+      <span className="truncate max-w-xs block text-foreground">{String(raw)}</span>
     );
   };
 
   const SortIcon = ({ column }: { column: string }) => {
     if (sortBy !== column) {
       return (
-        <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--text-muted)' }} />
+        <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/70" />
       );
     }
     return sortDir === 'asc' ? (
-      <ChevronUp className="h-3.5 w-3.5" style={{ color: 'var(--text-brand)' }} />
+      <ChevronUp className="h-3.5 w-3.5 text-primary" />
     ) : (
-      <ChevronDown className="h-3.5 w-3.5" style={{ color: 'var(--text-brand)' }} />
+      <ChevronDown className="h-3.5 w-3.5 text-primary" />
     );
   };
 
@@ -591,24 +534,20 @@ export const TableBody: React.FC<TableBodyProps> = ({
         <table className="min-w-full">
           {/* Sticky Header */}
           <thead className="sticky top-0 z-10">
-            <tr
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderBottom: '2px solid var(--border-default)',
-              }}
-            >
+            <tr className="bg-muted border-b-2 border-border">
               {/* Checkbox Column Header */}
               {selectable && (
                 <th className="w-12 px-4 py-3.5">
                   <button
                     type="button"
                     onClick={handleSelectAll}
-                    className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
-                    style={{
-                      backgroundColor: isAllSelected ? 'var(--bg-primary)' : isPartiallySelected ? 'var(--bg-primary-subtle)' : 'transparent',
-                      borderColor: isAllSelected || isPartiallySelected ? 'var(--bg-primary)' : 'var(--border-default)',
-                      color: isAllSelected ? 'white' : 'var(--text-brand)',
-                    }}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      isAllSelected
+                        ? 'bg-primary border-primary text-primary-foreground'
+                        : isPartiallySelected
+                          ? 'bg-primary/20 border-primary text-primary'
+                          : 'bg-transparent border-border text-primary'
+                    }`}
                     title={isAllSelected ? 'Deselect all' : 'Select all'}
                   >
                     {isAllSelected && <Check className="h-3.5 w-3.5" />}
@@ -621,10 +560,7 @@ export const TableBody: React.FC<TableBodyProps> = ({
                   <button
                     type="button"
                     onClick={() => onSortChange(col.code)}
-                    className="group flex items-center gap-2 text-xs font-semibold uppercase tracking-wider transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                    className="group flex items-center gap-2 text-xs font-semibold uppercase tracking-wider transition-colors text-muted-foreground/70 hover:text-foreground"
                   >
                     <span>{col.label}</span>
                     <SortIcon column={col.code} />
@@ -640,14 +576,11 @@ export const TableBody: React.FC<TableBodyProps> = ({
               <tr>
                 <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-0">
                   <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div
-                      className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                      style={{ backgroundColor: 'var(--bg-elevated)' }}
-                    >
-                      <Inbox className="h-8 w-8" style={{ color: 'var(--text-muted)' }} />
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-muted">
+                      <Inbox className="h-8 w-8 text-muted-foreground/70" />
                     </div>
-                    <p className="text-base font-medium" style={{ color: 'var(--text-primary)' }}>No records found</p>
-                    <p className="text-sm mt-1 max-w-sm" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-base font-medium text-foreground">No records found</p>
+                    <p className="text-sm mt-1 max-w-sm text-muted-foreground/70">
                       Try adjusting your search or filter criteria to find what you're looking for
                     </p>
                   </div>
@@ -662,27 +595,13 @@ export const TableBody: React.FC<TableBodyProps> = ({
                   <tr
                     key={rowId ?? idx}
                     onClick={() => onRowClick?.(row)}
-                    className={`group transition-all duration-150 ${onRowClick ? 'cursor-pointer' : ''}`}
-                    style={{
-                      backgroundColor: isSelected
-                        ? 'var(--bg-primary-subtle)'
+                    className={`group transition-all duration-150 border-b border-border/50 ${onRowClick ? 'cursor-pointer' : ''} ${
+                      isSelected
+                        ? 'bg-primary/10'
                         : idx % 2 === 0
-                          ? 'var(--bg-surface)'
-                          : 'var(--bg-elevated)',
-                      borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = isSelected
-                        ? 'var(--bg-primary-subtle)'
-                        : idx % 2 === 0
-                          ? 'var(--bg-surface)'
-                          : 'var(--bg-elevated)';
-                    }}
+                          ? 'bg-card hover:bg-muted/50'
+                          : 'bg-muted hover:bg-muted/70'
+                    }`}
                   >
                     {/* Row Checkbox */}
                     {selectable && (
@@ -690,12 +609,11 @@ export const TableBody: React.FC<TableBodyProps> = ({
                         <button
                           type="button"
                           onClick={(e) => handleSelectRow(row, e)}
-                          className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
-                          style={{
-                            backgroundColor: isSelected ? 'var(--bg-primary)' : 'transparent',
-                            borderColor: isSelected ? 'var(--bg-primary)' : 'var(--border-default)',
-                            color: isSelected ? 'white' : 'inherit',
-                          }}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                            isSelected
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-transparent border-border'
+                          }`}
                         >
                           {isSelected && <Check className="h-3.5 w-3.5" />}
                         </button>

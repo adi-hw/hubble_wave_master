@@ -2,7 +2,7 @@
  * Layout Migration Utilities
  *
  * Handles safe upgrades of form layouts when the platform is updated.
- * Ensures tenant admin and user customizations are preserved while
+ * Ensures instance admin and user customizations are preserved while
  * incorporating new platform changes.
  */
 
@@ -10,7 +10,7 @@ import {
   DesignerLayout,
   DesignerTab,
   DesignerSection,
-  DesignerField,
+  DesignerProperty,
   LayoutChange,
   LayoutMergeResult,
   LayoutConflict,
@@ -23,12 +23,20 @@ import {
 // ============================================================================
 
 /**
- * Current schema version - increment when layout structure changes
+ * Current schema revision - increment when layout structure changes
  */
 export const CURRENT_SCHEMA_VERSION = 2;
 
 /**
- * Migrates a layout from an older schema version to the current version
+ * Schema migration registry - maps source revision to migration function
+ */
+const schemaMigrations: Record<number, (layout: DesignerLayout) => DesignerLayout> = {
+  1: migrateFromRevision1,
+};
+
+/**
+ * Migrates a layout from an older schema revision to the current revision.
+ * Applies migrations sequentially to preserve data integrity.
  */
 export function migrateLayoutSchema(
   layout: DesignerLayout,
@@ -36,26 +44,21 @@ export function migrateLayoutSchema(
 ): DesignerLayout {
   let migratedLayout = JSON.parse(JSON.stringify(layout)) as DesignerLayout;
 
-  // Apply migrations sequentially
-  if (fromVersion < 2) {
-    migratedLayout = migrateV1toV2(migratedLayout);
+  for (let revision = fromVersion; revision < CURRENT_SCHEMA_VERSION; revision++) {
+    const migrationFn = schemaMigrations[revision];
+    if (migrationFn) {
+      migratedLayout = migrationFn(migratedLayout);
+    }
   }
-
-  // Future migrations would go here:
-  // if (fromVersion < 3) {
-  //   migratedLayout = migrateV2toV3(migratedLayout);
-  // }
 
   return migratedLayout;
 }
 
 /**
- * Migration from v1 to v2:
- * - Added basedOnAdminVersion field
- * - Added metadata object
- * - Added settings object
+ * Migrates layout from revision 1 to revision 2.
+ * Adds basedOnAdminVersion, metadata, and settings fields.
  */
-function migrateV1toV2(layout: DesignerLayout): DesignerLayout {
+function migrateFromRevision1(layout: DesignerLayout): DesignerLayout {
   return {
     ...layout,
     version: 2,
@@ -76,22 +79,22 @@ function migrateV1toV2(layout: DesignerLayout): DesignerLayout {
 // ============================================================================
 
 /**
- * Extracts all field codes from a layout
+ * Extracts all property codes from a layout
  */
-export function extractFieldCodes(layout: DesignerLayout): Set<string> {
-  const fieldCodes = new Set<string>();
+export function extractPropertyCodes(layout: DesignerLayout): Set<string> {
+  const propertyCodes = new Set<string>();
 
   for (const tab of layout.tabs) {
     for (const section of tab.sections) {
       for (const item of section.items) {
-        if (item.type === 'field') {
-          fieldCodes.add(item.fieldCode);
+        if (item.type === 'property') {
+          propertyCodes.add(item.propertyCode);
         } else if (item.type === 'dot_walk') {
-          fieldCodes.add(`${item.basePath}.${item.fieldCode}`);
+          propertyCodes.add(`${item.basePath}.${item.propertyCode}`);
         } else if (item.type === 'group') {
-          for (const field of item.fields) {
-            if (field.type === 'field') {
-              fieldCodes.add(field.fieldCode);
+          for (const property of item.properties) {
+            if (property.type === 'property') {
+              propertyCodes.add(property.propertyCode);
             }
           }
         }
@@ -99,8 +102,11 @@ export function extractFieldCodes(layout: DesignerLayout): Set<string> {
     }
   }
 
-  return fieldCodes;
+  return propertyCodes;
 }
+
+// Deprecated alias for backward compatibility
+export const extractFieldCodes = extractPropertyCodes;
 
 /**
  * Detects changes between two layouts
@@ -111,8 +117,8 @@ export function detectLayoutChanges(
 ): LayoutChange[] {
   const changes: LayoutChange[] = [];
 
-  const oldFields = extractFieldCodes(oldLayout);
-  const newFields = extractFieldCodes(newLayout);
+  const oldProperties = extractPropertyCodes(oldLayout);
+  const newProperties = extractPropertyCodes(newLayout);
   const oldTabs = new Set(oldLayout.tabs.map((t) => t.id));
   const newTabs = new Set(newLayout.tabs.map((t) => t.id));
   const oldSections = new Set(
@@ -122,26 +128,26 @@ export function detectLayoutChanges(
     newLayout.tabs.flatMap((t) => t.sections.map((s) => s.id))
   );
 
-  // Detect added fields
-  for (const fieldCode of newFields) {
-    if (!oldFields.has(fieldCode)) {
+  // Detect added properties
+  for (const propertyCode of newProperties) {
+    if (!oldProperties.has(propertyCode)) {
       changes.push({
-        type: 'field_added',
-        description: `Field "${fieldCode}" was added`,
-        fieldCode,
+        type: 'property_added',
+        description: `Property "${propertyCode}" was added`,
+        propertyCode,
         severity: 'info',
         autoMergeable: true,
       });
     }
   }
 
-  // Detect removed fields
-  for (const fieldCode of oldFields) {
-    if (!newFields.has(fieldCode)) {
+  // Detect removed properties
+  for (const propertyCode of oldProperties) {
+    if (!newProperties.has(propertyCode)) {
       changes.push({
-        type: 'field_removed',
-        description: `Field "${fieldCode}" was removed`,
-        fieldCode,
+        type: 'property_removed',
+        description: `Property "${propertyCode}" was removed`,
+        propertyCode,
         severity: 'warning',
         autoMergeable: false,
       });
@@ -206,19 +212,19 @@ export function detectLayoutChanges(
 }
 
 /**
- * Finds the location of a field in a layout
+ * Finds the location of a property in a layout
  */
-export function findFieldLocation(
+export function findPropertyLocation(
   layout: DesignerLayout,
-  fieldCode: string
+  propertyCode: string
 ): { tabId: string; sectionId: string; index: number } | null {
   for (const tab of layout.tabs) {
     for (const section of tab.sections) {
       const index = section.items.findIndex(
         (item) =>
-          (item.type === 'field' && item.fieldCode === fieldCode) ||
+          (item.type === 'property' && item.propertyCode === propertyCode) ||
           (item.type === 'dot_walk' &&
-            `${item.basePath}.${item.fieldCode}` === fieldCode)
+            `${item.basePath}.${item.propertyCode}` === propertyCode)
       );
       if (index !== -1) {
         return { tabId: tab.id, sectionId: section.id, index };
@@ -227,6 +233,9 @@ export function findFieldLocation(
   }
   return null;
 }
+
+// Deprecated alias for backward compatibility
+export const findFieldLocation = findPropertyLocation;
 
 // ============================================================================
 // Layout Merge Algorithm
@@ -238,8 +247,8 @@ export function findFieldLocation(
  *
  * Strategy:
  * 1. Keep user's structural customizations (tab order, section arrangement)
- * 2. Add new fields from the source layout
- * 3. Remove fields that no longer exist in the source
+ * 2. Add new properties from the source layout
+ * 3. Remove properties that no longer exist in the source
  * 4. Flag conflicts for user resolution
  */
 export function mergeLayouts(
@@ -247,14 +256,14 @@ export function mergeLayouts(
   sourceLayout: DesignerLayout,
   options: {
     preserveUserOrder?: boolean;
-    addNewFieldsToEnd?: boolean;
-    removeDeletedFields?: boolean;
+    addNewPropertiesToEnd?: boolean;
+    removeDeletedProperties?: boolean;
   } = {}
 ): LayoutMergeResult {
   const {
     preserveUserOrder = true,
-    addNewFieldsToEnd = true,
-    removeDeletedFields = false,
+    addNewPropertiesToEnd = true,
+    removeDeletedProperties = false,
   } = options;
 
   const mergedLayout = JSON.parse(JSON.stringify(userLayout)) as DesignerLayout;
@@ -263,11 +272,11 @@ export function mergeLayouts(
   const conflicts: LayoutConflict[] = [];
   const warnings: string[] = [];
 
-  // Handle new fields from source
-  for (const change of changes.filter((c) => c.type === 'field_added')) {
-    if (change.fieldCode && change.autoMergeable) {
-      // Find where the field is in the source layout
-      const sourceLocation = findFieldLocation(sourceLayout, change.fieldCode);
+  // Handle new properties from source
+  for (const change of changes.filter((c) => c.type === 'property_added')) {
+    if (change.propertyCode && change.autoMergeable) {
+      // Find where the property is in the source layout
+      const sourceLocation = findPropertyLocation(sourceLayout, change.propertyCode);
 
       if (sourceLocation) {
         // Find the corresponding field item in source
@@ -294,7 +303,7 @@ export function mergeLayouts(
 
           // If no matching location, add to first tab/section or create new
           if (!targetTab) {
-            if (addNewFieldsToEnd) {
+            if (addNewPropertiesToEnd) {
               targetTab = mergedLayout.tabs[0];
             } else {
               // Create a new tab matching the source
@@ -307,13 +316,13 @@ export function mergeLayouts(
           }
 
           if (!targetSection) {
-            if (addNewFieldsToEnd && targetTab.sections.length > 0) {
+            if (addNewPropertiesToEnd && targetTab.sections.length > 0) {
               targetSection = targetTab.sections[targetTab.sections.length - 1];
             } else {
               // Create new section
               targetSection = {
                 id: generateId(),
-                label: sourceSection?.label || 'New Fields',
+                label: sourceSection?.label || 'New Properties',
                 columns: sourceSection?.columns || 2,
                 items: [],
               };
@@ -321,7 +330,7 @@ export function mergeLayouts(
             }
           }
 
-          // Add the field
+          // Add the property
           const newItem = JSON.parse(JSON.stringify(sourceItem));
           if (preserveUserOrder) {
             targetSection.items.push(newItem);
@@ -336,23 +345,23 @@ export function mergeLayouts(
     }
   }
 
-  // Handle removed fields
-  for (const change of changes.filter((c) => c.type === 'field_removed')) {
-    if (change.fieldCode) {
-      if (removeDeletedFields) {
-        // Remove the field from user layout
-        removeFieldFromLayout(mergedLayout, change.fieldCode);
+  // Handle removed properties
+  for (const change of changes.filter((c) => c.type === 'property_removed')) {
+    if (change.propertyCode) {
+      if (removeDeletedProperties) {
+        // Remove the property from user layout
+        removePropertyFromLayout(mergedLayout, change.propertyCode);
         appliedChanges.push(change);
       } else {
         // Create a conflict for user to resolve
         conflicts.push({
           id: generateId(),
-          type: 'field_removed',
-          description: `Field "${change.fieldCode}" was removed from the base layout`,
-          affectedItems: [change.fieldCode],
+          type: 'property_removed',
+          description: `Property "${change.propertyCode}" was removed from the base layout`,
+          affectedItems: [change.propertyCode],
         });
         warnings.push(
-          `Field "${change.fieldCode}" exists in your layout but was removed from the base layout`
+          `Property "${change.propertyCode}" exists in your layout but was removed from the base layout`
         );
       }
     }
@@ -399,23 +408,23 @@ export function mergeLayouts(
 }
 
 /**
- * Removes a field from a layout
+ * Removes a property from a layout
  */
-function removeFieldFromLayout(layout: DesignerLayout, fieldCode: string): void {
+function removePropertyFromLayout(layout: DesignerLayout, propertyCode: string): void {
   for (const tab of layout.tabs) {
     for (const section of tab.sections) {
       section.items = section.items.filter((item) => {
-        if (item.type === 'field') {
-          return item.fieldCode !== fieldCode;
+        if (item.type === 'property') {
+          return item.propertyCode !== propertyCode;
         }
         if (item.type === 'dot_walk') {
-          return `${item.basePath}.${item.fieldCode}` !== fieldCode;
+          return `${item.basePath}.${item.propertyCode}` !== propertyCode;
         }
         if (item.type === 'group') {
-          item.fields = item.fields.filter(
-            (f) => f.type !== 'field' || f.fieldCode !== fieldCode
+          item.properties = item.properties.filter(
+            (p) => p.type !== 'property' || p.propertyCode !== propertyCode
           );
-          return item.fields.length > 0;
+          return item.properties.length > 0;
         }
         return true;
       });
@@ -449,8 +458,8 @@ export function performPlatformUpgrade(
   // Merge the layouts
   const mergeResult = mergeLayouts(currentLayout, migratedNew, {
     preserveUserOrder: true,
-    addNewFieldsToEnd: true,
-    removeDeletedFields: false,
+    addNewPropertiesToEnd: true,
+    removeDeletedProperties: false,
   });
 
   // Update version chain
@@ -496,49 +505,52 @@ export function needsMigration(
 // ============================================================================
 
 /**
- * Validates that a layout contains all required fields
+ * Validates that a layout contains all required properties
  */
-export function validateLayoutFields(
+export function validateLayoutProperties(
   layout: DesignerLayout,
-  requiredFieldCodes: string[]
+  requiredPropertyCodes: string[]
 ): {
   isValid: boolean;
-  missingFields: string[];
-  extraFields: string[];
+  missingProperties: string[];
+  extraProperties: string[];
 } {
-  const layoutFields = extractFieldCodes(layout);
-  const missingFields = requiredFieldCodes.filter((f) => !layoutFields.has(f));
-  const extraFields = [...layoutFields].filter(
-    (f) => !requiredFieldCodes.includes(f)
+  const layoutProperties = extractPropertyCodes(layout);
+  const missingProperties = requiredPropertyCodes.filter((p) => !layoutProperties.has(p));
+  const extraProperties = [...layoutProperties].filter(
+    (p) => !requiredPropertyCodes.includes(p)
   );
 
   return {
-    isValid: missingFields.length === 0,
-    missingFields,
-    extraFields,
+    isValid: missingProperties.length === 0,
+    missingProperties,
+    extraProperties,
   };
 }
 
+// Deprecated alias for backward compatibility
+export const validateLayoutFields = validateLayoutProperties;
+
 /**
- * Adds missing required fields to a layout
+ * Adds missing required properties to a layout
  */
-export function addMissingRequiredFields(
+export function addMissingRequiredProperties(
   layout: DesignerLayout,
-  missingFields: string[],
-  fieldLabels: Record<string, string> = {}
+  missingProperties: string[],
+  propertyLabels: Record<string, string> = {}
 ): DesignerLayout {
   const updatedLayout = JSON.parse(JSON.stringify(layout)) as DesignerLayout;
 
-  // Find or create a "Required Fields" section in the first tab
+  // Find or create a "Required Properties" section in the first tab
   let targetSection = updatedLayout.tabs[0]?.sections.find(
-    (s) => s.label === 'Required Fields'
+    (s) => s.label === 'Required Properties'
   );
 
   if (!targetSection && updatedLayout.tabs[0]) {
     targetSection = {
       id: generateId(),
-      label: 'Required Fields',
-      description: 'These fields are required by the system',
+      label: 'Required Properties',
+      description: 'These properties are required by the system',
       columns: 2,
       items: [],
     };
@@ -547,19 +559,22 @@ export function addMissingRequiredFields(
   }
 
   if (targetSection) {
-    for (const fieldCode of missingFields) {
-      const newField: DesignerField = {
-        type: 'field',
+    for (const propertyCode of missingProperties) {
+      const newProperty: DesignerProperty = {
+        type: 'property',
         id: generateId(),
-        fieldCode,
+        propertyCode,
         span: 1,
-        helpText: fieldLabels[fieldCode]
+        helpText: propertyLabels[propertyCode]
           ? undefined
-          : 'This field is required by the system',
+          : 'This property is required by the system',
       };
-      targetSection.items.push(newField);
+      targetSection.items.push(newProperty);
     }
   }
 
   return updatedLayout;
 }
+
+// Deprecated alias for backward compatibility
+export const addMissingRequiredFields = addMissingRequiredProperties;

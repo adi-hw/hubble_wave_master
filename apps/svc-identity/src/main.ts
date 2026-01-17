@@ -79,7 +79,7 @@ async function bootstrap() {
     return origin;
   });
 
-  // Also support *.localhost patterns for tenant subdomains in development
+  // Also support *.localhost patterns for instance subdomains in development
   // and localhost with any port
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
@@ -114,7 +114,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       process.env.CORS_ALLOWED_HEADERS ??
-      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Tenant-Slug, X-XSRF-TOKEN',
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug, X-XSRF-TOKEN',
     optionsSuccessStatus: 204,
   });
   Logger.log(`CORS enabled for origins: ${allowedOrigins.join(', ')} (+ subdomain patterns in dev)`, 'Bootstrap');
@@ -182,7 +182,7 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
   Logger.log(
-    `🚀 Application is running on: http://localhost:${port}/${globalPrefix}/v1/`
+    `🚀 Application is running on: http://localhost:${port}/${globalPrefix}`
   );
   Logger.log(
     `📄 Swagger Documentation: http://localhost:${port}/${globalPrefix}/docs`

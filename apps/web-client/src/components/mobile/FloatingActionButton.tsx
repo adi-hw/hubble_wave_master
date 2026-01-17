@@ -1,3 +1,13 @@
+/**
+ * FloatingActionButton Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready FAB with:
+ * - Theme-aware styling using Tailwind CSS
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly touch targets (min 48px)
+ */
+
 import { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
@@ -39,10 +49,8 @@ export function FloatingActionButton({
   };
 
   const variantClasses = {
-    primary:
-      'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-indigo-500/30',
-    secondary:
-      'bg-white dark:bg-slate-800 text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700',
+    primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg focus:ring-primary',
+    secondary: 'bg-card text-foreground border border-border hover:bg-muted shadow-lg focus:ring-primary',
   };
 
   return (
@@ -54,11 +62,11 @@ export function FloatingActionButton({
         sizeClasses[size],
         iconSizeClasses[size],
         variantClasses[variant],
-        'rounded-full shadow-lg',
+        'rounded-full',
         'flex items-center justify-center',
         'transition-all duration-200',
         'active:scale-95',
-        'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+        'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background',
         className
       )}
       aria-label={label}

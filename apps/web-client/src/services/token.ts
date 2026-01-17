@@ -8,12 +8,26 @@
 // 3. On page refresh, we attempt silent refresh via HttpOnly cookie
 
 let inMemoryAccessToken: string | null = null;
+const moduleId = Math.random().toString(36).substring(7);
+console.log('[token.ts] Module loaded, id:', moduleId);
 
-export const getStoredToken = (): string | null => inMemoryAccessToken;
+export const getStoredToken = (): string | null => {
+  console.log('[token.ts] getStoredToken called', {
+    moduleId,
+    hasToken: !!inMemoryAccessToken,
+    tokenLength: inMemoryAccessToken?.length,
+  });
+  return inMemoryAccessToken;
+};
 
 export const setStoredToken = (token: string | null) => {
+  console.log('[token.ts] setStoredToken called', {
+    moduleId,
+    wasSet: !!token,
+    tokenLength: token?.length,
+  });
   inMemoryAccessToken = token;
-  // SECURITY: Also clear any legacy localStorage tokens
+  // SECURITY: Ensure localStorage tokens are cleared
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
 };

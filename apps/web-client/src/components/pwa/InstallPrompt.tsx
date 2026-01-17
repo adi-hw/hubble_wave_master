@@ -1,5 +1,15 @@
-import { useState } from 'react';
-import { Download, X, Smartphone } from 'lucide-react';
+/**
+ * InstallPrompt Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready PWA install prompt with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly touch targets
+ */
+
+import { useState, useCallback } from 'react';
+import { Download, X, Smartphone, Loader2 } from 'lucide-react';
 import { usePWA } from '../../hooks/usePWA';
 import { cn } from '../../lib/utils';
 
@@ -15,7 +25,7 @@ export function InstallPrompt({ className }: InstallPromptProps) {
   // Don't show if already installed, not installable, or dismissed
   if (isInstalled || !isInstallable || isDismissed) return null;
 
-  const handleInstall = async () => {
+  const handleInstall = useCallback(async () => {
     setIsInstalling(true);
     const success = await promptInstall();
     setIsInstalling(false);
@@ -23,44 +33,50 @@ export function InstallPrompt({ className }: InstallPromptProps) {
       // User declined, dismiss for this session
       setIsDismissed(true);
     }
-  };
+  }, [promptInstall]);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     setIsDismissed(true);
     // Store in session storage so it doesn't show again this session
     sessionStorage.setItem('pwa-install-dismissed', 'true');
-  };
+  }, []);
 
   return (
     <div
       className={cn(
         'fixed bottom-20 left-4 right-4 z-50',
         'md:left-auto md:right-6 md:bottom-6 md:max-w-sm',
-        'bg-white dark:bg-slate-800 rounded-xl shadow-2xl',
-        'border border-slate-200 dark:border-slate-700',
-        'p-4 animate-slide-up',
+        'rounded-xl p-4 animate-slide-up',
+        'bg-card border border-border shadow-2xl',
         className
       )}
       role="alert"
+      aria-labelledby="install-prompt-title"
     >
       <button
         onClick={handleDismiss}
-        className="absolute top-2 right-2 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
-        aria-label="Dismiss"
+        className="absolute top-2 right-2 p-2 rounded-full transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center text-muted-foreground hover:bg-muted"
+        aria-label="Dismiss install prompt"
       >
         <X className="w-4 h-4" />
       </button>
 
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
-          <Smartphone className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+        <div className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center bg-primary/10">
+          <Smartphone
+            className="w-6 h-6 text-primary"
+            aria-hidden="true"
+          />
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-slate-900 dark:text-white">
+          <h3
+            id="install-prompt-title"
+            className="font-semibold text-foreground"
+          >
             Install HubbleWave
           </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+          <p className="text-sm mt-0.5 text-muted-foreground">
             Add to your home screen for quick access and offline support.
           </p>
 
@@ -68,15 +84,23 @@ export function InstallPrompt({ className }: InstallPromptProps) {
             onClick={handleInstall}
             disabled={isInstalling}
             className={cn(
-              'mt-3 w-full flex items-center justify-center gap-2',
-              'px-4 py-2 rounded-lg font-medium text-sm',
-              'bg-indigo-600 text-white hover:bg-indigo-700',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'transition-colors'
+              'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors min-h-[44px]',
+              isInstalling
+                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                : 'bg-primary text-primary-foreground cursor-pointer hover:bg-primary/90'
             )}
           >
-            <Download className="w-4 h-4" />
-            {isInstalling ? 'Installing...' : 'Install App'}
+            {isInstalling ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                Installing...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" aria-hidden="true" />
+                Install App
+              </>
+            )}
           </button>
         </div>
       </div>

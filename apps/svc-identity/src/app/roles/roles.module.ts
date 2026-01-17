@@ -1,4 +1,4 @@
-import { Module, OnModuleInit, Logger } from '@nestjs/common';
+import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { PermissionResolverService } from './permission-resolver.service';
 import { RoleService } from './role.service';
@@ -8,6 +8,7 @@ import { RolesController } from './roles.controller';
 import { PermissionsController } from './permissions.controller';
 import { PermissionGuard } from './guards/permission.guard';
 
+@Global()
 @Module({
   imports: [InstanceDbModule],
   controllers: [RolesController, PermissionsController],

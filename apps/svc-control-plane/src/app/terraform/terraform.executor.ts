@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { TerraformJob, TerraformOutputLine } from '@hubblewave/control-plane-db';
 
@@ -19,28 +20,42 @@ export class TerraformExecutor {
   }
 
   async plan(job: TerraformJob): Promise<TerraformExecutionResult> {
-    return this.runCommand(job, ['plan', '-input=false']);
+    return this.execute(job, ['plan', '-input=false', '-no-color']);
   }
 
   async apply(job: TerraformJob): Promise<TerraformExecutionResult> {
-    return this.runCommand(job, ['apply', '-auto-approve', '-input=false']);
+    return this.execute(job, ['apply', '-auto-approve', '-input=false', '-no-color']);
   }
 
   async destroy(job: TerraformJob): Promise<TerraformExecutionResult> {
-    return this.runCommand(job, ['destroy', '-auto-approve', '-input=false']);
+    return this.execute(job, ['destroy', '-auto-approve', '-input=false', '-no-color']);
   }
 
-  private runCommand(job: TerraformJob, args: string[]): Promise<TerraformExecutionResult> {
+  private async execute(job: TerraformJob, args: string[]): Promise<TerraformExecutionResult> {
+    const init = await this.runTerraform(job, ['init', '-input=false', '-no-color', '-reconfigure']);
+    const result = await this.runTerraform(job, args);
+    return { output: [...init.output, ...result.output] };
+  }
+
+  private runTerraform(job: TerraformJob, args: string[]): Promise<TerraformExecutionResult> {
     return new Promise((resolve, reject) => {
       const output: TerraformOutputLine[] = [];
       const workspace = job.workspace || `${job.customerCode}-${job.environment}`;
       const cwd = join(this.workspacesRoot, workspace);
+      if (!existsSync(cwd)) {
+        const error = new Error(`Terraform workspace not found: ${cwd}`);
+        (error as any).output = output;
+        reject(error);
+        return;
+      }
 
       const proc = spawn(this.terraformBinary, args, {
         cwd,
         env: {
           ...process.env,
           TF_LOG: process.env.TF_LOG || 'WARN',
+          TF_IN_AUTOMATION: 'true',
+          TF_INPUT: '0',
         },
       });
 

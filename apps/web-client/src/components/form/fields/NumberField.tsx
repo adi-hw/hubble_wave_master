@@ -31,10 +31,7 @@ export const NumberField: React.FC<FieldComponentProps<unknown>> = ({
     >
       <div className="relative">
         {prefix && (
-          <span
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-            style={{ color: 'var(--text-muted)' }}
-          >
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none text-muted-foreground">
             {prefix}
           </span>
         )}
@@ -51,10 +48,7 @@ export const NumberField: React.FC<FieldComponentProps<unknown>> = ({
           className={`${getInputClasses({ error, readOnly, disabled })} ${prefix ? 'pl-7' : ''} ${suffix ? 'pr-8' : ''}`}
         />
         {suffix && (
-          <span
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-            style={{ color: 'var(--text-muted)' }}
-          >
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none text-muted-foreground">
             {suffix}
           </span>
         )}

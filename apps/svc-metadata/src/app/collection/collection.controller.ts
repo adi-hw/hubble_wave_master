@@ -66,7 +66,7 @@ export class CollectionController {
     @Query('includeDeleted') includeDeleted?: string,
     @Query('includeStats') includeStats?: string,
     @Query('search') search?: string,
-    @Query('sortBy') sortBy?: 'label' | 'code' | 'createdAt' | 'updatedAt',
+    @Query('sortBy') sortBy?: 'label' | 'code' | 'ownerType' | 'category' | 'tableName' | 'createdAt' | 'updatedAt',
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Query('page') page?: string,
     @Query('limit') limit?: string
@@ -152,11 +152,6 @@ export class CollectionController {
   getRelationships(@Param('id', ParseUUIDPipe) id: string) {
     return this.collectionService.getCollectionRelationships(id);
   }
-
-  /**
-   * Get collection statistics
-   */
-  // Stats endpoint disabled (no backing fields in single-instance model)
 
   /**
    * Get audit history for a collection
@@ -334,7 +329,7 @@ export class CollectionController {
   }
 
   /**
-   * Get AVA suggestions for collection naming (legacy endpoint)
+   * Get AVA suggestions for collection naming
    */
   @Post('ava/suggest/naming')
   suggestNaming(@Body() body: { input: string }) {
@@ -342,7 +337,7 @@ export class CollectionController {
   }
 
   /**
-   * Analyze imported data for schema suggestions (legacy endpoint)
+   * Analyze imported data for schema suggestions
    */
   @Post('ava/analyze-import')
   analyzeImport(

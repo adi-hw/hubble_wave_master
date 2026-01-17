@@ -38,3 +38,16 @@ export {
   SyncIssue,
   SyncCheckResult,
 } from './schema-sync.service';
+
+// Schema version service (versioning and rollback)
+export {
+  SchemaVersionService,
+  SchemaVersion,
+  CollectionSnapshot,
+  PropertySnapshot,
+  IndexSnapshot,
+  SchemaChangeType,
+  SchemaVersionCompare,
+  SchemaChange,
+  RollbackResult,
+} from './schema-version.service';

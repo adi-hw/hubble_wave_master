@@ -1,4 +1,16 @@
-import { useEffect, useRef, ReactNode } from 'react';
+/**
+ * MobileDrawer Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready mobile drawer with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Swipe-to-close support
+ * - Focus trap and keyboard navigation
+ */
+
+import { useEffect, useRef, ReactNode, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -21,6 +33,7 @@ export function MobileDrawer({
   className,
 }: MobileDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Handle swipe to close
   const swipeHandlers = useSwipe({
@@ -53,12 +66,52 @@ export function MobileDrawer({
     return () => window.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
 
-  // Focus trap
+  // Focus management
   useEffect(() => {
-    if (isOpen && drawerRef.current) {
-      drawerRef.current.focus();
+    if (isOpen) {
+      // Focus close button or first focusable element
+      if (closeButtonRef.current) {
+        closeButtonRef.current.focus();
+      } else if (drawerRef.current) {
+        drawerRef.current.focus();
+      }
     }
   }, [isOpen]);
+
+  // Focus trap
+  useEffect(() => {
+    if (!isOpen || !drawerRef.current) return;
+
+    const drawer = drawerRef.current;
+    const focusableElements = drawer.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    drawer.addEventListener('keydown', handleTabKey);
+    return () => drawer.removeEventListener('keydown', handleTabKey);
+  }, [isOpen]);
+
+  const handleBackdropClick = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const positionClasses = {
     left: {
@@ -85,12 +138,12 @@ export function MobileDrawer({
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-40 bg-black/50 transition-opacity duration-300',
+          'fixed inset-0 z-40 bg-overlay/50 transition-opacity duration-300',
           isOpen
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
         )}
-        onClick={onClose}
+        onClick={handleBackdropClick}
         aria-hidden="true"
       />
 
@@ -106,11 +159,10 @@ export function MobileDrawer({
           posStyle.container,
           posStyle.size,
           posStyle.transform,
-          'bg-white dark:bg-slate-900',
-          'shadow-2xl',
           'transition-transform duration-300 ease-out',
           'flex flex-col',
           'outline-none',
+          'bg-card shadow-2xl',
           className
         )}
         {...swipeHandlers}
@@ -118,19 +170,27 @@ export function MobileDrawer({
         {/* Drag handle for bottom drawer */}
         {position === 'bottom' && (
           <div className="flex justify-center py-3">
-            <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full" />
+            <div
+              className="w-12 h-1.5 rounded-full bg-border"
+              aria-hidden="true"
+            />
           </div>
         )}
 
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <div
+            className="flex items-center justify-between px-4 py-3 border-b border-border"
+          >
+            <h2
+              className="text-lg font-semibold text-foreground"
+            >
               {title}
             </h2>
             <button
+              ref={closeButtonRef}
               onClick={onClose}
-              className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+              className="p-2 -mr-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-accent"
               aria-label="Close drawer"
             >
               <X className="w-5 h-5" />

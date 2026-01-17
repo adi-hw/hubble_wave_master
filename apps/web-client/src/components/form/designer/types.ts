@@ -2,7 +2,7 @@
  * Advanced Form Layout Designer Types
  *
  * This module defines all types for the form layout designer system,
- * including layout structures, field protection, user preferences,
+ * including layout structures, property protection, user preferences,
  * and conditional visibility rules.
  */
 
@@ -41,26 +41,26 @@ export interface VisibilityCondition {
 }
 
 // ============================================================================
-// Field Protection
+// Property Protection
 // ============================================================================
 
 export type ProtectionLevel =
-  | 'locked'           // Cannot be hidden, moved, or modified (system fields like id, created_at)
+  | 'locked'           // Cannot be hidden, moved, or modified (system properties like id, created_at)
   | 'required_visible' // Cannot be hidden, but can be repositioned
   | 'flexible';        // Full user control
 
-export interface FieldProtection {
+export interface PropertyProtection {
   id: string;
-  fieldCode: string;
+  propertyCode: string;
   protectionLevel: ProtectionLevel;
   condition?: VisibilityCondition; // Protection applies when condition is true
   reason?: string;                  // Explanation shown to user
 }
 
-export interface FieldProtectionRule {
+export interface PropertyProtectionRule {
   id: string;
-  tableCode: string;
-  fieldCode: string;
+  collectionCode: string;
+  propertyCode: string;
   protectionLevel: ProtectionLevel;
   condition?: VisibilityCondition;
   errorMessage?: string;
@@ -78,24 +78,24 @@ export interface DesignerFieldBase {
   visibilityCondition?: VisibilityCondition;
 }
 
-export interface DesignerField extends DesignerFieldBase {
-  type: 'field';
-  fieldCode: string;
+export interface DesignerProperty extends DesignerFieldBase {
+  type: 'property';
+  propertyCode: string;
   labelOverride?: string;
   placeholder?: string;
   helpText?: string;
   readOnly?: boolean;
 }
 
-export interface DesignerDotWalkField extends DesignerFieldBase {
+export interface DesignerDotWalkProperty extends DesignerFieldBase {
   type: 'dot_walk';
   basePath: string;        // e.g., "location.contact" or "assigned_to"
-  fieldCode: string;       // e.g., "email" or "name"
+  propertyCode: string;    // e.g., "email" or "name"
   displayLabel: string;    // User-friendly label
-  referenceChain: string[]; // Array of reference field codes traversed
+  referenceChain: string[]; // Array of reference property codes traversed
 }
 
-export interface DesignerFieldGroup {
+export interface DesignerPropertyGroup {
   type: 'group';
   id: string;
   label?: string;
@@ -103,7 +103,7 @@ export interface DesignerFieldGroup {
   style: 'bordered' | 'shaded' | 'plain' | 'card';
   collapsible?: boolean;
   defaultCollapsed?: boolean;
-  fields: (DesignerField | DesignerDotWalkField)[];
+  properties: (DesignerProperty | DesignerDotWalkProperty)[];
   visibilityCondition?: VisibilityCondition;
 }
 
@@ -112,11 +112,11 @@ export interface DesignerEmbeddedList {
   id: string;
   label: string;
   description?: string;
-  tableCode: string;           // The related table to display
-  referenceField: string;      // Field on child table pointing to this record
-  columns: string[];           // Field codes to display as columns
+  collectionCode: string;        // The related collection to display
+  referenceProperty: string;     // Property on child collection pointing to this record
+  columns: string[];             // Property codes to display as columns
   defaultSort?: {
-    field: string;
+    property: string;
     direction: 'asc' | 'desc';
   };
   filter?: FilterExpression;
@@ -155,9 +155,9 @@ export interface DesignerInfoBox {
 }
 
 export type DesignerItem =
-  | DesignerField
-  | DesignerDotWalkField
-  | DesignerFieldGroup
+  | DesignerProperty
+  | DesignerDotWalkProperty
+  | DesignerPropertyGroup
   | DesignerEmbeddedList
   | DesignerSpacer
   | DesignerDivider
@@ -169,7 +169,7 @@ export type DesignerItem =
 
 export interface FilterRule {
   id: string;
-  field: string;
+  property: string;
   operator: ConditionOperator;
   value?: any;
 }
@@ -207,7 +207,7 @@ export interface DesignerTab {
   badge?: {
     type: 'count' | 'dot' | 'text';
     value?: string | number;
-    fieldCode?: string;    // For dynamic count based on a field
+    propertyCode?: string;    // For dynamic count based on a property
   };
   sections: DesignerSection[];
   visibilityCondition?: VisibilityCondition;
@@ -234,8 +234,8 @@ export interface LayoutSettings {
   showTabBar?: boolean;         // Hide tab bar if only one tab
   defaultTab?: string;          // Tab ID to show by default
   compactMode?: boolean;        // Reduce padding and spacing
-  showFieldCodes?: boolean;     // Show field codes in labels (dev mode)
-  animateVisibility?: boolean;  // Animate field show/hide
+  showPropertyCodes?: boolean;  // Show property codes in labels (dev mode)
+  animateVisibility?: boolean;  // Animate property show/hide
 }
 
 // ============================================================================
@@ -245,12 +245,12 @@ export interface LayoutSettings {
 export interface UserLayoutPreference {
   id: string;
   userId: string;
-  tableCode: string;
+  collectionCode: string;
   layoutName: string;
   layoutData: DesignerLayout;
   basedOnVersion: number;       // Admin layout version this was based on
-  isActive: boolean;            // Only one active per user per table
-  isDefault: boolean;           // User's default for this table
+  isActive: boolean;            // Only one active per user per collection
+  isDefault: boolean;           // User's default for this collection
   createdAt: string;
   updatedAt: string;
 }
@@ -271,82 +271,84 @@ export interface UserLayoutSummary {
  * Layout Source Hierarchy (in priority order, highest to lowest):
  *
  * 1. PLATFORM - Provided by platform vendor (us), shipped with updates
- *    - Cannot be modified by tenants
+ *    - Cannot be modified by instance administrators
  *    - Serves as ultimate fallback
  *    - Versioned with platform releases
  *
- * 2. admin - Configured by tenant administrator
+ * 2. admin - Configured by instance administrator
  *    - Overrides platform layout
- *    - Applies to all users in tenant by default
+ *    - Applies to all users in instance by default
  *    - Can be versioned for rollback
  *
  * 3. ROLE - Role-specific layouts
- *    - Overrides tenant admin layout for specific roles
- *    - E.g., Technician sees different fields than Manager
+ *    - Overrides instance admin layout for specific roles
+ *    - E.g., Technician sees different properties than Manager
  *
  * 4. USER - Individual user customization
  *    - Highest priority, user's personal preference
- *    - Based on their effective layout (role or tenant)
+ *    - Based on their effective layout (role or instance)
  *    - Can be reset to default at any level
  */
 
 export type LayoutSource =
   | 'platform'     // Platform-provided (vendor)
-  | 'admin' // Tenant administrator configured
+  | 'admin'        // Instance administrator configured
   | 'role'         // Role-based layout
   | 'user';        // User personalized
 
 export type LayoutScope =
-  | 'global'       // Applies to all tables
-  | 'table';       // Specific to one table
+  | 'global'       // Applies to all collections
+  | 'collection';  // Specific to one collection
 
 /**
- * Platform Layout - Shipped with the platform, read-only for tenants
+ * Platform Layout - Shipped with the platform, read-only for instances
  */
 export interface PlatformLayout {
   id: string;
-  tableCode: string;
+  collectionCode: string;
   layout: DesignerLayout;
   platformVersion: string;         // e.g., "2.5.0"
   schemaVersion: number;           // Layout schema version for migrations
   releaseNotes?: string;
-  isDefault: boolean;              // Default for this table
+  isDefault: boolean;              // Default for this collection
   createdAt: string;
 }
 
 /**
- * Tenant Admin Layout - Customized by tenant administrator
+ * Instance Admin Layout - Customized by instance administrator
  */
-export interface TenantAdminLayout {
+export interface InstanceAdminLayout {
   id: string;
-  tenantId: string;
-  tableCode: string;
+  instanceId: string;
+  collectionCode: string;
   name: string;
   description?: string;
   layout: DesignerLayout;
   basedOnPlatformVersion: string;  // Which platform layout version this extends
   version: number;                 // Internal version for change tracking
-  isDefault: boolean;              // Default for this tenant's table
+  isDefault: boolean;              // Default for this instance's collection
   isPublished: boolean;            // Draft vs published
-  fieldProtections: FieldProtection[]; // Admin-defined field protections
+  propertyProtections: PropertyProtection[]; // Admin-defined property protections
   createdBy: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
 }
 
+export type TenantAdminLayout = InstanceAdminLayout;
+
 /**
  * Role Layout - Role-specific customization
  */
 export interface RoleLayout {
   id: string;
-  tenantId: string;
+  instanceId: string;
   roleCode: string;
-  tableCode: string;
+  collectionCode: string;
   name: string;
   description?: string;
   layout: DesignerLayout;
-  basedOnTenantVersion: number;    // Which tenant layout version this extends
+  basedOnInstanceVersion: number;  // Which instance layout version this extends
   priority: number;                // For users with multiple roles
   isActive: boolean;
   createdBy: string;
@@ -359,7 +361,7 @@ export interface RoleLayout {
  */
 export interface AdminLayout {
   id: string;
-  tableCode: string;
+  collectionCode: string;
   name: string;
   description?: string;
   layout: DesignerLayout;
@@ -382,7 +384,7 @@ export interface AdminLayout {
 export interface LayoutVersionChain {
   platformVersion: string;
   platformSchemaVersion: number;
-  tenantAdminVersion?: number;
+  instanceAdminVersion?: number;
   roleLayoutVersion?: number;
   userLayoutVersion?: number;
 }
@@ -396,11 +398,11 @@ export interface LayoutVersionInfo {
 }
 
 export interface LayoutChange {
-  type: 'field_added' | 'field_removed' | 'field_renamed' | 'field_moved' |
-        'field_config_changed' | 'section_added' | 'section_removed' |
+  type: 'property_added' | 'property_removed' | 'property_renamed' | 'property_moved' |
+        'property_config_changed' | 'section_added' | 'section_removed' |
         'tab_added' | 'tab_removed' | 'structure_changed' | 'protection_changed';
   description: string;
-  fieldCode?: string;
+  propertyCode?: string;
   severity: 'info' | 'warning' | 'breaking';
   autoMergeable: boolean;         // Can be automatically merged
   details?: Record<string, unknown>;
@@ -413,8 +415,8 @@ export interface LayoutMigration {
   id: string;
   fromVersion: string;
   toVersion: string;
-  migrationType: 'platform_upgrade' | 'tenant_update' | 'role_update';
-  tableCode: string;
+  migrationType: 'platform_upgrade' | 'instance_update' | 'role_update';
+  collectionCode: string;
   changes: LayoutChange[];
   migrationScript?: string;       // Optional transformation script
   isReversible: boolean;
@@ -434,9 +436,9 @@ export interface LayoutMergeResult {
 
 export interface LayoutConflict {
   id: string;
-  type: 'field_removed' | 'field_moved' | 'section_removed' | 'protection_conflict';
+  type: 'property_removed' | 'property_moved' | 'section_removed' | 'protection_conflict';
   description: string;
-  affectedItems: string[];        // IDs of affected fields/sections
+  affectedItems: string[];        // IDs of affected properties/sections
   userChoice?: 'keep_user' | 'use_new' | 'merge';
   resolution?: unknown;
 }
@@ -452,7 +454,7 @@ export interface ResolvedLayout {
   layout: DesignerLayout;
   source: LayoutSource;
   sourceId: string;
-  effectiveProtections: FieldProtection[];
+  effectiveProtections: PropertyProtection[];
   versionChain: LayoutVersionChain;
   hasUserCustomization: boolean;
   hasPendingUpdate: boolean;
@@ -475,10 +477,10 @@ export interface LayoutOption {
  * Context for resolving which layout to use
  */
 export interface LayoutResolutionContext {
-  tenantId: string;
+  instanceId: string;
   userId: string;
   userRoles: string[];
-  tableCode: string;
+  collectionCode: string;
   preferUserLayout?: boolean;     // Default true
 }
 
@@ -486,10 +488,12 @@ export interface LayoutResolutionContext {
 // Designer State
 // ============================================================================
 
+export type SelectedItemType = 'section' | 'property' | 'group' | 'tab' | 'embedded_list' | null;
+
 export interface DesignerState {
   layout: DesignerLayout;
   selectedItemId: string | null;
-  selectedItemType: 'field' | 'section' | 'tab' | 'group' | 'embedded_list' | null;
+  selectedItemType: SelectedItemType;
   isDirty: boolean;
   history: DesignerLayout[];
   historyIndex: number;
@@ -544,10 +548,10 @@ export interface PaletteItem {
   label: string;
   icon: string;
   description?: string;
-  category: 'fields' | 'layout' | 'data' | 'display';
+  category: 'properties' | 'layout' | 'data' | 'display';
   protection?: ProtectionLevel;
-  fieldCode?: string;          // For field palette items
-  fieldType?: string;          // For field type indicator
+  propertyCode?: string;       // For property palette items
+  propertyType?: string;       // For property type indicator
   isInLayout?: boolean;        // Already placed in layout
 }
 
@@ -612,14 +616,16 @@ export function createEmptyLayout(): DesignerLayout {
   };
 }
 
-export function createDefaultField(fieldCode: string, _label?: string): DesignerField {
+export function createDefaultProperty(propertyCode: string, _label?: string): DesignerProperty {
   return {
-    type: 'field',
+    type: 'property',
     id: generateId(),
-    fieldCode,
+    propertyCode,
     span: 1,
   };
 }
+
+export const createDefaultField = createDefaultProperty;
 
 export function createDefaultSection(label?: string): DesignerSection {
   return {

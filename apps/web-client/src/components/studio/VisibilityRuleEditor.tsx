@@ -78,32 +78,33 @@ const TagInput: React.FC<TagInputProps> = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-slate-400">{icon}</span>
-        <span className="text-xs font-semibold uppercase text-slate-400">{label}</span>
-        <span className="text-xs text-slate-500" title={description}>
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="text-xs font-semibold uppercase text-muted-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground" title={description}>
           <HelpCircle className="h-3 w-3" />
         </span>
       </div>
 
       <div className="relative">
         <div
-          className={`
-            flex flex-wrap gap-1.5 p-2 rounded-lg border min-h-[40px]
-            ${disabled ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300'}
-            focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500
-          `}
+          className={`flex flex-wrap gap-1.5 p-2 rounded-lg border min-h-[44px] focus-within:ring-2 focus-within:ring-primary focus-within:border-primary ${
+            disabled ? 'bg-muted border-border' : 'bg-card border-border'
+          }`}
+          role="group"
+          aria-label={`${label} input`}
         >
           {values.map((value) => (
             <span
               key={value}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border bg-muted text-foreground border-border"
             >
               {value}
               {!disabled && (
                 <button
                   type="button"
                   onClick={() => handleRemove(value)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="min-h-[22px] min-w-[22px] inline-flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove ${value}`}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -122,20 +123,30 @@ const TagInput: React.FC<TagInputProps> = ({
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               placeholder={values.length === 0 ? placeholder : ''}
-              className="flex-1 min-w-[100px] bg-transparent outline-none text-sm text-slate-700"
+              className="flex-1 min-w-[100px] bg-transparent outline-none text-sm text-foreground"
+              aria-label={`${label} text input`}
+              aria-autocomplete="list"
+              aria-controls={showSuggestions && filteredSuggestions.length > 0 ? `${label}-suggestions` : undefined}
+              aria-expanded={showSuggestions && filteredSuggestions.length > 0}
             />
           )}
         </div>
 
-        {/* Suggestions dropdown */}
         {showSuggestions && filteredSuggestions.length > 0 && (
-          <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+          <div
+            id={`${label}-suggestions`}
+            role="listbox"
+            className="absolute z-10 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-40 overflow-y-auto border bg-card border-border"
+            aria-label={`${label} suggestions`}
+          >
             {filteredSuggestions.slice(0, 10).map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
                 onClick={() => handleAdd(suggestion)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 text-slate-700"
+                className="w-full text-left px-3 py-2 text-sm min-h-[44px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary text-foreground hover:bg-muted"
+                role="option"
+                aria-selected="false"
               >
                 {suggestion}
               </button>
@@ -173,11 +184,10 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-700">Visibility Rules</span>
+        <span className="text-sm font-medium text-foreground">Visibility Rules</span>
         {hasAnyRules && (
-          <span className="text-xs text-sky-600 bg-sky-50 px-2 py-0.5 rounded">
+          <span className="text-xs px-2 py-0.5 rounded text-primary bg-primary/10">
             {[
               value.rolesAny?.length && `${value.rolesAny.length} roles (any)`,
               value.rolesAll?.length && `${value.rolesAll.length} roles (all)`,
@@ -191,7 +201,6 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         )}
       </div>
 
-      {/* Roles Any */}
       <TagInput
         label="Roles (Any)"
         icon={<Shield className="h-4 w-4" />}
@@ -203,7 +212,6 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         disabled={disabled}
       />
 
-      {/* Roles All */}
       <TagInput
         label="Roles (All)"
         icon={<Shield className="h-4 w-4" />}
@@ -215,7 +223,6 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         disabled={disabled}
       />
 
-      {/* Permissions */}
       <TagInput
         label="Permissions (Any)"
         icon={<Key className="h-4 w-4" />}
@@ -227,7 +234,6 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         disabled={disabled}
       />
 
-      {/* Feature Flags */}
       <TagInput
         label="Feature Flags (Any)"
         icon={<Flag className="h-4 w-4" />}
@@ -239,13 +245,14 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         disabled={disabled}
       />
 
-      {/* Advanced Expression */}
-      <div className="border-t border-slate-200 pt-4">
+      <div className="border-t pt-4 border-border">
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
+          className="flex items-center gap-2 text-sm min-h-[44px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
           disabled={disabled}
+          aria-expanded={showAdvanced}
+          aria-controls="advanced-expression-content"
         >
           {showAdvanced ? (
             <ChevronDown className="h-4 w-4" />
@@ -257,8 +264,8 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
         </button>
 
         {showAdvanced && (
-          <div className="mt-3 space-y-2">
-            <p className="text-xs text-slate-500">
+          <div id="advanced-expression-content" className="mt-3 space-y-2">
+            <p className="text-xs text-muted-foreground">
               DSL expression for complex visibility rules. Uses JavaScript-like syntax.
             </p>
             <textarea
@@ -267,15 +274,12 @@ export const VisibilityRuleEditor: React.FC<VisibilityRuleEditorProps> = ({
               disabled={disabled}
               rows={3}
               placeholder="hasRole('admin') || (hasPermission('asset.view') && hasFeature('beta'))"
-              className={`
-                w-full px-3 py-2 rounded-lg border text-sm font-mono
-                ${disabled
-                  ? 'bg-slate-100 border-slate-200 text-slate-500'
-                  : 'bg-white border-slate-300 text-slate-700 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'
-                }
-              `}
+              className={`w-full px-3 py-2 rounded-lg border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary ${
+                disabled ? 'bg-muted border-border text-muted-foreground' : 'bg-card border-border text-foreground'
+              }`}
+              aria-label="Advanced visibility expression"
             />
-            <div className="text-xs text-slate-500 space-y-1">
+            <div className="text-xs space-y-1 text-muted-foreground">
               <p><strong>Available functions:</strong></p>
               <ul className="list-disc list-inside ml-2">
                 <li><code>hasRole('role_name')</code> - Check if user has role</li>

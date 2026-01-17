@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { AbacService } from './abac.service';
 
 export const ABAC_RESOURCE_KEY = 'abac_resource';
-export const AbacResource = (resource: string, action: string, resourceType: 'table' | 'field' | 'action' = 'action') =>
+export const AbacResource = (resource: string, action: string, resourceType: 'collection' | 'property' | 'action' = 'action') =>
   SetMetadata(ABAC_RESOURCE_KEY, { resource, action, resourceType });
 
 @Injectable()
@@ -19,7 +19,7 @@ export class AbacGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    const { resource, action, resourceType = 'action' } = meta as { resource: string; action: string; resourceType?: 'table' | 'field' | 'action' };
+    const { resource, action, resourceType = 'action' } = meta as { resource: string; action: string; resourceType?: 'collection' | 'property' | 'action' };
 
     // Build a simple context from user + params + body for evaluation
     const evaluationContext = {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createApiClient } from '../services/api';
 
-export interface AuthorizedFieldMeta {
+export interface AuthorizedPropertyMeta {
   code: string;
   label: string;
   type: string;
@@ -14,21 +14,27 @@ export interface AuthorizedFieldMeta {
   maskingStrategy: 'NONE' | 'PARTIAL' | 'FULL';
 }
 
-export interface TableMetadata {
-  table: {
+// Deprecated alias for backward compatibility
+export type AuthorizedFieldMeta = AuthorizedPropertyMeta;
+
+export interface CollectionMetadata {
+  collection: {
     code: string;
     dbTableName: string;
     label: string;
   };
-  fields: AuthorizedFieldMeta[];
+  properties: AuthorizedPropertyMeta[];
 }
+
+// Deprecated alias for backward compatibility
+export type TableMetadata = CollectionMetadata;
 
 // In development, use proxy path to avoid cross-origin cookie issues
 const METADATA_API_URL = import.meta.env.VITE_METADATA_API_URL ?? '/api/metadata';
 const metadataApi = createApiClient(METADATA_API_URL);
 
-export const useTableMetadata = (tableCode: string) => {
-  const [meta, setMeta] = useState<TableMetadata | null>(null);
+export const useCollectionMetadata = (collectionCode: string) => {
+  const [meta, setMeta] = useState<CollectionMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +44,7 @@ export const useTableMetadata = (tableCode: string) => {
     const load = async () => {
       try {
         setLoading(true);
-        const res = await metadataApi.get(`/metadata/tables/${tableCode}`);
+        const res = await metadataApi.get(`/metadata/collections/${collectionCode}`);
         if (!cancelled) {
           setMeta(res.data);
           setLoading(false);
@@ -56,7 +62,10 @@ export const useTableMetadata = (tableCode: string) => {
     return () => {
       cancelled = true;
     };
-  }, [tableCode]);
+  }, [collectionCode]);
 
   return { meta, loading, error };
 };
+
+// Deprecated alias for backward compatibility
+export const useTableMetadata = useCollectionMetadata;

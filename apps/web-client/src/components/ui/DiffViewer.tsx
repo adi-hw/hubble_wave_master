@@ -121,23 +121,15 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     patch: <Code className="h-4 w-4" />,
   };
 
+  const maxHeightClass = maxHeight === '400px' ? 'max-h-[400px]' : '';
+
   return (
-    <div
-      className={`rounded-xl overflow-hidden ${className}`}
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-      }}
-    >
+    <div className={`rounded-xl overflow-hidden bg-card border border-border ${className}`}>
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface-secondary)' }}
-      >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 text-sm font-medium"
-          style={{ color: 'var(--text-primary)' }}
+          className="flex items-center gap-2 text-sm font-medium text-foreground"
         >
           {expanded ? (
             <ChevronDown className="h-4 w-4" />
@@ -146,11 +138,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           )}
           {title || 'Changes'}
           <span
-            className="px-1.5 py-0.5 rounded text-xs font-normal"
-            style={{
-              backgroundColor: hasChanges ? 'var(--bg-primary-subtle)' : 'var(--bg-surface-secondary)',
-              color: hasChanges ? 'var(--text-brand)' : 'var(--text-muted)',
-            }}
+            className={`px-1.5 py-0.5 rounded text-xs font-normal ${
+              hasChanges ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+            }`}
           >
             {changes.length} {changes.length === 1 ? 'change' : 'changes'}
           </span>
@@ -158,19 +148,16 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
         <div className="flex items-center gap-2">
           {showModeToggle && (
-            <div
-              className="flex items-center rounded-lg p-0.5"
-              style={{ backgroundColor: 'var(--bg-surface)' }}
-            >
+            <div className="flex items-center rounded-lg p-0.5 bg-card">
               {(['side-by-side', 'unified', 'patch'] as DiffMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className="p-1.5 rounded-md transition-colors"
-                  style={{
-                    backgroundColor: mode === m ? 'var(--bg-primary-subtle)' : 'transparent',
-                    color: mode === m ? 'var(--text-brand)' : 'var(--text-muted)',
-                  }}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    mode === m
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
                   title={m.replace('-', ' ')}
                 >
                   {modeIcons[m]}
@@ -180,8 +167,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           )}
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded-md transition-colors"
-            style={{ color: 'var(--text-muted)' }}
+            className="p-1.5 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
             title="Copy diff"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -191,9 +177,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
       {/* Content */}
       {expanded && (
-        <div style={{ maxHeight }} className="overflow-auto scrollbar-thin">
+        <div className={`overflow-auto scrollbar-thin ${maxHeightClass}`}>
           {!hasChanges ? (
-            <div className="py-8 text-center" style={{ color: 'var(--text-muted)' }}>
+            <div className="py-8 text-center text-muted-foreground">
               <p className="text-sm">No changes detected</p>
             </div>
           ) : mode === 'patch' ? (
@@ -222,59 +208,56 @@ interface PatchViewProps {
 }
 
 const PatchView: React.FC<PatchViewProps> = ({ changes, oldValue }) => {
-  const opColors: Record<string, { bg: string; text: string }> = {
-    add: { bg: 'var(--bg-success-subtle)', text: 'var(--text-success)' },
-    remove: { bg: 'var(--bg-danger-subtle)', text: 'var(--text-danger)' },
-    replace: { bg: 'var(--bg-info-subtle)', text: 'var(--text-info)' },
-    move: { bg: 'var(--bg-accent-subtle)', text: 'var(--text-accent)' },
-    copy: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)' },
-    test: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-muted)' },
+  const getOpClasses = (op: string) => {
+    switch (op) {
+      case 'add':
+        return { badge: 'bg-success-subtle text-success-text', line: '' };
+      case 'remove':
+        return { badge: 'bg-danger-subtle text-danger-text', line: '' };
+      case 'replace':
+        return { badge: 'bg-info-subtle text-info-text', line: '' };
+      case 'move':
+        return { badge: 'bg-purple-500/10 text-purple-600 dark:text-purple-400', line: '' };
+      case 'copy':
+        return { badge: 'bg-warning-subtle text-warning-text', line: '' };
+      default:
+        return { badge: 'bg-muted text-muted-foreground', line: '' };
+    }
   };
 
   return (
     <div className="p-4 space-y-2">
       {changes.map((op, idx) => {
-        const colors = opColors[op.op];
+        const classes = getOpClasses(op.op);
         const OpIcon = op.op === 'add' ? Plus : op.op === 'remove' ? Minus : ArrowRight;
 
         return (
           <div
             key={idx}
-            className="flex items-start gap-3 p-3 rounded-lg"
-            style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+            className="flex items-start gap-3 p-3 rounded-lg bg-muted"
           >
             <span
-              className="px-2 py-0.5 rounded text-xs font-mono font-medium flex-shrink-0"
-              style={{ backgroundColor: colors.bg, color: colors.text }}
+              className={`px-2 py-0.5 rounded text-xs font-mono font-medium flex-shrink-0 ${classes.badge}`}
             >
               {op.op}
             </span>
             <div className="flex-1 min-w-0">
-              <code className="text-xs break-all" style={{ color: 'var(--text-secondary)' }}>
+              <code className="text-xs break-all text-muted-foreground">
                 {op.path}
               </code>
               {op.op === 'replace' && oldValue && (
                 <div className="mt-2 flex items-center gap-2 text-xs">
-                  <span
-                    className="line-through px-2 py-1 rounded"
-                    style={{ backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' }}
-                  >
+                  <span className="line-through px-2 py-1 rounded bg-danger-subtle text-danger-text">
                     {formatValue(getValueAtPath(oldValue, op.path)).slice(0, 60)}
                   </span>
-                  <OpIcon className="h-3 w-3 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
-                  <span
-                    className="px-2 py-1 rounded"
-                    style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
-                  >
+                  <OpIcon className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                  <span className="px-2 py-1 rounded bg-success-subtle text-success-text">
                     {formatValue(op.value).slice(0, 60)}
                   </span>
                 </div>
               )}
               {op.op === 'add' && op.value !== undefined && (
-                <div
-                  className="mt-2 text-xs px-2 py-1 rounded"
-                  style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
-                >
+                <div className="mt-2 text-xs px-2 py-1 rounded bg-success-subtle text-success-text">
                   {formatValue(op.value).slice(0, 120)}
                 </div>
               )}
@@ -302,32 +285,20 @@ const SideBySideView: React.FC<SideBySideViewProps> = ({
   newLabel,
 }) => {
   return (
-    <div className="grid grid-cols-2 divide-x" style={{ borderColor: 'var(--border-default)' }}>
+    <div className="grid grid-cols-2 divide-x divide-border">
       <div>
-        <div
-          className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' }}
-        >
+        <div className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0 bg-danger-subtle text-danger-text">
           {oldLabel}
         </div>
-        <pre
-          className="p-4 text-xs font-mono overflow-auto"
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <pre className="p-4 text-xs font-mono overflow-auto text-muted-foreground">
           {oldValue ? JSON.stringify(oldValue, null, 2) : '(empty)'}
         </pre>
       </div>
       <div>
-        <div
-          className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0"
-          style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}
-        >
+        <div className="px-4 py-2 text-xs font-medium uppercase tracking-wider sticky top-0 bg-success-subtle text-success-text">
           {newLabel}
         </div>
-        <pre
-          className="p-4 text-xs font-mono overflow-auto"
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <pre className="p-4 text-xs font-mono overflow-auto text-muted-foreground">
           {newValue ? JSON.stringify(newValue, null, 2) : '(empty)'}
         </pre>
       </div>
@@ -343,11 +314,11 @@ interface UnifiedViewProps {
 
 const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
   return (
-    <div className="p-4 font-mono text-xs" style={{ backgroundColor: 'var(--code-bg)' }}>
+    <div className="p-4 font-mono text-xs bg-muted/50">
       {changes.map((op, idx) => {
         if (op.op === 'add') {
           return (
-            <div key={idx} className="diff-line-add px-2 py-0.5 rounded">
+            <div key={idx} className="diff-line-add px-2 py-0.5 rounded bg-success-subtle text-success-text">
               <span className="mr-2 select-none">+</span>
               {op.path}: {formatValue(op.value)}
             </div>
@@ -356,7 +327,7 @@ const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
 
         if (op.op === 'remove') {
           return (
-            <div key={idx} className="diff-line-remove px-2 py-0.5 rounded">
+            <div key={idx} className="diff-line-remove px-2 py-0.5 rounded bg-danger-subtle text-danger-text">
               <span className="mr-2 select-none">-</span>
               {op.path}: {oldValue ? formatValue(getValueAtPath(oldValue, op.path)) : ''}
             </div>
@@ -366,11 +337,11 @@ const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
         if (op.op === 'replace') {
           return (
             <React.Fragment key={idx}>
-              <div className="diff-line-remove px-2 py-0.5 rounded">
+              <div className="diff-line-remove px-2 py-0.5 rounded bg-danger-subtle text-danger-text">
                 <span className="mr-2 select-none">-</span>
                 {op.path}: {oldValue ? formatValue(getValueAtPath(oldValue, op.path)) : ''}
               </div>
-              <div className="diff-line-add px-2 py-0.5 rounded">
+              <div className="diff-line-add px-2 py-0.5 rounded bg-success-subtle text-success-text">
                 <span className="mr-2 select-none">+</span>
                 {op.path}: {formatValue(op.value)}
               </div>
@@ -379,7 +350,7 @@ const UnifiedView: React.FC<UnifiedViewProps> = ({ changes, oldValue }) => {
         }
 
         return (
-          <div key={idx} className="px-2 py-0.5" style={{ color: 'var(--text-muted)' }}>
+          <div key={idx} className="px-2 py-0.5 text-muted-foreground">
             <span className="mr-2 select-none">~</span>
             {op.op} {op.path}
           </div>

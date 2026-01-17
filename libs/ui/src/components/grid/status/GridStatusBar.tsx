@@ -48,17 +48,12 @@ const PaginationControls = memo(function PaginationControls({
       {/* Page size selector */}
       {onPageSizeChange && (
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[var(--grid-cell-muted-color)]">Show</span>
+          <span className="text-xs text-muted-foreground">Show</span>
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
             disabled={isLoading}
-            className={cn(
-              'px-2 py-1 rounded text-xs',
-              'bg-[var(--glass-bg)] border border-[var(--glass-border)]',
-              'text-[var(--grid-cell-color)]',
-              'focus:outline-none focus:ring-1 focus:ring-[var(--primary-500)]'
-            )}
+            className="h-7 px-2 text-xs rounded border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
           >
             {[25, 50, 100, 200, 500].map((size) => (
               <option key={size} value={size}>
@@ -66,7 +61,7 @@ const PaginationControls = memo(function PaginationControls({
               </option>
             ))}
           </select>
-          <span className="text-xs text-[var(--grid-cell-muted-color)]">rows</span>
+          <span className="text-xs text-muted-foreground">rows</span>
         </div>
       )}
 
@@ -75,12 +70,7 @@ const PaginationControls = memo(function PaginationControls({
         <button
           onClick={() => onPageChange(0)}
           disabled={!canPreviousPage || isLoading}
-          className={cn(
-            'p-1.5 rounded transition-colors',
-            'text-[var(--grid-cell-muted-color)]',
-            'hover:bg-[var(--glass-bg-hover)] hover:text-[var(--grid-cell-color)]',
-            'disabled:opacity-30 disabled:cursor-not-allowed'
-          )}
+          className="btn-ghost btn-icon btn-xs disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="First page"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
@@ -92,12 +82,7 @@ const PaginationControls = memo(function PaginationControls({
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={!canPreviousPage || isLoading}
-          className={cn(
-            'p-1.5 rounded transition-colors',
-            'text-[var(--grid-cell-muted-color)]',
-            'hover:bg-[var(--glass-bg-hover)] hover:text-[var(--grid-cell-color)]',
-            'disabled:opacity-30 disabled:cursor-not-allowed'
-          )}
+          className="btn-ghost btn-icon btn-xs disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Previous page"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
@@ -105,19 +90,14 @@ const PaginationControls = memo(function PaginationControls({
           </svg>
         </button>
 
-        <span className="px-3 text-sm text-[var(--grid-cell-color)]">
+        <span className="px-3 text-sm text-foreground">
           Page {currentPage + 1} of {totalPages || 1}
         </span>
 
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={!canNextPage || isLoading}
-          className={cn(
-            'p-1.5 rounded transition-colors',
-            'text-[var(--grid-cell-muted-color)]',
-            'hover:bg-[var(--glass-bg-hover)] hover:text-[var(--grid-cell-color)]',
-            'disabled:opacity-30 disabled:cursor-not-allowed'
-          )}
+          className="btn-ghost btn-icon btn-xs disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next page"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
@@ -128,12 +108,7 @@ const PaginationControls = memo(function PaginationControls({
         <button
           onClick={() => onPageChange(totalPages - 1)}
           disabled={!canNextPage || isLoading}
-          className={cn(
-            'p-1.5 rounded transition-colors',
-            'text-[var(--grid-cell-muted-color)]',
-            'hover:bg-[var(--glass-bg-hover)] hover:text-[var(--grid-cell-color)]',
-            'disabled:opacity-30 disabled:cursor-not-allowed'
-          )}
+          className="btn-ghost btn-icon btn-xs disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Last page"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
@@ -155,6 +130,7 @@ interface GridStatusBarProps<TData extends GridRowData> {
   totalRowCount: number;
   isLoading?: boolean;
   pageSize?: number;
+  pageIndex?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   className?: string;
@@ -165,42 +141,40 @@ export const GridStatusBar = memo(function GridStatusBar<TData extends GridRowDa
   totalRowCount,
   isLoading = false,
   pageSize = 100,
+  pageIndex = 0,
   onPageChange,
   onPageSizeChange,
   className,
 }: GridStatusBarProps<TData>) {
   const selectedRowCount = Object.keys(table.getState().rowSelection).length;
-  const paginationState = table.getState().pagination;
-  const isPaginated = paginationState && typeof paginationState.pageIndex === 'number';
+  // Always show pagination controls if onPageSizeChange is provided (meaning we want pagination UI)
+  const showPagination = !!onPageSizeChange;
 
-  const currentPage = isPaginated ? paginationState.pageIndex : 0;
-  const currentPageSize = isPaginated ? paginationState.pageSize : totalRowCount;
-  const totalPages = isPaginated ? Math.ceil(totalRowCount / (currentPageSize || pageSize)) : 1;
+  // Use explicit props for pagination state (more reliable than reading from table)
+  const currentPage = pageIndex;
+  const currentPageSize = pageSize;
+  const totalPages = Math.ceil(totalRowCount / (currentPageSize || pageSize)) || 1;
 
   // For non-paginated (virtualized) mode, show all rows
-  const startRow = isPaginated ? currentPage * (currentPageSize || pageSize) + 1 : 1;
-  const endRow = isPaginated
+  const startRow = showPagination ? currentPage * (currentPageSize || pageSize) + 1 : 1;
+  const endRow = showPagination
     ? Math.min((currentPage + 1) * (currentPageSize || pageSize), totalRowCount)
     : totalRowCount;
 
   const handlePageChange = useCallback(
     (page: number) => {
-      if (isPaginated) {
-        table.setPageIndex(page);
-        onPageChange?.(page);
-      }
+      // Only call the callback - let parent manage state
+      onPageChange?.(page);
     },
-    [table, onPageChange, isPaginated]
+    [onPageChange]
   );
 
   const handlePageSizeChange = useCallback(
     (size: number) => {
-      if (isPaginated) {
-        table.setPageSize(size);
-        onPageSizeChange?.(size);
-      }
+      // Only call the callback - let parent manage state
+      onPageSizeChange?.(size);
     },
-    [table, onPageSizeChange, isPaginated]
+    [onPageSizeChange]
   );
 
   // Format large numbers
@@ -212,36 +186,39 @@ export const GridStatusBar = memo(function GridStatusBar<TData extends GridRowDa
     <div
       className={cn(
         'flex items-center justify-between px-4',
-        'bg-[var(--grid-toolbar-bg)]',
-        'border-t border-[var(--grid-border)]',
+        'border-t border-border bg-card',
         'text-sm',
         className
       )}
-      style={{ height: 'var(--grid-status-bar-height)' }}
+      style={{
+        height: 'var(--grid-status-bar-height)',
+        minHeight: 'var(--grid-status-bar-height)',
+        flexShrink: 0,
+      }}
     >
       {/* Left: Row count and selection */}
       <div className="flex items-center gap-4">
         {/* Loading indicator */}
         {isLoading && (
-          <div className="flex items-center gap-2 text-[var(--grid-cell-muted-color)]">
-            <div className="w-3 h-3 border-2 border-[var(--primary-400)] border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             <span>Loading...</span>
           </div>
         )}
 
         {/* Row count */}
         {!isLoading && (
-          <span className="text-[var(--grid-cell-muted-color)]">
-            {isPaginated ? (
+          <span className="text-muted-foreground">
+            {showPagination ? (
               <>
                 Showing {formatNumber(startRow)}-{formatNumber(endRow)} of{' '}
-                <span className="text-[var(--grid-cell-color)] font-medium">
+                <span className="font-medium text-foreground">
                   {formatNumber(totalRowCount)}
                 </span>
               </>
             ) : (
               <>
-                <span className="text-[var(--grid-cell-color)] font-medium">
+                <span className="font-medium text-foreground">
                   {formatNumber(totalRowCount)}
                 </span>{' '}
                 total rows
@@ -252,14 +229,14 @@ export const GridStatusBar = memo(function GridStatusBar<TData extends GridRowDa
 
         {/* Selection count */}
         {selectedRowCount > 0 && (
-          <span className="text-[var(--primary-400)]">
+          <span className="text-primary">
             {formatNumber(selectedRowCount)} selected
           </span>
         )}
       </div>
 
-      {/* Right: Pagination (only show when paginated) */}
-      {isPaginated && (
+      {/* Right: Pagination controls */}
+      {showPagination && (
         <PaginationControls
           currentPage={currentPage}
           totalPages={totalPages}

@@ -7,12 +7,14 @@
  * - Custom breadcrumb overrides
  * - Truncation for deep paths
  * - Click navigation
+ * - Contextual "Back" button using navigation history
  */
 
 import React, { useMemo } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { ChevronRight, Home, MoreHorizontal } from 'lucide-react';
+import { useLocation, Link } from 'react-router-dom';
+import { ArrowLeft, ChevronRight, Home, MoreHorizontal } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useNavigationHistory } from '../../hooks/useNavigationHistory';
 
 export interface BreadcrumbItem {
   label: string;
@@ -29,11 +31,13 @@ interface BreadcrumbsProps {
   showHome?: boolean;
   /** Custom home path */
   homePath?: string;
+  /** Whether to show the contextual back button */
+  showBackButton?: boolean;
   /** Additional class name */
   className?: string;
 }
 
-// Route label mappings
+// Route label mappings (preserving proper capitalization and terminology)
 const routeLabels: Record<string, string> = {
   home: 'Home',
   assets: 'Assets',
@@ -46,15 +50,16 @@ const routeLabels: Record<string, string> = {
   admin: 'Admin',
   collections: 'Collections',
   views: 'Views',
-  workflows: 'Workflows',
-  automations: 'Automations',
+  'process-flows': 'Process Flows',
+  automations: 'Automation Rules',
+  automation: 'Automation Rules',
   flows: 'Flows',
   scripts: 'Scripts',
   events: 'Events',
   notifications: 'Notifications',
   users: 'Users',
   groups: 'Groups',
-  roles: 'Roles',
+  roles: 'Roles & Permissions',
   permissions: 'Permissions',
   profile: 'Profile',
   appearance: 'Appearance',
@@ -69,10 +74,51 @@ const routeLabels: Record<string, string> = {
   knowledge: 'Knowledge Base',
   approvals: 'Approvals',
   dashboard: 'Dashboard',
+  invite: 'Invite',
+  // SSO, LDAP, MFA with proper capitalization
+  sso: 'SSO Configuration',
+  ldap: 'LDAP Configuration',
+  'mfa-setup': 'Two-Factor Auth',
+  // API and integrations
+  api: 'API Explorer',
+  integrations: 'Integrations',
+  webhooks: 'Webhooks',
+  'import-export': 'Import & Export',
+  marketplace: 'Marketplace',
+  // AI/AVA section with proper naming
+  ai: 'AVA',
+  query: 'Chat with AVA',
+  'predictive-ops': 'Predictive Operations',
+  'digital-twins': 'Digital Twins',
+  'self-healing': 'Self-Healing',
+  docs: 'Living Documentation',
+  agile: 'Agile Development',
+  'app-builder': 'App Builder',
+  upgrade: 'Upgrade Assistant',
+  // Audit
+  audit: 'Audit Logs',
+  navigation: 'Navigation',
+  localization: 'Localization',
+  themes: 'Themes',
+  delegations: 'Delegations',
 };
 
 // Parse segment into label
 const parseSegment = (segment: string): string => {
+  // Handle ServiceNow-style .list suffix (e.g., "collections.list" -> "Collections")
+  if (segment.endsWith('.list')) {
+    const baseName = segment.replace(/\.list$/, '');
+    // Check if the base name has a known label
+    if (routeLabels[baseName]) {
+      return routeLabels[baseName];
+    }
+    // Convert to title case
+    return baseName
+      .split(/[-_]/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
   // Check for known routes
   if (routeLabels[segment]) {
     return routeLabels[segment];
@@ -100,11 +146,15 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   maxItems = 4,
   showHome = true,
   homePath = '/',
+  showBackButton = true,
   className,
 }) => {
   const location = useLocation();
-  // navigate available for programmatic navigation
-  void useNavigate;
+  const { canGoBack, goBack, previousPageLabel } = useNavigationHistory();
+
+  // Never show back button on home page
+  const isHomePage = location.pathname === '/' || location.pathname === '/home';
+  const shouldShowBack = showBackButton && canGoBack && !isHomePage;
 
   // Generate breadcrumbs from route
   const breadcrumbs = useMemo((): BreadcrumbItem[] => {
@@ -119,6 +169,19 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         path: homePath,
         icon: <Home className="h-3.5 w-3.5" />,
       });
+    }
+
+    // Special handling for /collections.list - show as Studio > Collections
+    if (pathSegments.length === 1 && pathSegments[0] === 'collections.list') {
+      crumbs.push({
+        label: 'Studio',
+        path: '/studio',
+      });
+      crumbs.push({
+        label: 'Collections',
+        path: undefined,
+      });
+      return crumbs;
     }
 
     let currentPath = '';
@@ -153,15 +216,37 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
     return truncated;
   }, [breadcrumbs, maxItems]);
 
-  if (displayBreadcrumbs.length <= 1) {
+  // Don't render if only home breadcrumb and no back button
+  if (displayBreadcrumbs.length <= 1 && !canGoBack) {
     return null;
   }
 
   return (
     <nav
       aria-label="Breadcrumb"
-      className={cn('flex items-center gap-1 text-sm', className)}
+      className={cn('flex items-center gap-2 text-sm', className)}
     >
+      {/* Contextual Back Button */}
+      {shouldShowBack && (
+        <button
+          onClick={goBack}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 rounded-md',
+            'transition-colors hover:bg-muted',
+            'text-xs font-medium text-muted-foreground'
+          )}
+          title={`Back to ${previousPageLabel}`}
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Back</span>
+        </button>
+      )}
+
+      {/* Separator between back button and breadcrumbs */}
+      {shouldShowBack && displayBreadcrumbs.length > 1 && (
+        <div className="h-4 w-px bg-border" />
+      )}
+
       <ol className="flex items-center gap-1">
         {displayBreadcrumbs.map((crumb, index) => {
           const isLast = index === displayBreadcrumbs.length - 1;
@@ -170,17 +255,11 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           return (
             <li key={index} className="flex items-center gap-1">
               {index > 0 && (
-                <ChevronRight
-                  className="h-3.5 w-3.5 flex-shrink-0"
-                  style={{ color: 'var(--text-muted)' }}
-                />
+                <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
               )}
 
               {isEllipsis ? (
-                <span
-                  className="px-1.5 py-0.5"
-                  style={{ color: 'var(--text-muted)' }}
-                >
+                <span className="px-1.5 py-0.5 text-muted-foreground">
                   <MoreHorizontal className="h-4 w-4" />
                 </span>
               ) : crumb.path ? (
@@ -188,9 +267,8 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                   to={crumb.path}
                   className={cn(
                     'flex items-center gap-1.5 px-1.5 py-0.5 rounded-md',
-                    'transition-colors hover:bg-[var(--bg-hover)]'
+                    'transition-colors hover:bg-muted text-muted-foreground'
                   )}
-                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {crumb.icon}
                   <span className="hidden sm:inline">{crumb.label}</span>
@@ -199,9 +277,9 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
                 <span
                   className={cn(
                     'flex items-center gap-1.5 px-1.5 py-0.5 font-medium',
-                    isLast && 'truncate max-w-[200px]'
+                    isLast && 'truncate max-w-[200px]',
+                    isLast ? 'text-foreground' : 'text-muted-foreground'
                   )}
-                  style={{ color: isLast ? 'var(--text-primary)' : 'var(--text-secondary)' }}
                   title={crumb.label}
                 >
                   {crumb.icon}
@@ -239,17 +317,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <Breadcrumbs items={breadcrumbs} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1
-            className="text-2xl font-bold"
-            style={{ color: 'var(--text-primary)' }}
-          >
+          <h1 className="text-2xl font-bold text-foreground">
             {title}
           </h1>
           {description && (
-            <p
-              className="mt-1 text-sm"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+            <p className="mt-1 text-sm text-muted-foreground">
               {description}
             </p>
           )}

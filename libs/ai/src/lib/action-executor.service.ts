@@ -3,7 +3,9 @@ import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AVAAction, AVAContext } from './ava.service';
 import { AVAGovernanceService, PermissionCheckResult, AuditEntry } from './ava-governance.service';
-import { AVAActionStatus } from '@hubblewave/instance-db';
+import { AVAAuditTrail, AVAActionStatus, CollectionDefinition } from '@hubblewave/instance-db';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
 
 /**
  * Action Executor Service
@@ -14,6 +16,7 @@ import { AVAActionStatus } from '@hubblewave/instance-db';
 export interface ActionRequest {
   action: AVAAction;
   context: AVAContext;
+  previewId?: string;
   confirmationRequired?: boolean;
   reason?: string;
   userMessage?: string;
@@ -22,6 +25,7 @@ export interface ActionRequest {
   ipAddress?: string;
   userAgent?: string;
   sessionId?: string;
+  requestContext?: RequestContext;
 }
 
 export interface ActionResult {
@@ -57,7 +61,8 @@ export class ActionExecutorService {
 
   constructor(
     private eventEmitter: EventEmitter2,
-    private governanceService: AVAGovernanceService
+    private governanceService: AVAGovernanceService,
+    private authorizationService: AuthorizationService
   ) {}
 
   /**
@@ -73,20 +78,48 @@ export class ActionExecutorService {
 
   /**
    * Simple permission check (fallback when no dataSource)
+   * SECURITY: This is a fallback method - prefer canExecuteWithGovernance when dataSource is available
    */
   canExecute(action: AVAAction, context: AVAContext): boolean {
-    const permission = this.findPermission(action);
-
-    if (!permission) {
+    // SECURITY: Require valid context with userId
+    if (!context || !context.userId) {
+      this.logger.warn('canExecute denied: missing userId in context');
       return false;
     }
 
-    // Check role
+    // SECURITY: Validate action type is known
+    const validActionTypes = ['navigate', 'create', 'update', 'execute'];
+    if (!validActionTypes.includes(action.type)) {
+      this.logger.warn(`canExecute denied: unknown action type ${action.type}`);
+      return false;
+    }
+
+    const permission = this.findPermission(action);
+
+    if (!permission) {
+      // SECURITY: Default to DENY if no matching permission found
+      this.logger.debug(`canExecute denied: no permission found for ${action.type} -> ${action.target}`);
+      return false;
+    }
+
+    // SECURITY: Only allow wildcard roles for safe actions (navigate)
     if (permission.roles.includes('*')) {
+      if (action.type !== 'navigate') {
+        this.logger.warn(`canExecute denied: wildcard role not allowed for ${action.type}`);
+        return false;
+      }
       return true;
     }
 
-    return permission.roles.includes(context.userRole || 'user');
+    // Check if user's role is in the allowed roles list
+    const userRole = context.userRole || 'user';
+    const allowed = permission.roles.includes(userRole);
+
+    if (!allowed) {
+      this.logger.debug(`canExecute denied: role ${userRole} not in ${permission.roles.join(', ')}`);
+    }
+
+    return allowed;
   }
 
   /**
@@ -106,6 +139,29 @@ export class ActionExecutorService {
   ): Promise<ActionResult> {
     const { action, context } = request;
     const startTime = Date.now();
+
+    if (action.type !== 'navigate' && !request.previewId) {
+      return {
+        success: false,
+        message: 'Preview is required before execution.',
+        error: 'PREVIEW_REQUIRED',
+      };
+    }
+    const authzResult = await this.checkAuthorization(dataSource, request);
+
+    if (!authzResult.allowed) {
+      await this.governanceService.recordAction(
+        dataSource,
+        this.createAuditEntry(request),
+        'rejected' as AVAActionStatus
+      );
+
+      return {
+        success: false,
+        message: authzResult.reason || 'You do not have permission to perform this action.',
+        error: 'PERMISSION_DENIED',
+      };
+    }
 
     // Check permission using governance service
     const permissionCheck = await this.governanceService.checkPermission(
@@ -139,13 +195,54 @@ export class ActionExecutorService {
       };
     }
 
-    // Record action as pending
-    const auditEntry = this.createAuditEntry(request);
-    const audit = await this.governanceService.recordAction(
-      dataSource,
-      auditEntry,
-      'pending' as AVAActionStatus
-    );
+    const auditRepo = dataSource.getRepository(AVAAuditTrail);
+    let audit = null as AVAAuditTrail | null;
+
+    if (request.previewId) {
+      audit = await auditRepo.findOne({ where: { id: request.previewId } });
+      if (!audit) {
+        return {
+          success: false,
+          message: 'Preview not found.',
+          error: 'PREVIEW_NOT_FOUND',
+        };
+      }
+      if (audit.userId !== context.userId) {
+        return {
+          success: false,
+          message: 'Preview does not belong to this user.',
+          error: 'PREVIEW_ACCESS_DENIED',
+        };
+      }
+      if (audit.status !== 'pending' && audit.status !== 'confirmed') {
+        return {
+          success: false,
+          message: 'Preview is not in an executable state.',
+          error: 'PREVIEW_INVALID_STATE',
+        };
+      }
+      if (permissionCheck.requiresConfirmation) {
+        await this.governanceService.updateAuditStatus(
+          dataSource,
+          audit.id,
+          'confirmed' as AVAActionStatus,
+          {
+            approvalPayload: {
+              approvedBy: context.userId,
+              approvedAt: new Date().toISOString(),
+              reason: request.reason,
+            },
+          }
+        );
+      }
+    } else {
+      const auditEntry = this.createAuditEntry(request);
+      audit = await this.governanceService.recordAction(
+        dataSource,
+        auditEntry,
+        'pending' as AVAActionStatus
+      );
+    }
 
     this.logger.log(
       `Executing action: ${action.type} -> ${action.target} for user ${context.userId} (audit: ${audit.id})`
@@ -189,6 +286,14 @@ export class ActionExecutorService {
           afterData: result.data,
           errorMessage: result.error,
           durationMs,
+          executionPayload: {
+            success: result.success,
+            message: result.message,
+            error: result.error,
+            data: result.data,
+            redirectUrl: result.redirectUrl,
+            completedAt: new Date().toISOString(),
+          },
         }
       );
 
@@ -205,6 +310,12 @@ export class ActionExecutorService {
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
           errorCode: 'EXECUTION_ERROR',
           durationMs,
+          executionPayload: {
+            success: false,
+            message: 'Execution failed',
+            error: error instanceof Error ? error.message : 'EXECUTION_ERROR',
+            completedAt: new Date().toISOString(),
+          },
         }
       );
 
@@ -233,12 +344,46 @@ export class ActionExecutorService {
       userMessage: request.userMessage,
       avaResponse: request.avaResponse,
       action: request.action,
+      suggestedActions: [request.action as unknown as Record<string, unknown>],
       targetCollection: collection || undefined,
       targetRecordId: recordId || undefined,
       ipAddress: request.ipAddress,
       userAgent: request.userAgent,
       sessionId: request.sessionId,
     };
+  }
+
+  private async checkAuthorization(
+    dataSource: DataSource,
+    request: ActionRequest,
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const { action, requestContext } = request;
+
+    if (action.type === 'create' || action.type === 'update') {
+      if (!requestContext) {
+        return { allowed: false, reason: 'Authorization context missing' };
+      }
+
+      const collection = this.extractCollection(action.target);
+      if (!collection) {
+        return { allowed: false, reason: 'Invalid action target' };
+      }
+
+      try {
+        const collectionRepo = dataSource.getRepository(CollectionDefinition);
+        const definition = await collectionRepo.findOne({
+          where: [{ code: collection }, { tableName: collection }],
+        });
+        const target = definition?.tableName || collection;
+        const operation = action.type === 'create' ? 'create' : 'update';
+        await this.authorizationService.ensureTableAccess(requestContext, target, operation);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Authorization check failed';
+        return { allowed: false, reason: message };
+      }
+    }
+
+    return { allowed: true };
   }
 
   private extractCollection(target: string): string | null {
@@ -445,7 +590,7 @@ export class ActionExecutorService {
     action: AVAAction,
     context: AVAContext
   ): Promise<ActionResult> {
-    // Execute actions are for workflows, automations, etc.
+    // Execute actions are for process flows, automations, etc.
     this.eventEmitter.emit('ava.action.execute', {
       target: action.target,
       context,

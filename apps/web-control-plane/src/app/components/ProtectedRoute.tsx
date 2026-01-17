@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { Box, CircularProgress } from '@mui/material';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthUser } from '../services/auth';
 import { colors } from '../theme/theme';
@@ -15,27 +15,23 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   if (isLoading) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: colors.void.deepest,
-        }}
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: colors.void.deepest }}
       >
-        <CircularProgress />
-      </Box>
+        <Loader2
+          className="w-8 h-8 animate-spin"
+          style={{ color: colors.brand.primary }}
+        />
+      </div>
     );
   }
 
   if (!isAuthenticated) {
-    // Redirect to login, but save the attempted location
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (requiredRole && !hasRole(requiredRole)) {
-    // User doesn't have required role
     return <Navigate to="/" replace />;
   }
 

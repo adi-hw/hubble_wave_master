@@ -1,25 +1,10 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box,
-  Drawer,
-  AppBar,
-  Toolbar,
-  Typography,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  IconButton,
-  Avatar,
-  Tooltip,
-  Divider,
-} from '@mui/material';
-import {
   LayoutDashboard,
   Building2,
   Server,
+  Package,
   FileText,
   Terminal,
   BarChart3,
@@ -27,6 +12,7 @@ import {
   KeyRound,
   Bell,
   Search,
+  ShieldAlert,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -48,15 +34,18 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/' },
   { id: 'customers', label: 'Customers', icon: <Building2 size={20} />, path: '/customers' },
   { id: 'instances', label: 'Instances', icon: <Server size={20} />, path: '/instances' },
+  { id: 'packs', label: 'Packs', icon: <Package size={20} />, path: '/packs' },
   { id: 'audit', label: 'Audit Logs', icon: <FileText size={20} />, path: '/audit' },
   { id: 'terraform', label: 'Terraform', icon: <Terminal size={20} />, path: '/terraform' },
   { id: 'metrics', label: 'Metrics', icon: <BarChart3 size={20} />, path: '/metrics' },
   { id: 'licenses', label: 'Licenses', icon: <KeyRound size={20} />, path: '/licenses' },
   { id: 'settings', label: 'Settings', icon: <Settings size={20} />, path: '/settings' },
+  { id: 'recovery', label: 'Recovery', icon: <ShieldAlert size={20} />, path: '/recovery' },
 ];
 
 export function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [search, setSearch] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -67,234 +56,237 @@ export function MainLayout() {
     logout();
   };
 
+  const handleSearchSubmit = () => {
+    const term = search.trim();
+    if (!term) return;
+    navigate(`/customers?q=${encodeURIComponent(term)}`);
+  };
+
   const getUserInitials = () => {
     if (!user) return 'U';
     return `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'U';
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: colors.void.deepest }}>
+    <div className="flex min-h-screen" style={{ backgroundColor: colors.void.deepest }}>
       {/* Sidebar */}
-      <Drawer
-        variant="permanent"
-        sx={{
+      <aside
+        className="flex flex-col shrink-0 transition-all duration-200 overflow-hidden"
+        style={{
           width: drawerWidth,
-          flexShrink: 0,
-          transition: 'width 0.2s ease-in-out',
-          '& .MuiDrawer-paper': {
-            width: drawerWidth,
-            boxSizing: 'border-box',
-            transition: 'width 0.2s ease-in-out',
-            overflowX: 'hidden',
-          },
+          backgroundColor: colors.void.deep,
+          borderRight: `1px solid ${colors.glass.border}`,
         }}
       >
         {/* Logo */}
-        <Box
-          sx={{
-            p: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            gap: 1.5,
-            minHeight: 64,
-          }}
+        <div
+          className="p-4 flex items-center gap-3"
+          style={{ minHeight: 64, justifyContent: collapsed ? 'center' : 'flex-start' }}
         >
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: 2,
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm"
+            style={{
               background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              color: '#fff',
-              fontSize: 16,
             }}
           >
             HW
-          </Box>
+          </div>
           {!collapsed && (
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: 16, color: colors.text.primary }}>
+            <div>
+              <div className="font-bold text-sm" style={{ color: colors.text.primary }}>
                 HubbleWave
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.muted, fontSize: 11 }}>
+              </div>
+              <div className="text-xs" style={{ color: colors.text.muted }}>
                 Control Plane
-              </Typography>
-            </Box>
+              </div>
+            </div>
           )}
-        </Box>
+        </div>
 
-        <Divider sx={{ borderColor: colors.glass.border }} />
+        <hr style={{ borderColor: colors.glass.border, margin: 0 }} />
 
         {/* Navigation */}
-        <List sx={{ flex: 1, px: 1, py: 2 }}>
+        <nav className="flex-1 px-2 py-4">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path ||
+            const isActive =
+              location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
 
             return (
-              <ListItem key={item.id} disablePadding sx={{ mb: 0.5 }}>
-                <Tooltip title={collapsed ? item.label : ''} placement="right">
-                  <ListItemButton
-                    onClick={() => navigate(item.path)}
-                    sx={{
-                      borderRadius: 2,
-                      minHeight: 44,
-                      justifyContent: collapsed ? 'center' : 'flex-start',
-                      px: collapsed ? 1.5 : 2,
-                      bgcolor: isActive ? colors.glass.medium : 'transparent',
-                      '&:hover': {
-                        bgcolor: isActive ? colors.glass.strong : colors.glass.subtle,
-                      },
-                    }}
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.path)}
+                title={collapsed ? item.label : undefined}
+                className="w-full flex items-center gap-3 px-3 py-2.5 mb-1 rounded-lg transition-colors"
+                style={{
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  backgroundColor: isActive ? colors.glass.medium : 'transparent',
+                  color: isActive ? colors.text.primary : colors.text.secondary,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive)
+                    e.currentTarget.style.backgroundColor = colors.glass.subtle;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = isActive
+                    ? colors.glass.medium
+                    : 'transparent';
+                }}
+              >
+                <span style={{ color: isActive ? colors.brand.primary : colors.text.tertiary }}>
+                  {item.icon}
+                </span>
+                {!collapsed && (
+                  <span
+                    className="text-sm"
+                    style={{ fontWeight: isActive ? 600 : 500 }}
                   >
-                    <ListItemIcon
-                      sx={{
-                        minWidth: collapsed ? 0 : 36,
-                        color: isActive ? colors.brand.primary : colors.text.tertiary,
-                      }}
-                    >
-                      {item.icon}
-                    </ListItemIcon>
-                    {!collapsed && (
-                      <ListItemText
-                        primary={item.label}
-                        primaryTypographyProps={{
-                          fontSize: 14,
-                          fontWeight: isActive ? 600 : 500,
-                          color: isActive ? colors.text.primary : colors.text.secondary,
-                        }}
-                      />
-                    )}
-                  </ListItemButton>
-                </Tooltip>
-              </ListItem>
+                    {item.label}
+                  </span>
+                )}
+              </button>
             );
           })}
-        </List>
+        </nav>
 
         {/* Collapse button */}
-        <Box sx={{ p: 1 }}>
-          <IconButton
+        <div className="p-2">
+          <button
+            type="button"
             onClick={() => setCollapsed(!collapsed)}
-            sx={{
-              width: '100%',
-              borderRadius: 2,
-              bgcolor: colors.glass.subtle,
-              '&:hover': { bgcolor: colors.glass.medium },
-            }}
+            className="w-full flex items-center justify-center py-2 rounded-lg transition-colors"
+            style={{ backgroundColor: colors.glass.subtle, color: colors.text.secondary }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.glass.medium)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = colors.glass.subtle)}
           >
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </IconButton>
-        </Box>
+          </button>
+        </div>
 
         {/* User profile */}
-        <Box
-          sx={{
-            p: 2,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            borderTop: `1px solid ${colors.glass.border}`,
-          }}
+        <div
+          className="p-4 flex items-center gap-3"
+          style={{ borderTop: `1px solid ${colors.glass.border}` }}
         >
-          <Avatar
-            sx={{
-              width: 36,
-              height: 36,
-              bgcolor: colors.brand.glow,
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold"
+            style={{
+              backgroundColor: colors.brand.glow,
               color: colors.brand.primary,
-              fontSize: 14,
-              fontWeight: 600,
             }}
           >
             {getUserInitials()}
-          </Avatar>
+          </div>
           {!collapsed && (
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, color: colors.text.primary }}>
-                {user ? `${user.firstName} ${user.lastName}` : 'User'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.text.muted, textTransform: 'capitalize' }}>
-                {user?.role?.replace('_', ' ') || 'User'}
-              </Typography>
-            </Box>
-          )}
-          {!collapsed && (
-            <Tooltip title="Logout">
-              <IconButton size="small" sx={{ color: colors.text.muted }} onClick={handleLogout}>
+            <>
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-sm font-semibold truncate"
+                  style={{ color: colors.text.primary }}
+                >
+                  {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                </div>
+                <div
+                  className="text-xs capitalize truncate"
+                  style={{ color: colors.text.muted }}
+                >
+                  {user?.role?.replace('_', ' ') || 'User'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Logout"
+                className="p-1.5 rounded transition-colors"
+                style={{ color: colors.text.muted }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.glass.medium)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
                 <LogOut size={16} />
-              </IconButton>
-            </Tooltip>
+              </button>
+            </>
           )}
-        </Box>
-      </Drawer>
+        </div>
+      </aside>
 
       {/* Main content */}
-      <Box component="main" sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <main className="flex-1 flex flex-col">
         {/* Top bar */}
-        <AppBar position="sticky" elevation={0}>
-          <Toolbar sx={{ gap: 2 }}>
-            {/* Search */}
-            <Box
-              sx={{
-                flex: 1,
-                maxWidth: 400,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 2,
-                py: 1,
-                bgcolor: colors.glass.medium,
-                borderRadius: 2,
-                border: `1px solid ${colors.glass.border}`,
+        <header
+          className="sticky top-0 z-10 flex items-center gap-4 px-6 py-3"
+          style={{
+            backgroundColor: colors.void.deep,
+            borderBottom: `1px solid ${colors.glass.border}`,
+          }}
+        >
+          {/* Search */}
+          <div
+            className="flex-1 max-w-md flex items-center gap-2 px-3 py-2 rounded-lg border"
+            style={{
+              backgroundColor: colors.glass.medium,
+              borderColor: colors.glass.border,
+            }}
+          >
+            <Search size={16} style={{ color: colors.text.muted }} />
+            <input
+              type="text"
+              placeholder="Search customers, instances..."
+              className="flex-1 bg-transparent border-none outline-none text-sm"
+              style={{ color: colors.text.primary }}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSearchSubmit();
+                }
+              }}
+            />
+            <span
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{
+                color: colors.text.muted,
+                backgroundColor: colors.glass.subtle,
               }}
             >
-              <Search size={16} color={colors.text.muted} />
-              <Box
-                component="input"
-                placeholder="Search customers, instances..."
-                sx={{
-                  flex: 1,
-                  border: 'none',
-                  outline: 'none',
-                  bgcolor: 'transparent',
-                  color: colors.text.primary,
-                  fontSize: 14,
-                  '&::placeholder': { color: colors.text.muted },
-                }}
-              />
-              <Typography variant="caption" sx={{ color: colors.text.muted, px: 1, py: 0.5, bgcolor: colors.glass.subtle, borderRadius: 1 }}>
-                ⌘K
-              </Typography>
-            </Box>
+              ⌘K
+            </span>
+          </div>
 
-            <Box sx={{ flex: 1 }} />
+          <div className="flex-1" />
 
-            {/* Actions */}
-            <Tooltip title="Notifications">
-              <IconButton sx={{ color: colors.text.tertiary }}>
-                <Bell size={20} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Settings">
-              <IconButton sx={{ color: colors.text.tertiary }}>
-                <Settings size={20} />
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
+          {/* Actions */}
+          <button
+            type="button"
+            title="Notifications"
+            onClick={() => navigate('/audit')}
+            className="p-2 rounded transition-colors"
+            style={{ color: colors.text.tertiary }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.glass.medium)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <Bell size={20} />
+          </button>
+          <button
+            type="button"
+            title="Settings"
+            onClick={() => navigate('/settings')}
+            className="p-2 rounded transition-colors"
+            style={{ color: colors.text.tertiary }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.glass.medium)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <Settings size={20} />
+          </button>
+        </header>
 
         {/* Page content */}
-        <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+        <div className="flex-1 p-6 overflow-auto">
           <Outlet />
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </main>
+    </div>
   );
 }
 

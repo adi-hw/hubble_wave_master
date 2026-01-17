@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -20,7 +20,17 @@ import {
   MfaMethod,
   EmailVerificationToken,
   PasswordResetToken,
-  InstanceDbModule
+  InstanceDbModule,
+  // Advanced Authentication entities
+  WebAuthnCredential,
+  WebAuthnChallenge,
+  MagicLinkToken,
+  TrustedDevice,
+  ImpersonationSession,
+  Delegation,
+  BehavioralProfile,
+  SecurityAlert,
+  AuditLog,
 } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
 import { AuthService } from './auth.service';
@@ -53,6 +63,19 @@ import { RolesModule } from '../roles/roles.module';
 import { GeolocationService } from './geolocation.service';
 import { HttpModule } from '@nestjs/axios';
 import { ScheduledTasksService } from './scheduled-tasks.service';
+// Advanced Authentication services
+import { WebAuthnService } from './webauthn.service';
+import { WebAuthnController } from './webauthn.controller';
+import { MagicLinkService } from './magic-link.service';
+import { MagicLinkController } from './magic-link.controller';
+import { ImpersonationService } from './impersonation.service';
+import { ImpersonationController } from './impersonation.controller';
+import { DelegationService } from './delegation.service';
+import { DelegationController } from './delegation.controller';
+import { DeviceTrustService } from './device-trust.service';
+import { DeviceTrustController } from './device-trust.controller';
+import { BehavioralAnalyticsService } from './behavioral-analytics.service';
+import { BehavioralAnalyticsController } from './behavioral-analytics.controller';
 
 @Module({
   imports: [
@@ -73,6 +96,16 @@ import { ScheduledTasksService } from './scheduled-tasks.service';
       MfaMethod,
       EmailVerificationToken,
       PasswordResetToken,
+      // Advanced Authentication entities
+      WebAuthnCredential,
+      WebAuthnChallenge,
+      MagicLinkToken,
+      TrustedDevice,
+      ImpersonationSession,
+      Delegation,
+      BehavioralProfile,
+      SecurityAlert,
+      AuditLog,
     ]),
     InstanceDbModule,
     RolesModule,
@@ -113,6 +146,13 @@ import { ScheduledTasksService } from './scheduled-tasks.service';
     SessionController,
     SsoController,
     EmailVerificationController,
+    // Advanced Authentication controllers
+    WebAuthnController,
+    MagicLinkController,
+    ImpersonationController,
+    DelegationController,
+    DeviceTrustController,
+    BehavioralAnalyticsController,
   ],
   providers: [
     AuthService,
@@ -132,6 +172,26 @@ import { ScheduledTasksService } from './scheduled-tasks.service';
     OidcService,
     GeolocationService,
     ScheduledTasksService,
+    // Advanced Authentication services
+    WebAuthnService,
+    MagicLinkService,
+    ImpersonationService,
+    DelegationService,
+    DeviceTrustService,
+    BehavioralAnalyticsService,
+    // Email service provider for Magic Link
+    {
+      provide: 'EMAIL_SERVICE',
+      useFactory: () => {
+        const logger = new Logger('EmailService');
+        return {
+          sendMagicLink: async (email: string, link: string, expiresAt: Date) => {
+            // In production, this would use a real email service
+            logger.debug(`[DEV] Magic link for ${email}: ${link} (expires: ${expiresAt.toISOString()})`);
+          },
+        };
+      },
+    },
   ],
   exports: [
     AuthService,
@@ -145,6 +205,13 @@ import { ScheduledTasksService } from './scheduled-tasks.service';
     SamlService,
     OidcService,
     GeolocationService,
+    // Advanced Authentication services
+    WebAuthnService,
+    MagicLinkService,
+    ImpersonationService,
+    DelegationService,
+    DeviceTrustService,
+    BehavioralAnalyticsService,
   ],
 })
 export class AuthModule {}

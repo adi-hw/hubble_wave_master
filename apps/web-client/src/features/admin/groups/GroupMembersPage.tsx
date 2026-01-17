@@ -19,12 +19,10 @@ interface User {
   lastName?: string;
   email?: string;
   avatar?: string;
-  // Fields from /users endpoint (UserDto)
   displayName?: string;
   workEmail?: string;
 }
 
-// Helper function to get display name from user
 const getUserDisplayName = (user?: User): string => {
   if (!user) return '';
   if (user.displayName) return user.displayName;
@@ -34,12 +32,10 @@ const getUserDisplayName = (user?: User): string => {
   return user.email || user.workEmail || '';
 };
 
-// Helper function to get email from user
 const getUserEmail = (user?: User): string => {
   return user?.email || user?.workEmail || '';
 };
 
-// Helper function to get initials from user
 const getUserInitials = (user?: User): string => {
   if (!user) return '?';
   if (user.firstName && user.lastName) {
@@ -90,7 +86,6 @@ export const GroupMembersPage: React.FC = () => {
   const [addingMembers, setAddingMembers] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Fetch group details
   const fetchGroup = useCallback(async () => {
     if (!id) return;
     try {
@@ -101,7 +96,6 @@ export const GroupMembersPage: React.FC = () => {
     }
   }, [id]);
 
-  // Fetch members
   const fetchMembers = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -119,13 +113,11 @@ export const GroupMembersPage: React.FC = () => {
     }
   }, [id, searchQuery]);
 
-  // Fetch available users for adding
   const fetchAvailableUsers = useCallback(async () => {
     try {
       const response = await identityApi.get<{ data: User[] }>('/users', {
         params: { q: userSearchQuery || undefined, pageSize: 50 },
       });
-      // Filter out users that are already members
       const memberUserIds = new Set(members.map((m) => m.userId));
       const available = response.data.data.filter((u) => !memberUserIds.has(u.id));
       setAvailableUsers(available);
@@ -145,7 +137,6 @@ export const GroupMembersPage: React.FC = () => {
     }
   }, [showAddModal, fetchAvailableUsers]);
 
-  // Handle remove member
   const handleRemoveMember = async (userId: string) => {
     if (!window.confirm('Are you sure you want to remove this member?')) return;
 
@@ -158,7 +149,6 @@ export const GroupMembersPage: React.FC = () => {
     }
   };
 
-  // Handle toggle manager
   const handleToggleManager = async (userId: string, currentIsManager: boolean) => {
     try {
       await identityApi.put(`/admin/groups/${id}/members/${userId}`, {
@@ -170,7 +160,6 @@ export const GroupMembersPage: React.FC = () => {
     }
   };
 
-  // Handle add members
   const handleAddMembers = async () => {
     if (selectedUsers.length === 0) return;
 
@@ -198,23 +187,19 @@ export const GroupMembersPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-6 border-b" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="p-6 border-b border-border">
         <div className="flex items-center gap-4 mb-4">
           <button
             onClick={() => navigate('/studio/groups')}
-            className="p-2 rounded-lg transition-colors"
-            style={{ backgroundColor: 'transparent' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-2 rounded-lg transition-colors bg-transparent hover:bg-muted"
           >
-            <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+            <ArrowLeft className="h-5 w-5 text-muted-foreground" />
           </button>
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="text-2xl font-semibold text-foreground">
               {group?.name} - Members
             </h1>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm text-muted-foreground">
               Manage group membership
             </p>
           </div>
@@ -223,17 +208,16 @@ export const GroupMembersPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search members..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-64 pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                className="w-64 pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
-            <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="h-4 w-4" />
               <span>{total} members</span>
             </div>
@@ -249,16 +233,15 @@ export const GroupMembersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Members List */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : members.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center">
-            <Users className="h-8 w-8 mb-2" style={{ color: 'var(--text-muted)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            <Users className="h-8 w-8 mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
               {searchQuery ? 'No matching members' : 'No members yet'}
             </p>
           </div>
@@ -267,34 +250,27 @@ export const GroupMembersPage: React.FC = () => {
             {members.map((member) => (
               <div
                 key={member.id}
-                className="flex items-center justify-between p-4 rounded-lg border"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
+                className="flex items-center justify-between p-4 rounded-lg border bg-card border-border"
               >
                 <div className="flex items-center gap-4">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
-                  >
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-brand)' }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-primary/10">
+                    <span className="text-sm font-medium text-primary">
                       {getUserInitials(member.user)}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                      <span className="font-medium text-foreground">
                         {getUserDisplayName(member.user)}
                       </span>
                       {member.isManager && (
-                        <span
-                          className="flex items-center gap-1 px-2 py-0.5 text-xs rounded"
-                          style={{ backgroundColor: 'var(--bg-warning-subtle)', color: 'var(--text-warning)' }}
-                        >
+                        <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-warning-subtle text-warning-text">
                           <Crown className="h-3 w-3" />
                           Manager
                         </span>
                       )}
                     </div>
-                    <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-sm text-muted-foreground">
                       {getUserEmail(member.user)}
                     </div>
                   </div>
@@ -303,23 +279,18 @@ export const GroupMembersPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleToggleManager(member.userId, member.isManager)}
-                    className="p-2 rounded-lg transition-colors"
-                    style={{
-                      backgroundColor: member.isManager ? 'var(--bg-warning-subtle)' : 'transparent',
-                      color: member.isManager ? 'var(--text-warning)' : 'var(--text-muted)',
-                    }}
-                    onMouseEnter={(e) => !member.isManager && (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
-                    onMouseLeave={(e) => !member.isManager && (e.currentTarget.style.backgroundColor = 'transparent')}
+                    className={`p-2 rounded-lg transition-colors ${
+                      member.isManager
+                        ? 'bg-warning-subtle text-warning-text'
+                        : 'text-muted-foreground hover:bg-muted'
+                    }`}
                     title={member.isManager ? 'Remove manager role' : 'Make manager'}
                   >
                     <Crown className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleRemoveMember(member.userId)}
-                    className="p-2 rounded-lg transition-colors"
-                    style={{ color: 'var(--text-danger)' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    className="p-2 rounded-lg transition-colors text-destructive hover:bg-destructive/10"
                     title="Remove member"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -331,16 +302,11 @@ export const GroupMembersPage: React.FC = () => {
         )}
       </div>
 
-      {/* Add Members Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div
-            className="w-full max-w-lg max-h-[80vh] rounded-xl overflow-hidden flex flex-col"
-            style={{ backgroundColor: 'var(--bg-elevated)', boxShadow: 'var(--shadow-xl)' }}
-          >
-            {/* Modal Header */}
-            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-default)' }}>
-              <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-50">
+          <div className="w-full max-w-lg max-h-[80vh] rounded-xl overflow-hidden flex flex-col bg-card shadow-xl">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-semibold text-foreground">
                 Add Members
               </h2>
               <button
@@ -348,40 +314,35 @@ export const GroupMembersPage: React.FC = () => {
                   setShowAddModal(false);
                   setSelectedUsers([]);
                 }}
-                className="p-1 rounded transition-colors"
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                className="p-1 rounded transition-colors hover:bg-muted"
               >
-                <X className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
 
-            {/* Search */}
-            <div className="p-4 border-b" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="p-4 border-b border-border">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search users..."
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               {selectedUsers.length > 0 && (
-                <div className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+                <div className="mt-2 text-sm text-muted-foreground">
                   {selectedUsers.length} user(s) selected
                 </div>
               )}
             </div>
 
-            {/* User List */}
             <div className="flex-1 overflow-y-auto p-4">
               {availableUsers.length === 0 ? (
                 <div className="text-center py-8">
-                  <Users className="h-8 w-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
                     No users available
                   </p>
                 </div>
@@ -393,32 +354,27 @@ export const GroupMembersPage: React.FC = () => {
                       <button
                         key={user.id}
                         onClick={() => toggleUserSelection(user.id)}
-                        className="w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors"
-                        style={{
-                          borderColor: isSelected ? 'var(--border-brand)' : 'var(--border-default)',
-                          backgroundColor: isSelected ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)',
-                        }}
-                        onMouseEnter={(e) => !isSelected && (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
-                        onMouseLeave={(e) => !isSelected && (e.currentTarget.style.backgroundColor = isSelected ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)')}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-card hover:bg-muted'
+                        }`}
                       >
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
-                        >
-                          <span className="text-xs font-medium" style={{ color: 'var(--text-brand)' }}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-primary/10">
+                          <span className="text-xs font-medium text-primary">
                             {getUserInitials(user)}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          <div className="font-medium truncate text-foreground">
                             {getUserDisplayName(user)}
                           </div>
-                          <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                          <div className="text-xs truncate text-muted-foreground">
                             {getUserEmail(user)}
                           </div>
                         </div>
                         {isSelected && (
-                          <UserCheck className="h-5 w-5 flex-shrink-0" style={{ color: 'var(--text-brand)' }} />
+                          <UserCheck className="h-5 w-5 flex-shrink-0 text-primary" />
                         )}
                       </button>
                     );
@@ -427,8 +383,7 @@ export const GroupMembersPage: React.FC = () => {
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t flex items-center justify-end gap-3" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="p-4 border-t border-border flex items-center justify-end gap-3">
               <button
                 onClick={() => {
                   setShowAddModal(false);

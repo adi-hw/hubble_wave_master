@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Client } from 'ldapts';
 import { LdapConfig } from '@hubblewave/instance-db';
 
@@ -10,6 +10,7 @@ export interface LdapUser {
 
 @Injectable()
 export class LdapService {
+  private readonly logger = new Logger(LdapService.name);
   /**
    * Test LDAP connection using bind credentials
    */
@@ -24,7 +25,7 @@ export class LdapService {
       await client.unbind();
       return true;
     } catch (error) {
-      console.error('LDAP connection test failed:', error);
+      this.logger.error('LDAP connection test failed', error);
       return false;
     }
   }
@@ -78,7 +79,7 @@ export class LdapService {
       await client.unbind();
       return ldapUser;
     } catch (error) {
-      console.error('LDAP authentication failed:', error);
+      this.logger.error('LDAP authentication failed', error);
       throw new Error('LDAP authentication failed');
     }
   }

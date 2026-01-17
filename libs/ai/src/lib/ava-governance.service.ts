@@ -30,6 +30,10 @@ export interface AuditEntry {
   userMessage?: string;
   avaResponse?: string;
   action: AVAAction;
+  suggestedActions?: Record<string, unknown>[];
+  previewPayload?: Record<string, unknown>;
+  approvalPayload?: Record<string, unknown>;
+  executionPayload?: Record<string, unknown>;
   targetCollection?: string;
   targetRecordId?: string;
   targetDisplayValue?: string;
@@ -87,7 +91,7 @@ export class AVAGovernanceService {
         return {
           allowed: false,
           requiresConfirmation: false,
-          rejectionReason: 'AVA is disabled for this tenant',
+          rejectionReason: 'AVA is disabled for this instance',
         };
       }
 
@@ -213,6 +217,10 @@ export class AVAGovernanceService {
       beforeData: entry.beforeData,
       afterData: entry.afterData,
       actionParams: entry.action.params,
+      suggestedActions: entry.suggestedActions,
+      previewPayload: entry.previewPayload,
+      approvalPayload: entry.approvalPayload,
+      executionPayload: entry.executionPayload,
       isRevertible: this.isActionRevertible(entry.action.type as AVAActionType, entry.beforeData),
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
@@ -242,6 +250,8 @@ export class AVAGovernanceService {
       errorMessage?: string;
       errorCode?: string;
       durationMs?: number;
+      approvalPayload?: Record<string, unknown>;
+      executionPayload?: Record<string, unknown>;
     }
   ): Promise<void> {
     const auditRepo = dataSource.getRepository(AVAAuditTrail);
@@ -249,11 +259,15 @@ export class AVAGovernanceService {
 
     if (audit) {
       audit.status = status;
-      audit.completedAt = new Date();
+      if (['completed', 'failed', 'reverted', 'cancelled'].includes(status)) {
+        audit.completedAt = new Date();
+      }
       if (details?.errorMessage) audit.errorMessage = details.errorMessage;
       if (details?.errorCode) audit.errorCode = details.errorCode;
       if (details?.durationMs) audit.durationMs = details.durationMs;
       if (details?.afterData) audit.afterData = details.afterData;
+      if (details?.approvalPayload) audit.approvalPayload = details.approvalPayload;
+      if (details?.executionPayload) audit.executionPayload = details.executionPayload;
       audit.isRevertible = status === 'completed' && details?.afterData !== undefined;
 
       await auditRepo.save(audit);
@@ -644,20 +658,35 @@ export class AVAGovernanceService {
       throw new Error('Cannot revert: missing target collection or record ID');
     }
 
-    // Get the table name from collection code
+    // Validate targetRecordId is a valid UUID to prevent injection
+    if (!this.isValidUuid(targetRecordId)) {
+      throw new Error('Invalid record ID format');
+    }
+
+    // Get the table name from collection code (uses allowlist)
     const tableName = this.collectionToTable(targetCollection);
+    if (!tableName) {
+      throw new Error(`Unknown collection: ${targetCollection}`);
+    }
+
+    // Validate all column names to prevent SQL injection
+    const validatedColumns = Object.keys(beforeData).filter((k) =>
+      this.isValidColumnName(k)
+    );
+
+    if (validatedColumns.length !== Object.keys(beforeData).length) {
+      throw new Error('Invalid column names detected in before data');
+    }
 
     switch (actionType) {
       case 'update':
-        // Restore original values
-        const setClauses = Object.keys(beforeData)
-          .filter((k) => k !== 'id')
+        // Restore original values using validated column names
+        const updateColumns = validatedColumns.filter((k) => k !== 'id');
+        const setClauses = updateColumns
           .map((k, i) => `"${this.camelToSnake(k)}" = $${i + 2}`)
           .join(', ');
 
-        const values = Object.keys(beforeData)
-          .filter((k) => k !== 'id')
-          .map((k) => beforeData[k]);
+        const values = updateColumns.map((k) => beforeData[k]);
 
         await dataSource.query(
           `UPDATE "${tableName}" SET ${setClauses} WHERE id = $1`,
@@ -672,10 +701,10 @@ export class AVAGovernanceService {
         return { deleted: true, id: targetRecordId };
 
       case 'delete':
-        // Re-insert the deleted record
-        const columns = Object.keys(beforeData).map((k) => `"${this.camelToSnake(k)}"`).join(', ');
-        const placeholders = Object.keys(beforeData).map((_, i) => `$${i + 1}`).join(', ');
-        const insertValues = Object.values(beforeData);
+        // Re-insert the deleted record using validated column names
+        const columns = validatedColumns.map((k) => `"${this.camelToSnake(k)}"`).join(', ');
+        const placeholders = validatedColumns.map((_, i) => `$${i + 1}`).join(', ');
+        const insertValues = validatedColumns.map((k) => beforeData[k]);
 
         await dataSource.query(
           `INSERT INTO "${tableName}" (${columns}) VALUES (${placeholders})`,
@@ -687,6 +716,17 @@ export class AVAGovernanceService {
       default:
         throw new Error(`Cannot revert action type: ${actionType}`);
     }
+  }
+
+  private isValidUuid(value: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(value);
+  }
+
+  private isValidColumnName(name: string): boolean {
+    // Only allow alphanumeric characters and underscores, starting with letter
+    const columnNameRegex = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+    return columnNameRegex.test(name) && name.length <= 63;
   }
 
   private collectionToTable(collection: string): string {

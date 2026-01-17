@@ -81,7 +81,7 @@ export class ApiKeyController {
 
   @Get()
   @Roles('admin')
-  @ApiOperation({ summary: 'List all API keys for the tenant' })
+  @ApiOperation({ summary: 'List all API keys for the instance' })
   @ApiResponse({ status: 200, description: 'List of API keys (without key hashes)' })
   async list(@Req() req: any) {
     const keys = await this.apiKeyService.listKeys(req.user.userId);

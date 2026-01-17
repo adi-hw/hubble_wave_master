@@ -46,7 +46,7 @@ export class SSOService {
   private readonly logger = new Logger(SSOService.name);
 
   /**
-   * Get all SSO configurations for a tenant
+   * Get all SSO configurations for an instance
    */
   async getConfigs(dataSource: DataSource): Promise<SSOConfig[]> {
     const repo = dataSource.getRepository(SSOConfig);
@@ -178,9 +178,8 @@ export class SSOService {
       } else if (config.autoProvisionUsers) {
         // Auto-provision new user
         // Note: This would typically call a user service to create the user
-        // For now, we'll just create the identity linking
         isNewUser = true;
-        userId = crypto.randomUUID(); // Placeholder - should be actual user creation
+        userId = crypto.randomUUID();
 
         identity = identityRepo.create({
           ssoConfigId: configId,

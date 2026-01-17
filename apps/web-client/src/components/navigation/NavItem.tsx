@@ -1,15 +1,20 @@
 /**
  * NavItem Component
+ * HubbleWave Platform - Phase 1
  *
- * Single navigation item (link, folder, separator).
- * Supports favorites, badges, and expansion state.
+ * Production-ready navigation item with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Keyboard navigation support
  */
 
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Star } from 'lucide-react';
 import { Icon } from '../Icon';
-import { ResolvedNavNode } from '../../types/navigation-v2';
+import { ResolvedNavNode } from '../../types/navigation';
+import { cn } from '../../lib/utils';
 
 interface NavItemProps {
   node: ResolvedNavNode;
@@ -28,8 +33,8 @@ export const NavItem: React.FC<NavItemProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isExpanded, setIsExpanded] = useState(node.isExpanded ?? depth === 0);
-  const [showFavorite, setShowFavorite] = useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(node.isExpanded ?? depth === 0);
+  const [showFavorite, setShowFavorite] = React.useState(false);
 
   const hasChildren = node.children && node.children.length > 0;
   const isGroup = node.type === 'group' || node.type === 'smart_group';
@@ -48,7 +53,7 @@ export const NavItem: React.FC<NavItemProps> = ({
     }
   }, [hasActiveChild, isExpanded]);
 
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     if (hasChildren) {
       setIsExpanded(!isExpanded);
     } else if (node.route) {
@@ -57,21 +62,39 @@ export const NavItem: React.FC<NavItemProps> = ({
         onNavigate(node.moduleKey);
       }
     }
-  };
+  }, [hasChildren, isExpanded, node.route, node.moduleKey, navigate, onNavigate]);
 
-  const handleFavoriteClick = (e: React.MouseEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  }, [handleClick]);
+
+  const handleFavoriteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (onToggleFavorite && node.moduleKey) {
       onToggleFavorite(node.moduleKey);
     }
-  };
+  }, [onToggleFavorite, node.moduleKey]);
+
+  const handleFavoriteKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onToggleFavorite && node.moduleKey) {
+        onToggleFavorite(node.moduleKey);
+      }
+    }
+  }, [onToggleFavorite, node.moduleKey]);
 
   // Render separator
   if (isSeparator) {
     return (
       <div
-        className="my-2 mx-3 border-t"
-        style={{ borderColor: 'var(--border-default)' }}
+        className="my-2 mx-3 border-t border-border"
+        role="separator"
+        aria-hidden="true"
       />
     );
   }
@@ -81,24 +104,24 @@ export const NavItem: React.FC<NavItemProps> = ({
     return null; // Empty groups are hidden
   }
 
-  // Calculate indentation
-  const paddingLeft = collapsed ? 12 : 12 + depth * 12;
-
   // Group header style
   if (isGroup) {
     return (
-      <div className="mt-4 first:mt-0">
+      <div className="mt-4 first:mt-0" role="group" aria-label={node.label}>
         {!collapsed && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors hover:bg-slate-50"
-            style={{
-              color: 'var(--text-muted)',
-              paddingLeft,
-            }}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors min-h-[44px] text-muted-foreground hover:bg-muted',
+              depth === 1 && 'pl-6',
+              depth === 2 && 'pl-9',
+              depth >= 3 && 'pl-12'
+            )}
+            aria-expanded={isExpanded}
+            aria-controls={`nav-group-${node.key}`}
           >
             {hasChildren && (
-              <span className="flex-shrink-0">
+              <span className="flex-shrink-0" aria-hidden="true">
                 {isExpanded ? (
                   <ChevronDown className="h-3 w-3" />
                 ) : (
@@ -108,13 +131,7 @@ export const NavItem: React.FC<NavItemProps> = ({
             )}
             <span className="truncate">{node.label}</span>
             {node.badge && (
-              <span
-                className="ml-auto px-1.5 py-0.5 text-[10px] font-medium rounded-full"
-                style={{
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'white',
-                }}
-              >
+              <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-primary text-primary-foreground">
                 {node.badge}
               </span>
             )}
@@ -123,7 +140,11 @@ export const NavItem: React.FC<NavItemProps> = ({
 
         {/* Children */}
         {(isExpanded || collapsed) && hasChildren && (
-          <div className={collapsed ? 'space-y-1 mt-1' : 'space-y-0.5 mt-1'}>
+          <div
+            id={`nav-group-${node.key}`}
+            className={collapsed ? 'space-y-1 mt-1' : 'space-y-0.5 mt-1'}
+            role="list"
+          >
             {node.children!.map((child) => (
               <NavItem
                 key={child.key}
@@ -140,37 +161,37 @@ export const NavItem: React.FC<NavItemProps> = ({
     );
   }
 
-  // Regular nav item - use div to avoid nested button issue with favorite star
+  // Regular nav item
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleClick();
-        }
-      }}
+      onKeyDown={handleKeyDown}
       onMouseEnter={() => setShowFavorite(true)}
       onMouseLeave={() => setShowFavorite(false)}
       title={collapsed ? node.label : undefined}
-      className={`
-        w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 cursor-pointer
-        ${isActive
-          ? 'bg-primary-50 text-primary-700 shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-        }
-        ${collapsed ? 'justify-center' : ''}
-      `}
-      style={{
-        paddingLeft: collapsed ? undefined : paddingLeft,
-      }}
+      className={cn(
+        'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 cursor-pointer min-h-[44px]',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary',
+        'hover:bg-muted',
+        collapsed ? 'justify-center' : '',
+        isActive ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground',
+        !collapsed && depth === 1 && 'pl-6',
+        !collapsed && depth === 2 && 'pl-9',
+        !collapsed && depth >= 3 && 'pl-12'
+      )}
+      aria-current={isActive ? 'page' : undefined}
+      aria-expanded={hasChildren ? isExpanded : undefined}
     >
       {/* Icon */}
       {node.icon && (
         <span
-          className={`flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-slate-400'}`}
+          className={cn(
+            'flex-shrink-0',
+            isActive ? 'text-primary' : 'text-muted-foreground'
+          )}
+          aria-hidden="true"
         >
           <Icon name={node.icon} className="h-5 w-5" />
         </span>
@@ -183,13 +204,7 @@ export const NavItem: React.FC<NavItemProps> = ({
 
           {/* Badge */}
           {node.badge && (
-            <span
-              className="px-1.5 py-0.5 text-[10px] font-medium rounded-full"
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-                color: 'white',
-              }}
-            >
+            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-primary text-primary-foreground">
               {node.badge}
             </span>
           )}
@@ -198,13 +213,13 @@ export const NavItem: React.FC<NavItemProps> = ({
           {onToggleFavorite && node.moduleKey && (showFavorite || node.isFavorite) && (
             <button
               onClick={handleFavoriteClick}
-              className={`
-                flex-shrink-0 p-0.5 rounded transition-colors
-                ${node.isFavorite
-                  ? 'text-amber-500 hover:text-amber-600'
-                  : 'text-slate-300 hover:text-slate-400'
-                }
-              `}
+              onKeyDown={handleFavoriteKeyDown}
+              className={cn(
+                'flex-shrink-0 p-1 rounded transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center',
+                node.isFavorite ? 'text-warning-text' : 'text-muted-foreground'
+              )}
+              aria-label={node.isFavorite ? `Remove ${node.label} from favorites` : `Add ${node.label} to favorites`}
+              aria-pressed={node.isFavorite}
             >
               <Star
                 className="h-4 w-4"
@@ -215,7 +230,7 @@ export const NavItem: React.FC<NavItemProps> = ({
 
           {/* Expand/collapse for items with children */}
           {hasChildren && (
-            <span className="flex-shrink-0 text-slate-400">
+            <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (

@@ -100,7 +100,7 @@ export const CollectionWizard: React.FC = () => {
         isVersioned: data.isVersioned,
         storageTable: data.storageTable || `u_${data.code}`,
       };
-      
+
       const response = await metadataApi.post('/collections', payload);
       navigate(`/studio/collections/${response.data.id}`);
     } catch (error) {
@@ -114,7 +114,7 @@ export const CollectionWizard: React.FC = () => {
 
   const StepIndicator = () => (
     <div className="flex items-center justify-between px-12 mb-8 relative">
-      <div className="absolute top-1/2 left-12 right-12 h-0.5 -z-10" style={{ backgroundColor: 'var(--border-default)' }} />
+      <div className="absolute top-1/2 left-12 right-12 h-0.5 -z-10 bg-border" />
 
       {(['source', 'identity', 'options'] as Step[]).map((s, idx) => {
         const isActive = s === step;
@@ -123,20 +123,20 @@ export const CollectionWizard: React.FC = () => {
             (step === 'options' && idx <= 1);
 
         return (
-          <div key={s} className="flex flex-col items-center px-2" style={{ backgroundColor: 'var(--bg-surface)' }}>
+          <div key={s} className="flex flex-col items-center px-2 bg-card">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center border-2 mb-2 transition-colors"
-              style={{
-                borderColor: isActive || isCompleted ? 'var(--color-primary-500)' : 'var(--border-default)',
-                backgroundColor: isActive || isCompleted ? 'var(--bg-primary-subtle)' : 'transparent',
-                color: isActive || isCompleted ? 'var(--color-primary-500)' : 'var(--text-muted)'
-              }}
+              className={`w-8 h-8 rounded-full flex items-center justify-center border-2 mb-2 transition-colors ${
+                isActive || isCompleted
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-transparent text-muted-foreground'
+              }`}
             >
               {isCompleted ? <Check className="h-4 w-4" /> : idx + 1}
             </div>
             <span
-              className="text-xs font-medium"
-              style={{ color: isActive ? 'var(--color-primary-500)' : 'var(--text-secondary)' }}
+              className={`text-xs font-medium ${
+                isActive ? 'text-primary' : 'text-muted-foreground'
+              }`}
             >
               {s.charAt(0).toUpperCase() + s.slice(1)}
             </span>
@@ -149,26 +149,18 @@ export const CollectionWizard: React.FC = () => {
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-64px)] p-6">
       <div
-        className="w-full max-w-4xl rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)'
-        }}
+        className="w-full max-w-4xl rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] bg-card border border-border"
       >
         {/* Header */}
         <div
-          className="p-6 flex items-center justify-between"
-          style={{ borderBottom: '1px solid var(--border-default)' }}
+          className="p-6 flex items-center justify-between border-b border-border"
         >
-            <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="text-xl font-semibold text-foreground">
                 Create New Collection
             </h1>
             <button
-              onClick={() => navigate('/studio/collections')}
-              className="transition-colors"
-              style={{ color: 'var(--text-muted)' }}
-              onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+              onClick={() => navigate('/collections.list')}
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
                 <X className="h-5 w-5" />
             </button>
@@ -180,48 +172,48 @@ export const CollectionWizard: React.FC = () => {
 
             {step === 'source' && (
                 <div className="space-y-4 max-w-2xl mx-auto">
-                    <h2 className="text-lg font-medium text-center mb-6" style={{ color: 'var(--text-primary)' }}>How would you like to create your collection?</h2>
+                    <h2 className="text-lg font-medium text-center mb-6 text-foreground">How would you like to create your collection?</h2>
 
                     <button
                         onClick={() => { updateData({ sourceType: 'scratch' }); setStep('identity'); }}
                         className="card-interactive w-full flex items-center p-4 rounded-xl text-left group"
                     >
-                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4" style={{ backgroundColor: 'var(--bg-primary-subtle)' }}>
-                            <Layout className="h-6 w-6" style={{ color: 'var(--text-brand)' }} />
+                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4 bg-primary/10">
+                            <Layout className="h-6 w-6 text-primary" />
                         </div>
                         <div>
-                            <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Start from scratch</h3>
-                            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Define your collection structure manually</p>
+                            <h3 className="font-semibold text-foreground">Start from scratch</h3>
+                            <p className="text-sm text-muted-foreground">Define your collection structure manually</p>
                         </div>
-                        <ArrowRight className="ml-auto h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                        <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground" />
                     </button>
 
                     <button
                          className="card-interactive w-full flex items-center p-4 rounded-xl text-left group"
                          onClick={() => alert("File import coming soon!")}
                     >
-                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4" style={{ backgroundColor: 'var(--bg-success-subtle)' }}>
-                            <Upload className="h-6 w-6" style={{ color: 'var(--text-success)' }} />
+                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4 bg-success-subtle">
+                            <Upload className="h-6 w-6 text-success-text" />
                         </div>
                         <div>
-                            <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Import from file</h3>
-                            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Upload CSV, Excel, or JSON</p>
+                            <h3 className="font-semibold text-foreground">Import from file</h3>
+                            <p className="text-sm text-muted-foreground">Upload CSV, Excel, or JSON</p>
                         </div>
-                        <ArrowRight className="ml-auto h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                        <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground" />
                     </button>
 
                      <button
                          className="card-interactive w-full flex items-center p-4 rounded-xl text-left group"
                          onClick={() => { updateData({ sourceType: 'ava' }); setStep('identity'); }}
                     >
-                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4" style={{ backgroundColor: 'var(--bg-accent-subtle)' }}>
-                            <MessageSquare className="h-6 w-6" style={{ color: 'var(--text-accent)' }} />
+                        <div className="h-12 w-12 rounded-lg flex items-center justify-center mr-4 bg-accent/10">
+                            <MessageSquare className="h-6 w-6 text-accent-foreground" />
                         </div>
                         <div>
-                            <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Ask AVA</h3>
-                            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Describe what you want to track</p>
+                            <h3 className="font-semibold text-foreground">Ask AVA</h3>
+                            <p className="text-sm text-muted-foreground">Describe what you want to track</p>
                         </div>
-                        <ArrowRight className="ml-auto h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                        <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground" />
                     </button>
                 </div>
             )}
@@ -259,7 +251,7 @@ export const CollectionWizard: React.FC = () => {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Description</label>
+                            <label className="block text-sm font-medium mb-1.5 text-foreground">Description</label>
                             <textarea
                                 className="input w-full resize-none"
                                 rows={3}
@@ -286,13 +278,10 @@ export const CollectionWizard: React.FC = () => {
 
             {step === 'options' && (
                 <div className="max-w-2xl mx-auto space-y-6">
-                    <h3 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>Collection Behavior</h3>
+                    <h3 className="text-lg font-medium text-foreground">Collection Behavior</h3>
 
                      <label
-                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors"
-                       style={{ border: '1px solid var(--border-default)' }}
-                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors border border-border hover:bg-muted"
                      >
                         <input
                             type="checkbox"
@@ -301,19 +290,16 @@ export const CollectionWizard: React.FC = () => {
                             onChange={(e) => updateData({ isExtensible: e.target.checked })}
                         />
                         <div>
-                            <div className="font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                                <Layers className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                            <div className="font-medium flex items-center gap-2 text-foreground">
+                                <Layers className="h-4 w-4 text-muted-foreground" />
                                 Extensible
                             </div>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Allow admins to add custom properties to this collection.</p>
+                            <p className="text-sm mt-1 text-muted-foreground">Allow admins to add custom properties to this collection.</p>
                         </div>
                     </label>
 
                     <label
-                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors"
-                       style={{ border: '1px solid var(--border-default)' }}
-                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors border border-border hover:bg-muted"
                     >
                         <input
                             type="checkbox"
@@ -322,19 +308,16 @@ export const CollectionWizard: React.FC = () => {
                             onChange={(e) => updateData({ isAudited: e.target.checked })}
                         />
                         <div>
-                            <div className="font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                                <Shield className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                            <div className="font-medium flex items-center gap-2 text-foreground">
+                                <Shield className="h-4 w-4 text-muted-foreground" />
                                 Audited
                             </div>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Track all record changes in the compliance audit log. (Recommended)</p>
+                            <p className="text-sm mt-1 text-muted-foreground">Track all record changes in the compliance audit log. (Recommended)</p>
                         </div>
                     </label>
 
                     <label
-                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors"
-                       style={{ border: '1px solid var(--border-default)' }}
-                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                       className="flex items-start gap-4 p-4 rounded-lg cursor-pointer transition-colors border border-border hover:bg-muted"
                     >
                         <input
                             type="checkbox"
@@ -343,28 +326,28 @@ export const CollectionWizard: React.FC = () => {
                             onChange={(e) => updateData({ isVersioned: e.target.checked })}
                         />
                         <div>
-                            <div className="font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                                <History className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                            <div className="font-medium flex items-center gap-2 text-foreground">
+                                <History className="h-4 w-4 text-muted-foreground" />
                                 Versioned
                             </div>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Keep full history of record changes. Used for timeline views and rollback.</p>
+                            <p className="text-sm mt-1 text-muted-foreground">Keep full history of record changes. Used for timeline views and rollback.</p>
                         </div>
                     </label>
 
-                    <div className="pt-6 mt-6" style={{ borderTop: '1px solid var(--border-default)' }}>
-                        <h4 className="font-medium mb-4" style={{ color: 'var(--text-primary)' }}>Summary</h4>
-                        <div className="rounded-lg p-4 text-sm space-y-2" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+                    <div className="pt-6 mt-6 border-t border-border">
+                        <h4 className="font-medium mb-4 text-foreground">Summary</h4>
+                        <div className="rounded-lg p-4 text-sm space-y-2 bg-muted">
                             <div className="flex justify-between">
-                                <span style={{ color: 'var(--text-secondary)' }}>Name:</span>
-                                <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{data.name}</span>
+                                <span className="text-muted-foreground">Name:</span>
+                                <span className="font-medium text-foreground">{data.name}</span>
                             </div>
                              <div className="flex justify-between">
-                                <span style={{ color: 'var(--text-secondary)' }}>Code:</span>
-                                <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{data.code}</span>
+                                <span className="text-muted-foreground">Code:</span>
+                                <span className="font-mono text-foreground">{data.code}</span>
                             </div>
                              <div className="flex justify-between">
-                                <span style={{ color: 'var(--text-secondary)' }}>Storage:</span>
-                                <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{data.storageTable || `u_${data.code}`}</span>
+                                <span className="text-muted-foreground">Storage:</span>
+                                <span className="font-mono text-foreground">{data.storageTable || `u_${data.code}`}</span>
                             </div>
                         </div>
                     </div>
@@ -374,11 +357,7 @@ export const CollectionWizard: React.FC = () => {
 
         {/* Footer */}
         <div
-          className="p-6 flex justify-between"
-          style={{
-            borderTop: '1px solid var(--border-default)',
-            backgroundColor: 'var(--bg-surface-secondary)'
-          }}
+          className="p-6 flex justify-between border-t border-border bg-muted"
         >
             {step !== 'source' ? (
                 <Button variant="ghost" onClick={() => setStep(step === 'options' ? 'identity' : 'source')}>

@@ -13,13 +13,32 @@ const DATA_TYPE_MAP: Record<string, {
   // Text types
   'text': { pgType: 'VARCHAR(255)' },
   'long_text': { pgType: 'TEXT' },
+  'longtext': { pgType: 'TEXT' },
   'rich_text': { pgType: 'TEXT' },
+  'rich-text': { pgType: 'TEXT' },
+  'email': { pgType: 'VARCHAR(255)' },
+  'phone': { pgType: 'VARCHAR(50)' },
+  'url': { pgType: 'VARCHAR(2048)' },
+  'ip_address': { pgType: 'VARCHAR(64)' },
+  'mac_address': { pgType: 'VARCHAR(64)' },
+  'color': { pgType: 'VARCHAR(64)' },
+  'password_hashed': { pgType: 'TEXT' },
+  'secret_encrypted': { pgType: 'TEXT' },
+  'domain_scope': { pgType: 'VARCHAR(255)' },
+  'translated_string': { pgType: 'TEXT' },
+  'translated_rich_text': { pgType: 'TEXT' },
 
   // Numeric types
   'number': { pgType: 'NUMERIC' },
   'integer': { pgType: 'INTEGER' },
   'decimal': { pgType: 'NUMERIC(19,4)' },
   'currency': { pgType: 'NUMERIC(19,4)' },
+  'percent': { pgType: 'NUMERIC(9,4)' },
+  'percentage': { pgType: 'NUMERIC(9,4)' },
+  'auto_number': { pgType: 'NUMERIC' },
+  'long': { pgType: 'NUMERIC' },
+  'float': { pgType: 'NUMERIC' },
+  'double': { pgType: 'NUMERIC' },
 
   // Boolean
   'boolean': { pgType: 'BOOLEAN', defaultConstraints: 'DEFAULT false' },
@@ -28,26 +47,47 @@ const DATA_TYPE_MAP: Record<string, {
   'date': { pgType: 'DATE' },
   'datetime': { pgType: 'TIMESTAMPTZ' },
   'time': { pgType: 'TIME' },
+  'duration': { pgType: 'INTERVAL' },
 
   // Reference types
   'reference': { pgType: 'UUID' },
+  'user': { pgType: 'UUID' },
+  'group': { pgType: 'UUID' },
+  'hierarchical': { pgType: 'UUID' },
+  'user_reference': { pgType: 'UUID' },
+  'group_reference': { pgType: 'UUID' },
+  'location_reference': { pgType: 'UUID' },
   'multi_reference': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'multi-reference': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'multi_user': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'multi-user': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
 
   // Choice types
   'choice': { pgType: 'VARCHAR(100)' },
   'multi_choice': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'multi-choice': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'tags': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
 
   // Complex types
   'attachment': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'file': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'image': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'audio': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
+  'video': { pgType: 'JSONB', defaultConstraints: "DEFAULT '[]'::jsonb" },
   'json': { pgType: 'JSONB' },
-
-  // Specialized string types
-  'email': { pgType: 'VARCHAR(255)' },
-  'phone': { pgType: 'VARCHAR(50)' },
-  'url': { pgType: 'VARCHAR(2048)' },
+  'key_value': { pgType: 'JSONB' },
+  'condition': { pgType: 'JSONB' },
+  'geolocation': { pgType: 'JSONB' },
+  'geo_point': { pgType: 'JSONB' },
+  'formula': { pgType: 'TEXT' },
+  'rollup': { pgType: 'TEXT' },
+  'lookup': { pgType: 'TEXT' },
+  'process_flow_stage': { pgType: 'TEXT' },
+  'script_ref': { pgType: 'TEXT' },
 
   // Identifier type
   'uuid': { pgType: 'UUID' },
+  'guid': { pgType: 'UUID' },
 };
 
 /**

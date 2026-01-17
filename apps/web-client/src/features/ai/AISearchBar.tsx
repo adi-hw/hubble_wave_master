@@ -162,8 +162,8 @@ export function AISearchBar({
     <div ref={containerRef} className={cn('relative', className)}>
       <div className="relative">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-          <Sparkles className="w-4 h-4 text-indigo-500" />
-          <Search className="w-4 h-4 text-slate-400" />
+          <Sparkles className="w-4 h-4 text-primary" />
+          <Search className="w-4 h-4 text-muted-foreground" />
         </div>
         <input
           ref={inputRef}
@@ -178,16 +178,16 @@ export function AISearchBar({
           placeholder={placeholder}
           className={cn(
             'w-full pl-14 pr-10 py-2.5 rounded-xl',
-            'bg-slate-100 dark:bg-slate-800',
+            'bg-input',
             'border border-transparent',
-            'focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20',
-            'text-slate-900 dark:text-white placeholder:text-slate-500',
+            'focus:border-primary focus:ring-2 focus:ring-primary/20',
+            'text-foreground placeholder:text-muted-foreground',
             'outline-none transition-all'
           )}
         />
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
           </div>
         )}
         {query && !isLoading && (
@@ -196,7 +196,7 @@ export function AISearchBar({
               setQuery('');
               setResults([]);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             <X className="w-4 h-4" />
           </button>
@@ -208,8 +208,8 @@ export function AISearchBar({
         <div
           className={cn(
             'absolute top-full left-0 right-0 mt-2 z-50',
-            'bg-white dark:bg-slate-900 rounded-xl shadow-xl',
-            'border border-slate-200 dark:border-slate-700',
+            'bg-popover rounded-xl shadow-xl',
+            'border border-border',
             'max-h-[400px] overflow-y-auto'
           )}
         >
@@ -223,24 +223,24 @@ export function AISearchBar({
                     onClick={() => handleResultClick(result)}
                     className={cn(
                       'w-full px-4 py-3 flex items-start gap-3 text-left',
-                      'hover:bg-slate-50 dark:hover:bg-slate-800',
+                      'hover:bg-hover',
                       'transition-colors',
-                      index === selectedIndex && 'bg-slate-50 dark:bg-slate-800'
+                      index === selectedIndex && 'bg-hover'
                     )}
                   >
-                    <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <div className="flex-shrink-0 w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <Icon className="w-4 h-4 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-slate-900 dark:text-white truncate">
+                        <p className="font-medium text-foreground truncate">
                           {getTitle(result)}
                         </p>
-                        <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-500">
+                        <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-muted rounded text-muted-foreground">
                           {sourceTypeLabels[result.sourceType] || result.sourceType}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                      <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
                         {result.content}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
@@ -248,23 +248,23 @@ export function AISearchBar({
                           className={cn(
                             'text-xs',
                             result.similarity > 0.8
-                              ? 'text-green-600'
+                              ? 'text-success-text'
                               : result.similarity > 0.6
-                              ? 'text-amber-600'
-                              : 'text-slate-500'
+                              ? 'text-warning-text'
+                              : 'text-muted-foreground'
                           )}
                         >
                           {Math.round(result.similarity * 100)}% match
                         </span>
                       </div>
                     </div>
-                    <ArrowRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
+                    <ArrowRight className="flex-shrink-0 w-4 h-4 text-muted-foreground" />
                   </button>
                 );
               })}
             </div>
           ) : query.trim() && !isLoading ? (
-            <div className="px-4 py-8 text-center text-slate-500">
+            <div className="px-4 py-8 text-center text-muted-foreground">
               <p>No results found for "{query}"</p>
               <p className="text-sm mt-1">
                 Try a different search term or ask the AI assistant

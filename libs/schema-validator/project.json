@@ -1,0 +1,8 @@
+{
+  "name": "schema-validator",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/schema-validator/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {}
+}

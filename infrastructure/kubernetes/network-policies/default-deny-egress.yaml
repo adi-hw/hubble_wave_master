@@ -1,0 +1,120 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: default-deny-egress
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/canon-reference: "Section 9: Authorization Is Centralized"
+    hubblewave.io/policy-intent: "Default deny ensures all egress must be explicitly allowed"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: allow-dns-egress
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/policy-intent: "All pods require DNS resolution for service discovery"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-cluster-egress
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: allow-internal-cluster-egress
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/policy-intent: "Baseline internal communication for all HubbleWave services"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # Allow communication within the hubblewave namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: hubblewave
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9093
+
+    # Allow communication to monitoring namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 3000
+
+    # Allow communication to service mesh control plane
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15014
+        - protocol: TCP
+          port: 443
+
+    # Allow Envoy sidecar communication
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 15001
+        - protocol: TCP
+          port: 15006
+        - protocol: TCP
+          port: 15090

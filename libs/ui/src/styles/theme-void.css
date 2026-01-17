@@ -1,0 +1,162 @@
+/**
+ * HubbleWave "Void" Theme (2070 Generation)
+ * 
+ * Unifies Design Tokens + Grid Tokens + Motion Tokens into a single source of truth.
+ * 
+ * Aesthetic Principles:
+ * 1. VOID: True black (#030303) backgrounds.
+ * 2. LUMINESCENCE: Glowing borders and text.
+ * 3. GLASS: Strong blur filters with noise.
+ */
+
+/* ============================================
+   BASE PALETTE (Static)
+   ============================================ */
+:root {
+  /* --- Primary: Indigo (Hubble Deep Space) --- */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary-950: #1e1b4b;
+
+  /* --- Accent: Cyan (AVA Intelligence) --- */
+  --color-accent-50: #ecfeff;
+  --color-accent-100: #cffafe;
+  --color-accent-200: #a5f3fc;
+  --color-accent-300: #67e8f9;
+  --color-accent-400: #22d3ee;
+  --color-accent-500: #06b6d4;
+  --color-accent-600: #0891b2;
+  --color-accent-700: #0e7490;
+  --color-accent-800: #155e75;
+  --color-accent-900: #164e63;
+  --color-accent-950: #083344;
+
+  /* --- Neutral: Cool Void Grays --- */
+  --color-void-pure: #030303;
+  --color-void-deep: #0a0a0f;
+  
+  --color-neutral-25: #fdfdfd; 
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
+
+  /* --- Status Colors --- */
+  --color-success-400: #4ade80;
+  --color-success-500: #22c55e;
+  --color-warning-400: #fbbf24;
+  --color-warning-500: #f59e0b;
+  --color-danger-400: #f87171;
+  --color-danger-500: #ef4444;
+  --color-info-400: #60a5fa;
+  --color-info-500: #3b82f6;
+}
+
+/* ============================================
+   THEME SEMANTICS (Dark by default for HubbleWave)
+   ============================================ */
+
+/* Default to Dark Mode (The "Void") */
+:root {
+  color-scheme: dark;
+
+  /* --- Backgrounds --- */
+  --bg-base: var(--color-void-pure); /* The Void */
+  --bg-surface: var(--color-void-deep);
+  --bg-surface-secondary: #12121a;
+  --bg-surface-tertiary: #1a1a24;
+  --bg-elevated: #181820;
+  --bg-sunken: #000000;
+  
+  /* Glass Backgrounds */
+  --glass-bg: rgba(255, 255, 255, 0.02);
+  --glass-bg-hover: rgba(255, 255, 255, 0.04);
+  --glass-bg-active: rgba(255, 255, 255, 0.06);
+  --glass-border: #27272a; /* Solid Zinc-800 (No more white alpha) */
+  --glass-border-hover: #3f3f46; /* Solid Zinc-700 */
+  --glass-backdrop-blur: 16px;
+
+  /* --- Borders (Darkened for better blend) --- */
+  --border-default: #18181b; /* Zinc 900 (Was Zinc 800) */
+  --border-subtle: #18181b; /* Zinc 900 */
+  --border-strong: #27272a; /* Zinc 800 (Was Zinc 700) */
+  --border-hover: #3f3f46;
+  --border-focus: var(--color-primary-500);
+
+  /* --- Text --- */
+  --text-primary: #f4f4f5; /* Zinc-100 (Softer than #fcfcfc) */
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-muted: #52525b;
+  --text-brand: var(--color-primary-400);
+  
+  /* --- Shadows & Glows --- */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  
+  --shadow-glow-primary: 0 0 20px rgba(99, 102, 241, 0.15);
+  --shadow-glow-accent: 0 0 20px rgba(6, 182, 212, 0.15);
+
+  /* --- Grid Specific Tokens (Consolidated) --- */
+  --grid-bg: var(--bg-surface);
+  --grid-header-bg: var(--bg-surface-secondary);
+  --grid-pinned-header-bg: var(--bg-surface-secondary);
+  --grid-row-hover-bg: var(--glass-bg-hover);
+  --grid-row-selected-bg: rgba(99, 102, 241, 0.12);
+  --grid-border: var(--border-default);
+  --grid-cell-border: var(--border-subtle);
+  --grid-resize-handle: var(--color-primary-500);
+
+  /* --- Layout --- */
+  --header-height: 64px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+
+  /* --- Typography --- */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', var(--font-sans);
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* --- Gradients (Missing previously) --- */
+  --gradient-brand: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-500));
+  --gradient-brand-hover: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-600));
+  --gradient-brand-subtle: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(99, 102, 241, 0.05));
+  
+  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+  --gradient-glow: radial-gradient(circle at center, rgba(99, 102, 241, 0.15), transparent 70%);
+}
+
+/* Light Mode Override (maintained for compatibility, but de-emphasized) */
+.light {
+  color-scheme: light;
+  --bg-base: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-surface-secondary: #f4f4f5;
+  --bg-elevated: #ffffff;
+  
+  --glass-bg: rgba(0, 0, 0, 0.03);
+  --glass-bg-hover: rgba(0, 0, 0, 0.06);
+  --glass-border: rgba(0, 0, 0, 0.08);
+
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  
+  --grid-bg: #ffffff;
+  --grid-header-bg: #f4f4f5;
+}

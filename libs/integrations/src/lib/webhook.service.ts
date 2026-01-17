@@ -9,13 +9,13 @@ export interface WebhookConfig {
   signatureHeader?: string;
   signatureAlgorithm?: 'sha256' | 'sha1' | 'md5';
   events: string[];
-  targetType: 'workflow' | 'script' | 'record_operation' | 'custom';
+  targetType: 'process_flow' | 'script' | 'record_operation' | 'custom';
   targetConfig: {
-    workflowCode?: string;
+    processFlowCode?: string;
     scriptCode?: string;
     collectionCode?: string;
     operation?: 'create' | 'update' | 'upsert';
-    fieldMapping?: Record<string, string>;
+    propertyMapping?: Record<string, string>;
     handler?: (payload: WebhookPayload) => Promise<WebhookResponse>;
   };
   isActive: boolean;
@@ -166,8 +166,8 @@ export class WebhookService {
       let response: WebhookResponse;
 
       switch (config.targetType) {
-        case 'workflow':
-          response = await this.triggerWorkflow(payload, config);
+        case 'process_flow':
+          response = await this.triggerProcessFlow(payload, config);
           break;
 
         case 'script':
@@ -317,18 +317,18 @@ export class WebhookService {
   }
 
   /**
-   * Trigger a workflow
+   * Trigger a process flow
    */
-  private async triggerWorkflow(
+  private async triggerProcessFlow(
     payload: WebhookPayload,
     config: WebhookConfig
   ): Promise<WebhookResponse> {
-    if (!config.targetConfig.workflowCode) {
-      return { success: false, statusCode: 400, message: 'No workflow code configured' };
+    if (!config.targetConfig.processFlowCode) {
+      return { success: false, statusCode: 400, message: 'No process flow code configured' };
     }
 
-    this.eventEmitter.emit('workflow.trigger', {
-      workflowCode: config.targetConfig.workflowCode,
+    this.eventEmitter.emit('processFlow.trigger', {
+      processFlowCode: config.targetConfig.processFlowCode,
       input: {
         webhookPayload: payload.body,
         webhookEvent: payload.event,
@@ -340,7 +340,7 @@ export class WebhookService {
     return {
       success: true,
       statusCode: 202,
-      message: 'Workflow triggered',
+      message: 'Process flow triggered',
     };
   }
 
@@ -383,19 +383,19 @@ export class WebhookService {
     payload: WebhookPayload,
     config: WebhookConfig
   ): Promise<WebhookResponse> {
-    const { collectionCode, operation, fieldMapping } = config.targetConfig;
+    const { collectionCode, operation, propertyMapping } = config.targetConfig;
 
     if (!collectionCode || !operation) {
       return { success: false, statusCode: 400, message: 'Missing collection or operation' };
     }
 
-    // Map fields from payload to record
-    const record = this.mapFields(payload.body, fieldMapping || {});
+    // Map properties from payload to record
+    const record = this.mapProperties(payload.body, propertyMapping || {});
 
     return new Promise((resolve) => {
       this.eventEmitter.emit('record.operation', {
         operation,
-        tableName: collectionCode,
+        collectionCode,
         data: record,
         callback: (error: Error | null, result: unknown) => {
           if (error) {
@@ -414,9 +414,9 @@ export class WebhookService {
   }
 
   /**
-   * Map fields from source to target
+   * Map properties from source to target
    */
-  private mapFields(
+  private mapProperties(
     source: unknown,
     mapping: Record<string, string>
   ): Record<string, unknown> {
@@ -429,8 +429,8 @@ export class WebhookService {
     const sourceObj = source as Record<string, unknown>;
 
     // Apply explicit mapping
-    for (const [targetField, sourcePath] of Object.entries(mapping)) {
-      result[targetField] = this.getNestedValue(sourceObj, sourcePath);
+    for (const [targetProperty, sourcePath] of Object.entries(mapping)) {
+      result[targetProperty] = this.getNestedValue(sourceObj, sourcePath);
     }
 
     // If no mapping, use source directly
@@ -472,7 +472,7 @@ export class WebhookService {
   }
 
   /**
-   * Generate webhook URL for a tenant
+   * Generate webhook URL for an instance
    */
   generateWebhookUrl(webhookId: string, baseUrl: string): string {
     return `${baseUrl}/api/webhooks/${webhookId}`;

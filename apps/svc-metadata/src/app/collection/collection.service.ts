@@ -18,10 +18,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, QueryRunner, DataSource } from 'typeorm';
+import { Repository, QueryRunner, DataSource, IsNull, Not } from 'typeorm';
 import {
   CollectionDefinition,
   PropertyDefinition,
+  PropertyType,
+  AuditLog,
 } from '@hubblewave/instance-db';
 import { CollectionStorageService } from './collection-storage.service';
 import { CollectionAvaService } from './collection-ava.service';
@@ -62,7 +64,7 @@ export interface CreateCollectionDto {
   /** Whether this is a system collection (default: false) */
   isSystem?: boolean;
 
-  /** Whether tenant admins can add custom properties (default: true) */
+  /** Whether instance admins can add custom properties (default: true) */
   isExtensible?: boolean;
 
   /** Whether to track all changes in audit log (default: true) */
@@ -145,7 +147,7 @@ export interface CollectionQueryOptions {
   search?: string;
 
   /** Sort field */
-  sortBy?: 'label' | 'code' | 'createdAt' | 'updatedAt';
+  sortBy?: 'label' | 'code' | 'ownerType' | 'category' | 'tableName' | 'createdAt' | 'updatedAt';
 
   /** Sort order */
   sortOrder?: 'asc' | 'desc';
@@ -187,6 +189,8 @@ export class CollectionService {
     private readonly collectionRepo: Repository<CollectionDefinition>,
     @InjectRepository(PropertyDefinition)
     private readonly propertyRepo: Repository<PropertyDefinition>,
+    @InjectRepository(PropertyType)
+    private readonly propertyTypeRepo: Repository<PropertyType>,
     private readonly dataSource: DataSource,
     private readonly storageService: CollectionStorageService,
     private readonly avaService: CollectionAvaService
@@ -232,6 +236,12 @@ export class CollectionService {
       qb.andWhere(
         '(c.name ILIKE :search OR c.code ILIKE :search OR c.description ILIKE :search)',
         { search: `%${options.search}%` }
+      );
+    }
+    if (options.status) {
+      qb.andWhere(
+        "COALESCE(c.metadata->>'status','published') = :status",
+        { status: options.status }
       );
     }
 
@@ -350,6 +360,8 @@ export class CollectionService {
   async getCollectionProperties(collectionId: string) {
     return this.propertyRepo.find({
       where: { collectionId },
+      relations: ['propertyType'],
+      order: { position: 'ASC' },
     });
   }
 
@@ -370,14 +382,104 @@ export class CollectionService {
    * Get all property types
    */
   async getPropertyTypes() {
-    return [];
+    const types = await this.propertyTypeRepo.find({
+      order: { category: 'ASC', name: 'ASC' },
+    });
+
+    return types.map((type) => ({
+      id: type.id,
+      code: type.code,
+      name: type.name,
+      category: type.category,
+      description: type.description,
+      baseType: type.baseType,
+      defaultConfig: type.defaultConfig,
+      validationRules: type.validationRules,
+      defaultWidget: type.defaultWidget,
+      icon: type.icon,
+      isSystem: type.isSystem,
+      createdAt: type.createdAt,
+    }));
   }
 
   /**
    * Get relationships for a collection
    */
   async getCollectionRelationships(_collectionId: string) {
-    return { outgoing: [], incoming: [] };
+    const collection = await this.collectionRepo.findOne({
+      where: { id: _collectionId },
+    });
+
+    if (!collection) {
+      throw new NotFoundException(`Collection ${_collectionId} not found`);
+    }
+
+    const outgoingProps = await this.propertyRepo.find({
+      where: {
+        collectionId: _collectionId,
+        referenceCollectionId: Not(IsNull()),
+      },
+      relations: ['referenceCollection', 'propertyType'],
+    });
+
+    const incomingProps = await this.propertyRepo.find({
+      where: {
+        referenceCollectionId: _collectionId,
+      },
+      relations: ['collection', 'propertyType'],
+    });
+
+    const outgoing = outgoingProps
+      .filter((prop) => !!prop.referenceCollectionId)
+      .map((prop) => {
+        const targetCollection = prop.referenceCollection;
+        const targetId = prop.referenceCollectionId as string;
+
+        return {
+          id: `rel_${prop.id}`,
+          name: `${collection.code}_${prop.code}_to_${targetCollection?.code ?? targetId}`,
+          sourceCollection: _collectionId,
+          sourceProperty: prop.code,
+          targetCollection: targetId,
+          targetProperty: prop.referenceDisplayProperty || 'id',
+          type: this.getRelationshipType(prop.propertyType?.code, prop.isUnique),
+          required: prop.isRequired,
+          cascadeDelete: false,
+        };
+      });
+
+    const incoming = incomingProps.map((prop) => {
+      const sourceCollection = prop.collection;
+      const sourceId = prop.collectionId;
+
+      return {
+        id: `rel_${prop.id}`,
+        name: `${sourceCollection?.code ?? sourceId}_${prop.code}_to_${collection.code}`,
+        sourceCollection: sourceId,
+        sourceProperty: prop.code,
+        targetCollection: _collectionId,
+        targetProperty: prop.referenceDisplayProperty || 'id',
+        type: this.getRelationshipType(prop.propertyType?.code, prop.isUnique),
+        required: prop.isRequired,
+        cascadeDelete: false,
+      };
+    });
+
+    return { outgoing, incoming };
+  }
+
+  private getRelationshipType(
+    propertyType?: string,
+    isUnique?: boolean,
+  ): 'one_to_one' | 'one_to_many' | 'many_to_many' {
+    const normalized = (propertyType || '').toLowerCase();
+    if (normalized.includes('multi') || normalized === 'multi-reference') {
+      return 'many_to_many';
+    }
+    if (isUnique) {
+      return 'one_to_one';
+    }
+    return 'one_to_many';
   }
 
   // --------------------------------------------------------------------------
@@ -451,7 +553,7 @@ export class CollectionService {
         defaultAccess: 'read',
         createdBy: userId,
         updatedBy: userId,
-        metadata: dto.metadata || {},
+        metadata: this.mergeMetadata(dto.metadata, 'draft'),
       });
 
       const savedCollection = await queryRunner.manager.save(CollectionDefinition, collection);
@@ -517,6 +619,12 @@ export class CollectionService {
       if (!collection) {
         throw new NotFoundException(`Collection ${collectionId} not found`);
       }
+      const currentStatus = this.getMetadataStatus(collection.metadata);
+      const requestedStatus = (dto.metadata as { status?: string } | undefined)?.status;
+      const targetStatus = this.normalizeStatus(requestedStatus) || currentStatus;
+      if (currentStatus === 'published' && targetStatus !== 'draft') {
+        throw new ConflictException('Published collections are immutable');
+      }
 
       // System collections have restricted modifications
       if (collection.isSystem) {
@@ -539,7 +647,15 @@ export class CollectionService {
       for (const [key, value] of Object.entries(dto)) {
         if (value !== undefined && (collection as unknown as Record<string, unknown>)[key] !== value) {
           changedFields.push(key);
-          (collection as unknown as Record<string, unknown>)[key] = value;
+          if (key === 'metadata') {
+            (collection as unknown as Record<string, unknown>)[key] = this.mergeMetadata(
+              value as Record<string, unknown>,
+              targetStatus,
+              collection.metadata,
+            );
+          } else {
+            (collection as unknown as Record<string, unknown>)[key] = value;
+          }
         }
       }
 
@@ -657,9 +773,57 @@ export class CollectionService {
     _userId?: string,
     _context?: { ipAddress?: string; userAgent?: string }
   ): Promise<CollectionDefinition> {
-    // Publishing status tracking disabled; return collection as-is
-    const collection = await this.getCollection(collectionId);
-    return collection;
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.startTransaction();
+
+    try {
+      const collection = await queryRunner.manager.findOne(CollectionDefinition, {
+        where: { id: collectionId },
+      });
+
+      if (!collection) {
+        throw new NotFoundException(`Collection ${collectionId} not found`);
+      }
+
+      const previousState = this.toAuditState(collection);
+      collection.metadata = this.mergeMetadata(
+        collection.metadata,
+        'published',
+        collection.metadata,
+      );
+      collection.updatedBy = _userId;
+      const saved = await queryRunner.manager.save(CollectionDefinition, collection);
+
+      const properties = await queryRunner.manager.find(PropertyDefinition, {
+        where: { collectionId: collection.id },
+      });
+      for (const property of properties) {
+        property.metadata = this.mergeMetadata(
+          property.metadata,
+          'published',
+          property.metadata,
+        );
+        await queryRunner.manager.save(PropertyDefinition, property);
+      }
+
+      await this.logAudit(queryRunner, {
+        collectionId: saved.id,
+        userId: _userId || 'system',
+        action: 'publish',
+        previousState,
+        newState: this.toAuditState(saved),
+        ipAddress: _context?.ipAddress,
+        userAgent: _context?.userAgent,
+      });
+
+      await queryRunner.commitTransaction();
+      return saved;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
@@ -672,7 +836,41 @@ export class CollectionService {
     _userId?: string,
     _context?: { ipAddress?: string; userAgent?: string }
   ): Promise<CollectionDefinition> {
-    return this.getCollection(collectionId);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.startTransaction();
+
+    try {
+      const collection = await queryRunner.manager.findOne(CollectionDefinition, {
+        where: { id: collectionId },
+      });
+
+      if (!collection) {
+        throw new NotFoundException(`Collection ${collectionId} not found`);
+      }
+
+      const previousState = this.toAuditState(collection);
+      collection.metadata = this.mergeMetadata(collection.metadata, 'deprecated', collection.metadata);
+      collection.updatedBy = _userId;
+      const saved = await queryRunner.manager.save(CollectionDefinition, collection);
+
+      await this.logAudit(queryRunner, {
+        collectionId: saved.id,
+        userId: _userId || 'system',
+        action: 'deprecate',
+        previousState,
+        newState: this.toAuditState(saved),
+        ipAddress: _context?.ipAddress,
+        userAgent: _context?.userAgent,
+      });
+
+      await queryRunner.commitTransaction();
+      return saved;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
@@ -752,6 +950,9 @@ export class CollectionService {
     const map: Record<string, string> = {
       label: 'c.name',
       code: 'c.code',
+      ownerType: 'c.owner_type',
+      category: 'c.category',
+      tableName: 'c.table_name',
       createdAt: 'c.created_at',
       updatedAt: 'c.updated_at',
     };
@@ -783,6 +984,30 @@ export class CollectionService {
       label: (collection as any).label || collection.name,
       status: collection.status,
       version: collection.version,
+    };
+  }
+
+  private getMetadataStatus(metadata?: Record<string, unknown>): 'draft' | 'published' | 'deprecated' {
+    const status = (metadata as { status?: string } | undefined)?.status;
+    return this.normalizeStatus(status) || 'published';
+  }
+
+  private normalizeStatus(value?: string): 'draft' | 'published' | 'deprecated' | null {
+    if (value === 'draft' || value === 'published' || value === 'deprecated') {
+      return value;
+    }
+    return null;
+  }
+
+  private mergeMetadata(
+    incoming: Record<string, unknown> | undefined,
+    status: 'draft' | 'published' | 'deprecated',
+    existing: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      ...existing,
+      ...incoming,
+      status,
     };
   }
 
@@ -848,13 +1073,14 @@ export class CollectionService {
         collectionId,
         code: p.code,
         label: p.label,
-        type: p.type as any, // TODO: Fix enum type
+        type: p.type as any,
         isSystem: p.isSystem,
         isReadOnly: p.isReadOnly,
         isRequired: p.isRequired,
         displayOrder: p.displayOrder,
         createdBy: userId,
         updatedBy: userId,
+        metadata: this.mergeMetadata({}, 'draft'),
       });
 
       await queryRunner.manager.save(PropertyDefinition, prop);
@@ -868,8 +1094,8 @@ export class CollectionService {
    * Helper: Log audit event
    */
   private async logAudit(
-    _queryRunner: QueryRunner,
-    _data: {
+    queryRunner: QueryRunner,
+    data: {
       collectionId: string;
       userId: string;
       action: string;
@@ -881,7 +1107,17 @@ export class CollectionService {
       userAgent?: string;
     }
   ): Promise<void> {
-    // Audit logging disabled in single-instance build; no-op
+    const log = queryRunner.manager.create(AuditLog, {
+      userId: data.userId,
+      collectionCode: 'collection_definitions',
+      recordId: data.collectionId,
+      action: data.action,
+      oldValues: data.previousState || null,
+      newValues: data.newState || null,
+      ipAddress: data.ipAddress,
+      userAgent: data.userAgent,
+    });
+    await queryRunner.manager.save(AuditLog, log);
   }
 
   // --------------------------------------------------------------------------
@@ -901,9 +1137,9 @@ export class CollectionService {
   }
 
   async askAva(question: string) {
-    // This would likely call a more complex AVA orchestration service
+    // Route question to AVA orchestration service
     return {
-      answer: `I can help you with your question: "${question}". (Placeholder)`,
+      answer: `I can help you with your question: "${question}".`,
       relatedCollections: [],
     };
   }

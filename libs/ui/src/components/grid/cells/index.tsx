@@ -3,6 +3,8 @@
  *
  * Each renderer is optimized for a specific data type with appropriate
  * formatting, styling, and interaction handling.
+ *
+ * Design: Futuristic 2070-era glassmorphic aesthetic with visual differentiation
  */
 
 import React, { memo, useState, useRef, useEffect } from 'react';
@@ -86,6 +88,27 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+// Generate consistent color from string (for avatars, tags)
+function stringToColor(str: string): string {
+  const colors = [
+    'var(--color-primary-500)',
+    'var(--color-accent-500)',
+    'var(--color-info-500)',
+    'var(--color-success-500)',
+    'var(--color-warning-500)',
+    'var(--color-danger-500)',
+    'var(--color-primary-400)',
+    'var(--color-accent-400)',
+    'var(--color-info-400)',
+    'var(--color-success-400)',
+  ];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
 // =============================================================================
 // TEXT CELL
 // =============================================================================
@@ -129,7 +152,7 @@ export const NumberCell = memo(function NumberCell<TData extends GridRowData>({
 });
 
 // =============================================================================
-// CURRENCY CELL
+// CURRENCY CELL - Enhanced with symbol highlighting
 // =============================================================================
 
 export const CurrencyCell = memo(function CurrencyCell<TData extends GridRowData>({
@@ -142,10 +165,23 @@ export const CurrencyCell = memo(function CurrencyCell<TData extends GridRowData
   if (isNaN(numValue)) return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
 
   const currency = column.format?.split(':')[1] || 'USD';
+  const formatted = formatCurrency(numValue, currency);
+
+  // Extract symbol and value
+  const match = formatted.match(/^([^\d\s]+)?\s*([\d,.-]+)\s*([^\d\s]+)?$/);
+  const prefix = match?.[1] || '';
+  const amount = match?.[2] || formatted;
+  const suffix = match?.[3] || '';
 
   return (
-    <span className="font-mono text-[var(--grid-cell-color)] tabular-nums">
-      {formatCurrency(numValue, currency)}
+    <span className="inline-flex items-center gap-0.5 font-mono tabular-nums">
+      {prefix && (
+        <span className="text-[var(--status-completed)] font-semibold">{prefix}</span>
+      )}
+      <span className="text-[var(--grid-cell-color)]">{amount}</span>
+      {suffix && (
+        <span className="text-[var(--status-completed)] font-semibold">{suffix}</span>
+      )}
     </span>
   );
 });
@@ -172,7 +208,7 @@ export const PercentCell = memo(function PercentCell<TData extends GridRowData>(
 });
 
 // =============================================================================
-// DATE CELL
+// DATE CELL - Enhanced with calendar icon
 // =============================================================================
 
 export const DateCell = memo(function DateCell<TData extends GridRowData>({
@@ -182,8 +218,19 @@ export const DateCell = memo(function DateCell<TData extends GridRowData>({
   if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
 
   return (
-    <span className="text-[var(--grid-cell-color)]">
-      {formatDate(value as string | Date, column.format)}
+    <span className="inline-flex items-center gap-2 text-[var(--grid-cell-color)]">
+      <svg
+        className="w-4 h-4 text-[var(--grid-cell-muted-color)] flex-shrink-0"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <rect x="2" y="3" width="12" height="11" rx="2" />
+        <path d="M2 6h12" />
+        <path d="M5 1v3M11 1v3" />
+      </svg>
+      <span>{formatDate(value as string | Date, column.format)}</span>
     </span>
   );
 });
@@ -199,8 +246,19 @@ export const DateTimeCell = memo(function DateTimeCell<TData extends GridRowData
   if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
 
   return (
-    <span className="text-[var(--grid-cell-color)]">
-      {formatDateTime(value as string | Date, column.format)}
+    <span className="inline-flex items-center gap-2 text-[var(--grid-cell-color)]">
+      <svg
+        className="w-4 h-4 text-[var(--grid-cell-muted-color)] flex-shrink-0"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <rect x="2" y="3" width="12" height="11" rx="2" />
+        <path d="M2 6h12" />
+        <path d="M5 1v3M11 1v3" />
+      </svg>
+      <span>{formatDateTime(value as string | Date, column.format)}</span>
     </span>
   );
 });
@@ -243,7 +301,7 @@ export const DurationCell = memo(function DurationCell<TData extends GridRowData
 });
 
 // =============================================================================
-// BOOLEAN CELL
+// BOOLEAN CELL - Enhanced toggle style
 // =============================================================================
 
 export const BooleanCell = memo(function BooleanCell<TData extends GridRowData>({
@@ -292,7 +350,7 @@ export const BooleanCell = memo(function BooleanCell<TData extends GridRowData>(
 });
 
 // =============================================================================
-// STATUS CELL
+// STATUS CELL - Enhanced with dropdown chevron and modern badge
 // =============================================================================
 
 export const StatusCell = memo(function StatusCell<TData extends GridRowData>({
@@ -312,25 +370,31 @@ export const StatusCell = memo(function StatusCell<TData extends GridRowData>({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-        'bg-opacity-15'
+        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium',
+        'cursor-default select-none transition-all duration-150',
+        'border border-transparent hover:border-current/20'
       )}
       style={{
-        backgroundColor: `${color}20`,
+        backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
         color: color,
       }}
     >
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ backgroundColor: color }}
-      />
       {label}
+      <svg
+        className="w-3 h-3 opacity-60"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path d="M3 4.5L6 7.5L9 4.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </span>
   );
 });
 
 // =============================================================================
-// PRIORITY CELL
+// PRIORITY CELL - Enhanced with visual indicator bar
 // =============================================================================
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -358,12 +422,13 @@ export const PriorityCell = memo(function PriorityCell<TData extends GridRowData
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide'
+        'inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide'
       )}
       style={{ color }}
     >
+      {/* Priority bar indicator */}
       <span
-        className="w-2 h-2 rounded-full"
+        className="w-1 h-4 rounded-full"
         style={{ backgroundColor: color }}
       />
       {label}
@@ -372,7 +437,7 @@ export const PriorityCell = memo(function PriorityCell<TData extends GridRowData
 });
 
 // =============================================================================
-// USER CELL
+// USER CELL - Enhanced with colored avatar and better layout
 // =============================================================================
 
 export const UserCell = memo(function UserCell<TData extends GridRowData>({
@@ -391,26 +456,28 @@ export const UserCell = memo(function UserCell<TData extends GridRowData>({
 
   const name = user.name || 'Unknown';
   const initials = getInitials(name);
+  const avatarColor = stringToColor(name);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       {user.avatar ? (
         <img
           src={user.avatar}
           alt={name}
-          className="w-6 h-6 rounded-full object-cover"
+          className="w-7 h-7 rounded-full object-cover ring-2 ring-white/10"
         />
       ) : (
         <div
           className={cn(
-            'w-6 h-6 rounded-full flex items-center justify-center',
-            'bg-[var(--glass-bg)] text-[var(--grid-cell-color)] text-xs font-medium'
+            'w-7 h-7 rounded-full flex items-center justify-center',
+            'text-white text-xs font-semibold ring-2 ring-white/10'
           )}
+          style={{ backgroundColor: avatarColor }}
         >
           {initials}
         </div>
       )}
-      <span className="truncate text-[var(--grid-cell-color)]">{name}</span>
+      <span className="truncate text-[var(--grid-cell-color)] font-medium">{name}</span>
     </div>
   );
 });
@@ -421,27 +488,74 @@ export const UserCell = memo(function UserCell<TData extends GridRowData>({
 
 export const ReferenceCell = memo(function ReferenceCell<TData extends GridRowData>({
   value,
-  column: _column,
-  row: _row,
+  column,
+  row,
+  onReferenceClick,
 }: CellRendererProps<TData>) {
-  void _column;
-  void _row;
   if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
 
-  // Value can be a string (display value) or an object with id and display
-  const ref = typeof value === 'object' && value !== null
-    ? (value as { id?: string; display?: string })
-    : { display: String(value) };
+  // Get the referenced collection from column config
+  const referenceCollection = column.reference?.collection;
 
-  const displayValue = ref.display || '-';
+  // The value is the record ID (UUID)
+  const recordId = typeof value === 'object' && value !== null
+    ? (value as { id?: string }).id || String(value)
+    : String(value);
+
+  // Look for display value in the row data using the _display suffix convention
+  // Backend sends: { fieldname: "uuid", fieldname_display: "Display Name" }
+  const displayKey = `${column.code}_display`;
+  const rowData = row as Record<string, unknown>;
+  let displayValue = rowData[displayKey] as string | undefined;
+
+  // Fallback: if value is an object with display property
+  if (!displayValue && typeof value === 'object' && value !== null) {
+    displayValue = (value as { display?: string }).display;
+  }
+
+  // Fallback: if no display value found, show the ID (truncated for UUIDs)
+  if (!displayValue) {
+    // Check if it looks like a UUID, show first 8 chars
+    if (recordId && /^[a-f0-9-]{36}$/i.test(recordId)) {
+      displayValue = recordId.substring(0, 8) + '...';
+    } else {
+      displayValue = recordId || '-';
+    }
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    if (onReferenceClick && referenceCollection && recordId) {
+      onReferenceClick({
+        collection: referenceCollection,
+        recordId,
+        columnCode: column.code,
+        displayValue: displayValue || '-',
+        row,
+      });
+    }
+  };
+
+  const isClickable = !!onReferenceClick && !!referenceCollection && !!recordId;
 
   return (
     <span
       className={cn(
-        'text-[var(--primary-400)] hover:text-[var(--primary-300)] cursor-pointer',
-        'hover:underline truncate'
+        'truncate',
+        isClickable
+          ? 'text-[var(--primary-400)] hover:text-[var(--primary-300)] cursor-pointer hover:underline'
+          : 'text-[var(--grid-cell-color)]'
       )}
       title={displayValue}
+      onClick={isClickable ? handleClick : undefined}
+      role={isClickable ? 'link' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={isClickable ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick(e as unknown as React.MouseEvent);
+        }
+      } : undefined}
     >
       {displayValue}
     </span>
@@ -449,7 +563,7 @@ export const ReferenceCell = memo(function ReferenceCell<TData extends GridRowDa
 });
 
 // =============================================================================
-// TAGS CELL
+// TAGS CELL - Enhanced with colored pills and close buttons
 // =============================================================================
 
 export const TagsCell = memo(function TagsCell<TData extends GridRowData>({
@@ -471,20 +585,43 @@ export const TagsCell = memo(function TagsCell<TData extends GridRowData>({
   const remainingCount = tags.length - 3;
 
   return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      {displayTags.map((tag, i) => (
-        <span
-          key={i}
-          className={cn(
-            'inline-flex px-1.5 py-0.5 rounded text-xs',
-            'bg-[var(--glass-bg)] text-[var(--grid-cell-color)]'
-          )}
-        >
-          {tag}
-        </span>
-      ))}
+    <div className="flex items-center gap-1.5 overflow-hidden">
+      {displayTags.map((tag, i) => {
+        const tagColor = stringToColor(tag);
+        return (
+          <span
+            key={i}
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium',
+              'border transition-colors cursor-default'
+            )}
+            style={{
+              backgroundColor: `color-mix(in srgb, ${tagColor} 15%, transparent)`,
+              borderColor: `color-mix(in srgb, ${tagColor} 30%, transparent)`,
+              color: tagColor,
+            }}
+          >
+            {tag}
+            <svg
+              className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M3 3L9 9M9 3L3 9" strokeLinecap="round" />
+            </svg>
+          </span>
+        );
+      })}
       {remainingCount > 0 && (
-        <span className="text-xs text-[var(--grid-cell-muted-color)]">
+        <span
+          className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-xs font-medium"
+          style={{
+            backgroundColor: 'var(--glass-bg)',
+            color: 'var(--grid-cell-muted-color)',
+          }}
+        >
           +{remainingCount}
         </span>
       )}
@@ -493,7 +630,7 @@ export const TagsCell = memo(function TagsCell<TData extends GridRowData>({
 });
 
 // =============================================================================
-// PROGRESS CELL
+// PROGRESS CELL - Enhanced with gradient and glow
 // =============================================================================
 
 export const ProgressCell = memo(function ProgressCell<TData extends GridRowData>({
@@ -508,24 +645,35 @@ export const ProgressCell = memo(function ProgressCell<TData extends GridRowData
 
   const clampedPercent = Math.max(0, Math.min(100, percent));
 
+  // Dynamic color based on progress
+  const getProgressColor = (p: number) => {
+    if (p >= 100) return 'var(--status-completed)';
+    if (p >= 75) return 'var(--primary-500)';
+    if (p >= 50) return 'var(--priority-medium)';
+    return 'var(--priority-high)';
+  };
+
+  const progressColor = getProgressColor(clampedPercent);
+
   return (
-    <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-2 bg-[var(--glass-bg)] rounded-full overflow-hidden">
+    <div className="flex items-center gap-3 w-full">
+      <div
+        className="flex-1 h-1.5 rounded-full overflow-hidden"
+        style={{ backgroundColor: 'var(--glass-bg)' }}
+      >
         <div
-          className={cn(
-            'h-full rounded-full transition-all duration-300',
-            clampedPercent >= 100
-              ? 'bg-[var(--status-completed)]'
-              : clampedPercent >= 75
-              ? 'bg-[var(--primary-500)]'
-              : clampedPercent >= 50
-              ? 'bg-[var(--priority-medium)]'
-              : 'bg-[var(--priority-high)]'
-          )}
-          style={{ width: `${clampedPercent}%` }}
+          className="h-full rounded-full transition-all duration-500 ease-out"
+          style={{
+            width: `${clampedPercent}%`,
+            backgroundColor: progressColor,
+            boxShadow: `0 0 8px ${progressColor}`,
+          }}
         />
       </div>
-      <span className="text-xs font-mono text-[var(--grid-cell-muted-color)] w-10 text-right">
+      <span
+        className="text-xs font-mono w-10 text-right font-medium"
+        style={{ color: progressColor }}
+      >
         {Math.round(clampedPercent)}%
       </span>
     </div>
@@ -674,6 +822,186 @@ export const ActionsCell = memo(function ActionsCell<TData extends GridRowData>(
 });
 
 // =============================================================================
+// SELECT CELL - Enhanced select/enum dropdown display
+// =============================================================================
+
+export const SelectCell = memo(function SelectCell<TData extends GridRowData>({
+  value,
+  column,
+}: CellRendererProps<TData>) {
+  if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const stringValue = String(value);
+  const option = column.options?.find(
+    (opt) => opt.value === stringValue || opt.label.toLowerCase() === stringValue.toLowerCase()
+  );
+
+  const label = option?.label ?? stringValue;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[var(--grid-cell-color)]">
+      {label}
+      <svg
+        className="w-3 h-3 text-[var(--grid-cell-muted-color)]"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path d="M3 4.5L6 7.5L9 4.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+});
+
+// =============================================================================
+// RATING CELL - Star rating display
+// =============================================================================
+
+export const RatingCell = memo(function RatingCell<TData extends GridRowData>({
+  value,
+  column: _column,
+}: CellRendererProps<TData>) {
+  void _column;
+  if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const rating = typeof value === 'number' ? value : parseFloat(String(value));
+  if (isNaN(rating)) return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const maxStars = 5;
+  const filledStars = Math.min(Math.max(0, Math.round(rating)), maxStars);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: maxStars }, (_, i) => (
+        <svg
+          key={i}
+          className={cn(
+            'w-4 h-4',
+            i < filledStars ? 'text-[var(--priority-medium)]' : 'text-[var(--glass-bg)]'
+          )}
+          viewBox="0 0 16 16"
+          fill="currentColor"
+        >
+          <path d="M8 1.5l1.85 4.52 4.65.36-3.55 3.08 1.1 4.54L8 11.46 3.95 14l1.1-4.54L1.5 6.38l4.65-.36L8 1.5z" />
+        </svg>
+      ))}
+    </div>
+  );
+});
+
+// =============================================================================
+// EMAIL CELL - With mail icon
+// =============================================================================
+
+export const EmailCell = memo(function EmailCell<TData extends GridRowData>({
+  value,
+  column: _column,
+}: CellRendererProps<TData>) {
+  void _column;
+  if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const email = String(value);
+
+  return (
+    <a
+      href={`mailto:${email}`}
+      className="inline-flex items-center gap-2 text-[var(--primary-400)] hover:text-[var(--primary-300)] hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <svg
+        className="w-4 h-4 flex-shrink-0"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <rect x="1" y="3" width="14" height="10" rx="2" />
+        <path d="M1 5l7 4.5L15 5" />
+      </svg>
+      <span className="truncate">{email}</span>
+    </a>
+  );
+});
+
+// =============================================================================
+// URL CELL - With link icon
+// =============================================================================
+
+export const UrlCell = memo(function UrlCell<TData extends GridRowData>({
+  value,
+  column: _column,
+}: CellRendererProps<TData>) {
+  void _column;
+  if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const url = String(value);
+  // Extract domain for display
+  let displayUrl = url;
+  try {
+    const urlObj = new URL(url);
+    displayUrl = urlObj.hostname;
+  } catch {
+    // Keep original if not valid URL
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 text-[var(--primary-400)] hover:text-[var(--primary-300)] hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <svg
+        className="w-4 h-4 flex-shrink-0"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <path d="M6 10l4-4M10 10V6H6" />
+        <rect x="2" y="2" width="12" height="12" rx="2" />
+      </svg>
+      <span className="truncate">{displayUrl}</span>
+    </a>
+  );
+});
+
+// =============================================================================
+// PHONE CELL - With phone icon
+// =============================================================================
+
+export const PhoneCell = memo(function PhoneCell<TData extends GridRowData>({
+  value,
+  column: _column,
+}: CellRendererProps<TData>) {
+  void _column;
+  if (value == null || value === '') return <span className="text-[var(--grid-cell-muted-color)]">-</span>;
+
+  const phone = String(value);
+
+  return (
+    <a
+      href={`tel:${phone}`}
+      className="inline-flex items-center gap-2 text-[var(--grid-cell-color)] hover:text-[var(--primary-400)]"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <svg
+        className="w-4 h-4 flex-shrink-0 text-[var(--grid-cell-muted-color)]"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <path d="M3 2h3l1.5 3.5-2 1.5a8 8 0 003.5 3.5l1.5-2L14 10v3a1 1 0 01-1 1C7 14 2 9 2 3a1 1 0 011-1z" />
+      </svg>
+      <span className="truncate font-mono">{phone}</span>
+    </a>
+  );
+});
+
+// =============================================================================
 // CELL RENDERER MAP
 // =============================================================================
 
@@ -695,6 +1023,11 @@ const CELL_RENDERERS: Record<GridColumnType, React.ComponentType<CellRendererPro
   progress: ProgressCell,
   image: ImageCell,
   actions: ActionsCell,
+  select: SelectCell,
+  rating: RatingCell,
+  email: EmailCell,
+  url: UrlCell,
+  phone: PhoneCell,
   custom: TextCell, // Fallback to text for custom
 };
 

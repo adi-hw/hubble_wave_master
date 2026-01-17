@@ -17,7 +17,12 @@ import { Instance } from './instance.entity';
 /**
  * License type
  */
-export type LicenseType = 'production' | 'staging' | 'development' | 'trial';
+export type LicenseType = 'starter' | 'professional' | 'enterprise' | 'trial';
+
+/**
+ * License status
+ */
+export type LicenseStatus = 'active' | 'pending' | 'expired' | 'revoked';
 
 /**
  * License entity - represents a software license for a customer
@@ -28,6 +33,7 @@ export type LicenseType = 'production' | 'staging' | 'development' | 'trial';
 @Index(['instanceId'])
 @Index(['licenseKey'], { unique: true })
 @Index(['expiresAt'])
+@Index(['status'])
 export class License {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -56,6 +62,10 @@ export class License {
   @Column({ name: 'license_type', type: 'varchar', length: 50 })
   licenseType!: LicenseType;
 
+  /** License status */
+  @Column({ type: 'varchar', length: 20, default: 'active' })
+  status!: LicenseStatus;
+
   /** Enabled features */
   @Column({ type: 'jsonb', default: () => `'[]'` })
   features!: string[];
@@ -67,6 +77,18 @@ export class License {
   /** Maximum assets allowed */
   @Column({ name: 'max_assets', type: 'integer', nullable: true })
   maxAssets?: number | null;
+
+  /** Cryptographic signature */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  signature?: string | null;
+
+  /** Additional metadata */
+  @Column({ type: 'jsonb', default: () => `'{}'` })
+  metadata!: Record<string, unknown>;
+
+  /** Who created this license */
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy?: string | null;
 
   /** When license was issued */
   @Column({ name: 'issued_at', type: 'timestamptz', default: () => 'NOW()' })
@@ -80,9 +102,13 @@ export class License {
   @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true })
   revokedAt?: Date | null;
 
+  /** Who revoked this license */
+  @Column({ name: 'revoked_by', type: 'uuid', nullable: true })
+  revokedBy?: string | null;
+
   /** Revocation reason */
-  @Column({ name: 'revocation_reason', type: 'text', nullable: true })
-  revocationReason?: string | null;
+  @Column({ name: 'revoke_reason', type: 'text', nullable: true })
+  revokeReason?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

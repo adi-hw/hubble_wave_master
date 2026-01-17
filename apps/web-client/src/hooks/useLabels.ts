@@ -6,7 +6,8 @@
  */
 
 import { useMemo } from 'react';
-import { labels, getEntityLabel, formatLabel, EntityLabel } from '../lib/labels';
+import { labels, formatLabel, EntityLabel } from '../lib/labels';
+import { useLocalization } from '../contexts/LocalizationContext';
 
 export interface UseLabelsReturn {
   /** All labels */
@@ -50,31 +51,42 @@ export interface UseLabelsReturn {
  * );
  */
 export function useLabels(): UseLabelsReturn {
+  const { translate } = useLocalization();
+
   return useMemo(
     () => ({
       labels,
 
-      entity: (name: keyof typeof labels.entities, count?: number) =>
-        getEntityLabel(name, count),
+      entity: (name: keyof typeof labels.entities, count?: number) => {
+        const usePlural = count !== undefined && count !== 1;
+        const key = `${String(name)}.${usePlural ? 'plural' : 'singular'}`;
+        const fallback = usePlural ? labels.entities[name].plural : labels.entities[name].singular;
+        return translate('labels.entities', key, fallback);
+      },
 
       getEntity: (name: keyof typeof labels.entities) => labels.entities[name],
 
       format: formatLabel,
 
-      action: (name: keyof typeof labels.actions) => labels.actions[name],
+      action: (name: keyof typeof labels.actions) =>
+        translate('labels.actions', String(name), labels.actions[name]),
 
-      status: (name: keyof typeof labels.status) => labels.status[name],
+      status: (name: keyof typeof labels.status) =>
+        translate('labels.status', String(name), labels.status[name]),
 
-      field: (name: keyof typeof labels.fields) => labels.fields[name],
+      field: (name: keyof typeof labels.fields) =>
+        translate('labels.fields', String(name), labels.fields[name]),
 
-      ui: (name: keyof typeof labels.ui) => labels.ui[name],
+      ui: (name: keyof typeof labels.ui) =>
+        translate('labels.ui', String(name), labels.ui[name]),
 
-      message: (name: keyof typeof labels.messages) => labels.messages[name],
+      message: (name: keyof typeof labels.messages) =>
+        translate('labels.messages', String(name), labels.messages[name]),
 
       placeholder: (name: keyof typeof labels.placeholders) =>
-        labels.placeholders[name],
+        translate('labels.placeholders', String(name), labels.placeholders[name]),
     }),
-    []
+    [translate]
   );
 }
 

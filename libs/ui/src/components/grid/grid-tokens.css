@@ -4,6 +4,19 @@
    ============================================================================= */
 
 :root {
+  /* Alias legacy grid tokens to current design tokens */
+  --primary-300: var(--color-primary-300);
+  --primary-400: var(--color-primary-400);
+  --primary-500: var(--color-primary-500);
+  --primary-600: var(--color-primary-600);
+  --blue-500: var(--color-info-500);
+  --green-500: var(--color-success-500);
+  --purple-500: var(--color-primary-500);
+  --amber-500: var(--color-warning-500);
+  --rose-500: var(--color-danger-500);
+  --pink-500: var(--color-accent-500);
+  --cyan-500: var(--color-accent-500);
+
   /* ═══════════════════════════════════════════════════════════════════════════
      GRID STRUCTURE - Row Heights & Dimensions
      ═══════════════════════════════════════════════════════════════════════════ */
@@ -23,28 +36,30 @@
      ═══════════════════════════════════════════════════════════════════════════ */
 
   /* Grid Backgrounds */
-  --grid-bg: var(--bg-base, #0a0a0f);
-  --grid-header-bg: rgba(255, 255, 255, 0.02);
-  --grid-toolbar-bg: rgba(255, 255, 255, 0.01);
+  --grid-bg: var(--bg-base);
+  /* Header bg - use opaque color for consistent appearance across all header cells */
+  --grid-header-bg: var(--bg-surface);
+  --grid-pinned-header-bg: var(--bg-surface);
+  --grid-toolbar-bg: var(--bg-surface);
   --grid-row-bg: transparent;
-  --grid-row-alt-bg: rgba(255, 255, 255, 0.01);
-  --grid-row-hover-bg: rgba(255, 255, 255, 0.04);
-  --grid-row-selected-bg: rgba(99, 102, 241, 0.12);
-  --grid-row-focused-bg: rgba(99, 102, 241, 0.08);
-  --grid-group-row-bg: rgba(255, 255, 255, 0.03);
+  --grid-row-alt-bg: var(--bg-surface-secondary);
+  --grid-row-hover-bg: var(--bg-hover);
+  --grid-row-selected-bg: var(--bg-primary-subtle);
+  --grid-row-focused-bg: color-mix(in srgb, var(--bg-primary) 12%, transparent);
+  --grid-group-row-bg: var(--bg-surface-secondary);
 
   /* Grid Borders */
-  --grid-border: rgba(255, 255, 255, 0.06);
-  --grid-border-hover: rgba(255, 255, 255, 0.12);
-  --grid-cell-border: rgba(255, 255, 255, 0.04);
-  --grid-resize-handle: var(--primary-500, #6366f1);
-  --grid-resize-handle-hover: var(--primary-400, #818cf8);
+  --grid-border: var(--border-subtle);
+  --grid-border-hover: var(--border-hover);
+  --grid-cell-border: var(--border-subtle);
+  --grid-resize-handle: var(--border-primary);
+  --grid-resize-handle-hover: var(--color-primary-400);
 
   /* Grid Shadows & Glows */
-  --grid-container-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --grid-container-shadow: var(--shadow-lg);
   --grid-header-shadow: 0 1px 0 var(--grid-border);
-  --grid-row-glow-selected: 0 0 0 1px rgba(99, 102, 241, 0.3);
-  --grid-sticky-shadow: 4px 0 12px rgba(0, 0, 0, 0.2);
+  --grid-row-glow-selected: 0 0 0 1px color-mix(in srgb, var(--border-primary) 40%, transparent);
+  --grid-sticky-shadow: 4px 0 12px rgba(var(--bg-backdrop-rgb) / 0.2);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      GRID TYPOGRAPHY
@@ -54,12 +69,12 @@
   --grid-header-font-weight: 600;
   --grid-header-letter-spacing: 0.08em;
   --grid-header-text-transform: uppercase;
-  --grid-header-color: var(--text-tertiary, #9ca3af);
+  --grid-header-color: var(--text-muted);
 
   --grid-cell-font-size: 0.875rem;
   --grid-cell-font-weight: 400;
-  --grid-cell-color: var(--text-primary, #f3f4f6);
-  --grid-cell-muted-color: var(--text-tertiary, #9ca3af);
+  --grid-cell-color: var(--text-primary);
+  --grid-cell-muted-color: var(--text-muted);
 
   --grid-group-font-size: 0.8rem;
   --grid-group-font-weight: 600;
@@ -90,84 +105,67 @@
      AVA INTEGRATION COLORS
      ═══════════════════════════════════════════════════════════════════════════ */
 
-  --grid-ava-bar-bg: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(99, 102, 241, 0.08) 100%
-  );
-  --grid-ava-bar-border: rgba(6, 182, 212, 0.2);
-  --grid-ava-glow: 0 0 20px rgba(6, 182, 212, 0.15);
-  --grid-ava-text-color: var(--accent-300, #67e8f9);
-  --grid-ava-action-bg: rgba(6, 182, 212, 0.15);
-  --grid-ava-action-hover: rgba(6, 182, 212, 0.25);
+  --grid-ava-bar-bg: var(--gradient-brand-subtle);
+  --grid-ava-bar-border: color-mix(in srgb, var(--color-accent-500) 25%, transparent);
+  --grid-ava-glow: 0 0 20px color-mix(in srgb, var(--color-accent-500) 35%, transparent);
+  --grid-ava-text-color: var(--text-accent);
+  --grid-ava-action-bg: color-mix(in srgb, var(--bg-accent) 20%, transparent);
+  --grid-ava-action-hover: color-mix(in srgb, var(--bg-accent) 30%, transparent);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      FOOTER TOKENS
      ═══════════════════════════════════════════════════════════════════════════ */
 
   --grid-footer-height: 44px;
-  --grid-footer-bg: rgba(255, 255, 255, 0.02);
+  --grid-footer-bg: var(--bg-surface-secondary);
   --grid-footer-border: var(--grid-border);
   --grid-footer-font-size: 0.75rem;
   --grid-footer-font-weight: 600;
-  --grid-footer-color: var(--text-tertiary, #9ca3af);
-  --grid-footer-aggregation-color: var(--text-primary, #f3f4f6);
-
-  /* ═══════════════════════════════════════════════════════════════════════════
-     GLASS MORPHISM TOKENS
-     ═══════════════════════════════════════════════════════════════════════════ */
-
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-bg-hover: rgba(255, 255, 255, 0.06);
-  --glass-bg-active: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.12);
+  --grid-footer-color: var(--text-muted);
+  --grid-footer-aggregation-color: var(--text-primary);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      STATUS COLORS
      ═══════════════════════════════════════════════════════════════════════════ */
 
-  --status-open: #3b82f6;
-  --status-in-progress: #f59e0b;
-  --status-completed: #10b981;
-  --status-cancelled: #6b7280;
-  --status-on-hold: #8b5cf6;
+  --status-open: var(--color-info-500);
+  --status-in-progress: var(--color-warning-500);
+  --status-completed: var(--color-success-500);
+  --status-cancelled: var(--text-muted);
+  --status-on-hold: var(--color-primary-500);
 
-  --priority-critical: #ef4444;
-  --priority-high: #f97316;
-  --priority-medium: #eab308;
-  --priority-low: #22c55e;
-  --priority-none: #6b7280;
+  --priority-critical: var(--color-danger-500);
+  --priority-high: var(--color-warning-500);
+  --priority-medium: var(--color-info-500);
+  --priority-low: var(--color-success-500);
+  --priority-none: var(--text-muted);
 }
 
 /* Light Mode Overrides */
 :root.light,
 .light {
-  --grid-bg: var(--bg-base, #ffffff);
-  --grid-header-bg: rgba(0, 0, 0, 0.02);
-  --grid-toolbar-bg: rgba(0, 0, 0, 0.01);
-  --grid-row-alt-bg: rgba(0, 0, 0, 0.01);
-  --grid-row-hover-bg: rgba(0, 0, 0, 0.02);
-  --grid-row-selected-bg: rgba(99, 102, 241, 0.08);
-  --grid-row-focused-bg: rgba(99, 102, 241, 0.05);
-  --grid-group-row-bg: rgba(0, 0, 0, 0.02);
+  --grid-bg: var(--bg-base);
+  /* Header bg - use opaque color for consistent appearance across all header cells */
+  --grid-header-bg: var(--bg-surface);
+  --grid-pinned-header-bg: var(--bg-surface);
+  --grid-toolbar-bg: var(--bg-surface);
+  --grid-row-alt-bg: var(--bg-surface-secondary);
+  --grid-row-hover-bg: var(--bg-hover);
+  --grid-row-selected-bg: var(--bg-primary-subtle);
+  --grid-row-focused-bg: color-mix(in srgb, var(--bg-primary) 10%, transparent);
+  --grid-group-row-bg: var(--bg-surface-secondary);
 
-  --grid-border: rgba(0, 0, 0, 0.06);
-  --grid-border-hover: rgba(0, 0, 0, 0.12);
-  --grid-cell-border: rgba(0, 0, 0, 0.04);
+  --grid-border: var(--border-subtle);
+  --grid-border-hover: var(--border-hover);
+  --grid-cell-border: var(--border-subtle);
 
-  --grid-container-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  --grid-sticky-shadow: 4px 0 12px rgba(0, 0, 0, 0.05);
+  --grid-container-shadow: var(--shadow-md);
+  --grid-sticky-shadow: 4px 0 12px rgba(var(--bg-backdrop-rgb) / 0.1);
 
-  --grid-header-color: var(--text-tertiary, #6b7280);
-  --grid-cell-color: var(--text-primary, #111827);
-  --grid-cell-muted-color: var(--text-tertiary, #6b7280);
+  --grid-header-color: var(--text-muted);
+  --grid-cell-color: var(--text-primary);
+  --grid-cell-muted-color: var(--text-muted);
 
-  --glass-bg: rgba(0, 0, 0, 0.02);
-  --glass-bg-hover: rgba(0, 0, 0, 0.04);
-  --glass-bg-active: rgba(0, 0, 0, 0.06);
-  --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-border-hover: rgba(0, 0, 0, 0.1);
 }
 
 /* Density Mode Overrides */
@@ -193,17 +191,55 @@
    ============================================================================= */
 
 .hubble-data-grid {
+  /* Flex container for toolbar, scroll area, and status bar */
+  display: flex;
+  flex-direction: column;
   font-family: var(--font-sans, 'Inter', sans-serif);
   color: var(--grid-cell-color);
   font-size: var(--grid-cell-font-size);
+  background-color: var(--grid-bg);
+  border: none;
+  box-shadow: var(--grid-container-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+/* Scroll Container */
+.grid-scroll-container {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* Header Wrapper */
+.grid-header-wrapper {
+  z-index: 20;
+  background-color: var(--grid-header-bg);
+}
+
+/* Header Row Container - MUST display as flex row */
+.grid-header-row {
+  display: flex;
+  flex-direction: row;
+  height: var(--grid-header-height);
+  background-color: var(--grid-header-bg);
+  border-bottom: 1px solid var(--grid-border);
 }
 
 /* Row States */
 .grid-row {
+  display: flex;
+  align-items: center;
+  height: var(--grid-row-height, var(--grid-row-height-comfortable));
+  border-bottom: 1px solid var(--grid-cell-border);
   transition:
     background var(--grid-transition-fast),
     box-shadow var(--grid-transition-fast),
     transform var(--grid-transition-fast);
+  /* Don't clip sticky children - required for sticky pinned columns to work */
+  overflow: visible;
 }
 
 .grid-row:hover {
@@ -217,19 +253,25 @@
 
 .grid-row[data-focused="true"] {
   background: var(--grid-row-focused-bg);
-  outline: 2px solid var(--primary-500, #6366f1);
+  outline: 2px solid var(--border-primary);
   outline-offset: -2px;
 }
 
 /* Group Row */
 .grid-row-group {
+  display: flex;
+  align-items: center;
+  height: var(--grid-group-row-height);
   background: var(--grid-group-row-bg);
+  border-bottom: 1px solid var(--grid-cell-border);
   font-weight: var(--grid-group-font-weight);
+  font-size: var(--grid-group-font-size);
   cursor: pointer;
+  transition: background var(--grid-transition-fast);
 }
 
 .grid-row-group:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--grid-row-hover-bg);
 }
 
 /* Loading State (skeleton) */
@@ -237,9 +279,9 @@
   animation: skeleton-shimmer var(--grid-skeleton-shimmer);
   background: linear-gradient(
     90deg,
-    var(--grid-row-bg) 0%,
-    rgba(255, 255, 255, 0.04) 50%,
-    var(--grid-row-bg) 100%
+    color-mix(in srgb, var(--bg-surface-secondary) 20%, transparent) 0%,
+    color-mix(in srgb, var(--bg-surface-secondary) 40%, transparent) 50%,
+    color-mix(in srgb, var(--bg-surface-secondary) 20%, transparent) 100%
   );
   background-size: 200% 100%;
 }
@@ -249,18 +291,37 @@
   100% { background-position: -200% 0; }
 }
 
-/* Header Styles */
+/* Header Cell Styles */
 .grid-header-cell {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 var(--grid-cell-padding-x);
   font-size: var(--grid-header-font-size);
   font-weight: var(--grid-header-font-weight);
   letter-spacing: var(--grid-header-letter-spacing);
   text-transform: var(--grid-header-text-transform);
   color: var(--grid-header-color);
   user-select: none;
+  background-color: var(--grid-header-bg);
+  transition: background-color var(--grid-transition-fast), color var(--grid-transition-fast);
 }
 
-.grid-header-cell:hover {
+.grid-header-cell:hover,
+.grid-header-cell[data-hovered="true"] {
   color: var(--grid-cell-color);
+  background-color: var(--grid-row-hover-bg);
+}
+
+/* Pinned header cells need opaque background to cover scrolling header cells behind them */
+.grid-header-cell.sticky {
+  z-index: 30;
+  background-color: var(--grid-pinned-header-bg);
+}
+
+.grid-header-cell.sticky:hover,
+.grid-header-cell.sticky[data-hovered="true"] {
+  background-color: var(--grid-row-hover-bg);
 }
 
 /* Resize Handle */
@@ -284,10 +345,149 @@
 .grid-cell {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   padding: 0 var(--grid-cell-padding-x);
+  overflow: visible;
+  position: relative;
+}
+
+/* Clip content when not editing - the inner content should still be clipped */
+.grid-cell > *:first-child:not([class*="absolute"]) {
+  overflow: hidden;
+}
+
+.grid-cell > *:not(input[type="checkbox"]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Select column - fixed width, centered */
+.grid-cell-select,
+.grid-header-cell-select {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  justify-content: center;
+  padding: 0 !important;
+}
+
+/* View column - fixed width, centered, no hover effect */
+.grid-cell-view,
+.grid-header-cell-view {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  justify-content: center;
+  padding: 0 !important;
+}
+
+.grid-header-cell-view:hover {
+  background-color: var(--grid-pinned-header-bg) !important;
+  color: var(--grid-header-color) !important;
+}
+
+/* Checkbox styling */
+.grid-cell-select input[type="checkbox"],
+.grid-header-cell-select input[type="checkbox"] {
+  width: var(--grid-checkbox-size);
+  height: var(--grid-checkbox-size);
+  border: 2px solid var(--border-default);
+  border-radius: 4px;
+  background-color: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  transition: all var(--grid-transition-fast);
+}
+
+.grid-cell-select input[type="checkbox"]:hover,
+.grid-header-cell-select input[type="checkbox"]:hover {
+  border-color: var(--color-primary-400);
+}
+
+.grid-cell-select input[type="checkbox"]:checked,
+.grid-header-cell-select input[type="checkbox"]:checked {
+  background-color: var(--bg-primary);
+  border-color: var(--border-primary);
+}
+
+.grid-cell-select input[type="checkbox"]:checked::after,
+.grid-header-cell-select input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Pinned column styles - body cells */
+.grid-cell.sticky {
+  z-index: 20;
+  /* Pinned cells need OPAQUE background to cover scrolling content */
+  background-color: var(--grid-bg);
+}
+
+/* Ensure pinned cells maintain their background on hover and selection */
+.grid-row:hover .grid-cell.sticky {
+  background-color: var(--grid-row-hover-bg);
+}
+
+.grid-row[data-selected="true"] .grid-cell.sticky {
+  background-color: var(--grid-row-selected-bg);
+}
+
+.grid-row[data-focused="true"] .grid-cell.sticky {
+  background-color: var(--grid-row-focused-bg);
+}
+
+/* Pinned cells should always have opaque background */
+.grid-row .grid-cell.sticky {
+  background-color: var(--grid-bg);
+}
+
+/* Left pinned shadow indicator */
+.grid-cell.sticky[data-pinned="left"]::after,
+.grid-header-cell.sticky[data-pinned="left"]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to right, rgba(var(--bg-backdrop-rgb) / 0.2), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Right pinned shadow indicator */
+.grid-cell.sticky[data-pinned="right"]::before,
+.grid-header-cell.sticky[data-pinned="right"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to left, rgba(var(--bg-backdrop-rgb) / 0.2), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Show shadow when scrolled */
+.hubble-data-grid[data-scrolled-x="true"] .grid-cell.sticky[data-pinned="left"]::after,
+.hubble-data-grid[data-scrolled-x="true"] .grid-header-cell.sticky[data-pinned="left"]::after,
+.hubble-data-grid[data-scrolled-x="true"] .grid-cell.sticky[data-pinned="right"]::before,
+.hubble-data-grid[data-scrolled-x="true"] .grid-header-cell.sticky[data-pinned="right"]::before {
+  opacity: 1;
 }
 
 /* Scrollbar Styles */
@@ -301,20 +501,142 @@
 }
 
 .hubble-data-grid ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(var(--border-default-rgb) / 0.6);
   border-radius: 4px;
 }
 
 .hubble-data-grid ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(var(--border-hover-rgb) / 0.8);
 }
 
 .light .hubble-data-grid ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(var(--border-default-rgb) / 0.6);
 }
 
 .light .hubble-data-grid ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(var(--border-hover-rgb) / 0.8);
+}
+
+/* =============================================================================
+   ROW ACTIONS STYLES
+   ============================================================================= */
+
+/* Actions column - fixed width, centered */
+.grid-cell-actions,
+.grid-header-cell-actions {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  justify-content: center;
+  padding: 0 !important;
+}
+
+/* Actions button (3-dots) */
+.grid-actions-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--grid-transition-fast);
+}
+
+.grid-actions-button:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.grid-actions-button:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 2px;
+}
+
+/* Actions dropdown menu */
+.grid-actions-menu {
+  min-width: 160px;
+  padding: 4px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Menu item */
+.grid-actions-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--grid-transition-fast);
+}
+
+.grid-actions-menu-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.grid-actions-menu-item:focus {
+  outline: none;
+  background-color: var(--bg-hover);
+}
+
+/* Menu item variants */
+.grid-actions-menu-item-primary {
+  color: var(--text-brand);
+}
+
+.grid-actions-menu-item-danger {
+  color: var(--text-danger);
+}
+
+.grid-actions-menu-item-danger:hover {
+  background-color: var(--bg-danger-subtle);
+}
+
+.grid-actions-menu-item-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.grid-actions-menu-item-disabled:hover {
+  background-color: transparent;
+}
+
+/* Menu item icon */
+.grid-actions-menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Light mode overrides for actions */
+.light .grid-actions-menu {
+  background-color: var(--bg-surface);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-lg);
+}
+
+.light .grid-actions-button:hover {
+  background-color: var(--bg-hover);
+}
+
+.light .grid-actions-menu-item:hover {
+  background-color: var(--bg-hover);
 }
 
 /* Screen reader only utility */

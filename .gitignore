@@ -52,3 +52,10 @@ apps/**/.env
 libs/**/.env
 **/secrets.json
 **/credentials.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tools/terraform/terraform.exe
+infrastructure/terraform/environments/*/.terraform/

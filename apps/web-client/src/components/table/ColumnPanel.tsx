@@ -30,7 +30,6 @@ interface ColumnPanelProps {
   onClose: () => void;
 }
 
-// Get icon for column type
 const getTypeIcon = (type?: string) => {
   const t = type?.toLowerCase() || 'string';
   switch (t) {
@@ -70,8 +69,7 @@ const getTypeIcon = (type?: string) => {
   }
 };
 
-// Get color for column type
-const getTypeColor = (type?: string) => {
+const getTypeClasses = (type?: string): { iconClass: string; bgClass: string } => {
   const t = type?.toLowerCase() || 'string';
   switch (t) {
     case 'integer':
@@ -80,23 +78,23 @@ const getTypeColor = (type?: string) => {
     case 'number':
     case 'currency':
     case 'percent':
-      return 'text-blue-500 bg-blue-50';
+      return { iconClass: 'text-info-text', bgClass: 'bg-info-subtle' };
     case 'date':
     case 'datetime':
     case 'time':
-      return 'text-purple-500 bg-purple-50';
+      return { iconClass: 'text-primary', bgClass: 'bg-primary/10' };
     case 'boolean':
-      return 'text-green-500 bg-green-50';
+      return { iconClass: 'text-success-text', bgClass: 'bg-success-subtle' };
     case 'choice':
     case 'multi_choice':
     case 'tags':
-      return 'text-amber-500 bg-amber-50';
+      return { iconClass: 'text-warning-text', bgClass: 'bg-warning-subtle' };
     case 'reference':
     case 'multi_reference':
     case 'user_reference':
-      return 'text-pink-500 bg-pink-50';
+      return { iconClass: 'text-primary', bgClass: 'bg-primary/10' };
     default:
-      return 'text-slate-500 bg-slate-100';
+      return { iconClass: 'text-muted-foreground', bgClass: 'bg-muted' };
   }
 };
 
@@ -141,19 +139,14 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
     setSearch('');
   };
 
-  // Check if there are changes
   const hasChanges = useMemo(() => {
     return JSON.stringify(localColumns) !== JSON.stringify(columns);
   }, [localColumns, columns]);
 
-  // Drag handlers
   const handleDragStart = (e: React.DragEvent, code: string) => {
     setDraggedCode(code);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', code);
-    // Add drag image styling
-    const target = e.target as HTMLElement;
-    target.style.opacity = '0.5';
   };
 
   const handleDragOver = (e: React.DragEvent, code: string) => {
@@ -180,9 +173,7 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
     setDragOverCode(null);
   };
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    const target = e.target as HTMLElement;
-    target.style.opacity = '1';
+  const handleDragEnd = () => {
     setDraggedCode(null);
     setDragOverCode(null);
   };
@@ -193,126 +184,106 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: 'var(--bg-surface)' }}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: '1px solid var(--border-default)' }}
-      >
+    <div className="h-full flex flex-col bg-card" role="dialog" aria-labelledby="column-panel-title">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
+            className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10"
+            aria-hidden="true"
           >
-            <SlidersHorizontal className="h-4 w-4" style={{ color: 'var(--text-brand)' }} />
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Manage Columns</h3>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{visibleCount} of {totalCount} visible</p>
+            <h3 id="column-panel-title" className="text-sm font-semibold text-foreground">Manage Columns</h3>
+            <p className="text-xs text-muted-foreground">{visibleCount} of {totalCount} visible</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--text-muted)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-            e.currentTarget.style.color = 'var(--text-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--text-muted)';
-          }}
+          className="p-2 rounded-lg transition-colors text-muted-foreground hover:bg-muted hover:text-foreground min-w-[44px] min-h-[44px]"
+          aria-label="Close column panel"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Search & Quick Actions */}
-      <div
-        className="px-4 py-3 space-y-3"
-        style={{
-          borderBottom: '1px solid var(--border-subtle)',
-          backgroundColor: 'var(--bg-elevated)',
-        }}
-      >
-        {/* Search */}
+      <div className="px-4 py-3 space-y-3 border-b border-border bg-muted/50">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search columns..."
             className="input w-full h-9 pl-9 pr-3 text-sm"
+            aria-label="Search columns"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground min-w-[44px] min-h-[44px]"
+              aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
 
-        {/* Quick Actions */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={showAll}
-            className="btn btn-secondary flex-1 h-8 text-xs"
+            className="btn btn-secondary flex-1 h-8 text-xs min-h-[44px]"
+            aria-label="Show all columns"
           >
             Show all
           </button>
           <button
             type="button"
             onClick={hideAll}
-            className="btn btn-secondary flex-1 h-8 text-xs"
+            className="btn btn-secondary flex-1 h-8 text-xs min-h-[44px]"
+            aria-label="Hide all columns except first"
           >
             Hide all
           </button>
           <button
             type="button"
             onClick={reset}
-            className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
-            style={{ color: 'var(--text-muted)' }}
+            className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 text-muted-foreground hover:text-foreground hover:bg-muted min-w-[44px] min-h-[44px]"
             title="Reset to original"
+            aria-label="Reset to original configuration"
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Visible Columns */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Eye className="h-4 w-4 text-slate-400" />
-              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+              <Eye className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
                 Visible Columns
               </span>
-              <span className="text-xs text-slate-400">({filteredVisible.length})</span>
+              <span className="text-xs text-muted-foreground">({filteredVisible.length})</span>
             </div>
-            <span className="text-[10px] text-slate-400 italic">Drag to reorder</span>
+            <span className="text-[10px] italic text-muted-foreground">Drag to reorder</span>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5" role="list" aria-label="Visible columns">
             {filteredVisible.length === 0 ? (
               <div className="text-center py-8">
-                <EyeOff className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">No visible columns</p>
-                {search && <p className="text-xs text-slate-400 mt-1">Try adjusting your search</p>}
+                <EyeOff className="h-8 w-8 mx-auto mb-2 text-border" aria-hidden="true" />
+                <p className="text-sm text-muted-foreground">No visible columns</p>
+                {search && <p className="text-xs mt-1 text-muted-foreground">Try adjusting your search</p>}
               </div>
             ) : (
               filteredVisible.map((col, index) => {
                 const TypeIcon = getTypeIcon(col.type);
-                const typeColor = getTypeColor(col.type);
+                const typeClasses = getTypeClasses(col.type);
                 const isDragOver = dragOverCode === col.code;
                 const isDragging = draggedCode === col.code;
 
@@ -325,43 +296,49 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
                     onDragLeave={() => setDragOverCode(null)}
                     onDrop={(e) => handleDrop(e, col.code)}
                     onDragEnd={handleDragEnd}
-                    className={`
-                      group flex items-center gap-2 px-3 py-2.5 rounded-lg border bg-white cursor-grab active:cursor-grabbing
-                      transition-all duration-150
-                      ${isDragOver ? 'border-primary-400 bg-primary-50 shadow-sm scale-[1.02]' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'}
-                      ${isDragging ? 'opacity-50 scale-95' : ''}
-                    `}
+                    role="listitem"
+                    aria-grabbed={isDragging}
+                    aria-label={`${col.label} column, position ${index + 1}`}
+                    className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-grab active:cursor-grabbing transition-all duration-150 ${
+                      isDragOver
+                        ? 'bg-primary/10 border-primary scale-[1.02]'
+                        : isDragging
+                        ? 'bg-card border-border opacity-50 scale-95'
+                        : 'bg-card border-border'
+                    }`}
                   >
-                    {/* Drag Handle */}
-                    <div className="text-slate-300 group-hover:text-slate-400 transition-colors">
-                      <GripVertical className="h-4 w-4" />
+                    <div className="transition-colors text-border">
+                      <GripVertical className="h-4 w-4" aria-label="Drag handle" />
                     </div>
 
-                    {/* Order Number */}
-                    <span className="w-5 h-5 flex items-center justify-center text-[10px] font-medium text-slate-400 bg-slate-100 rounded">
+                    <span
+                      className="w-5 h-5 flex items-center justify-center text-[10px] font-medium rounded text-muted-foreground bg-muted"
+                      aria-hidden="true"
+                    >
                       {index + 1}
                     </span>
 
-                    {/* Type Icon */}
-                    <div className={`w-6 h-6 rounded flex items-center justify-center ${typeColor}`}>
+                    <div
+                      className={`w-6 h-6 rounded flex items-center justify-center ${typeClasses.iconClass} ${typeClasses.bgClass}`}
+                      aria-hidden="true"
+                    >
                       <TypeIcon className="h-3.5 w-3.5" />
                     </div>
 
-                    {/* Label & Code */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{col.label}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{col.code}</p>
+                      <p className="text-sm font-medium truncate text-foreground">{col.label}</p>
+                      <p className="text-[10px] truncate text-muted-foreground">{col.code}</p>
                     </div>
 
-                    {/* Hide Button */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleVisibility(col.code);
                       }}
-                      className="opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-danger-500 hover:bg-danger-50 transition-all"
+                      className="opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-md transition-all text-muted-foreground hover:text-destructive hover:bg-destructive/10 min-w-[44px] min-h-[44px]"
                       title="Hide column"
+                      aria-label={`Hide ${col.label} column`}
                     >
                       <EyeOff className="h-4 w-4" />
                     </button>
@@ -372,57 +349,61 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
           </div>
         </div>
 
-        {/* Hidden Columns */}
         {filteredHidden.length > 0 && (
           <div className="px-4 pb-4">
             <button
               type="button"
               onClick={() => setShowHidden(!showHidden)}
-              className="flex items-center gap-2 mb-3 w-full group"
+              className="flex items-center gap-2 mb-3 w-full group min-h-[44px]"
+              aria-expanded={showHidden}
+              aria-controls="hidden-columns-list"
+              aria-label={`${showHidden ? 'Collapse' : 'Expand'} hidden columns section`}
             >
-              <EyeOff className="h-4 w-4 text-slate-400" />
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              <EyeOff className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
                 Hidden Columns
               </span>
-              <span className="text-xs text-slate-400">({filteredHidden.length})</span>
+              <span className="text-xs text-muted-foreground">({filteredHidden.length})</span>
               <div className="flex-1" />
               {showHidden ? (
-                <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                <ChevronDown className="h-4 w-4 transition-colors text-muted-foreground" aria-hidden="true" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                <ChevronRight className="h-4 w-4 transition-colors text-muted-foreground" aria-hidden="true" />
               )}
             </button>
 
             {showHidden && (
-              <div className="space-y-1.5">
+              <div id="hidden-columns-list" className="space-y-1.5" role="list" aria-label="Hidden columns">
                 {filteredHidden.map((col) => {
                   const TypeIcon = getTypeIcon(col.type);
-                  const typeColor = getTypeColor(col.type);
+                  const typeClasses = getTypeClasses(col.type);
 
                   return (
                     <div
                       key={col.code}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/50 group"
+                      role="listitem"
+                      aria-label={`${col.label} column, hidden`}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed group border-border bg-muted"
                     >
-                      {/* Placeholder for drag handle */}
-                      <div className="w-4" />
+                      <div className="w-4" aria-hidden="true" />
 
-                      {/* Type Icon */}
-                      <div className={`w-6 h-6 rounded flex items-center justify-center opacity-50 ${typeColor}`}>
+                      <div
+                        className={`w-6 h-6 rounded flex items-center justify-center opacity-50 ${typeClasses.iconClass} ${typeClasses.bgClass}`}
+                        aria-hidden="true"
+                      >
                         <TypeIcon className="h-3.5 w-3.5" />
                       </div>
 
-                      {/* Label & Code */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-500 truncate">{col.label}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{col.code}</p>
+                        <p className="text-sm truncate text-foreground">{col.label}</p>
+                        <p className="text-[10px] truncate text-muted-foreground">{col.code}</p>
                       </div>
 
-                      {/* Show Button */}
                       <button
                         type="button"
                         onClick={() => toggleVisibility(col.code)}
-                        className="h-7 px-2.5 flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-md transition-colors"
+                        className="h-7 px-2.5 flex items-center gap-1 text-xs font-medium rounded-md transition-colors text-primary bg-primary/10 hover:bg-primary/20 min-w-[44px] min-h-[44px]"
+                        aria-label={`Show ${col.label} column`}
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Show
@@ -436,18 +417,12 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
         )}
       </div>
 
-      {/* Footer */}
-      <div
-        className="flex items-center justify-between gap-3 px-4 py-3"
-        style={{
-          backgroundColor: 'var(--bg-elevated)',
-          borderTop: '1px solid var(--border-default)',
-        }}
-      >
+      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 border-t border-border">
         <button
           type="button"
           onClick={onClose}
-          className="btn btn-secondary"
+          className="btn btn-secondary min-h-[44px]"
+          aria-label="Cancel changes and close"
         >
           Cancel
         </button>
@@ -455,9 +430,10 @@ export const ColumnPanel: React.FC<ColumnPanelProps> = ({
           type="button"
           onClick={apply}
           disabled={!hasChanges}
-          className="btn btn-primary flex items-center gap-2"
+          className="btn btn-primary flex items-center gap-2 min-h-[44px]"
+          aria-label="Apply column changes"
         >
-          <Check className="h-4 w-4" />
+          <Check className="h-4 w-4" aria-hidden="true" />
           Apply Changes
         </button>
       </div>

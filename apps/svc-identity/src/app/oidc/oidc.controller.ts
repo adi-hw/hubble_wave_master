@@ -1,7 +1,7 @@
 import { Controller, Get, Param, UnauthorizedException } from '@nestjs/common';
 
 /**
- * Placeholder controller to keep routing intact while SSO features are disabled.
+ * SSO authentication controller. Returns appropriate errors when SSO is not configured.
  */
 @Controller('auth/sso')
 export class OidcController {

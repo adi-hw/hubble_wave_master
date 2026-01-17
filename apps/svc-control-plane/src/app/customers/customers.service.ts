@@ -21,7 +21,7 @@ export class CustomersService {
 
     if (search) {
       query = query.andWhere(
-        '(customer.name ILIKE :search OR customer.code ILIKE :search OR customer.contact_email ILIKE :search)',
+        '(customer.name ILIKE :search OR customer.code ILIKE :search OR customer.primary_contact_email ILIKE :search OR customer.primary_contact_name ILIKE :search)',
         { search: `%${search}%` }
       );
     }

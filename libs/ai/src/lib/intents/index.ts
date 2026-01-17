@@ -1,0 +1,31 @@
+export {
+  Phase1IntentCategory,
+  matchPhase1Intent,
+  IntentMatch,
+  AvaContext,
+  NavigateAction,
+  FilterAction,
+  GuideAction,
+  CreateFormAction,
+  UpdateRecordAction,
+  BulkUpdateAction,
+  SaveViewAction,
+  ApplyFilterAction,
+  AvaAction,
+  AvaResponse,
+  PHASE1_INTENT_PATTERNS,
+  AvaResponseTemplates,
+} from './phase1-intents';
+
+export {
+  Phase2IntentCategory,
+  FormulaResult,
+  SchemaRecommendation,
+  PropertyRecommendation,
+  ViewRecommendation,
+  ImpactAssessment,
+  RelationshipRecommendation,
+  matchIntent as matchPhase2Intent,
+  IntentMatch as Phase2IntentMatch,
+  INTENT_PATTERNS as PHASE2_INTENT_PATTERNS,
+} from './phase2-intents';

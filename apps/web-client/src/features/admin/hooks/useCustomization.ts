@@ -22,7 +22,7 @@ interface UseCustomizationListReturn {
 }
 
 /**
- * Hook to list tenant customizations with optional filters
+ * Hook to list instance customizations with optional filters
  */
 export function useCustomizationList(
   options: UseCustomizationListOptions = {}

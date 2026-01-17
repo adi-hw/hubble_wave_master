@@ -9,18 +9,13 @@
 import React, { createContext, useContext, useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { navigationService } from '../services/navigation.service';
-import { uiService } from '../services/ui.service';
 import {
   ResolvedNavigation,
   NavProfileSummary,
   NavSearchResult,
   NavigationContextValue,
-  LegacyNavigationResponse,
   ResolvedNavNode,
-} from '../types/navigation-v2';
-
-// Feature flag for V2 navigation - enabled by default
-const NAVIGATION_V2_ENABLED = import.meta.env.VITE_NAVIGATION_V2_ENABLED !== 'false';
+} from '../types/navigation';
 
 // Context tags based on device/environment
 const getContextTags = (): string[] => {
@@ -43,39 +38,6 @@ const getContextTags = (): string[] => {
   return tags;
 };
 
-/**
- * Convert legacy navigation to V2 format
- */
-const convertLegacyNavigation = (legacy: LegacyNavigationResponse): ResolvedNavigation => {
-  const nodes: ResolvedNavNode[] = legacy.sections.map((section) => ({
-    key: `section-${section.name.toLowerCase().replace(/\s+/g, '-')}`,
-    type: 'group' as const,
-    label: section.name,
-    children: section.items.map((item) => ({
-      key: item.code,
-      type: 'module' as const,
-      label: item.label,
-      icon: item.icon,
-      route: item.path ?? `/${item.code}.list`,
-      moduleKey: item.code,
-    })),
-  }));
-
-  return {
-    profileId: 'legacy',
-    profileName: 'Default',
-    nodes,
-    favorites: [],
-    recentModules: [],
-    smartGroups: {
-      favorites: [],
-      recent: [],
-      frequent: [],
-    },
-    resolvedAt: new Date().toISOString(),
-  };
-};
-
 // Create context with default values
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 
@@ -84,7 +46,7 @@ interface NavigationProviderProps {
 }
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children }) => {
-  const { auth } = useAuth();
+  const { auth, token } = useAuth();
   const [navigation, setNavigation] = useState<ResolvedNavigation | null>(null);
   const [profiles, setProfiles] = useState<NavProfileSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +59,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   const recentNavigationsRef = useRef<Set<string>>(new Set());
 
   const isAuthenticated = !!auth.user && !auth.loading;
-  const isV2 = NAVIGATION_V2_ENABLED;
 
   // Active profile from the list
   const activeProfile = useMemo(() => {
@@ -105,11 +66,23 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   }, [profiles]);
 
   /**
-   * Fetch navigation (V2 or legacy)
+   * Fetch navigation for the current user
    */
   const fetchNavigation = useCallback(async (force = false) => {
     // Skip if not authenticated, already fetched (unless forced), or currently fetching
+    console.log('[NavigationContext] fetchNavigation called', {
+      isAuthenticated,
+      force,
+      hasFetched: hasFetchedRef.current,
+      isFetching: isFetchingRef.current,
+      hasToken: !!token,
+      tokenLength: token?.length,
+    });
     if (!isAuthenticated) return;
+    if (!token) {
+      console.warn('[NavigationContext] No token available, skipping fetch');
+      return;
+    }
     if (!force && hasFetchedRef.current) return;
     if (isFetchingRef.current) return;
 
@@ -118,29 +91,15 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     setError(null);
 
     try {
-      if (isV2) {
-        // Use new navigation system
-        const contextTags = getContextTags();
-        const [nav, profs] = await Promise.all([
-          navigationService.getNavigation(contextTags),
-          navigationService.getProfiles(),
-        ]);
-        setNavigation(nav);
-        setProfiles(profs);
-      } else {
-        // Use legacy navigation and convert
-        const legacyNav = await uiService.getNavigation();
-        setNavigation(convertLegacyNavigation(legacyNav));
-        setProfiles([
-          {
-            id: 'legacy',
-            name: 'Default',
-            isActive: true,
-            isDefault: true,
-            isLocked: true,
-          },
-        ]);
-      }
+      // Use new navigation system
+      const contextTags = getContextTags();
+      console.log('[NavigationContext] Fetching navigation with tags', contextTags);
+      const [nav, profs] = await Promise.all([
+        navigationService.getNavigation(contextTags),
+        navigationService.getProfiles(),
+      ]);
+      setNavigation(nav);
+      setProfiles(profs);
       hasFetchedRef.current = true;
     } catch (err) {
       console.error('Failed to fetch navigation:', err);
@@ -150,7 +109,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [isAuthenticated, isV2]);
+  }, [isAuthenticated, token]);
 
   // Fetch navigation on auth change
   useEffect(() => {
@@ -171,8 +130,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
    */
   const switchProfile = useCallback(
     async (profileId: string) => {
-      if (!isV2) return;
-
       try {
         await navigationService.switchProfile(profileId);
         // Update local state optimistically
@@ -190,7 +147,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         throw err;
       }
     },
-    [isV2, fetchNavigation]
+    [fetchNavigation]
   );
 
   /**
@@ -201,9 +158,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       if (!navigation) return;
 
       try {
-        if (isV2) {
-          await navigationService.toggleFavorite(moduleKey);
-        }
+        await navigationService.toggleFavorite(moduleKey);
         // Update local state optimistically
         setNavigation((prev) => {
           if (!prev) return prev;
@@ -223,7 +178,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         throw err;
       }
     },
-    [isV2, navigation]
+    [navigation]
   );
 
   /**
@@ -232,8 +187,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
    */
   const recordNavigation = useCallback(
     async (moduleKey: string) => {
-      if (!isV2) return;
-
       // Debounce: skip if same module was recorded in last 5 seconds
       if (recentNavigationsRef.current.has(moduleKey)) {
         return;
@@ -254,7 +207,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         // Silently ignore errors - this is non-critical
       }
     },
-    [isV2]
+    []
   );
 
   /**
@@ -316,7 +269,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     recordNavigation,
     searchNavigation,
     refresh,
-    isV2,
   };
 
   return (
@@ -336,6 +288,3 @@ export function useNavigation(): NavigationContextValue {
   }
   return context;
 }
-
-// Re-export for backward compatibility
-export { useNavigation as useNavigationV2 };

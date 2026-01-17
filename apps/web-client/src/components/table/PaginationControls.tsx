@@ -23,35 +23,26 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
   const endItem = Math.min(page * pageSize, totalItems);
 
   return (
-    <div
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderTop: '1px solid var(--border-subtle)',
-      }}
-    >
-      {/* Record count */}
-      <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-card border-t border-border">
+      <div className="text-sm text-muted-foreground">
         Showing{' '}
-        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+        <span className="font-medium text-foreground">
           {startItem}
         </span>{' '}
         to{' '}
-        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+        <span className="font-medium text-foreground">
           {endItem}
         </span>{' '}
         of{' '}
-        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+        <span className="font-medium text-foreground">
           {totalItems}
         </span>{' '}
         results
       </div>
 
-      {/* Controls */}
       <div className="flex items-center gap-4">
-        {/* Page size selector */}
         <div className="flex items-center gap-2">
-          <label className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          <label className="text-sm text-muted-foreground">
             Rows
           </label>
           <select
@@ -70,33 +61,16 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           </select>
         </div>
 
-        {/* Page navigation */}
         <div className="flex items-center gap-1">
           <button
             onClick={() => onPageChange(Math.max(1, page - 1))}
             disabled={page === 1}
-            className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              color: 'var(--text-secondary)',
-            }}
-            onMouseEnter={(e) => {
-              if (page !== 1) {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                e.currentTarget.style.borderColor = 'var(--border-strong)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-              e.currentTarget.style.borderColor = 'var(--border-default)';
-            }}
+            className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-card border border-border text-muted-foreground hover:bg-muted hover:border-foreground/20"
             aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
 
-          {/* Page numbers */}
           <div className="flex items-center">
             {totalPages <= 5 ? (
               Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
@@ -111,7 +85,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
               <>
                 <PageButton page={1} currentPage={page} onPageChange={onPageChange} />
                 {page > 3 && (
-                  <span className="px-1" style={{ color: 'var(--text-muted)' }}>
+                  <span className="px-1 text-muted-foreground">
                     ...
                   </span>
                 )}
@@ -125,7 +99,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
                   <PageButton page={page + 1} currentPage={page} onPageChange={onPageChange} />
                 )}
                 {page < totalPages - 2 && (
-                  <span className="px-1" style={{ color: 'var(--text-muted)' }}>
+                  <span className="px-1 text-muted-foreground">
                     ...
                   </span>
                 )}
@@ -137,22 +111,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           <button
             onClick={() => onPageChange(Math.min(totalPages, page + 1))}
             disabled={page >= totalPages}
-            className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              color: 'var(--text-secondary)',
-            }}
-            onMouseEnter={(e) => {
-              if (page < totalPages) {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                e.currentTarget.style.borderColor = 'var(--border-strong)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-              e.currentTarget.style.borderColor = 'var(--border-default)';
-            }}
+            className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-card border border-border text-muted-foreground hover:bg-muted hover:border-foreground/20"
             aria-label="Next page"
           >
             <ChevronRight className="h-4 w-4" />
@@ -173,22 +132,11 @@ const PageButton: React.FC<{
   return (
     <button
       onClick={() => onPageChange(page)}
-      className="h-8 min-w-[2rem] px-2 text-sm font-medium rounded-lg transition-colors"
-      style={{
-        backgroundColor: isActive ? 'var(--bg-primary-subtle)' : 'transparent',
-        color: isActive ? 'var(--text-brand)' : 'var(--text-secondary)',
-        border: isActive ? '1px solid var(--border-primary)' : '1px solid transparent',
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = 'transparent';
-        }
-      }}
+      className={`h-8 min-w-[2rem] px-2 text-sm font-medium rounded-lg transition-colors ${
+        isActive
+          ? 'bg-primary/10 text-primary border border-primary'
+          : 'bg-transparent text-muted-foreground border border-transparent hover:bg-muted'
+      }`}
     >
       {page}
     </button>

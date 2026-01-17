@@ -2,11 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TerraformService } from './terraform.service';
 import { InstancesService } from '../instances/instances.service';
 import { TerraformExecutor } from './terraform.executor';
-
-/**
- * In-process worker to execute terraform jobs and stream output to DB.
- * Replace with queue-based worker for production scale.
- */
 @Injectable()
 export class TerraformWorker {
   private readonly logger = new Logger(TerraformWorker.name);
@@ -56,6 +51,12 @@ export class TerraformWorker {
     this.logger.log(`Started terraform job ${job.id} (${job.operation}) for instance ${job.instanceId}`);
 
     try {
+      const { workspace } = await this.instancesService.ensureWorkspaceForJob(job);
+      if (workspace.workspace !== job.workspace) {
+        await this.terraformService.assignWorkspace(job.id, workspace.workspace);
+        job.workspace = workspace.workspace;
+      }
+
       let result;
       if (job.operation === 'apply') {
         result = await this.executor.apply(job);

@@ -25,17 +25,13 @@ export const FormActionsBar: React.FC<FormActionsBarProps> = ({
 
   return (
     <div
-      className="sticky bottom-0 px-5 py-4 backdrop-blur-sm"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderTop: '1px solid var(--border-default)',
-      }}
+      className="sticky bottom-0 px-5 py-4 backdrop-blur-sm bg-card border-t border-border"
     >
       <div className="flex items-center justify-between">
         {/* Left side - validation warning */}
         <div className="flex-1">
           {hasErrors && (
-            <div className="flex items-center gap-2" style={{ color: 'var(--text-warning)' }}>
+            <div className="flex items-center gap-2 text-warning-text">
               <AlertTriangle className="h-4 w-4" />
               <span className="text-sm">Please fix validation errors before saving</span>
             </div>

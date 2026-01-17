@@ -7,7 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { ModelField } from '../../../services/platform.service';
+import { ModelProperty } from '../../../services/platform.service';
 import {
   VisibilityCondition,
   VisibilityRule,
@@ -18,7 +18,7 @@ interface ConditionBuilderProps {
   /**
    * Available fields to build conditions against
    */
-  fields: ModelField[];
+  fields: ModelProperty[];
 
   /**
    * Current condition configuration
@@ -95,7 +95,7 @@ function generateId(): string {
 // Single Rule Component - Vertical stacked layout for narrow panels
 const RuleRow: React.FC<{
   rule: VisibilityRule;
-  fields: ModelField[];
+  fields: ModelProperty[];
   onUpdate: (updates: Partial<VisibilityRule>) => void;
   onRemove: () => void;
   ruleNumber: number;
@@ -126,23 +126,24 @@ const RuleRow: React.FC<{
       {/* Logic operator badge between rules */}
       {showOperatorBadge && (
         <div className="flex items-center justify-center py-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded text-muted-foreground bg-muted">
             {logicOperator}
           </span>
         </div>
       )}
 
       {/* Rule card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+      <div className="rounded-lg p-3 space-y-2 bg-card border border-border">
         {/* Header with rule number and delete */}
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-medium text-slate-400 uppercase">
+          <span className="text-[10px] font-medium uppercase text-muted-foreground">
             Rule {ruleNumber}
           </span>
           <button
             onClick={onRemove}
-            className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded transition-colors text-muted-foreground hover:text-destructive"
             title="Remove rule"
+            aria-label={`Remove rule ${ruleNumber}`}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -150,13 +151,18 @@ const RuleRow: React.FC<{
 
         {/* Field Selector */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-500 mb-1">
+          <label
+            className="block text-[10px] font-medium mb-1 text-muted-foreground"
+            htmlFor={`field-${rule.id}`}
+          >
             When field
           </label>
           <select
+            id={`field-${rule.id}`}
             value={rule.field}
             onChange={(e) => onUpdate({ field: e.target.value, value: undefined })}
-            className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors"
+            className="w-full h-8 px-2 text-sm rounded-md focus:outline-none transition-colors bg-card border border-border text-foreground"
+            aria-label="Select field for condition"
           >
             <option value="">Select field...</option>
             {fields.map((field) => (
@@ -169,14 +175,21 @@ const RuleRow: React.FC<{
 
         {/* Operator Selector */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-500 mb-1">
+          <label
+            className="block text-[10px] font-medium mb-1 text-muted-foreground"
+            htmlFor={`operator-${rule.id}`}
+          >
             Condition
           </label>
           <select
+            id={`operator-${rule.id}`}
             value={rule.operator}
             onChange={(e) => onUpdate({ operator: e.target.value as ConditionOperator })}
             disabled={!rule.field}
-            className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors disabled:opacity-50 disabled:bg-slate-50"
+            className={`w-full h-8 px-2 text-sm rounded-md focus:outline-none transition-colors disabled:opacity-50 border border-border text-foreground ${
+              rule.field ? 'bg-card' : 'bg-muted'
+            }`}
+            aria-label="Select condition operator"
           >
             {OPERATORS.filter((o) => validOperators.includes(o.value)).map((op) => (
               <option key={op.value} value={op.value}>
@@ -189,19 +202,24 @@ const RuleRow: React.FC<{
         {/* Value Input */}
         {selectedOperator?.requiresValue && (
           <div>
-            <label className="block text-[10px] font-medium text-slate-500 mb-1">
+            <label
+              className="block text-[10px] font-medium mb-1 text-muted-foreground"
+              htmlFor={`value-${rule.id}`}
+            >
               Value
             </label>
             {fieldChoices.length > 0 ? (
               selectedOperator.valueType === 'multiple' ? (
                 <select
+                  id={`value-${rule.id}`}
                   multiple
                   value={Array.isArray(rule.value) ? rule.value : rule.value ? [rule.value] : []}
                   onChange={(e) => {
                     const values = Array.from(e.target.selectedOptions, (opt) => opt.value);
                     onUpdate({ value: values });
                   }}
-                  className="w-full h-20 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors"
+                  className="w-full h-20 px-2 text-sm rounded-md focus:outline-none transition-colors bg-card border border-border text-foreground"
+                  aria-label="Select multiple values"
                 >
                   {fieldChoices.map((choice) => (
                     <option key={choice.value} value={choice.value}>
@@ -211,9 +229,11 @@ const RuleRow: React.FC<{
                 </select>
               ) : (
                 <select
+                  id={`value-${rule.id}`}
                   value={rule.value || ''}
                   onChange={(e) => onUpdate({ value: e.target.value })}
-                  className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors"
+                  className="w-full h-8 px-2 text-sm rounded-md focus:outline-none transition-colors bg-card border border-border text-foreground"
+                  aria-label="Select value"
                 >
                   <option value="">Select value...</option>
                   {fieldChoices.map((choice) => (
@@ -225,9 +245,11 @@ const RuleRow: React.FC<{
               )
             ) : selectedField?.type === 'boolean' ? (
               <select
+                id={`value-${rule.id}`}
                 value={rule.value?.toString() || ''}
                 onChange={(e) => onUpdate({ value: e.target.value === 'true' })}
-                className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors"
+                className="w-full h-8 px-2 text-sm rounded-md focus:outline-none transition-colors bg-card border border-border text-foreground"
+                aria-label="Select boolean value"
               >
                 <option value="">Select...</option>
                 <option value="true">True</option>
@@ -235,6 +257,7 @@ const RuleRow: React.FC<{
               </select>
             ) : (
               <input
+                id={`value-${rule.id}`}
                 type={
                   ['integer', 'long', 'decimal', 'number', 'currency', 'percent'].includes(
                     selectedField?.type?.toLowerCase() || ''
@@ -245,13 +268,29 @@ const RuleRow: React.FC<{
                 value={rule.value || ''}
                 onChange={(e) => onUpdate({ value: e.target.value })}
                 placeholder="Enter value..."
-                className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-100 focus:outline-none transition-colors"
+                className="w-full h-8 px-2 text-sm rounded-md focus:outline-none transition-colors bg-card border border-border text-foreground"
+                aria-label="Enter value"
               />
             )}
           </div>
         )}
       </div>
     </div>
+  );
+};
+
+// Add Rule Button Component
+const AddRuleButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-md transition-colors py-[11px] min-h-[44px] text-primary bg-card border border-dashed border-border hover:bg-primary/10 hover:border-primary"
+      aria-label="Add another condition"
+    >
+      <Plus className="h-3.5 w-3.5" />
+      Add another condition
+    </button>
   );
 };
 
@@ -346,24 +385,24 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
       case 'protection':
         return {
           icon: AlertTriangle,
-          iconBg: 'bg-amber-100',
-          iconColor: 'text-amber-600',
+          iconBgClass: 'bg-warning-subtle',
+          iconColorClass: 'text-warning-text',
           enableText: 'Add protection rule',
           description: 'Field will be protected when conditions are met',
         };
       case 'validation':
         return {
           icon: AlertTriangle,
-          iconBg: 'bg-red-100',
-          iconColor: 'text-red-600',
+          iconBgClass: 'bg-destructive/20',
+          iconColorClass: 'text-destructive',
           enableText: 'Add validation rule',
           description: 'Validation will be applied when conditions are met',
         };
       default:
         return {
           icon: Eye,
-          iconBg: 'bg-primary-100',
-          iconColor: 'text-primary-600',
+          iconBgClass: 'bg-primary/20',
+          iconColorClass: 'text-primary',
           enableText: 'Add visibility condition',
           description: 'Element will be visible when conditions are met',
         };
@@ -380,21 +419,25 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
   }, [condition, fields]);
 
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+    <div className="rounded-lg overflow-hidden bg-card border border-border">
       {/* Header - Always visible */}
       <button
         type="button"
-        className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+        className="w-full flex items-center justify-between px-3 transition-colors text-left py-[11px] min-h-[44px] bg-muted hover:bg-muted/80"
         onClick={() => condition ? setExpanded(!expanded) : handleToggleCondition()}
+        aria-label={condition ? (expanded ? 'Collapse condition builder' : 'Expand condition builder') : 'Add visibility condition'}
+        aria-expanded={condition ? expanded : undefined}
       >
         <div className="flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${modeConfig.iconBg}`}>
-            <Icon className={`h-4 w-4 ${modeConfig.iconColor}`} />
+          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${modeConfig.iconBgClass}`}>
+            <Icon className={`h-4 w-4 ${modeConfig.iconColorClass}`} />
           </div>
           <div>
-            <span className="text-sm font-medium text-slate-700">{title}</span>
+            <span className="text-sm font-medium text-foreground">
+              {title}
+            </span>
             {condition && (
-              <span className="ml-2 text-xs text-slate-400">
+              <span className="ml-2 text-xs text-muted-foreground">
                 ({condition.rules.length} rule{condition.rules.length !== 1 ? 's' : ''})
               </span>
             )}
@@ -409,51 +452,67 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                 onChange(undefined);
                 setExpanded(false);
               }}
-              className="p-1.5 text-slate-400 hover:text-red-500 rounded transition-colors"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded transition-colors text-muted-foreground hover:text-destructive"
               title="Remove all conditions"
+              aria-label="Remove all conditions"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
           {condition ? (
             expanded ? (
-              <ChevronUp className="h-4 w-4 text-slate-400" />
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
             ) : (
-              <ChevronDown className="h-4 w-4 text-slate-400" />
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             )
           ) : (
-            <Plus className="h-4 w-4 text-primary-500" />
+            <Plus className="h-4 w-4 text-primary" />
           )}
         </div>
       </button>
 
       {/* Content - When condition exists */}
       {condition && expanded && (
-        <div className="p-3 bg-slate-50/50 space-y-3">
+        <div className="p-3 space-y-3 bg-muted">
           {/* Logic Operator Toggle - Only show if multiple rules */}
           {condition.rules.length > 1 && (
-            <div className="flex items-center gap-2 p-2 bg-white rounded-md border border-slate-100">
-              <span className="text-xs text-slate-500">Match</span>
-              <div className="flex-1 flex items-center bg-slate-100 rounded p-0.5">
+            <div
+              className="flex items-center gap-2 p-2 rounded-md bg-card border border-border"
+              role="group"
+              aria-label="Logic operator selection"
+            >
+              <span className="text-xs text-muted-foreground">
+                Match
+              </span>
+              <div
+                className="flex-1 flex items-center rounded p-0.5 bg-muted"
+                role="radiogroup"
+              >
                 <button
                   type="button"
                   onClick={() => handleOperatorChange('and')}
-                  className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
+                  className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-colors min-h-[32px] ${
                     condition.operator === 'and'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'bg-transparent text-muted-foreground'
                   }`}
+                  role="radio"
+                  aria-checked={condition.operator === 'and'}
+                  aria-label="Match all conditions"
                 >
                   ALL
                 </button>
                 <button
                   type="button"
                   onClick={() => handleOperatorChange('or')}
-                  className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
+                  className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-colors min-h-[32px] ${
                     condition.operator === 'or'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'bg-transparent text-muted-foreground'
                   }`}
+                  role="radio"
+                  aria-checked={condition.operator === 'or'}
+                  aria-label="Match any condition"
                 >
                   ANY
                 </button>
@@ -478,22 +537,15 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           </div>
 
           {/* Add Rule Button */}
-          <button
-            type="button"
-            onClick={handleAddRule}
-            className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-primary-600 hover:text-primary-700 bg-white hover:bg-primary-50 border border-dashed border-slate-300 hover:border-primary-300 rounded-md transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add another condition
-          </button>
+          <AddRuleButton onClick={handleAddRule} />
 
           {/* Preview */}
           {previewText && (
-            <div className="p-2 bg-white rounded-md border border-slate-100">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+            <div className="p-2 rounded-md bg-card border border-border">
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-muted-foreground">
                 Preview
               </p>
-              <p className="text-xs text-slate-600 break-words">
+              <p className="text-xs break-words text-muted-foreground">
                 {previewText}
               </p>
             </div>
@@ -504,7 +556,9 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
       {/* Empty state - When no condition exists */}
       {!condition && (
         <div className="px-3 py-4 text-center">
-          <p className="text-xs text-slate-500 mb-2">{modeConfig.description}</p>
+          <p className="text-xs mb-2 text-muted-foreground">
+            {modeConfig.description}
+          </p>
         </div>
       )}
     </div>
@@ -512,7 +566,7 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
 };
 
 // Helper to generate human-readable condition preview
-function generateConditionPreview(condition: VisibilityCondition, fields: ModelField[]): string {
+function generateConditionPreview(condition: VisibilityCondition, fields: ModelProperty[]): string {
   const parts = condition.rules.map((rule) => {
     const field = fields.find((f) => f.code === rule.field);
     const fieldLabel = field?.label || rule.field || '[field]';

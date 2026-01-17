@@ -1,6 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { UsersModule } from './users/users.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { InstanceDbModule } from '@hubblewave/instance-db';
@@ -23,22 +23,24 @@ import { IamModule } from './iam/iam.module';
 import { NavigationModule } from './navigation/navigation.module';
 import { GroupsModule } from './groups/groups.module';
 import { RolesModule } from './roles/roles.module';
+import { AuditModule } from './audit/audit.module';
+import { PoliciesModule } from './policies/policies.module';
 import { CsrfMiddleware } from './auth/middleware/csrf.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100, // Increased from 10 to allow normal app usage
-    }]),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ([{
+        ttl: config.get<number>('RATE_LIMIT_TTL', 60000),
+        limit: config.get<number>('RATE_LIMIT_MAX', 100),
+      }]),
+    }),
     InstanceDbModule,
     UsersModule,
-    // TypeOrmModule.forFeature([Tenant]),
     AuthModule,
-    AuthGuardModule,
-    OidcModule,
-    EmailModule,
     AuthGuardModule,
     OidcModule,
     EmailModule,
@@ -49,6 +51,8 @@ import { CsrfMiddleware } from './auth/middleware/csrf.middleware';
     NavigationModule,
     GroupsModule,
     RolesModule,
+    AuditModule,
+    PoliciesModule,
   ],
   // PlatformController removed as its dependencies are gone
   controllers: [HealthController],

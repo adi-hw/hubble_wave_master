@@ -18,14 +18,14 @@ export class ListRecordsDto extends PaginationDto {
   filters?: Record<string, unknown>;
 }
 
-export class TableParamDto {
+export class CollectionParamDto {
   @IsString()
-  table!: string;
+  collection!: string;
 }
 
 export class RecordIdParamDto {
   @IsString()
-  table!: string;
+  collection!: string;
 
   @IsUUID()
   id!: string;

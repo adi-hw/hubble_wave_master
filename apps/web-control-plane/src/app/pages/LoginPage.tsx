@@ -1,17 +1,5 @@
 import { useState } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
-  Alert,
-  CircularProgress,
-  InputAdornment,
-  IconButton,
-} from '@mui/material';
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -30,7 +18,6 @@ export function LoginPage() {
 
     try {
       await login(email, password);
-      // Navigation is handled by AuthContext
     } catch (err: unknown) {
       console.error('Login error:', err);
       const axiosError = err as { response?: { data?: { message?: string } }; message?: string; code?: string };
@@ -48,132 +35,132 @@ export function LoginPage() {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: colors.void.deepest,
-        p: 3,
-      }}
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: colors.void.deepest }}
     >
-      <Card sx={{ width: '100%', maxWidth: 420, p: 2 }}>
-        <CardContent>
-          {/* Logo */}
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Box
-              sx={{
-                width: 56,
-                height: 56,
-                borderRadius: 3,
-                background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                color: '#fff',
-                fontSize: 22,
-                mx: 'auto',
-                mb: 2,
-              }}
-            >
-              HW
-            </Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
-              HubbleWave Control Plane
-            </Typography>
-            <Typography variant="body2" sx={{ color: colors.text.tertiary, mt: 0.5 }}>
-              Sign in to manage your platform
-            </Typography>
-          </Box>
+      <div
+        className="w-full max-w-md p-8 rounded-2xl border"
+        style={{
+          backgroundColor: colors.void.base,
+          borderColor: colors.glass.border,
+        }}
+      >
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div
+            className="w-14 h-14 rounded-xl mx-auto mb-4 flex items-center justify-center font-bold text-white text-xl"
+            style={{
+              background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
+            }}
+          >
+            HW
+          </div>
+          <h1 className="text-xl font-bold" style={{ color: colors.text.primary }}>
+            HubbleWave Control Plane
+          </h1>
+          <p className="text-sm mt-1" style={{ color: colors.text.tertiary }}>
+            Sign in to manage your platform
+          </p>
+        </div>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+        {/* Error Alert */}
+        {error && (
+          <div
+            className="flex items-start gap-3 p-3 rounded-lg mb-6"
+            style={{
+              backgroundColor: colors.danger.glow,
+              border: `1px solid ${colors.danger.base}`,
+            }}
+          >
+            <AlertCircle size={18} style={{ color: colors.danger.base, flexShrink: 0, marginTop: 2 }} />
+            <p className="text-sm" style={{ color: colors.danger.base }}>
               {error}
-            </Alert>
-          )}
+            </p>
+          </div>
+        )}
 
-          {/* Login Form */}
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
+        {/* Login Form */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="relative">
+            <Mail
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: colors.text.muted }}
+            />
+            <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
               autoFocus
-              sx={{ mb: 2.5 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Mail size={18} color={colors.text.muted} />
-                  </InputAdornment>
-                ),
+              placeholder="Email"
+              className="w-full pl-10 pr-4 py-3 rounded-lg border text-sm outline-none transition-colors"
+              style={{
+                backgroundColor: colors.glass.medium,
+                borderColor: colors.glass.border,
+                color: colors.text.primary,
               }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+              onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
             />
+          </div>
 
-            <TextField
-              fullWidth
-              label="Password"
+          <div className="relative">
+            <Lock
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: colors.text.muted }}
+            />
+            <input
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              sx={{ mb: 3 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Lock size={18} color={colors.text.muted} />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                      size="small"
-                    >
-                      {showPassword ? (
-                        <EyeOff size={18} color={colors.text.muted} />
-                      ) : (
-                        <Eye size={18} color={colors.text.muted} />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              placeholder="Password"
+              className="w-full pl-10 pr-12 py-3 rounded-lg border text-sm outline-none transition-colors"
+              style={{
+                backgroundColor: colors.glass.medium,
+                borderColor: colors.glass.border,
+                color: colors.text.primary,
               }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+              onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
             />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={loading || !email || !password}
-              sx={{ py: 1.5 }}
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+              style={{ color: colors.text.muted }}
             >
-              {loading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-          </Box>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
 
-          {/* Help text */}
-          <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Typography variant="caption" sx={{ color: colors.text.muted }}>
-              Default credentials: admin@hubblewave.com / Admin@123!
-            </Typography>
-          </Box>
-        </CardContent>
-      </Card>
-    </Box>
+          <button
+            type="submit"
+            disabled={loading || !email || !password}
+            className="w-full py-3 rounded-lg font-semibold text-white transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+            style={{
+              background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
+            }}
+          >
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              'Sign In'
+            )}
+          </button>
+        </form>
+
+        {/* Help text */}
+        <p className="text-center text-xs mt-8" style={{ color: colors.text.muted }}>
+          Contact your administrator for credentials
+        </p>
+      </div>
+    </div>
   );
 }
 

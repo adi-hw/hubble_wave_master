@@ -6,9 +6,12 @@ const NavItem: React.FC<{ to: string; label: string }> = ({ to, label }) => (
   <NavLink
     to={to}
     className={({ isActive }) =>
-      ['block rounded px-3 py-2 text-sm', isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'].join(
-        ' ',
-      )
+      [
+        'block rounded-lg px-3 py-2 text-sm transition-colors',
+        isActive
+          ? 'bg-primary/10 text-foreground font-medium'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      ].join(' ')
     }
   >
     {label}
@@ -17,7 +20,7 @@ const NavItem: React.FC<{ to: string; label: string }> = ({ to, label }) => (
 
 export const SidebarNav: React.FC = () => {
   return (
-    <aside className="hidden w-60 flex-shrink-0 border-r bg-white p-2 sm:flex sm:flex-col">
+    <aside className="hidden w-60 flex-shrink-0 border-r border-border bg-card p-3 sm:flex sm:flex-col">
       <div className="mt-2 flex flex-col gap-1">
         <PermissionGate permissions="asset.read">
           <NavItem to="/assets" label="Assets" />
@@ -28,26 +31,26 @@ export const SidebarNav: React.FC = () => {
         </PermissionGate>
       </div>
 
-      <div className="mt-4 border-t pt-3">
+      <div className="mt-4 border-t border-border pt-3">
         <PermissionGate roles="admin">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Studio</div>
-          <NavItem to="/studio/collections" label="Collections" />
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Studio</div>
+          <NavItem to="/collections.list" label="Collections" />
           <NavItem to="/studio/scripts" label="Scripts" />
-          <NavItem to="/studio/workflows" label="Workflows" />
+          <NavItem to="/studio/process-flows" label="Process Flows" />
         </PermissionGate>
       </div>
 
-      <div className="mt-4 border-t pt-3">
+      <div className="mt-4 border-t border-border pt-3">
         <PermissionGate roles="admin">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Administration</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Administration</div>
           <NavItem to="/admin/users" label="Users & Roles" />
           <NavItem to="/admin/groups" label="Groups" />
         </PermissionGate>
       </div>
 
-      <div className="mt-4 border-t pt-3">
+      <div className="mt-4 border-t border-border pt-3">
         <PermissionGate roles="admin">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">Enterprise</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Enterprise</div>
           <NavItem to="/admin/enterprise/sso" label="SSO Configuration" />
           <NavItem to="/admin/enterprise/ldap" label="LDAP / Active Directory" />
           <NavItem to="/admin/enterprise/audit" label="Audit Logs" />

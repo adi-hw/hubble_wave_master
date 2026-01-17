@@ -9,7 +9,7 @@ import { GridQueryService } from './grid-query.service';
 import { ModelRegistryService } from '../model-registry.service';
 
 @Module({
-  imports: [AuthorizationModule],
+  imports: [AuthorizationModule.forFeature()],
   controllers: [GridController],
   providers: [GridQueryService, ModelRegistryService],
   exports: [GridQueryService],

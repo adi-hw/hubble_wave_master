@@ -5,13 +5,9 @@ import { controlPlaneEntities } from './entities/index';
 
 /**
  * Control Plane Database Module
- * 
- * Provides access to the Control Plane database (eam_control) which
- * is used by HubbleWave internally to manage customer organizations,
- * instances, subscriptions, and staff users.
- * 
- * This is NOT the customer instance database - each customer has their
- * own completely isolated database managed by the Instance DB module.
+ *
+ * Keeps control-plane state isolated from customer instance data to enforce
+ * customer boundaries and governance rules.
  */
 @Module({
   imports: [
@@ -25,7 +21,7 @@ import { controlPlaneEntities } from './entities/index';
         port: configService.get('CONTROL_PLANE_DB_PORT', 5432),
         username: configService.get('CONTROL_PLANE_DB_USER', 'hubblewave'),
         password: configService.get('CONTROL_PLANE_DB_PASSWORD'),
-        database: configService.get('CONTROL_PLANE_DB_NAME', 'eam_control'),
+        database: configService.get('CONTROL_PLANE_DB_NAME', 'hubblewave_control_plane'),
         entities: controlPlaneEntities,
         synchronize: false, // Always use migrations in production
         migrationsRun: configService.get('RUN_CONTROL_PLANE_MIGRATIONS', 'true') === 'true',

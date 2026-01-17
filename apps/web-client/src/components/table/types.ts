@@ -15,7 +15,7 @@ export interface FilterRule {
   operator: string;
   value: any;
   value2?: any; // For "between" operators
-  logicalOp?: 'AND' | 'OR'; // Legacy field for backward compatibility
+  logicalOp?: 'AND' | 'OR'; // Logical operator for chaining with next rule
 }
 
 export interface FilterGroup {

@@ -10,6 +10,8 @@
  */
 export type ValidationRuleType =
   | 'required'
+  | 'type'
+  | 'unique'
   | 'regex'
   | 'min'
   | 'max'
@@ -156,11 +158,11 @@ export interface ValidationRuleResult {
 }
 
 /**
- * Result of validating a single field
+ * Result of validating a single property
  */
-export interface FieldValidationResult {
-  field: string;
-  fieldLabel: string;
+export interface PropertyValidationResult {
+  property: string;
+  propertyLabel: string;
   isValid: boolean;
   errors: ValidationRuleResult[];
 }
@@ -170,11 +172,11 @@ export interface FieldValidationResult {
  */
 export interface RecordValidationResult {
   isValid: boolean;
-  fields: FieldValidationResult[];
+  properties: PropertyValidationResult[];
   summary: {
-    totalFields: number;
-    validFields: number;
-    invalidFields: number;
+    totalProperties: number;
+    validProperties: number;
+    invalidProperties: number;
     errorCount: number;
   };
 }

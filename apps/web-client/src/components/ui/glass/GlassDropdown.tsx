@@ -152,18 +152,18 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
         <div
           ref={menuRef}
           role="menu"
+          style={{ minWidth }}
           className={cn(
-            'absolute z-[var(--z-dropdown)]',
+            'absolute z-50',
             'glass-dropdown py-1',
-            'bg-[var(--bg-elevated)] backdrop-blur-xl',
-            'border border-[var(--border-default)]',
+            'bg-card backdrop-blur-xl',
+            'border border-border',
             'rounded-xl shadow-lg',
             'animate-fade-in',
             alignmentClasses[align],
             sideClasses[side],
             className
           )}
-          style={{ minWidth }}
         >
           {items.map((item, index) => {
             if ('type' in item) {
@@ -171,8 +171,7 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
                 return (
                   <div
                     key={`sep-${index}`}
-                    className="my-1 mx-2 h-px"
-                    style={{ backgroundColor: 'var(--border-subtle)' }}
+                    className="my-1 mx-2 h-px bg-border"
                   />
                 );
               }
@@ -180,8 +179,7 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
                 return (
                   <div
                     key={`label-${index}`}
-                    className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
-                    style={{ color: 'var(--text-muted)' }}
+                    className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground"
                   >
                     {item.label}
                   </div>
@@ -204,14 +202,13 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
                     setOpen(false);
                   }
                 }}
-                onMouseEnter={() => setActiveIndex(itemIndex)}
                 className={cn(
                   'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors',
-                  'focus:outline-none',
+                  'focus:outline-none hover:bg-muted',
                   dropdownItem.disabled && 'opacity-50 cursor-not-allowed',
-                  dropdownItem.danger ? 'text-[var(--text-danger)]' : 'text-[var(--text-secondary)]',
-                  isActive && !dropdownItem.danger && 'bg-[var(--bg-hover)] text-[var(--text-primary)]',
-                  isActive && dropdownItem.danger && 'bg-[var(--bg-danger-subtle)]'
+                  dropdownItem.danger ? 'text-destructive hover:bg-destructive/10' : 'text-muted-foreground hover:text-foreground',
+                  isActive && !dropdownItem.danger && 'bg-muted text-foreground',
+                  isActive && dropdownItem.danger && 'bg-destructive/10'
                 )}
               >
                 {dropdownItem.checked !== undefined && (
@@ -220,7 +217,7 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
                   </span>
                 )}
                 {dropdownItem.icon && (
-                  <span className="flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex-shrink-0 text-muted-foreground">
                     {dropdownItem.icon}
                   </span>
                 )}
@@ -229,7 +226,7 @@ export const GlassDropdown: React.FC<GlassDropdownProps> = ({
                   <kbd className="kbd text-[10px]">{dropdownItem.shortcut}</kbd>
                 )}
                 {dropdownItem.children && (
-                  <ChevronRight className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                 )}
               </button>
             );
@@ -281,17 +278,16 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, children }) => 
         <div
           ref={menuRef}
           className={cn(
-            'fixed z-[var(--z-dropdown)]',
+            'fixed z-50 min-w-[180px]',
             'glass-dropdown py-1',
-            'bg-[var(--bg-elevated)] backdrop-blur-xl',
-            'border border-[var(--border-default)]',
+            'bg-card backdrop-blur-xl',
+            'border border-border',
             'rounded-xl shadow-lg',
             'animate-fade-in'
           )}
           style={{
             left: position.x,
             top: position.y,
-            minWidth: 180,
           }}
         >
           {items.map((item, index) => {
@@ -300,8 +296,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, children }) => 
                 return (
                   <div
                     key={`sep-${index}`}
-                    className="my-1 mx-2 h-px"
-                    style={{ backgroundColor: 'var(--border-subtle)' }}
+                    className="my-1 mx-2 h-px bg-border"
                   />
                 );
               }
@@ -309,8 +304,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, children }) => 
                 return (
                   <div
                     key={`label-${index}`}
-                    className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
-                    style={{ color: 'var(--text-muted)' }}
+                    className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground"
                   >
                     {item.label}
                   </div>
@@ -332,11 +326,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, children }) => 
                 }}
                 className={cn(
                   'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors',
-                  'hover:bg-[var(--bg-hover)]',
+                  'hover:bg-muted',
                   dropdownItem.disabled && 'opacity-50 cursor-not-allowed',
                   dropdownItem.danger
-                    ? 'text-[var(--text-danger)] hover:bg-[var(--bg-danger-subtle)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'text-destructive hover:bg-destructive/10'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 {dropdownItem.icon && (

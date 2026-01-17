@@ -32,7 +32,7 @@ export default defineConfig(() => ({
       output: {
         manualChunks: {
           react: ['react', 'react-dom'],
-          ui: ['@mui/material', '@mui/icons-material'],
+          icons: ['lucide-react'],
         },
       },
     },

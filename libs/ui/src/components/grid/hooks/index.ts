@@ -3,6 +3,7 @@
  */
 
 export { useGridSSRM } from './useGridSSRM';
+export { useGridGrouping } from './useGridGrouping';
 export { useGridKeyboard } from './useGridKeyboard';
 export { useGridExport } from './useGridExport';
 export type {

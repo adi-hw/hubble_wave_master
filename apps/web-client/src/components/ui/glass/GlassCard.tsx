@@ -6,9 +6,10 @@
  */
 
 import React from 'react';
+import { motion, type HTMLMotionProps } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 
-export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface GlassCardProps extends Omit<HTMLMotionProps<'div'>, 'ref'> {
   /** Card variant */
   variant?: 'default' | 'elevated' | 'interactive' | 'stat' | 'subtle';
   /** Padding size */
@@ -51,38 +52,38 @@ export const GlassCard = React.forwardRef<HTMLDivElement, GlassCardProps>(
     const variantClasses = {
       default: cn(
         'glass-surface',
-        bordered && 'border border-white/10 dark:border-white/5'
+        bordered && 'border border-border/30'
       ),
       elevated: cn(
         'glass-surface-elevated shadow-lg',
-        bordered && 'border border-white/15 dark:border-white/10'
+        bordered && 'border border-border/40'
       ),
       interactive: cn(
         'glass-surface cursor-pointer hover:scale-[1.01] hover:shadow-lg active:scale-[0.99]',
-        bordered && 'border border-white/10 dark:border-white/5 hover:border-white/20'
+        bordered && 'border border-border/30 hover:border-border/60'
       ),
       stat: cn(
         'glass-surface',
-        bordered && 'border border-white/10 dark:border-white/5'
+        bordered && 'border border-border/30'
       ),
       subtle: cn(
         'bg-transparent',
-        bordered && 'border border-white/5 dark:border-white/3'
+        bordered && 'border border-border/20'
       ),
     };
 
     const selectedClasses = selected
-      ? 'ring-2 ring-[var(--color-primary-500)] border-[var(--color-primary-500)]'
+      ? 'ring-2 ring-primary border-primary'
       : '';
 
     return (
-      <div
+      <motion.div
         ref={ref}
         className={cn(baseClasses, variantClasses[variant], selectedClasses, className)}
         {...props}
       >
         {children}
-      </div>
+      </motion.div>
     );
   }
 );
@@ -92,7 +93,7 @@ GlassCard.displayName = 'GlassCard';
 /**
  * StatCard - A specialized card for displaying statistics
  */
-export interface StatCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface StatCardProps extends Omit<GlassCardProps, 'children' | 'variant'> {
   /** The main value to display */
   value: string | number;
   /** The label for the stat */
@@ -118,9 +119,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   ...props
 }) => {
   const trendColors = {
-    up: 'text-[var(--text-success)]',
-    down: 'text-[var(--text-danger)]',
-    neutral: 'text-[var(--text-muted)]',
+    up: 'text-success-text',
+    down: 'text-destructive',
+    neutral: 'text-muted-foreground',
   };
 
   const trendIcons = {
@@ -133,13 +134,13 @@ export const StatCard: React.FC<StatCardProps> = ({
     <GlassCard variant="stat" className={cn('min-w-[140px]', className)} {...props}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {label}
           </p>
           {loading ? (
-            <div className="h-8 w-20 mt-1 rounded bg-[var(--bg-surface-secondary)] animate-pulse" />
+            <div className="h-8 w-20 mt-1 rounded bg-muted animate-pulse" />
           ) : (
-            <p className="text-2xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
+            <p className="text-2xl font-bold mt-1 text-foreground">
               {value}
             </p>
           )}
@@ -150,13 +151,7 @@ export const StatCard: React.FC<StatCardProps> = ({
           )}
         </div>
         {icon && (
-          <div
-            className="p-2 rounded-lg"
-            style={{
-              backgroundColor: 'var(--bg-primary-subtle)',
-              color: 'var(--text-brand)',
-            }}
-          >
+          <div className="p-2 rounded-lg bg-primary/10 text-primary">
             {icon}
           </div>
         )}
@@ -168,7 +163,7 @@ export const StatCard: React.FC<StatCardProps> = ({
 /**
  * ActionCard - A card with a primary action
  */
-export interface ActionCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface ActionCardProps extends Omit<GlassCardProps, 'children' | 'variant'> {
   /** Card title */
   title: string;
   /** Card description */
@@ -199,36 +194,22 @@ export const ActionCard: React.FC<ActionCardProps> = ({
     >
       <div className="flex items-start gap-4">
         {icon && (
-          <div
-            className="p-3 rounded-xl transition-colors group-hover:scale-105"
-            style={{
-              background: 'var(--gradient-brand-subtle)',
-            }}
-          >
+          <div className="p-3 rounded-xl transition-colors group-hover:scale-105 bg-gradient-to-br from-primary/20 to-primary/5">
             {icon}
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h4
-            className="font-semibold truncate"
-            style={{ color: 'var(--text-primary)' }}
-          >
+          <h4 className="font-semibold truncate text-foreground">
             {title}
           </h4>
           {description && (
-            <p
-              className="text-sm mt-0.5 line-clamp-2"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+            <p className="text-sm mt-0.5 line-clamp-2 text-muted-foreground">
               {description}
             </p>
           )}
         </div>
         {actionText && (
-          <span
-            className="text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color: 'var(--text-brand)' }}
-          >
+          <span className="text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity text-primary">
             {actionText} →
           </span>
         )}

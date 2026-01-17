@@ -1,13 +1,15 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
+import { Worker, Job, ConnectionOptions } from 'bullmq';
 import { EmbeddingService } from './embedding.service';
 import { VectorStoreService } from './vector-store.service';
 import { EmbeddingJob, EmbeddingJobResult } from './embedding-queue.service';
 
-// Callback type for getting tenant data source (single-instance)
-export type GetTenantDataSourceFn = () => Promise<import('typeorm').DataSource>;
+// Callback type for getting instance data source (single-instance)
+export type GetInstanceDataSourceFn = () => Promise<import('typeorm').DataSource>;
+
+// Deprecated alias for backward compatibility
+export type GetTenantDataSourceFn = GetInstanceDataSourceFn;
 
 // Callback type for fetching source data
 export type FetchSourceDataFn = (
@@ -19,10 +21,10 @@ export type FetchSourceDataFn = (
 export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EmbeddingWorkerService.name);
   private worker: Worker<EmbeddingJob, EmbeddingJobResult> | null = null;
-  private connection: Redis | null = null;
+  private connectionOptions: ConnectionOptions | null = null;
   private isEnabled = false;
 
-  private getTenantDataSource: GetTenantDataSourceFn | null = null;
+  private getInstanceDataSource: GetInstanceDataSourceFn | null = null;
   private fetchSourceData: FetchSourceDataFn | null = null;
 
   constructor(
@@ -32,14 +34,14 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   /**
-   * Register callbacks for tenant data source and data fetching
+   * Register callbacks for instance data source and data fetching
    * Must be called before the worker can process jobs
    */
   registerCallbacks(
-    getTenantDataSource: GetTenantDataSourceFn,
+    getInstanceDataSource: GetInstanceDataSourceFn,
     fetchSourceData: FetchSourceDataFn
   ) {
-    this.getTenantDataSource = getTenantDataSource;
+    this.getInstanceDataSource = getInstanceDataSource;
     this.fetchSourceData = fetchSourceData;
     this.logger.log('Worker callbacks registered');
   }
@@ -57,16 +59,17 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      this.connection = new Redis(redisUrl, {
+      this.connectionOptions = {
+        url: redisUrl,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-      });
+      };
 
       this.worker = new Worker<EmbeddingJob, EmbeddingJobResult>(
         'embedding-jobs',
         async (job) => this.processJob(job),
         {
-          connection: this.connection,
+          connection: this.connectionOptions,
           concurrency: parseInt(
             this.configService.get<string>('EMBEDDING_WORKER_CONCURRENCY', '2'),
             10
@@ -101,9 +104,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     if (this.worker) {
       await this.worker.close();
     }
-    if (this.connection) {
-      this.connection.disconnect();
-    }
+    this.connectionOptions = null;
   }
 
   isWorkerEnabled(): boolean {
@@ -115,13 +116,13 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<EmbeddingJobResult> {
     const startTime = Date.now();
     const { sourceType, sourceId, action, data } = job.data;
-    const instanceTenant = this.getInstanceTenant();
+    const instanceId = this.getInstanceId();
 
     this.logger.debug(
-      `Processing job: ${action} ${sourceType}/${sourceId} for tenant ${instanceTenant}`
+      `Processing job: ${action} ${sourceType}/${sourceId} for instance ${instanceId}`
     );
 
-    if (!this.getTenantDataSource || !this.fetchSourceData) {
+    if (!this.getInstanceDataSource || !this.fetchSourceData) {
       return {
         success: false,
         error: 'Worker callbacks not registered',
@@ -129,7 +130,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const dataSource = await this.getTenantDataSource();
+      const dataSource = await this.getInstanceDataSource();
 
       if (action === 'delete') {
         await this.vectorStoreService.deleteBySource(
@@ -227,7 +228,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     data?: Record<string, unknown>
   ): Promise<EmbeddingJobResult> {
     const startTime = Date.now();
-    const instanceTenant = this.getInstanceTenant();
+    const instanceId = this.getInstanceId();
     const sourceTypes = (data?.['sourceTypes'] as string[]) || [
       'knowledge_article',
       'catalog_item',
@@ -244,7 +245,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
         // Fetch all items of this type and reindex
         // This would need to be implemented in the main app to fetch all items
         this.logger.log(
-          `Bulk reindex scheduled for ${sourceType} in tenant ${instanceTenant}`
+          `Bulk reindex scheduled for ${sourceType} in instance ${instanceId}`
         );
       } catch (error) {
         errors.push(
@@ -261,7 +262,7 @@ export class EmbeddingWorkerService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private getInstanceTenant(): string {
+  private getInstanceId(): string {
     return this.configService.get<string>('INSTANCE_ID') || 'default-instance';
   }
 }

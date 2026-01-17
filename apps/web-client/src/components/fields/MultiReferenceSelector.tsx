@@ -4,10 +4,10 @@ import { Search, X, Check, Loader2, AlertCircle } from 'lucide-react';
 import { getInputClasses } from '../form/fields/FieldWrapper';
 
 interface MultiReferenceSelectorProps {
-  value?: string[]; // Array of IDs
+  value?: string[];
   onChange: (value: string[]) => void;
   required?: boolean;
-  referenceTable: string;
+  referenceCollection: string;
   disabled?: boolean;
   error?: boolean;
 }
@@ -15,7 +15,7 @@ interface MultiReferenceSelectorProps {
 export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
   value = [],
   onChange,
-  referenceTable,
+  referenceCollection,
   disabled = false,
   error,
 }) => {
@@ -26,6 +26,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
   const [initialLoading, setInitialLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [hoveredOptionId, setHoveredOptionId] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -37,12 +38,9 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
 
       setInitialLoading(true);
       try {
-        // We need an endpoint to fetch multiple by IDs or loop. 
-        // For now, loop (inefficient but works) or assume an API like /api/data/{table}?ids=1,2,3 exists.
-        // Or simpler: fetch individual items.
-        // Optimization: Use Promise.all
+        // Fetch individual items using Promise.all
         const newRecords = await Promise.all(idsToFetch.map(async (id) => {
-             const res = await fetch(`/api/data/${referenceTable}/${id}`, {
+             const res = await fetch(`/api/data/${referenceCollection}/${id}`, {
                  headers: { Authorization: `Bearer ${token}` },
              });
              return res.ok ? res.json() : null;
@@ -59,7 +57,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
     if (value.length > 0) {
         fetchInitialRecords();
     }
-  }, [value, referenceTable, token]);
+  }, [value, referenceCollection, token]);
 
   // Sync selectedRecords with value prop in case value changes externally (e.g. form reset)
   // This is a bit tricky to avoid infinite loops, simplistic approach:
@@ -96,7 +94,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
     }
     setLoading(true);
     try {
-      const response = await fetch(`/api/data/${referenceTable}?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`/api/data/${referenceCollection}?q=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -115,7 +113,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
       if (search && isOpen) searchRecords(search);
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [search, isOpen, token, referenceTable]);
+  }, [search, isOpen, token, referenceCollection]);
 
   const handleSelect = (record: any) => {
     if (value.includes(record.id)) return;
@@ -145,7 +143,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
         }}
       >
         {selectedRecords.map(record => (
-            <span 
+            <span
                 key={record.id}
                 className="inline-flex items-center px-2 py-0.5 rounded text-sm font-medium bg-primary-100 text-primary-800 border border-primary-200"
             >
@@ -157,7 +155,8 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
                             e.stopPropagation();
                             handleRemove(record.id);
                         }}
-                        className="ml-1 text-primary-600 hover:text-primary-800 focus:outline-none"
+                        className="ml-1 text-primary-600 hover:text-primary-800 focus:outline-none min-h-[44px] min-w-[44px]"
+                        aria-label={`Remove ${getDisplayValue(record)}`}
                     >
                         <X size={14} />
                     </button>
@@ -169,7 +168,7 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
           ref={inputRef}
           type="text"
           className="flex-1 min-w-[120px] bg-transparent outline-none text-sm p-0.5"
-          placeholder={selectedRecords.length === 0 ? (initialLoading ? 'Loading...' : `Search ${referenceTable}...`) : ''}
+          placeholder={selectedRecords.length === 0 ? (initialLoading ? 'Loading...' : `Search ${referenceCollection}...`) : ''}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -181,38 +180,50 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
         
         <div className="flex items-center gap-1 pr-1">
              {loading || initialLoading ? (
-            <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : (
-                <Search className="h-4 w-4 text-slate-400" />
+                <Search className="h-4 w-4 text-muted-foreground" />
             )}
         </div>
       </div>
 
       {isOpen && (search || records.length > 0) && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-auto">
+        <div
+          className="absolute z-50 w-full mt-1 rounded-lg shadow-xl max-h-60 overflow-auto bg-card border border-border"
+          role="dialog"
+          aria-label="Reference selector dropdown"
+        >
           {records.length === 0 && search && !loading ? (
-            <div className="px-4 py-3 text-sm text-slate-500 flex items-center gap-2">
+            <div className="px-4 py-3 text-sm flex items-center gap-2 text-muted-foreground">
               <AlertCircle className="h-4 w-4" />
-              test No results found
+              No results found
             </div>
           ) : (
-            <ul className="py-1">
+            <ul className="py-1" role="listbox" aria-label={`${referenceCollection} options`}>
               {records.map((record) => {
                 const isSelected = value.includes(record.id);
+                const isHovered = hoveredOptionId === record.id;
                 return (
                     <li
                     key={record.id}
-                    className={`
-                        px-3 py-2 text-sm cursor-pointer flex items-center justify-between
-                        hover:bg-slate-50 transition-colors
-                        ${isSelected ? 'bg-slate-50 opacity-50 cursor-default' : 'text-slate-700'}
-                    `}
+                    className={`px-3 text-sm flex items-center justify-between transition-colors min-h-[44px] ${
+                      isSelected
+                        ? 'bg-muted opacity-50 cursor-default'
+                        : isHovered
+                          ? 'bg-accent cursor-pointer'
+                          : 'bg-transparent cursor-pointer'
+                    }`}
                     onClick={() => !isSelected && handleSelect(record)}
+                    onMouseEnter={() => setHoveredOptionId(record.id)}
+                    onMouseLeave={() => setHoveredOptionId(null)}
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-label={getDisplayValue(record)}
                     >
                     <div className="flex flex-col">
                         <span className="font-medium">{getDisplayValue(record)}</span>
                         {record.attributes?.description && (
-                        <span className="text-xs text-slate-500 truncate max-w-[200px]">
+                        <span className="text-xs truncate max-w-[200px] text-muted-foreground">
                             {record.attributes.description}
                         </span>
                         )}

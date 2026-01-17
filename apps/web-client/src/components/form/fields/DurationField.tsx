@@ -67,9 +67,9 @@ export const DurationField: React.FC<FieldComponentProps<unknown>> = ({
             placeholder="0"
             className={`${getInputClasses({ error, readOnly, disabled })} w-20 text-center`}
           />
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>hrs</span>
+          <span className="text-sm text-muted-foreground">hrs</span>
         </div>
-        <span style={{ color: 'var(--text-muted)' }}>:</span>
+        <span className="text-muted-foreground">:</span>
         <div className="flex items-center gap-1">
           <input
             type="number"
@@ -82,7 +82,7 @@ export const DurationField: React.FC<FieldComponentProps<unknown>> = ({
             placeholder="00"
             className={`${getInputClasses({ error, readOnly, disabled })} w-20 text-center`}
           />
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>min</span>
+          <span className="text-sm text-muted-foreground">min</span>
         </div>
       </div>
     </FieldWrapper>

@@ -1,0 +1,258 @@
+# HubbleWave Platform CD Pipeline
+# Deploys to staging on develop branch, production on main branch
+
+name: CD
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+  NODE_VERSION: '20.x'
+
+jobs:
+  # Determine deployment environment
+  setup:
+    name: Setup Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      should_deploy: ${{ steps.set-env.outputs.should_deploy }}
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "environment=none" >> $GITHUB_OUTPUT
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Build and push Docker images
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.should_deploy == 'true'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - svc-identity
+          - svc-data
+          - svc-metadata
+          - svc-ai
+          - svc-control-plane
+          - web-client
+          - web-control-plane
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npx nx build ${{ matrix.service }} --configuration=production
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_NAME=${{ matrix.service }}
+            NODE_ENV=production
+
+  # Run database migrations
+  migrations:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    needs: [setup, build-images]
+    if: needs.setup.outputs.should_deploy == 'true'
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run platform migrations
+        run: npm run migration:run:platform
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME_PLATFORM }}
+
+  # Deploy to Kubernetes
+  deploy:
+    name: Deploy to ${{ needs.setup.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [setup, build-images, migrations]
+    if: needs.setup.outputs.should_deploy == 'true'
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.13.0'
+
+      - name: Configure Kubernetes context
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Deploy Control Plane
+        run: |
+          helm upgrade --install hubblewave-control-plane \
+            ./infrastructure/helm/control-plane \
+            --namespace hubblewave-system \
+            --create-namespace \
+            --set image.tag=${{ github.sha }} \
+            --set environment=${{ needs.setup.outputs.environment }} \
+            --set-string secrets.jwtSecret=${{ secrets.JWT_SECRET }} \
+            --set-string secrets.licenseSigningKey=${{ secrets.LICENSE_SIGNING_KEY }} \
+            --values ./infrastructure/helm/control-plane/values-${{ needs.setup.outputs.environment }}.yaml \
+            --wait --timeout 10m
+
+      - name: Deploy Instance Services
+        run: |
+          helm upgrade --install hubblewave-services \
+            ./infrastructure/helm/instance-services \
+            --namespace hubblewave-system \
+            --set image.tag=${{ github.sha }} \
+            --set environment=${{ needs.setup.outputs.environment }} \
+            --values ./infrastructure/helm/instance-services/values-${{ needs.setup.outputs.environment }}.yaml \
+            --wait --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/svc-identity -n hubblewave-system --timeout=300s
+          kubectl rollout status deployment/svc-data -n hubblewave-system --timeout=300s
+          kubectl rollout status deployment/svc-metadata -n hubblewave-system --timeout=300s
+          kubectl rollout status deployment/web-client -n hubblewave-system --timeout=300s
+
+  # Post-deployment health checks
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: [setup, deploy]
+    if: needs.setup.outputs.should_deploy == 'true'
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Wait for services to stabilize
+        run: sleep 30
+
+      - name: Check Control Plane API health
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            ${{ secrets.CONTROL_PLANE_URL }}/api/health)
+          if [ "$response" != "200" ]; then
+            echo "Control Plane health check failed with status $response"
+            exit 1
+          fi
+          echo "Control Plane is healthy"
+
+      - name: Check Identity Service health
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            ${{ secrets.API_URL }}/api/health)
+          if [ "$response" != "200" ]; then
+            echo "Identity Service health check failed with status $response"
+            exit 1
+          fi
+          echo "Identity Service is healthy"
+
+  # Notify on deployment
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [setup, deploy, health-check]
+    if: always() && needs.setup.outputs.should_deploy == 'true'
+    steps:
+      - name: Deployment notification
+        uses: slackapi/slack-github-action@v1.25.0
+        if: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "text": "HubbleWave Deployment to ${{ needs.setup.outputs.environment }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*HubbleWave Platform Deployment*\n*Environment:* ${{ needs.setup.outputs.environment }}\n*Status:* ${{ needs.deploy.result == 'success' && needs.health-check.result == 'success' && 'Success' || 'Failed' }}\n*Commit:* `${{ github.sha }}`\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  ControlPlaneAuditLog,
-  AuditSeverity,
-  ActorType,
-  TargetType,
-} from '@hubblewave/control-plane-db';
+import { ControlPlaneAuditLog } from '@hubblewave/control-plane-db';
+
+// Audit severity levels
+export type AuditSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+// Actor types for audit logs
+export type ActorType = 'user' | 'system' | 'api' | 'scheduler';
+
+// Target types for audit logs
+export type TargetType = 'customer' | 'instance' | 'user' | 'subscription' | 'license' | 'config';
 
 export interface CreateAuditLogDto {
   customerId?: string;

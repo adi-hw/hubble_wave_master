@@ -31,6 +31,132 @@ interface ThemePreferenceContextValue {
 
 const ThemePreferenceContext = createContext<ThemePreferenceContextValue | undefined>(undefined);
 
+type RgbChannels = { r: number; g: number; b: number; a?: number };
+
+const COLOR_VAR_REGEX = /^var\((--[\w-]+)\)$/i;
+
+function clampChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseHexColor(value: string): RgbChannels | null {
+  if (!value.startsWith('#')) return null;
+  const hex = value.slice(1).trim();
+  const normalized = hex.length === 3 || hex.length === 4
+    ? hex.split('').map((char) => char + char).join('')
+    : hex;
+
+  if (normalized.length !== 6 && normalized.length !== 8) return null;
+
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  if ([r, g, b].some((channel) => Number.isNaN(channel))) return null;
+
+  if (normalized.length === 8) {
+    const a = parseInt(normalized.slice(6, 8), 16);
+    if (!Number.isNaN(a)) {
+      return { r, g, b, a: a / 255 };
+    }
+  }
+
+  return { r, g, b };
+}
+
+function parseRgbChannel(value: string): number | null {
+  if (value.endsWith('%')) {
+    const parsed = parseFloat(value);
+    return Number.isNaN(parsed) ? null : (parsed / 100) * 255;
+  }
+  const parsed = parseFloat(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseRgbColor(value: string): RgbChannels | null {
+  const match = value.match(/^rgba?\((.+)\)$/i);
+  if (!match) return null;
+  const inner = match[1].trim();
+  if (!inner) return null;
+
+  const [colorPart, alphaPart] = inner.split('/').map((part) => part.trim());
+  const channels = colorPart.split(/[\s,]+/).filter(Boolean);
+  if (channels.length < 3) return null;
+
+  const r = parseRgbChannel(channels[0]);
+  const g = parseRgbChannel(channels[1]);
+  const b = parseRgbChannel(channels[2]);
+  if (r === null || g === null || b === null) return null;
+
+  let a: number | undefined;
+  if (alphaPart) {
+    a = alphaPart.endsWith('%') ? parseFloat(alphaPart) / 100 : parseFloat(alphaPart);
+  } else if (channels.length > 3) {
+    const raw = channels[3];
+    a = raw.endsWith('%') ? parseFloat(raw) / 100 : parseFloat(raw);
+  }
+
+  if (a !== undefined && Number.isNaN(a)) a = undefined;
+
+  return { r, g, b, a };
+}
+
+function toRgbChannels(value: string): RgbChannels | null {
+  return parseHexColor(value) || parseRgbColor(value);
+}
+
+function blendWithBase(overlay: RgbChannels, base: RgbChannels, alpha: number): RgbChannels {
+  return {
+    r: clampChannel(base.r * (1 - alpha) + overlay.r * alpha),
+    g: clampChannel(base.g * (1 - alpha) + overlay.g * alpha),
+    b: clampChannel(base.b * (1 - alpha) + overlay.b * alpha),
+  };
+}
+
+function addRgbTokens(tokens: TokenMap): void {
+  const baseValue = tokens['bg-surface'] || tokens['bg-base'];
+  const baseChannels = baseValue ? toRgbChannels(baseValue) : null;
+  const base = baseChannels ? { r: baseChannels.r, g: baseChannels.g, b: baseChannels.b } : null;
+
+  Object.entries(tokens).forEach(([key, value]) => {
+    if (key.endsWith('-rgb')) return;
+
+    const rgbKey = `${key}-rgb`;
+    if (tokens[rgbKey]) return;
+
+    const raw = String(value).trim();
+    if (!raw) return;
+
+    const varMatch = raw.match(COLOR_VAR_REGEX);
+    if (varMatch) {
+      const varName = varMatch[1];
+      if (varName.endsWith('-rgb')) {
+        if (varName !== `--${rgbKey}`) tokens[rgbKey] = `var(${varName})`;
+      } else if (`${varName}-rgb` !== `--${rgbKey}`) {
+        tokens[rgbKey] = `var(${varName}-rgb)`;
+      }
+      return;
+    }
+
+    const parsed = toRgbChannels(raw);
+    if (!parsed) return;
+
+    let { r, g, b, a } = parsed;
+    if (typeof a === 'number' && a < 1) {
+      const isBackgroundToken = key.startsWith('bg-') || key.startsWith('glass-') || key.startsWith('diff-');
+      if (isBackgroundToken && base) {
+        const blended = blendWithBase(parsed, base, a);
+        r = blended.r;
+        g = blended.g;
+        b = blended.b;
+      } else if (isBackgroundToken) {
+        return;
+      }
+    }
+
+    tokens[rgbKey] = `${clampChannel(r)} ${clampChannel(g)} ${clampChannel(b)}`;
+  });
+}
+
 /**
  * Maps theme config to CSS custom property tokens.
  *
@@ -79,22 +205,19 @@ function mapConfigToTokens(theme: ThemeDefinition, colorScheme: 'dark' | 'light'
     }
     if (colors.voidDeep) tokens['bg-sunken'] = colors.voidDeep;
 
-    // Dark theme text colors
-    if (colors.textPrimary) tokens['text-primary'] = colors.textPrimary;
-    if (colors.textSecondary) tokens['text-secondary'] = colors.textSecondary;
-    if (colors.textTertiary) tokens['text-tertiary'] = colors.textTertiary;
-    if (colors.textMuted) {
-      tokens['text-muted'] = colors.textMuted;
-      tokens['text-placeholder'] = colors.textMuted;
-    }
-    tokens['text-inverse'] = '#0a0a0b';
+    // Dark theme text colors - Always use Slate palette to match design-tokens.css
+    // Do NOT use theme config values for text colors - let design-tokens.css be the source of truth
+    tokens['text-primary'] = '#f8fafc'; // Slate-50
+    tokens['text-secondary'] = '#94a3b8'; // Slate-400
+    tokens['text-tertiary'] = '#64748b'; // Slate-500
+    tokens['text-muted'] = '#475569'; // Slate-600
+    tokens['text-placeholder'] = '#64748b'; // Slate-500
+    tokens['text-inverse'] = '#0f172a'; // Slate-900
 
-    // Dark theme border colors
-    if (colors.voidElevated) {
-      tokens['border-default'] = colors.voidOverlay || colors.voidElevated;
-      tokens['border-subtle'] = colors.voidElevated;
-    }
-    if (colors.voidOverlay) tokens['border-strong'] = colors.voidOverlay;
+    // Dark theme border colors - Always use Zinc-800 to match design-tokens.css
+    tokens['border-default'] = '#27272a'; // Zinc-800
+    tokens['border-subtle'] = '#27272a'; // Zinc-800
+    tokens['border-strong'] = '#3f3f46'; // Zinc-700
 
     // Brand backgrounds for dark theme
     if (colors.primary500) {
@@ -150,21 +273,22 @@ function mapConfigToTokens(theme: ThemeDefinition, colorScheme: 'dark' | 'light'
 
     // Status colors for light theme
     tokens['bg-danger-subtle'] = '#fef2f2';
-    tokens['text-danger'] = '#dc2626';
+    tokens['text-danger'] = colors.danger || '#dc2626';
     tokens['bg-success-subtle'] = '#f0fdf4';
-    tokens['text-success'] = '#16a34a';
+    tokens['text-success'] = colors.success || '#16a34a';
     tokens['bg-warning-subtle'] = '#fffbeb';
-    tokens['text-warning'] = '#d97706';
+    tokens['text-warning'] = colors.warning || '#d97706';
     tokens['bg-info-subtle'] = '#eff6ff';
-    tokens['text-info'] = '#2563eb';
+    tokens['text-info'] = colors.info || '#2563eb';
   }
 
   // Glass effects - custom properties for glassmorphism
-  if (glass.bg) tokens['glass-bg'] = glass.bg;
-  if (glass.bgHover) tokens['glass-bg-hover'] = glass.bgHover;
-  if (glass.bgActive) tokens['glass-bg-active'] = glass.bgActive;
-  if (glass.border) tokens['glass-border'] = glass.border;
-  if (glass.borderHover) tokens['glass-border-hover'] = glass.borderHover;
+  // Always use defaults that match design-tokens.css for consistency
+  tokens['glass-bg'] = glass.bg || 'rgba(255, 255, 255, 0.02)';
+  tokens['glass-bg-hover'] = glass.bgHover || 'rgba(255, 255, 255, 0.04)';
+  tokens['glass-bg-active'] = glass.bgActive || 'rgba(255, 255, 255, 0.06)';
+  tokens['glass-border'] = '#27272a'; // Zinc-800 - always use default
+  tokens['glass-border-hover'] = '#3f3f46'; // Zinc-700 - always use default
   if (glass.blur) tokens['glass-blur'] = glass.blur;
 
   // Spacing/radii
@@ -220,6 +344,8 @@ function resolveTheme(themes: ThemeDefinition[], pref: ThemePreference): Resolve
   if (overrides.primary500) tokens['color-primary-500'] = overrides.primary500 as string;
   if (overrides.accent500) tokens['color-accent-500'] = overrides.accent500 as string;
 
+  addRgbTokens(tokens);
+
   return { theme: base, resolved: { tokens, colorScheme } };
 }
 
@@ -230,7 +356,7 @@ interface ThemePreferenceProviderProps {
 export const ThemePreferenceProvider: React.FC<ThemePreferenceProviderProps> = ({ children }) => {
   const [themes, setThemes] = useState<ThemeDefinition[]>([]);
   const [pref, setPref] = useState<ThemePreference | null>(null);
-  const [resolved, setResolved] = useState<ResolvedTheme>({ tokens: {}, colorScheme: 'dark' });
+  const [resolved, setResolved] = useState<ResolvedTheme>({ tokens: {}, colorScheme: getSystemColorScheme() });
   const [currentTheme, setCurrentTheme] = useState<ThemeDefinition | null>(null);
   const [loading, setLoading] = useState(true);
 

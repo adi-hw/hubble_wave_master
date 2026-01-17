@@ -117,7 +117,7 @@ export class ApiKeyService {
   }
 
   /**
-   * List all API keys for a tenant (excluding the hash)
+   * List all API keys for an instance (excluding the hash)
    */
   async listKeys(userId: string): Promise<Omit<ApiKey, 'keyHash'>[]> {
     const keys = await this.apiKeyRepo.find({

@@ -1,3 +1,3 @@
 export * from './pagination.dto';
 export * from './data.dto';
-export * from './table.dto';
+export * from './collection.dto';

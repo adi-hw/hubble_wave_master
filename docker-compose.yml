@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   # 1. Core Database (PostgreSQL with pgvector)
@@ -18,7 +16,7 @@ services:
     networks:
       - hw_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-eam_global}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hubblewave} -d ${POSTGRES_DB:-hubblewave}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -85,6 +83,25 @@ services:
       retries: 5
       start_period: 10s
 
+  # 5. LLM Server (Ollama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hw_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - hw_net
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 networks:
   hw_net:
     driver: bridge
@@ -94,4 +111,4 @@ volumes:
   redis_data:
   minio_data:
   typesense_data:
-  qdrant_data:
+  ollama_data:

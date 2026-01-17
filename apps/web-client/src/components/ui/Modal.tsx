@@ -50,11 +50,11 @@ const sizeStyles: Record<ModalSize, string> = {
   full: 'max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]',
 };
 
-const variantIconStyles: Record<string, React.CSSProperties> = {
-  default: { backgroundColor: 'var(--bg-primary-subtle)', color: 'var(--text-brand)' },
-  danger: { backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' },
-  success: { backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' },
-  warning: { backgroundColor: 'var(--bg-warning-subtle)', color: 'var(--text-warning)' },
+const variantIconStyles: Record<string, string> = {
+  default: 'bg-primary/10 text-primary',
+  danger: 'bg-destructive/10 text-destructive',
+  success: 'bg-success-subtle text-success-text',
+  warning: 'bg-warning-subtle text-warning-text',
 };
 
 export const Modal: React.FC<ModalProps> = ({
@@ -118,8 +118,7 @@ export const Modal: React.FC<ModalProps> = ({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 backdrop-blur-sm animate-fade-in"
-        style={{ backgroundColor: 'var(--bg-overlay)' }}
+        className="absolute inset-0 bg-overlay/50 backdrop-blur-sm animate-fade-in"
         onClick={closeOnBackdropClick ? onClose : undefined}
         aria-hidden="true"
       />
@@ -129,28 +128,22 @@ export const Modal: React.FC<ModalProps> = ({
         ref={modalRef}
         tabIndex={-1}
         className={cn(
-          'relative w-full rounded-2xl animate-scale-in',
+          'relative w-full rounded-2xl animate-scale-in bg-card border border-border shadow-xl',
           sizeStyles[size],
           size === 'full' && 'h-full flex flex-col',
           className
         )}
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-          boxShadow: 'var(--shadow-xl)',
-        }}
       >
         {/* Header */}
         {(title || showCloseButton || icon) && (
-          <div
-            className="flex items-start gap-4 px-6 py-4"
-            style={{ borderBottom: '1px solid var(--border-subtle)' }}
-          >
+          <div className="flex items-start gap-4 px-6 py-4 border-b border-border">
             {/* Icon */}
             {icon && (
               <div
-                className="flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center"
-                style={variantIconStyles[variant]}
+                className={cn(
+                  'flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center',
+                  variantIconStyles[variant]
+                )}
               >
                 {icon}
               </div>
@@ -161,8 +154,7 @@ export const Modal: React.FC<ModalProps> = ({
               {title && (
                 <h2
                   id="modal-title"
-                  className="text-lg font-semibold"
-                  style={{ color: 'var(--text-primary)' }}
+                  className="text-lg font-semibold text-foreground"
                 >
                   {title}
                 </h2>
@@ -170,8 +162,7 @@ export const Modal: React.FC<ModalProps> = ({
               {description && (
                 <p
                   id="modal-description"
-                  className="mt-1 text-sm"
-                  style={{ color: 'var(--text-muted)' }}
+                  className="mt-1 text-sm text-muted-foreground"
                 >
                   {description}
                 </p>
@@ -182,16 +173,7 @@ export const Modal: React.FC<ModalProps> = ({
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="flex-shrink-0 p-2 -m-2 rounded-lg transition-colors"
-                style={{ color: 'var(--text-muted)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }}
+                className="flex-shrink-0 p-2 -m-2 rounded-lg transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label="Close modal"
               >
                 <X className="h-5 w-5" />
@@ -205,19 +187,16 @@ export const Modal: React.FC<ModalProps> = ({
           className={cn(
             'px-6 py-4',
             scrollable && 'overflow-y-auto',
+            scrollable && size !== 'full' && 'max-h-[calc(80vh-8rem)]',
             size === 'full' && 'flex-1'
           )}
-          style={{ maxHeight: scrollable && size !== 'full' ? 'calc(80vh - 8rem)' : undefined }}
         >
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div
-            className="flex items-center justify-end gap-3 px-6 py-4"
-            style={{ borderTop: '1px solid var(--border-subtle)' }}
-          >
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
             {footer}
           </div>
         )}

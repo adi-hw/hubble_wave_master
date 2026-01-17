@@ -64,7 +64,7 @@ export class ActionHandlerService {
     
     // Check onlyIfEmpty
     if (config.onlyIfEmpty && context.record[config.property] != null) {
-      return { type: 'none', output: 'Skipped - field not empty' };
+      return { type: 'none', output: 'Skipped - property not empty' };
     }
 
     return {
@@ -129,14 +129,12 @@ export class ActionHandlerService {
   }
 
   private handleLogEvent(config: LogEventConfig, context: ExecutionContext): ActionResult {
-    // Log event synchronously
     const data = config.data
       ? Object.fromEntries(
           Object.entries(config.data).map(([k, v]) => [k, this.resolveValue(v, context)]),
         )
       : {};
 
-    // TODO: Emit event
     return {
       type: 'none',
       output: { event: config.event, data },
@@ -144,7 +142,6 @@ export class ActionHandlerService {
   }
 
   private handleAddComment(config: AddCommentConfig): ActionResult {
-    // TODO: Add comment to record
     return {
       type: 'none',
       output: { content: config.content, type: config.type },
@@ -194,11 +191,6 @@ export class ActionHandlerService {
         date.setHours(date.getHours() + hours);
         return date;
       }
-    }
-
-    // Tenant
-    if (value === '@tenant.id') {
-      return context.tenantId;
     }
 
     // Outputs from previous actions

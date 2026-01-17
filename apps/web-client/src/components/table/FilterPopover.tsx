@@ -26,7 +26,6 @@ interface FilterPopoverProps {
   iconOnly?: boolean;
 }
 
-// Field type icons
 const getFieldIcon = (type?: string) => {
   switch (type?.toLowerCase()) {
     case 'number':
@@ -45,7 +44,6 @@ const getFieldIcon = (type?: string) => {
   }
 };
 
-// Operators based on field type
 const getOperatorsForType = (type?: string) => {
   const baseOperators = [
     { value: 'equals', label: 'equals', icon: '=' },
@@ -104,7 +102,6 @@ const getOperatorsForType = (type?: string) => {
   }
 };
 
-// Check if operator needs value input
 const operatorNeedsValue = (operator: string) => {
   return ![
     'is_empty',
@@ -119,12 +116,10 @@ const operatorNeedsValue = (operator: string) => {
   ].includes(operator);
 };
 
-// Check if operator needs two values (between)
 const operatorNeedsTwoValues = (operator: string) => {
   return operator === 'between';
 };
 
-// Saved filters storage key
 const SAVED_FILTERS_KEY = 'eam_saved_filters';
 
 interface SavedFilter {
@@ -150,7 +145,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
   const [fieldSearch, setFieldSearch] = useState('');
   const [activeFieldDropdown, setActiveFieldDropdown] = useState<number | null>(null);
 
-  // Load saved filters from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SAVED_FILTERS_KEY);
@@ -166,7 +160,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     setLocalRules(rules);
   }, [rules]);
 
-  // Prevent body scroll when drawer is open
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -178,7 +171,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     };
   }, [open]);
 
-  // Escape key to close
   useEffect(() => {
     if (!open) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -196,9 +188,9 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [open, showSaveDialog, showLoadDialog]);
 
-  const getFieldType = useCallback(
-    (fieldCode: string) => {
-      const field = fields.find((f) => f.code === fieldCode);
+  const getPropertyType = useCallback(
+    (propertyCode: string) => {
+      const field = fields.find((f) => f.code === propertyCode);
       return field?.type;
     },
     [fields]
@@ -229,7 +221,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     setLocalRules((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], ...patch };
-      // Reset value if operator doesn't need it
       if (patch.operator && !operatorNeedsValue(patch.operator)) {
         next[index].value = '';
         next[index].value2 = '';
@@ -266,7 +257,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     setOpen(false);
   };
 
-  // Save filter
   const saveFilter = () => {
     if (!filterName.trim() || localRules.length === 0) return;
     const newFilter: SavedFilter = {
@@ -282,13 +272,11 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     setShowSaveDialog(false);
   };
 
-  // Load filter
   const loadFilter = (filter: SavedFilter) => {
     setLocalRules(filter.rules);
     setShowLoadDialog(false);
   };
 
-  // Delete saved filter
   const deleteSavedFilter = (id: string) => {
     const updated = savedFilters.filter((f) => f.id !== id);
     setSavedFilters(updated);
@@ -297,7 +285,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
 
   const activeCount = rules.length;
 
-  // Filter fields by search
   const filteredFields = fields.filter(
     (f) =>
       f.label.toLowerCase().includes(fieldSearch.toLowerCase()) ||
@@ -305,13 +292,13 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
   );
 
   const renderValueInput = (rule: FilterRule, index: number) => {
-    const fieldType = getFieldType(rule.field);
+    const fieldType = getPropertyType(rule.field);
     const needsValue = operatorNeedsValue(rule.operator);
     const needsTwoValues = operatorNeedsTwoValues(rule.operator);
 
     if (!needsValue) {
       return (
-        <div className="h-12 flex items-center px-4 bg-slate-100 rounded-xl text-sm text-slate-500 italic">
+        <div className="h-12 flex items-center px-4 rounded-xl text-sm italic bg-muted text-muted-foreground">
           No value needed for this condition
         </div>
       );
@@ -334,15 +321,15 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
             value={rule.value || ''}
             onChange={(e) => updateRule(index, { value: e.target.value })}
             placeholder="From"
-            className="flex-1 h-12 px-4 text-base border border-slate-200 rounded-xl bg-white text-slate-800 placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+            className="flex-1 h-12 px-4 text-base border rounded-xl focus:outline-none bg-card text-foreground border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
-          <span className="text-sm text-slate-400 font-medium">to</span>
+          <span className="text-sm font-medium text-muted-foreground">to</span>
           <input
             type={inputType}
             value={rule.value2 || ''}
             onChange={(e) => updateRule(index, { value2: e.target.value })}
             placeholder="To"
-            className="flex-1 h-12 px-4 text-base border border-slate-200 rounded-xl bg-white text-slate-800 placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+            className="flex-1 h-12 px-4 text-base border rounded-xl focus:outline-none bg-card text-foreground border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
       );
@@ -354,77 +341,85 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         value={rule.value || ''}
         onChange={(e) => updateRule(index, { value: e.target.value })}
         placeholder="Enter value..."
-        className="w-full h-12 px-4 text-base border border-slate-200 rounded-xl bg-white text-slate-800 placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+        className="w-full h-12 px-4 text-base border rounded-xl focus:outline-none bg-card text-foreground border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
     );
   };
 
   return (
     <>
-      {/* Trigger Button */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`
-          inline-flex items-center justify-center transition-all relative
-          ${iconOnly
-            ? `h-8 w-8 rounded-md ${activeCount ? 'text-primary-600 bg-primary-50' : 'text-slate-500 hover:text-slate-700 hover:bg-white hover:shadow-sm'}`
+        className={`inline-flex items-center justify-center transition-all relative ${
+          iconOnly
+            ? `h-8 w-8 rounded-md ${
+                activeCount
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-card hover:shadow-sm'
+              }`
             : `gap-2 h-9 px-3 rounded-lg border text-sm font-medium ${
                 activeCount
-                  ? 'bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100'
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                  ? 'bg-primary/10 border-primary text-primary hover:bg-primary/15'
+                  : 'bg-card border-border text-foreground hover:bg-muted hover:border-muted-foreground/30'
               }`
-          }
-        `}
+        }`}
         title="Filter"
+        aria-label="Open filter panel"
+        aria-expanded={open}
       >
         <Filter className="h-4 w-4" />
         {!iconOnly && <span className="hidden sm:inline">Filter</span>}
         {activeCount > 0 && (
-          <span className={`
-            inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-xs font-semibold
-            ${iconOnly ? 'absolute -top-1 -right-1 h-4 min-w-[16px] px-1' : 'h-5 min-w-[20px] px-1.5'}
-          `}>
+          <span
+            className={`inline-flex items-center justify-center rounded-full text-xs font-semibold bg-primary text-primary-foreground ${iconOnly ? 'absolute -top-1 -right-1 h-4 min-w-[16px] px-1' : 'h-5 min-w-[20px] px-1.5'}`}
+            aria-label={`${activeCount} active filter${activeCount !== 1 ? 's' : ''}`}
+          >
             {activeCount}
           </span>
         )}
       </button>
 
-      {/* Full-screen Drawer */}
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+            className="absolute inset-0 backdrop-blur-sm animate-fade-in bg-overlay/50"
             onClick={cancel}
+            aria-hidden="true"
           />
 
-          {/* Drawer Panel */}
-          <div className="relative w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-slide-in-right">
-            {/* Header */}
-            <div className="flex-shrink-0 px-6 py-5 border-b border-slate-200 bg-white">
+          <div
+            className="relative w-full max-w-2xl shadow-2xl flex flex-col animate-slide-in-right bg-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="filter-dialog-title"
+            aria-describedby="filter-dialog-description"
+          >
+            <div className="flex-shrink-0 px-6 py-5 border-b border-border bg-card">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Filter Records</h2>
-                  <p className="text-sm text-slate-500 mt-1">
+                  <h2 id="filter-dialog-title" className="text-xl font-semibold text-foreground">
+                    Filter Records
+                  </h2>
+                  <p id="filter-dialog-description" className="text-sm mt-1 text-muted-foreground">
                     Add conditions to filter your data
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={cancel}
-                  className="h-10 w-10 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="h-10 w-10 flex items-center justify-center rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  aria-label="Close filter panel"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              {/* Quick Actions */}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowLoadDialog(true)}
-                  className="h-9 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-2"
+                  className="h-9 px-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 text-foreground bg-muted hover:bg-muted/80"
                 >
                   <FolderOpen className="h-4 w-4" />
                   Load Saved
@@ -433,7 +428,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                   type="button"
                   onClick={() => setShowSaveDialog(true)}
                   disabled={localRules.length === 0}
-                  className="h-9 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="h-9 px-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-foreground bg-muted hover:bg-muted/80"
                 >
                   <Save className="h-4 w-4" />
                   Save Filter
@@ -445,7 +440,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     clearAll();
                     onClear();
                   }}
-                  className="h-9 px-4 text-sm font-medium text-danger-600 hover:text-danger-700 bg-danger-50 hover:bg-danger-100 rounded-lg transition-colors flex items-center gap-2"
+                  className="h-9 px-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 text-destructive bg-destructive/10 hover:bg-destructive/20"
                 >
                   <Trash2 className="h-4 w-4" />
                   Clear All
@@ -453,21 +448,22 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
               </div>
             </div>
 
-            {/* Content - Scrollable */}
             <div className="flex-1 overflow-y-auto p-6">
               {localRules.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                    <Filter className="h-10 w-10 text-slate-400" />
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4 bg-muted">
+                    <Filter className="h-10 w-10 text-muted-foreground" />
                   </div>
-                  <p className="text-lg font-medium text-slate-700">No filters applied</p>
-                  <p className="text-sm text-slate-500 mt-1 mb-6">
+                  <p className="text-lg font-medium text-foreground">
+                    No filters applied
+                  </p>
+                  <p className="text-sm mt-1 mb-6 text-muted-foreground">
                     Click the button below to add your first filter condition
                   </p>
                   <button
                     type="button"
                     onClick={addRule}
-                    className="h-12 px-6 flex items-center gap-2 text-base font-medium bg-primary-600 text-white rounded-xl hover:bg-primary-700 shadow-sm transition-colors"
+                    className="h-12 px-6 flex items-center gap-2 text-base font-medium rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     <Plus className="h-5 w-5" />
                     Add First Condition
@@ -476,16 +472,15 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
               ) : (
                 <div className="space-y-4">
                   {localRules.map((rule, idx) => {
-                    const FieldIcon = getFieldIcon(getFieldType(rule.field));
-                    const operators = getOperatorsForType(getFieldType(rule.field));
+                    const FieldIcon = getFieldIcon(getPropertyType(rule.field));
+                    const operators = getOperatorsForType(getPropertyType(rule.field));
                     const selectedField = fields.find((f) => f.code === rule.field);
 
                     return (
                       <div
                         key={idx}
-                        className="relative bg-slate-50 border-2 border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-colors"
+                        className="relative border-2 rounded-2xl p-5 transition-colors bg-muted border-border hover:border-muted-foreground/30"
                       >
-                        {/* Logical Operator Badge */}
                         {idx > 0 && (
                           <div className="absolute -top-3.5 left-6">
                             <select
@@ -495,7 +490,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                   logicalOp: e.target.value as FilterRule['logicalOp'],
                                 })
                               }
-                              className="h-7 px-3 text-xs font-bold rounded-full border-2 border-primary-200 bg-primary-50 text-primary-700 cursor-pointer focus:ring-2 focus:ring-primary-300 focus:outline-none uppercase tracking-wide"
+                              className="h-7 px-3 text-xs font-bold rounded-full border-2 cursor-pointer focus:outline-none uppercase tracking-wide border-primary bg-primary/10 text-primary focus:ring-2 focus:ring-primary/20"
                             >
                               <option value="AND">AND</option>
                               <option value="OR">OR</option>
@@ -503,31 +498,30 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                           </div>
                         )}
 
-                        {/* Rule Actions - Top Right */}
                         <div className="absolute top-3 right-3 flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => duplicateRule(idx)}
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white transition-colors"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-card"
                             title="Duplicate condition"
+                            aria-label="Duplicate condition"
                           >
                             <Copy className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
                             onClick={() => removeRule(idx)}
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-danger-600 hover:bg-danger-50 transition-colors"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             title="Remove condition"
+                            aria-label="Remove condition"
                           >
                             <X className="h-4 w-4" />
                           </button>
                         </div>
 
-                        {/* Rule Content */}
                         <div className="space-y-4 pr-20">
-                          {/* Field Selection */}
                           <div className="relative">
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">
+                            <label className="block text-sm font-semibold mb-2 text-foreground">
                               Field
                             </label>
                             <button
@@ -535,40 +529,44 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                               onClick={() =>
                                 setActiveFieldDropdown(activeFieldDropdown === idx ? null : idx)
                               }
-                              className="w-full h-12 px-4 flex items-center justify-between text-base border-2 border-slate-200 rounded-xl bg-white text-left hover:border-slate-300 transition-colors"
+                              className="w-full h-12 px-4 flex items-center justify-between text-base border-2 rounded-xl text-left transition-colors border-border bg-card hover:border-muted-foreground/30"
+                              aria-expanded={activeFieldDropdown === idx}
+                              aria-haspopup="listbox"
                             >
                               <div className="flex items-center gap-3 min-w-0">
-                                <FieldIcon className="h-5 w-5 text-slate-400 flex-shrink-0" />
-                                <span
-                                  className={selectedField ? 'text-slate-900' : 'text-slate-400'}
-                                >
+                                <FieldIcon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                                <span className={selectedField ? 'text-foreground' : 'text-muted-foreground'}>
                                   {selectedField?.label || 'Select a field...'}
                                 </span>
                               </div>
-                              <ChevronDown className="h-5 w-5 text-slate-400" />
+                              <ChevronDown className="h-5 w-5 text-muted-foreground" />
                             </button>
 
-                            {/* Field Dropdown */}
                             {activeFieldDropdown === idx && (
-                              <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-slate-200 rounded-xl shadow-elevated z-50 overflow-hidden">
-                                <div className="p-3 border-b border-slate-100">
+                              <div
+                                className="absolute top-full left-0 right-0 mt-2 border-2 rounded-xl shadow-lg z-50 overflow-hidden bg-card border-border"
+                                role="listbox"
+                                aria-label="Field selection"
+                              >
+                                <div className="p-3 border-b border-border">
                                   <input
                                     type="text"
                                     value={fieldSearch}
                                     onChange={(e) => setFieldSearch(e.target.value)}
                                     placeholder="Search fields..."
-                                    className="w-full h-10 px-4 text-sm border border-slate-200 rounded-lg bg-slate-50 placeholder:text-slate-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                                    className="w-full h-10 px-4 text-sm border rounded-lg focus:outline-none bg-muted border-border text-foreground focus:border-primary focus:bg-card focus:ring-1 focus:ring-primary/20"
                                     autoFocus
                                   />
                                 </div>
                                 <div className="max-h-64 overflow-y-auto p-2">
                                   {filteredFields.length === 0 ? (
-                                    <div className="px-4 py-6 text-sm text-slate-500 text-center">
+                                    <div className="px-4 py-6 text-sm text-center text-muted-foreground">
                                       No fields found
                                     </div>
                                   ) : (
                                     filteredFields.map((field) => {
                                       const Icon = getFieldIcon(field.type);
+                                      const isSelected = rule.field === field.code;
                                       return (
                                         <button
                                           key={field.code}
@@ -581,24 +579,23 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                             setActiveFieldDropdown(null);
                                             setFieldSearch('');
                                           }}
-                                          className={`
-                                            w-full flex items-center gap-3 px-4 py-3 text-base rounded-lg transition-colors text-left
-                                            ${
-                                              rule.field === field.code
-                                                ? 'bg-primary-50 text-primary-700'
-                                                : 'text-slate-700 hover:bg-slate-50'
-                                            }
-                                          `}
+                                          className={`w-full flex items-center gap-3 px-4 py-3 text-base rounded-lg transition-colors text-left ${
+                                            isSelected
+                                              ? 'bg-primary/10 text-primary'
+                                              : 'text-foreground hover:bg-muted'
+                                          }`}
+                                          role="option"
+                                          aria-selected={isSelected}
                                         >
-                                          <Icon className="h-5 w-5 text-slate-400" />
+                                          <Icon className="h-5 w-5 text-muted-foreground" />
                                           <div className="flex-1 min-w-0">
                                             <div className="font-medium truncate">{field.label}</div>
-                                            <div className="text-sm text-slate-400 truncate">
+                                            <div className="text-sm truncate text-muted-foreground">
                                               {field.code}
                                             </div>
                                           </div>
-                                          {rule.field === field.code && (
-                                            <Check className="h-5 w-5 text-primary-600" />
+                                          {isSelected && (
+                                            <Check className="h-5 w-5 text-primary" />
                                           )}
                                         </button>
                                       );
@@ -609,15 +606,14 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                             )}
                           </div>
 
-                          {/* Operator Selection */}
                           <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">
+                            <label className="block text-sm font-semibold mb-2 text-foreground">
                               Condition
                             </label>
                             <select
                               value={rule.operator}
                               onChange={(e) => updateRule(idx, { operator: e.target.value })}
-                              className="w-full h-12 px-4 text-base border-2 border-slate-200 rounded-xl bg-white text-slate-800 cursor-pointer focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+                              className="w-full h-12 px-4 text-base border-2 rounded-xl cursor-pointer focus:outline-none border-border bg-card text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
                             >
                               {operators.map((op) => (
                                 <option key={op.value} value={op.value}>
@@ -628,9 +624,8 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                             </select>
                           </div>
 
-                          {/* Value Input */}
                           <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">
+                            <label className="block text-sm font-semibold mb-2 text-foreground">
                               Value
                             </label>
                             {renderValueInput(rule, idx)}
@@ -640,11 +635,10 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     );
                   })}
 
-                  {/* Add Condition Button */}
                   <button
                     type="button"
                     onClick={addRule}
-                    className="w-full h-14 flex items-center justify-center gap-3 text-base font-medium text-primary-600 border-2 border-dashed border-primary-200 rounded-xl hover:bg-primary-50 hover:border-primary-300 transition-all"
+                    className="w-full h-14 flex items-center justify-center gap-3 text-base font-medium border-2 border-dashed rounded-xl transition-all text-primary border-primary hover:bg-primary/10"
                   >
                     <Plus className="h-5 w-5" />
                     Add Another Condition
@@ -653,23 +647,22 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
               )}
             </div>
 
-            {/* Footer */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-              <div className="text-sm text-slate-500">
+            <div className="flex-shrink-0 px-6 py-4 border-t flex items-center justify-between border-border bg-muted">
+              <div className="text-sm text-muted-foreground">
                 {localRules.length} condition{localRules.length !== 1 ? 's' : ''}
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={cancel}
-                  className="h-11 px-6 text-base font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors"
+                  className="h-11 px-6 text-base font-medium border rounded-xl transition-colors text-muted-foreground bg-card border-border hover:text-foreground hover:bg-muted"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={apply}
-                  className="h-11 px-8 text-base font-medium bg-primary-600 text-white rounded-xl hover:bg-primary-700 shadow-sm transition-colors flex items-center gap-2"
+                  className="h-11 px-8 text-base font-medium rounded-xl shadow-sm transition-colors flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Check className="h-5 w-5" />
                   Apply Filters
@@ -677,17 +670,21 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
               </div>
             </div>
 
-            {/* Save Filter Dialog */}
             {showSaveDialog && (
-              <div className="absolute inset-0 bg-white/98 backdrop-blur-sm flex flex-col items-center justify-center p-8 z-50">
+              <div
+                className="absolute inset-0 backdrop-blur-sm flex flex-col items-center justify-center p-8 z-50 bg-card/98"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="save-filter-title"
+              >
                 <div className="w-full max-w-md">
-                  <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mx-auto mb-4">
-                    <Save className="h-8 w-8 text-primary-600" />
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-primary/10">
+                    <Save className="h-8 w-8 text-primary" />
                   </div>
-                  <h3 className="text-xl font-semibold text-slate-900 text-center mb-2">
+                  <h3 id="save-filter-title" className="text-xl font-semibold text-center mb-2 text-foreground">
                     Save Filter
                   </h3>
-                  <p className="text-sm text-slate-500 text-center mb-6">
+                  <p className="text-sm text-center mb-6 text-muted-foreground">
                     Give your filter a name to save it for quick access later
                   </p>
                   <input
@@ -695,18 +692,19 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     value={filterName}
                     onChange={(e) => setFilterName(e.target.value)}
                     placeholder="Filter name..."
-                    className="w-full h-12 px-4 text-base border-2 border-slate-200 rounded-xl bg-white placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none mb-6"
+                    className="w-full h-12 px-4 text-base border-2 rounded-xl focus:outline-none mb-6 bg-card border-border text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') saveFilter();
                       if (e.key === 'Escape') setShowSaveDialog(false);
                     }}
+                    aria-label="Filter name"
                   />
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
                       onClick={() => setShowSaveDialog(false)}
-                      className="flex-1 h-11 text-base font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors"
+                      className="flex-1 h-11 text-base font-medium border rounded-xl transition-colors text-muted-foreground bg-card border-border hover:bg-muted"
                     >
                       Cancel
                     </button>
@@ -714,7 +712,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                       type="button"
                       onClick={saveFilter}
                       disabled={!filterName.trim()}
-                      className="flex-1 h-11 text-base font-medium bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="flex-1 h-11 text-base font-medium rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                       Save Filter
                     </button>
@@ -723,18 +721,27 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
               </div>
             )}
 
-            {/* Load Filter Dialog */}
             {showLoadDialog && (
-              <div className="absolute inset-0 bg-white/98 backdrop-blur-sm flex flex-col p-6 z-50">
+              <div
+                className="absolute inset-0 backdrop-blur-sm flex flex-col p-6 z-50 bg-card/98"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="load-filter-title"
+              >
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-semibold text-slate-900">Saved Filters</h3>
-                    <p className="text-sm text-slate-500 mt-1">Select a filter to apply</p>
+                    <h3 id="load-filter-title" className="text-xl font-semibold text-foreground">
+                      Saved Filters
+                    </h3>
+                    <p className="text-sm mt-1 text-muted-foreground">
+                      Select a filter to apply
+                    </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowLoadDialog(false)}
-                    className="h-10 w-10 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                    className="h-10 w-10 flex items-center justify-center rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                    aria-label="Close saved filters dialog"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -742,11 +749,13 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 <div className="flex-1 overflow-y-auto space-y-3">
                   {savedFilters.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                        <AlertCircle className="h-8 w-8 text-slate-400" />
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-muted">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground" />
                       </div>
-                      <p className="text-lg font-medium text-slate-700">No saved filters</p>
-                      <p className="text-sm text-slate-500 mt-1">
+                      <p className="text-lg font-medium text-foreground">
+                        No saved filters
+                      </p>
+                      <p className="text-sm mt-1 text-muted-foreground">
                         Save your frequently used filters for quick access
                       </p>
                     </div>
@@ -754,21 +763,21 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     savedFilters.map((filter) => (
                       <div
                         key={filter.id}
-                        className="flex items-center justify-between p-4 border-2 border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all"
+                        className="flex items-center justify-between p-4 border-2 rounded-xl transition-all border-border hover:border-muted-foreground/30 hover:shadow-sm"
                       >
                         <button
                           type="button"
                           onClick={() => loadFilter(filter)}
                           className="flex-1 text-left flex items-center gap-4"
                         >
-                          <div className="h-12 w-12 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
-                            <Filter className="h-6 w-6 text-primary-600" />
+                          <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary/10">
+                            <Filter className="h-6 w-6 text-primary" />
                           </div>
                           <div>
-                            <div className="text-base font-medium text-slate-900">
+                            <div className="text-base font-medium text-foreground">
                               {filter.name}
                             </div>
-                            <div className="text-sm text-slate-500">
+                            <div className="text-sm text-muted-foreground">
                               {filter.rules.length} condition
                               {filter.rules.length !== 1 ? 's' : ''}
                             </div>
@@ -777,8 +786,9 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                         <button
                           type="button"
                           onClick={() => deleteSavedFilter(filter.id)}
-                          className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-danger-600 hover:bg-danger-50 transition-colors ml-3"
+                          className="h-10 w-10 inline-flex items-center justify-center rounded-lg transition-colors ml-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           title="Delete"
+                          aria-label={`Delete ${filter.name}`}
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
@@ -792,7 +802,6 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         </div>
       )}
 
-      {/* CSS for animations */}
       <style>{`
         @keyframes slide-in-right {
           from {

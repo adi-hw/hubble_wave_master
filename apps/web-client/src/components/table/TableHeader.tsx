@@ -88,17 +88,11 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
   }, []);
 
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-2.5 overflow-visible"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}
-    >
+    <div className="flex items-center gap-3 px-4 py-2.5 overflow-visible bg-card border-b border-border">
       {/* Left side - Title */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {title && (
-          <h2 className="text-lg font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-lg font-semibold truncate text-foreground">
             {title}
           </h2>
         )}
@@ -107,10 +101,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
       {/* Right side - All action buttons grouped together */}
       <div className="flex items-center gap-2 flex-shrink-0">
         {/* Tool buttons group */}
-        <div
-          className="flex items-center rounded-xl p-1 gap-0.5 flex-shrink-0"
-          style={{ backgroundColor: 'var(--bg-elevated)' }}
-        >
+        <div className="flex items-center rounded-xl p-1 gap-0.5 flex-shrink-0 bg-muted">
           {/* Expandable Search with Column Selector */}
           <div
             ref={searchInputRef}
@@ -126,16 +117,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
                   setSearchFocused(true);
                   setTimeout(() => searchInputRef.current?.querySelector('input')?.focus(), 50);
                 }}
-                className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                style={{ color: 'var(--text-muted)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
+                className="h-8 w-8 flex items-center justify-center rounded-lg transition-all text-muted-foreground hover:text-foreground hover:bg-card"
                 title="Search"
               >
                 <Search className="h-4 w-4" />
@@ -147,44 +129,30 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowColumnSelector(!showColumnSelector)}
-                    className="h-8 flex items-center gap-1 pl-2.5 pr-1.5 rounded-l-lg text-xs transition-colors shadow-sm"
-                    style={{
-                      backgroundColor: 'var(--bg-surface)',
-                      borderRight: '1px solid var(--border-default)',
-                      color: 'var(--text-secondary)',
-                    }}
+                    className="h-8 flex items-center gap-1 pl-2.5 pr-1.5 rounded-l-lg text-xs transition-colors shadow-sm bg-card border-r border-border text-muted-foreground"
                     title="Select column to search"
                   >
                     <span className="max-w-[80px] truncate">{selectedColumnLabel}</span>
-                    <ChevronDown className="h-3 w-3" style={{ color: 'var(--text-muted)' }} />
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
                   </button>
 
                   {/* Column Dropdown Menu */}
                   {showColumnSelector && (
-                    <div
-                      className="absolute left-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px] max-h-[280px] overflow-y-auto"
-                      style={{
-                        backgroundColor: 'var(--bg-surface)',
-                        border: '1px solid var(--border-default)',
-                        boxShadow: 'var(--shadow-xl)',
-                      }}
-                    >
+                    <div className="absolute left-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px] max-h-[280px] overflow-y-auto bg-card border border-border shadow-xl">
                       <button
                         type="button"
                         onClick={() => {
                           onSearchColumnChange(null);
                           setShowColumnSelector(false);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-                        style={{
-                          backgroundColor: searchColumn === null ? 'var(--bg-primary-subtle)' : 'transparent',
-                          color: searchColumn === null ? 'var(--text-brand)' : 'var(--text-secondary)',
-                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                          searchColumn === null ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                        }`}
                       >
                         <span className="flex-1 text-left">All Columns</span>
                         {searchColumn === null && <Check className="h-3.5 w-3.5" />}
                       </button>
-                      <div className="h-px my-1" style={{ backgroundColor: 'var(--border-subtle)' }} />
+                      <div className="h-px my-1 bg-border" />
                       {searchableColumns.map((col) => (
                         <button
                           key={col.code}
@@ -193,11 +161,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
                             onSearchColumnChange(col.code);
                             setShowColumnSelector(false);
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors"
-                          style={{
-                            backgroundColor: searchColumn === col.code ? 'var(--bg-primary-subtle)' : 'transparent',
-                            color: searchColumn === col.code ? 'var(--text-brand)' : 'var(--text-secondary)',
-                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                            searchColumn === col.code ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                          }`}
                         >
                           <span className="flex-1 text-left truncate">{col.label}</span>
                           {searchColumn === col.code && <Check className="h-3.5 w-3.5" />}
@@ -209,7 +175,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 
                 {/* Search Input */}
                 <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none text-muted-foreground" />
                   <input
                     type="text"
                     value={search}
@@ -226,8 +192,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
                         onSearchChange('');
                         searchInputRef.current?.querySelector('input')?.focus();
                       }}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded"
-                      style={{ color: 'var(--text-muted)' }}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded text-muted-foreground"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -238,25 +203,19 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
           </div>
 
           {/* Divider */}
-          <div className="w-px h-5 mx-0.5" style={{ backgroundColor: 'var(--border-default)' }} />
+          <div className="w-px h-5 mx-0.5 bg-border" />
 
           {/* Columns Button */}
           <button
             type="button"
             onClick={() => onPanelChange(activePanel === 'columns' ? 'none' : 'columns')}
-            className="h-8 w-8 flex items-center justify-center rounded-lg transition-all flex-shrink-0"
-            style={{
-              backgroundColor: activePanel === 'columns'
-                ? 'var(--bg-primary)'
+            className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all flex-shrink-0 ${
+              activePanel === 'columns'
+                ? 'bg-primary text-primary-foreground'
                 : visibleColumnCount < totalColumnCount
-                  ? 'var(--bg-warning-subtle)'
-                  : 'transparent',
-              color: activePanel === 'columns'
-                ? 'white'
-                : visibleColumnCount < totalColumnCount
-                  ? 'var(--text-warning)'
-                  : 'var(--text-muted)',
-            }}
+                  ? 'bg-warning-subtle text-warning-text'
+                  : 'text-muted-foreground'
+            }`}
             title={`Columns (${visibleColumnCount}/${totalColumnCount})`}
           >
             <SlidersHorizontal className="h-4 w-4" />
@@ -267,11 +226,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             <button
               type="button"
               onClick={handleShare}
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-              style={{
-                backgroundColor: shareCopied ? 'var(--bg-success-subtle)' : 'transparent',
-                color: shareCopied ? 'var(--text-success)' : 'var(--text-muted)',
-              }}
+              className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
+                shareCopied ? 'bg-success-subtle text-success-text' : 'text-muted-foreground'
+              }`}
               title={shareCopied ? 'Link copied!' : 'Share filtered view'}
             >
               {shareCopied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
@@ -284,11 +241,9 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setShowExportMenu(!showExportMenu)}
-                className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                style={{
-                  backgroundColor: showExportMenu ? 'var(--bg-primary-subtle)' : 'transparent',
-                  color: showExportMenu ? 'var(--text-brand)' : 'var(--text-muted)',
-                }}
+                className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
+                  showExportMenu ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                }`}
                 title="Export"
               >
                 <Download className="h-4 w-4" />
@@ -296,68 +251,34 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
 
               {/* Export Dropdown Menu */}
               {showExportMenu && (
-                <div
-                  className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px]"
-                  style={{
-                    backgroundColor: 'var(--bg-surface)',
-                    border: '1px solid var(--border-default)',
-                    boxShadow: 'var(--shadow-xl)',
-                  }}
-                >
-                  <div className="px-3 py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                <div className="absolute right-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[160px] bg-card border border-border shadow-xl">
+                  <div className="px-3 py-1.5 border-b border-border">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Export as
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleExport('xlsx')}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                      e.currentTarget.style.color = 'var(--text-brand)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   >
-                    <FileSpreadsheet className="h-4 w-4" style={{ color: 'var(--text-success)' }} />
+                    <FileSpreadsheet className="h-4 w-4 text-success-text" />
                     <span>Excel (.xlsx)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleExport('csv')}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                      e.currentTarget.style.color = 'var(--text-brand)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   >
-                    <FileDown className="h-4 w-4" style={{ color: 'var(--text-brand)' }} />
+                    <FileDown className="h-4 w-4 text-primary" />
                     <span>CSV (.csv)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleExport('pdf')}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-primary-subtle)';
-                      e.currentTarget.style.color = 'var(--text-brand)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   >
-                    <FileText className="h-4 w-4" style={{ color: 'var(--text-danger)' }} />
+                    <FileText className="h-4 w-4 text-danger-text" />
                     <span>PDF (.pdf)</span>
                   </button>
                 </div>
@@ -370,16 +291,7 @@ export const TableHeader: React.FC<TableHeaderProps> = ({
             <button
               type="button"
               onClick={onRefresh}
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-              style={{ color: 'var(--text-muted)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--text-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--text-muted)';
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all text-muted-foreground hover:text-foreground hover:bg-card"
               title="Refresh"
             >
               <RefreshCw className="h-4 w-4" />

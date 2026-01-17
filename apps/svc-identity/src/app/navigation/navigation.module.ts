@@ -6,7 +6,6 @@ import { NavigationResolutionService } from './navigation-resolution.service';
 import { ModuleRegistryService } from './module-registry.service';
 import { NavigationCacheService } from './navigation-cache.service';
 import { NavigationPreferenceService } from './navigation-preference.service';
-import { LegacyAdapterService } from './legacy-adapter.service';
 import { VisibilityExpressionService } from './visibility-expression.service';
 import { NavProfile, NavNode, NavPatch, UserPreference } from '@hubblewave/instance-db';
 
@@ -20,7 +19,6 @@ import { NavProfile, NavNode, NavPatch, UserPreference } from '@hubblewave/insta
     ModuleRegistryService,
     NavigationCacheService,
     NavigationPreferenceService,
-    LegacyAdapterService,
     VisibilityExpressionService,
   ],
   exports: [NavigationResolutionService],

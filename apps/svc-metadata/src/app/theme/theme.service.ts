@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ThemeDefinition, UserThemePreference } from '@hubblewave/instance-db';
 import { CreateThemeDto, UpdatePreferenceDto, UpdateThemeDto } from './theme.dto';
+import { validate as validateUuid } from 'uuid';
 
 @Injectable()
 export class ThemeService {
@@ -106,6 +107,7 @@ export class ThemeService {
   }
 
   async getPreference(userId: string) {
+    this.ensureUserId(userId);
     let pref = await this.prefRepo.findOne({
       where: { userId },
       relations: ['theme'],
@@ -137,6 +139,7 @@ export class ThemeService {
   }
 
   async updatePreference(userId: string, dto: UpdatePreferenceDto) {
+    this.ensureUserId(userId);
     if (dto.colorScheme && !['dark', 'light', 'auto'].includes(dto.colorScheme)) {
       throw new BadRequestException('Invalid color scheme');
     }
@@ -200,6 +203,12 @@ export class ThemeService {
     }
     if (!dto.slug || dto.slug.trim().length === 0) {
       throw new BadRequestException('Theme slug is required');
+    }
+  }
+
+  private ensureUserId(userId: string) {
+    if (!userId || !validateUuid(userId)) {
+      throw new BadRequestException('Invalid user id');
     }
   }
 }

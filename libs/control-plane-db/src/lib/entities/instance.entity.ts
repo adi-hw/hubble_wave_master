@@ -13,7 +13,7 @@ import { Customer } from './customer.entity';
 /**
  * Instance environment type
  */
-export type InstanceEnvironment = 'production' | 'staging' | 'development';
+export type InstanceEnvironment = 'production' | 'staging' | 'dev';
 
 /**
  * Instance status
@@ -77,7 +77,7 @@ export class Instance {
   // Domain & Access
   // ─────────────────────────────────────────────────────────────────
 
-  /** Primary domain name for this instance (e.g., acme-prod.hubblewave.io) */
+  /** Primary domain name for this instance (e.g., acme.dev.hubblewave.com) */
   @Column({ type: 'varchar', length: 255, nullable: true })
   domain?: string | null;
 
@@ -144,9 +144,10 @@ export class Instance {
   /** Resource utilization metrics (latest snapshot) */
   @Column({ name: 'resource_metrics', type: 'jsonb', default: () => `'{}'` })
   resourceMetrics!: {
-    cpu_percent?: number;
-    memory_percent?: number;
-    disk_percent?: number;
+    cpu_usage?: number;
+    memory_usage?: number;
+    disk_usage?: number;
+    network_io?: number;
     db_connections?: number;
     active_users?: number;
   };

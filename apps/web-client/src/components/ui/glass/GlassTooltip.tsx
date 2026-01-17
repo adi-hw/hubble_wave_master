@@ -50,10 +50,10 @@ const positionStyles = {
 };
 
 const arrowStyles = {
-  top: 'top-full left-1/2 -translate-x-1/2 border-t-[var(--color-neutral-900)] dark:border-t-[var(--color-neutral-100)]',
-  bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-[var(--color-neutral-900)] dark:border-b-[var(--color-neutral-100)] rotate-180',
-  left: 'left-full top-1/2 -translate-y-1/2 border-l-[var(--color-neutral-900)] dark:border-l-[var(--color-neutral-100)] -rotate-90',
-  right: 'right-full top-1/2 -translate-y-1/2 border-r-[var(--color-neutral-900)] dark:border-r-[var(--color-neutral-100)] rotate-90',
+  top: 'top-full left-1/2 -translate-x-1/2 border-t-foreground',
+  bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-foreground rotate-180',
+  left: 'left-full top-1/2 -translate-y-1/2 border-l-foreground -rotate-90',
+  right: 'right-full top-1/2 -translate-y-1/2 border-r-foreground rotate-90',
 };
 
 export const GlassTooltip: React.FC<GlassTooltipProps> = ({
@@ -112,16 +112,14 @@ export const GlassTooltip: React.FC<GlassTooltipProps> = ({
         <div
           role="tooltip"
           className={cn(
-            'absolute z-[var(--z-tooltip)] pointer-events-none',
+            'absolute z-50 pointer-events-none',
             'px-2.5 py-1.5 rounded-md text-xs font-medium',
-            'bg-[var(--color-neutral-900)] text-[var(--color-neutral-100)]',
-            'dark:bg-[var(--color-neutral-100)] dark:text-[var(--color-neutral-900)]',
-            'shadow-lg whitespace-nowrap',
+            'bg-foreground text-background',
+            'shadow-lg whitespace-nowrap max-w-xs',
             'animate-fade-in',
             positionStyles[side][align],
             className
           )}
-          style={{ maxWidth: 'var(--tooltip-max-width)' }}
         >
           {content}
           <span

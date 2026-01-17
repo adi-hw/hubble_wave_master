@@ -25,10 +25,13 @@ export interface AuthenticatedUser {
 /**
  * Extended Express Request with context information
  */
-export interface TenantRequest extends Request {
+export interface InstanceRequest extends Request {
   context: RequestContext;
   user?: AuthenticatedUser;
 }
+
+// Deprecated alias for backward compatibility
+export type TenantRequest = InstanceRequest;
 
 /**
  * Request type for authenticated endpoints
@@ -60,8 +63,8 @@ export interface PublicRequest extends Request {
  * @returns RequestContext if available
  * @throws Error if no valid context is found
  */
-export function extractContext(req: TenantRequest | AuthenticatedRequest | Record<string, any>): RequestContext {
-  // Primary: Use context from TenantRequest (set by middleware/guard)
+export function extractContext(req: InstanceRequest | AuthenticatedRequest | Record<string, any>): RequestContext {
+  // Primary: Use context from InstanceRequest (set by middleware/guard)
   if ('context' in req && req.context && isValidContext(req.context)) {
     return req.context;
   }

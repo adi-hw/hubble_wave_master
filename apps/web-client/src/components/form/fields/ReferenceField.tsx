@@ -21,7 +21,7 @@ export const ReferenceField: React.FC<FieldComponentProps<string>> = ({
       value={value}
       onChange={onChange}
       required={field.config?.validators?.required}
-      referenceTable={field.config?.referenceTable || ''}
+      referenceCollection={field.config?.referenceCollection || ''}
       disabled={disabled || readOnly}
       error={!!error}
     />

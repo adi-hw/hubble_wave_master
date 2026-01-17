@@ -133,13 +133,10 @@ export function PinnedNavigation({ collapsed = false, onItemClick }: PinnedNavig
       {/* Section Header */}
       {!collapsed && (
         <div className="px-3 mb-1 flex items-center justify-between">
-          <span
-            className="text-xs font-medium uppercase tracking-wider"
-            style={{ color: 'var(--text-muted)' }}
-          >
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Pinned
           </span>
-          <Pin size={12} style={{ color: 'var(--text-muted)' }} />
+          <Pin size={12} className="text-muted-foreground" />
         </div>
       )}
 
@@ -172,20 +169,14 @@ export function PinnedNavigation({ collapsed = false, onItemClick }: PinnedNavig
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                     'text-sm',
-                    collapsed && 'justify-center px-2'
+                    collapsed && 'justify-center px-2',
+                    isActive ? 'bg-muted text-primary' : 'bg-transparent text-muted-foreground hover:bg-muted/50'
                   )}
-                  style={{
-                    background: isActive ? 'var(--glass-bg-hover)' : 'transparent',
-                    color: isActive ? 'var(--color-primary-400)' : 'var(--text-secondary)',
-                  }}
                   title={collapsed ? item.label : undefined}
                 >
                   {/* Drag Handle - Only visible on hover when not collapsed */}
                   {!collapsed && (
-                    <span
-                      className="opacity-0 group-hover:opacity-50 cursor-grab"
-                      style={{ marginRight: '-8px', marginLeft: '-4px' }}
-                    >
+                    <span className="opacity-0 group-hover:opacity-50 cursor-grab -mr-2 -ml-1">
                       <GripVertical size={14} />
                     </span>
                   )}
@@ -204,8 +195,7 @@ export function PinnedNavigation({ collapsed = false, onItemClick }: PinnedNavig
                         e.stopPropagation();
                         setShowContextMenu(showContextMenu === item.id ? null : item.id);
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity"
-                      style={{ color: 'var(--text-tertiary)' }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity text-muted-foreground hover:text-foreground"
                     >
                       <MoreHorizontal size={14} />
                     </button>
@@ -219,17 +209,10 @@ export function PinnedNavigation({ collapsed = false, onItemClick }: PinnedNavig
                       className="fixed inset-0 z-40"
                       onClick={() => setShowContextMenu(null)}
                     />
-                    <div
-                      className="absolute right-0 top-full mt-1 z-50 py-1 rounded-lg shadow-lg min-w-[120px]"
-                      style={{
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--glass-border)',
-                      }}
-                    >
+                    <div className="absolute right-0 top-full mt-1 z-50 py-1 rounded-lg shadow-lg min-w-[120px] bg-card border border-border">
                       <button
                         onClick={() => handleRemove(item.id)}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors"
-                        style={{ color: 'var(--color-danger-400)' }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors text-destructive hover:bg-muted"
                       >
                         <X size={14} />
                         Unpin
@@ -305,13 +288,9 @@ export function PinButton({
       disabled={loading}
       className={cn(
         'p-1.5 rounded-lg transition-colors',
-        isPinned ? 'text-primary-400' : 'text-secondary',
+        isPinned ? 'bg-primary/10 text-primary' : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted',
         className
       )}
-      style={{
-        background: isPinned ? 'var(--bg-primary-subtle)' : 'transparent',
-        color: isPinned ? 'var(--color-primary-400)' : 'var(--text-tertiary)',
-      }}
       title={isPinned ? 'Unpin' : 'Pin to sidebar'}
     >
       <Pin

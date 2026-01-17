@@ -30,7 +30,7 @@ type Condition = {
 const ALLOWED_RLS_COLUMNS = new Set([
   'id', 'created_by', 'updated_by', 'owner_id', 'assigned_to', 'assigned_user_id',
   'site_id', 'location_id', 'department_id', 'team_id', 'group_id',
-  'status', 'state', 'is_active', 'is_deleted', 'tenant_id',
+  'status', 'state', 'is_active', 'is_deleted', 'instance_id',
   'created_at', 'updated_at', 'visibility', 'access_level',
 ]);
 
@@ -74,7 +74,7 @@ export class AbacService {
       return condition.safePredicates.filter(p => this.validatePredicate(p));
     }
 
-    // Log warning if legacy raw predicates are found (but don't use them)
+    // Log warning if raw predicates are found (rejected for security)
     if (condition.predicates?.length || condition.predicate) {
       console.warn(
         'SECURITY: Raw SQL predicates in ABAC policy are ignored. ' +

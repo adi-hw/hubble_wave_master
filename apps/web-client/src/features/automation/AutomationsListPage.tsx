@@ -1,23 +1,48 @@
+/**
+ * AutomationsListPage
+ * HubbleWave Platform - Phase 3
+ *
+ * Page displaying a list of automation rules for a collection or globally.
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  Card,
-  Container,
-  FormControlLabel,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-  Chip,
-  IconButton,
-} from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, History as HistoryIcon } from '@mui/icons-material';
+import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react';
 import { automationApi, Automation } from '../../services/automationApi';
+
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}
+
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, label }) => (
+  <label className="inline-flex items-center gap-2 cursor-pointer">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`toggle-track h-5 w-9 ${checked ? 'toggle-track-on' : ''}`}
+    >
+      <span
+        className={`toggle-thumb inline-block h-4 w-4 transform ${
+          checked ? 'translate-x-4' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+    <span className="text-sm text-foreground">
+      {label}
+    </span>
+  </label>
+);
+
+const getStatusBadgeClass = (status: string): string => {
+  if (status === 'success') {
+    return 'bg-success-subtle text-success-text';
+  }
+  return 'bg-danger-subtle text-danger-text';
+};
 
 export const AutomationsListPage: React.FC = () => {
   const { id: collectionId } = useParams<{ id: string }>();
@@ -25,12 +50,13 @@ export const AutomationsListPage: React.FC = () => {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isGlobalView = !collectionId;
+
   useEffect(() => {
     loadAutomations();
   }, [collectionId]);
 
   const loadAutomations = async () => {
-    if (!collectionId) return;
     try {
       const data = await automationApi.getAutomations(collectionId, true);
       setAutomations(data);
@@ -60,115 +86,168 @@ export const AutomationsListPage: React.FC = () => {
     }
   };
 
-  if (loading) return <Typography>Loading automations...</Typography>;
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto mt-8 flex items-center justify-center gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <span className="text-muted-foreground">Loading automation rules...</span>
+      </div>
+    );
+  }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Automations</Typography>
-        <Box>
-            <Button
-                variant="outlined"
-                startIcon={<HistoryIcon />}
-                onClick={() => navigate(`/studio/collections/${collectionId}/automation-logs`)}
-                sx={{ mr: 2 }}
+    <div className="max-w-5xl mx-auto mt-8 px-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold text-foreground">
+          Automation Rules
+        </h1>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                isGlobalView ? '/automation/logs' : `/studio/collections/${collectionId}/automation-logs`
+              )
+            }
+            className="flex items-center gap-2 px-4 py-2 rounded border border-border text-foreground transition-colors hover:bg-hover"
+          >
+            <History className="w-4 h-4" />
+            <span>Logs</span>
+          </button>
+          {!isGlobalView && (
+            <button
+              type="button"
+              onClick={() => navigate(`/studio/collections/${collectionId}/automations/new`)}
+              className="flex items-center gap-2 px-4 py-2 rounded bg-primary text-primary-foreground transition-colors hover:opacity-90"
             >
-                Logs
-            </Button>
-            <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate(`/studio/collections/${collectionId}/automations/new`)}
-            >
-            New Automation
-            </Button>
-        </Box>
-      </Box>
+              <Plus className="w-4 h-4" />
+              <span>New Automation</span>
+            </button>
+          )}
+        </div>
+      </div>
 
-      <Card>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Trigger</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Last Run</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border bg-muted">
+              <th className="p-3 text-left text-sm font-semibold text-muted-foreground">
+                Name
+              </th>
+              {isGlobalView && (
+                <th className="p-3 text-left text-sm font-semibold text-muted-foreground">
+                  Collection
+                </th>
+              )}
+              <th className="p-3 text-left text-sm font-semibold text-muted-foreground">
+                Trigger
+              </th>
+              <th className="p-3 text-left text-sm font-semibold text-muted-foreground">
+                Status
+              </th>
+              <th className="p-3 text-left text-sm font-semibold text-muted-foreground">
+                Last Run
+              </th>
+              <th className="p-3 text-right text-sm font-semibold text-muted-foreground">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
             {automations.map((automation) => (
-              <TableRow key={automation.id}>
-                <TableCell>
-                  <Typography variant="subtitle2">{automation.name}</Typography>
-                  <Typography variant="caption" color="textSecondary">
+              <tr
+                key={automation.id}
+                className="border-b border-border transition-colors hover:bg-hover"
+              >
+                <td className="p-3">
+                  <div className="font-medium text-sm text-foreground">
+                    {automation.name}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
                     {automation.actionType}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={automation.triggerTiming.replace('_', ' ').toUpperCase()}
-                    size="small"
-                    color="primary"
-                    variant="outlined"
-                  />
+                  </div>
+                </td>
+                {isGlobalView && (
+                  <td className="p-3 text-sm text-muted-foreground">
+                    {automation.collectionId?.slice(0, 8) || '-'}
+                  </td>
+                )}
+                <td className="p-3">
+                  <span className="px-2 py-1 text-xs font-medium border border-primary text-primary rounded">
+                    {automation.triggerTiming.replace('_', ' ').toUpperCase()}
+                  </span>
                   {automation.executionOrder > 0 && (
-                      <Typography variant="caption" display="block">Order: {automation.executionOrder}</Typography>
+                    <div className="text-xs mt-1 text-muted-foreground">
+                      Order: {automation.executionOrder}
+                    </div>
                   )}
-                </TableCell>
-                <TableCell>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={automation.isActive}
-                        onChange={() => handleToggleActive(automation)}
-                        size="small"
-                      />
-                    }
+                </td>
+                <td className="p-3">
+                  <ToggleSwitch
+                    checked={automation.isActive}
+                    onChange={() => handleToggleActive(automation)}
                     label={automation.isActive ? 'Active' : 'Inactive'}
                   />
-                </TableCell>
-                <TableCell>
+                </td>
+                <td className="p-3">
                   {automation.lastRunAt ? (
-                    <Box>
-                      <Typography variant="body2">
+                    <div>
+                      <div className="text-sm text-foreground">
                         {new Date(automation.lastRunAt).toLocaleString()}
-                      </Typography>
-                      <Chip
-                        label={automation.lastRunStatus}
-                        size="small"
-                        color={automation.lastRunStatus === 'success' ? 'success' : 'error'}
-                      />
-                    </Box>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full mt-1 inline-block ${getStatusBadgeClass(automation.lastRunStatus || '')}`}
+                      >
+                        {automation.lastRunStatus}
+                      </span>
+                    </div>
                   ) : (
-                    '-'
+                    <span className="text-muted-foreground">-</span>
                   )}
-                </TableCell>
-                <TableCell align="right">
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      navigate(`/studio/collections/${collectionId}/automations/${automation.id}`)
-                    }
-                  >
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton size="small" onClick={() => handleDelete(automation.id)} color="error">
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
+                </td>
+                <td className="p-3 text-right">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          isGlobalView
+                            ? `/automation/${automation.id}`
+                            : `/studio/collections/${collectionId}/automations/${automation.id}`
+                        )
+                      }
+                      className="p-2 rounded text-muted-foreground transition-colors hover:bg-hover"
+                      aria-label="Edit automation"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(automation.id)}
+                      className="p-2 rounded text-danger-text transition-colors hover:bg-danger-subtle"
+                      aria-label="Delete automation"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
             ))}
             {automations.length === 0 && (
-                <TableRow>
-                    <TableCell colSpan={5} align="center">
-                        No automations found. Create one to get started.
-                    </TableCell>
-                </TableRow>
+              <tr>
+                <td
+                  colSpan={isGlobalView ? 6 : 5}
+                  className="p-8 text-center text-sm text-muted-foreground"
+                >
+                  {isGlobalView
+                    ? 'No automation rules found. To create an automation, go to Studio \u2192 Collections and select a collection.'
+                    : 'No automation rules found. Create one to get started.'}
+                </td>
+              </tr>
             )}
-          </TableBody>
-        </Table>
-      </Card>
-    </Container>
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };

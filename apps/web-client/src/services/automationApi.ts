@@ -63,49 +63,56 @@ export interface ReorderAutomationDto {
 
 export const automationApi = {
   // Automations
-  getAutomations: async (collectionId: string, includeInactive = false) => {
+  getAutomations: async (collectionId?: string, includeInactive = false) => {
+    if (collectionId) {
+      const response = await authenticatedClient.get<Automation[]>(
+        `/collections/${collectionId}/automations`,
+        { params: { includeInactive } }
+      );
+      return response.data;
+    }
     const response = await authenticatedClient.get<Automation[]>(
-      `/api/collections/${collectionId}/automations`,
+      `/automations`,
       { params: { includeInactive } }
     );
     return response.data;
   },
 
   getAutomation: async (id: string) => {
-    const response = await authenticatedClient.get<Automation>(`/api/automations/${id}`);
+    const response = await authenticatedClient.get<Automation>(`/automations/${id}`);
     return response.data;
   },
 
   createAutomation: async (collectionId: string, data: CreateAutomationDto) => {
     const response = await authenticatedClient.post<Automation>(
-      `/api/collections/${collectionId}/automations`,
+      `/collections/${collectionId}/automations`,
       data
     );
     return response.data;
   },
 
   updateAutomation: async (id: string, data: Partial<Automation>) => {
-    const response = await authenticatedClient.patch<Automation>(`/api/automations/${id}`, data);
+    const response = await authenticatedClient.patch<Automation>(`/automations/${id}`, data);
     return response.data;
   },
 
   deleteAutomation: async (id: string) => {
-    await authenticatedClient.delete(`/api/automations/${id}`);
+    await authenticatedClient.delete(`/automations/${id}`);
   },
 
   toggleActive: async (id: string) => {
-    const response = await authenticatedClient.post<Automation>(`/api/automations/${id}/toggle`);
+    const response = await authenticatedClient.post<Automation>(`/automations/${id}/toggle`);
     return response.data;
   },
 
   reorderAutomations: async (collectionId: string, automations: ReorderAutomationDto[]) => {
-    await authenticatedClient.post(`/api/collections/${collectionId}/automations/reorder`, {
+    await authenticatedClient.post(`/collections/${collectionId}/automations/reorder`, {
       automations,
     });
   },
 
   testAutomation: async (id: string, mockRecord: any, mockPreviousRecord?: any) => {
-    const response = await authenticatedClient.post(`/api/automations/${id}/test`, {
+    const response = await authenticatedClient.post(`/automations/${id}/test`, {
       mockRecord,
       mockPreviousRecord,
     });
@@ -115,7 +122,7 @@ export const automationApi = {
   // Display Rules
   getDisplayRules: async (collectionId: string, viewId?: string) => {
     const response = await authenticatedClient.get(
-      `/api/collections/${collectionId}/display-rules`,
+      `/collections/${collectionId}/display-rules`,
       { params: { viewId } }
     );
     return response.data;
@@ -123,20 +130,20 @@ export const automationApi = {
 
   createDisplayRule: async (collectionId: string, data: any) => {
     const response = await authenticatedClient.post(
-      `/api/collections/${collectionId}/display-rules`,
+      `/collections/${collectionId}/display-rules`,
       data
     );
     return response.data;
   },
 
   deleteDisplayRule: async (id: string) => {
-    await authenticatedClient.delete(`/api/display-rules/${id}`);
+    await authenticatedClient.delete(`/display-rules/${id}`);
   },
 
   // Logs
   getLogs: async (collectionId: string, page = 1, limit = 50) => {
     const response = await authenticatedClient.get(
-      `/api/collections/${collectionId}/automation-logs`,
+      `/collections/${collectionId}/automation-logs`,
       { params: { page, limit } }
     );
     return response.data;

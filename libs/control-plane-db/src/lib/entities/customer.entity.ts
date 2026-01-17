@@ -14,7 +14,17 @@ import { License } from './license.entity';
 /**
  * Customer status
  */
-export type CustomerStatus = 'active' | 'suspended' | 'terminated' | 'pending';
+export type CustomerStatus = 'active' | 'trial' | 'suspended' | 'churned' | 'terminated' | 'pending';
+
+/**
+ * Customer settings type
+ */
+export interface CustomerSettings {
+  timezone?: string;
+  dateFormat?: string;
+  locale?: string;
+  [key: string]: unknown;
+}
 
 /**
  * Customer tier (pricing/feature level)
@@ -25,7 +35,7 @@ export type CustomerTier = 'starter' | 'professional' | 'enterprise';
  * Customer entity - represents a HubbleWave customer organization
  * Stored in Control Plane database (eam_control)
  * 
- * Each customer can have multiple instances (production, staging, development)
+ * Each customer can have multiple instances (production, staging, dev)
  */
 @Entity('customers')
 @Index(['code'], { unique: true })
@@ -70,6 +80,18 @@ export class Customer {
   /** Currency for contract value */
   @Column({ type: 'varchar', length: 3, default: 'USD' })
   currency!: string;
+
+  /** Monthly recurring revenue */
+  @Column({ type: 'integer', default: 0 })
+  mrr!: number;
+
+  /** Snapshot totals used for control-plane rollups */
+  @Column({ name: 'total_users', type: 'integer', default: 0 })
+  totalUsers!: number;
+
+  /** Snapshot totals used for control-plane rollups */
+  @Column({ name: 'total_assets', type: 'integer', default: 0 })
+  totalAssets!: number;
 
   // ─────────────────────────────────────────────────────────────────
   // Contact Information

@@ -17,7 +17,7 @@ const pathLabels: Record<string, string> = {
   admin: 'Admin',
   tables: 'Tables',
   scripts: 'Scripts',
-  workflows: 'Workflows',
+  'process-flows': 'Process Flows',
   approvals: 'Approvals',
   events: 'Events',
   notifications: 'Notifications',
@@ -67,7 +67,7 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ items, className = '' })
         <li>
           <Link
             to="/"
-            className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded hover:bg-slate-100"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-muted"
           >
             <Home className="h-4 w-4" />
           </Link>
@@ -75,17 +75,17 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ items, className = '' })
 
         {breadcrumbItems.map((item, index) => (
           <li key={index} className="flex items-center">
-            <ChevronRight className="h-4 w-4 text-slate-300 mx-1" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground mx-1" />
             {item.path ? (
               <Link
                 to={item.path}
-                className="text-slate-500 hover:text-slate-700 transition-colors px-1.5 py-0.5 rounded hover:bg-slate-100"
+                className="text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
               >
                 {item.icon}
                 {item.label}
               </Link>
             ) : (
-              <span className="text-slate-700 font-medium px-1.5 py-0.5">
+              <span className="text-foreground font-medium px-1.5 py-0.5">
                 {item.icon}
                 {item.label}
               </span>
@@ -131,14 +131,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           {icon && (
-            <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center">
               {icon}
             </div>
           )}
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+            <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
             {(subtitle || description) && (
-              <p className="text-sm text-slate-500 mt-1">{subtitle || description}</p>
+              <p className="text-sm text-muted-foreground mt-1">{subtitle || description}</p>
             )}
           </div>
         </div>

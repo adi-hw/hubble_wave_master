@@ -1,0 +1,468 @@
+collections:
+  - code: offerings
+    name: Offering
+    plural_name: Offerings
+    description: Catalog of requestable offerings that produce work items.
+    category: work
+    table_name: offerings
+    label_property: name
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: true
+    properties:
+      - code: code
+        name: Code
+        type: text
+        column_name: code
+        is_required: true
+        is_unique: true
+        is_indexed: true
+        is_searchable: true
+        is_sortable: true
+        is_filterable: true
+      - code: name
+        name: Name
+        type: text
+        column_name: name
+        is_required: true
+        is_searchable: true
+        is_sortable: true
+      - code: description
+        name: Description
+        type: long_text
+        column_name: description
+      - code: category
+        name: Category
+        type: text
+        column_name: category
+        is_filterable: true
+      - code: icon
+        name: Icon
+        type: text
+        column_name: icon
+      - code: is_active
+        name: Active
+        type: boolean
+        column_name: is_active
+        is_indexed: true
+      - code: form_view_code
+        name: Form View Code
+        type: text
+        column_name: form_view_code
+      - code: workflow_code
+        name: Workflow Code
+        type: text
+        column_name: workflow_code
+      - code: default_priority
+        name: Default Priority
+        type: text
+        column_name: default_priority
+      - code: sla_target_minutes
+        name: SLA Target Minutes
+        type: number
+        column_name: sla_target_minutes
+      - code: submission_schema
+        name: Submission Schema
+        type: json
+        column_name: submission_schema
+
+  - code: work_items
+    name: Work Item
+    plural_name: Work Items
+    description: Work items created from offering submissions.
+    category: work
+    table_name: work_items
+    label_property: title
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: true
+      enable_activity_log: true
+      enable_search: true
+    properties:
+      - code: title
+        name: Title
+        type: text
+        column_name: title
+        is_required: true
+        is_searchable: true
+        is_sortable: true
+      - code: description
+        name: Description
+        type: long_text
+        column_name: description
+      - code: status
+        name: Status
+        type: text
+        column_name: status
+        is_indexed: true
+        is_filterable: true
+      - code: priority
+        name: Priority
+        type: text
+        column_name: priority
+        is_filterable: true
+      - code: offering_id
+        name: Offering
+        type: reference
+        column_name: offering_id
+        reference_collection_code: offerings
+        is_indexed: true
+      - code: offering_code
+        name: Offering Code
+        type: text
+        column_name: offering_code
+        is_indexed: true
+      - code: requested_by
+        name: Requested By
+        type: user
+        column_name: requested_by
+        is_indexed: true
+      - code: assigned_to
+        name: Assigned To
+        type: user
+        column_name: assigned_to
+        is_indexed: true
+      - code: submitted_at
+        name: Submitted At
+        type: datetime
+        column_name: submitted_at
+        is_indexed: true
+      - code: due_at
+        name: Due At
+        type: datetime
+        column_name: due_at
+        is_indexed: true
+      - code: sla_target_minutes
+        name: SLA Target Minutes
+        type: number
+        column_name: sla_target_minutes
+      - code: sla_status
+        name: SLA Status
+        type: text
+        column_name: sla_status
+        is_indexed: true
+      - code: sla_breached_at
+        name: SLA Breached At
+        type: datetime
+        column_name: sla_breached_at
+      - code: sla_met_at
+        name: SLA Met At
+        type: datetime
+        column_name: sla_met_at
+      - code: workflow_definition_id
+        name: Workflow Definition Id
+        type: uuid
+        column_name: workflow_definition_id
+        is_indexed: true
+      - code: workflow_instance_id
+        name: Workflow Instance Id
+        type: uuid
+        column_name: workflow_instance_id
+        is_indexed: true
+      - code: submission_data
+        name: Submission Data
+        type: json
+        column_name: submission_data
+
+  - code: work_comments
+    name: Work Comment
+    plural_name: Work Comments
+    description: Comments associated with work items.
+    category: work
+    table_name: work_comments
+    label_property: body
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: true
+      enable_activity_log: true
+      enable_search: false
+    properties:
+      - code: work_item_id
+        name: Work Item
+        type: reference
+        column_name: work_item_id
+        reference_collection_code: work_items
+        is_required: true
+        is_indexed: true
+      - code: author_id
+        name: Author
+        type: user
+        column_name: author_id
+        is_indexed: true
+      - code: body
+        name: Comment
+        type: long_text
+        column_name: body
+        is_required: true
+
+  - code: work_timeline
+    name: Work Timeline Event
+    plural_name: Work Timeline Events
+    description: Timeline events for work item lifecycle.
+    category: work
+    table_name: work_timeline
+    label_property: event_type
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: false
+    properties:
+      - code: work_item_id
+        name: Work Item
+        type: reference
+        column_name: work_item_id
+        reference_collection_code: work_items
+        is_required: true
+        is_indexed: true
+      - code: event_type
+        name: Event Type
+        type: text
+        column_name: event_type
+        is_required: true
+        is_indexed: true
+      - code: message
+        name: Message
+        type: long_text
+        column_name: message
+      - code: data
+        name: Data
+        type: json
+        column_name: data
+      - code: created_by
+        name: Created By
+        type: user
+        column_name: created_by
+        is_indexed: true
+
+  - code: work_tasks
+    name: Work Task
+    plural_name: Work Tasks
+    description: Subtasks and checklist items for work items.
+    category: work
+    table_name: work_tasks
+    label_property: title
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: false
+    properties:
+      - code: code
+        name: Code
+        type: text
+        column_name: code
+        is_required: true
+        is_indexed: true
+        is_searchable: true
+        is_sortable: true
+        is_filterable: true
+      - code: work_item_id
+        name: Work Item
+        type: reference
+        column_name: work_item_id
+        reference_collection_code: work_items
+        is_required: true
+        is_indexed: true
+      - code: title
+        name: Title
+        type: text
+        column_name: title
+        is_required: true
+        is_searchable: true
+        is_sortable: true
+      - code: description
+        name: Description
+        type: long_text
+        column_name: description
+      - code: status
+        name: Status
+        type: choice
+        column_name: status
+        default_value: pending
+        is_indexed: true
+        is_filterable: true
+        choices:
+          - value: pending
+            label: Pending
+          - value: in_progress
+            label: In Progress
+          - value: completed
+            label: Completed
+          - value: cancelled
+            label: Cancelled
+      - code: assigned_to
+        name: Assigned To
+        type: user
+        column_name: assigned_to
+        is_indexed: true
+      - code: due_at
+        name: Due At
+        type: datetime
+        column_name: due_at
+        is_indexed: true
+      - code: completed_at
+        name: Completed At
+        type: datetime
+        column_name: completed_at
+      - code: completed_by
+        name: Completed By
+        type: user
+        column_name: completed_by
+        is_indexed: true
+      - code: position
+        name: Position
+        type: integer
+        column_name: position
+        default_value: 0
+        is_sortable: true
+
+  - code: queue_definitions
+    name: Queue Definition
+    plural_name: Queue Definitions
+    description: Queue filters for work item routing.
+    category: work
+    table_name: queue_definitions
+    label_property: name
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: true
+    properties:
+      - code: code
+        name: Code
+        type: text
+        column_name: code
+        is_required: true
+        is_unique: true
+        is_indexed: true
+        is_searchable: true
+      - code: name
+        name: Name
+        type: text
+        column_name: name
+        is_required: true
+        is_searchable: true
+      - code: description
+        name: Description
+        type: long_text
+        column_name: description
+      - code: icon
+        name: Icon
+        type: text
+        column_name: icon
+      - code: filters
+        name: Filters
+        type: json
+        column_name: filters
+      - code: view_code
+        name: View Code
+        type: text
+        column_name: view_code
+      - code: group_by
+        name: Group By
+        type: text
+        column_name: group_by
+      - code: sort
+        name: Sort
+        type: json
+        column_name: sort
+      - code: is_active
+        name: Active
+        type: boolean
+        column_name: is_active
+        is_indexed: true
+
+  - code: work_lifecycles
+    name: Work Lifecycle
+    plural_name: Work Lifecycles
+    description: Lifecycle definitions for work item status and transitions.
+    category: work
+    table_name: work_lifecycles
+    label_property: name
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: true
+    properties:
+      - code: code
+        name: Code
+        type: text
+        column_name: code
+        is_required: true
+        is_unique: true
+        is_indexed: true
+      - code: name
+        name: Name
+        type: text
+        column_name: name
+        is_required: true
+      - code: description
+        name: Description
+        type: long_text
+        column_name: description
+      - code: default_status
+        name: Default Status
+        type: text
+        column_name: default_status
+        is_required: true
+      - code: is_active
+        name: Active
+        type: boolean
+        column_name: is_active
+        is_indexed: true
+
+  - code: work_transitions
+    name: Work Transition
+    plural_name: Work Transitions
+    description: Allowed status transitions for work lifecycles.
+    category: work
+    table_name: work_transitions
+    label_property: label
+    flags:
+      is_extensible: true
+      is_audited: true
+      enable_attachments: false
+      enable_activity_log: true
+      enable_search: false
+    properties:
+      - code: lifecycle_id
+        name: Lifecycle
+        type: reference
+        column_name: lifecycle_id
+        reference_collection_code: work_lifecycles
+        is_required: true
+        is_indexed: true
+      - code: from_status
+        name: From Status
+        type: text
+        column_name: from_status
+        is_required: true
+        is_indexed: true
+      - code: to_status
+        name: To Status
+        type: text
+        column_name: to_status
+        is_required: true
+        is_indexed: true
+      - code: label
+        name: Label
+        type: text
+        column_name: label
+        is_required: true
+      - code: requires_approval
+        name: Requires Approval
+        type: boolean
+        column_name: requires_approval
+        is_indexed: true

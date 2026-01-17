@@ -40,7 +40,6 @@ export class AutomationExecutorService {
     record: Record<string, unknown>,
     previousRecord: Record<string, unknown> | undefined,
     userContext: ExecutionContext['user'],
-    tenantId: string,
     parentContext?: Partial<ExecutionContext>,
   ): Promise<{
     modifiedRecord: Record<string, unknown>;
@@ -54,7 +53,6 @@ export class AutomationExecutorService {
     
     // Initialize or inherit execution context
     const context: ExecutionContext = {
-      tenantId,
       user: userContext,
       record: { ...record },
       previousRecord,
@@ -265,10 +263,10 @@ export class AutomationExecutorService {
       for (const action of automation.actions) {
         const actionStart = Date.now();
 
-        // Check per-action condition
+        // Check per-action condition (condition is already in canonical format)
         if (action.condition) {
           const actionCondition = this.conditionEvaluator.evaluate(
-            action.condition as any,
+            action.condition,
             { ...context, record: modifiedRecord },
           );
           if (!actionCondition.result) {
@@ -394,15 +392,19 @@ export class AutomationExecutorService {
 
   /**
    * Evaluate automation condition
+   * Conditions are stored in canonical format - no normalization needed
    */
   private async evaluateCondition(
     automation: Automation,
     context: ExecutionContext,
   ): Promise<{ result: boolean; trace: Record<string, unknown> }> {
     if (automation.conditionType === 'condition') {
-      // It is important that automation.condition is not null if conditionType is 'condition'
-      // The entity logic/validation should ensure this, but we use ! operator here
-      return this.conditionEvaluator.evaluate(automation.condition as any, context);
+      if (!automation.condition) {
+        return { result: true, trace: { conditionEmpty: true } };
+      }
+      // Conditions are already validated and stored in canonical format
+      const evalResult = this.conditionEvaluator.evaluate(automation.condition, context);
+      return { result: evalResult.result, trace: evalResult.trace as unknown as Record<string, unknown> };
     } else if (automation.conditionType === 'script') {
       const result = await this.executeScript(automation.conditionScript!, context);
       return {

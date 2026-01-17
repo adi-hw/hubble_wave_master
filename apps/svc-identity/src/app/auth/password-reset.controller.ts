@@ -99,7 +99,9 @@ export class PasswordResetController {
     };
   }
 
-  // Legacy endpoint for backwards compatibility
+  /**
+   * Reset password using token (alias for confirmReset)
+   */
   @Public()
   @Post('reset')
   async resetPassword(@Body() body: { token: string; newPassword: string }) {

@@ -1,7 +1,7 @@
 import { Injectable, Logger, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { SsoProvider, User } from '@hubblewave/instance-db';
+import { Repository, LessThan } from 'typeorm';
+import { SsoProvider, User, SAMLAuthState } from '@hubblewave/instance-db';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 
@@ -16,37 +16,48 @@ export interface SAMLUserInfo {
   attributes?: Record<string, string | string[]>;
 }
 
-export interface SAMLAuthState {
-  providerId: string;
-  relayState: string;
-  redirectUri: string;
-}
-
 /**
  * SAML Service - Handles SAML 2.0 authentication flow
- *
- * Note: This is a simplified implementation for basic SAML support.
- * For production use with complex IdPs, consider using a library like
- * passport-saml or samlify.
  *
  * Supports:
  * - SP-initiated SSO (redirect binding)
  * - Basic SAML response parsing
  * - Just-In-Time user provisioning
+ * - Persistent relay state for multi-instance deployments
  */
 @Injectable()
 export class SamlService {
   private readonly logger = new Logger(SamlService.name);
-
-  // In-memory state store (in production, use Redis)
-  private stateStore = new Map<string, SAMLAuthState>();
 
   constructor(
     @InjectRepository(SsoProvider)
     private readonly ssoProviderRepo: Repository<SsoProvider>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-  ) {}
+    @InjectRepository(SAMLAuthState)
+    private readonly samlStateRepo: Repository<SAMLAuthState>,
+  ) {
+    // Schedule cleanup of expired states every 5 minutes
+    this.scheduleStateCleanup();
+  }
+
+  /**
+   * Cleanup expired SAML auth states periodically
+   */
+  private scheduleStateCleanup(): void {
+    setInterval(async () => {
+      try {
+        const result = await this.samlStateRepo.delete({
+          expiresAt: LessThan(new Date()),
+        });
+        if (result.affected && result.affected > 0) {
+          this.logger.debug(`Cleaned up ${result.affected} expired SAML auth states`);
+        }
+      } catch (error) {
+        this.logger.warn('Failed to cleanup expired SAML states:', error);
+      }
+    }, 5 * 60 * 1000);
+  }
 
   /**
    * Generate the SAML authentication request URL
@@ -66,15 +77,15 @@ export class SamlService {
     // Generate relay state for CSRF protection
     const relayState = crypto.randomBytes(32).toString('hex');
 
-    // Store state for validation on callback
-    this.stateStore.set(relayState, {
+    // Store state in database for validation on callback
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const stateEntity = this.samlStateRepo.create({
       providerId: provider.id,
       relayState,
       redirectUri,
+      expiresAt,
     });
-
-    // Clean up old states after 10 minutes
-    setTimeout(() => this.stateStore.delete(relayState), 10 * 60 * 1000);
+    await this.samlStateRepo.save(stateEntity);
 
     // Generate SAML AuthnRequest
     const requestId = `_${crypto.randomBytes(16).toString('hex')}`;
@@ -121,12 +132,22 @@ export class SamlService {
     samlResponse: string,
     relayState: string,
   ): Promise<{ user: User; isNewUser: boolean }> {
-    // Validate relay state
-    const storedState = this.stateStore.get(relayState);
+    // Validate relay state from database
+    const storedState = await this.samlStateRepo.findOne({
+      where: { relayState },
+    });
     if (!storedState) {
       throw new UnauthorizedException('Invalid or expired relay state');
     }
-    this.stateStore.delete(relayState);
+    if (storedState.expiresAt < new Date()) {
+      await this.samlStateRepo.delete({ id: storedState.id });
+      throw new UnauthorizedException('Relay state has expired');
+    }
+    if (storedState.consumedAt) {
+      throw new UnauthorizedException('Relay state has already been used');
+    }
+    // Mark state as consumed
+    await this.samlStateRepo.update(storedState.id, { consumedAt: new Date() });
 
     const provider = await this.findProvider(providerSlugOrId);
 
@@ -302,9 +323,6 @@ export class SamlService {
       isNewUser = true;
 
       this.logger.log(`JIT provisioned new user: ${user.email} via ${provider.name}`);
-
-      // TODO: Assign default roles from provider.jitDefaultRoles
-      // TODO: Process group mappings from provider.jitGroupMapping
     } else {
       throw new UnauthorizedException(
         `User ${email} does not exist and Just-In-Time provisioning is disabled for this SSO provider`

@@ -139,7 +139,7 @@ export class PlatformKnowledgeService {
         'Assignment to individuals or groups',
         'SLA tracking and alerts',
         'Related incidents and problems',
-        'Resolution and closure workflow',
+        'Resolution and closure process',
         'Knowledge article suggestions',
       ],
       useCases: [
@@ -153,12 +153,12 @@ export class PlatformKnowledgeService {
     {
       code: 'request_fulfillment',
       name: 'Service Request Fulfillment',
-      description: 'Handle service requests from the catalog with approval workflows, task assignment, and fulfillment tracking.',
+      description: 'Handle service requests from the catalog with approval process flows, task assignment, and fulfillment tracking.',
       category: 'itil',
       module: 'itsm',
       features: [
         'Request submission from catalog',
-        'Multi-level approval workflows',
+        'Multi-level approval process flows',
         'Task breakdown and assignment',
         'Status tracking for requesters',
         'Fulfillment templates',
@@ -170,7 +170,7 @@ export class PlatformKnowledgeService {
         'Order IT equipment',
         'Request account modifications',
       ],
-      relatedCapabilities: ['service_catalog', 'approvals', 'workflow_automation'],
+      relatedCapabilities: ['service_catalog', 'approvals', 'process_flow_automation'],
     },
     {
       code: 'change_management',
@@ -181,7 +181,7 @@ export class PlatformKnowledgeService {
       features: [
         'Change request creation',
         'Risk and impact assessment',
-        'CAB review workflow',
+        'CAB review process',
         'Change calendar',
         'Implementation planning',
         'Post-implementation review',
@@ -193,7 +193,7 @@ export class PlatformKnowledgeService {
         'Schedule maintenance windows',
         'Track change success rates',
       ],
-      relatedCapabilities: ['incident_management', 'cmdb', 'workflow_automation'],
+      relatedCapabilities: ['incident_management', 'cmdb', 'process_flow_automation'],
     },
     {
       code: 'problem_management',
@@ -266,7 +266,7 @@ export class PlatformKnowledgeService {
     {
       code: 'service_catalog',
       name: 'Service Catalog',
-      description: 'Publish a catalog of IT services and products that users can request, with categories, pricing, and fulfillment workflows.',
+      description: 'Publish a catalog of IT services and products that users can request, with categories, pricing, and fulfillment process flows.',
       category: 'service_catalog',
       module: 'catalog',
       features: [
@@ -274,7 +274,7 @@ export class PlatformKnowledgeService {
         'Category organization',
         'Pricing and cost centers',
         'Request forms per item',
-        'Approval workflows',
+        'Approval process flows',
         'Fulfillment templates',
         'Self-service portal',
       ],
@@ -297,7 +297,7 @@ export class PlatformKnowledgeService {
         'Article creation and editing',
         'Categories and tags',
         'Version history',
-        'Approval workflows for publishing',
+        'Approval process flows for publishing',
         'AI-powered search',
         'Article ratings and feedback',
         'Related article suggestions',
@@ -316,7 +316,7 @@ export class PlatformKnowledgeService {
     {
       code: 'business_rules',
       name: 'Business Rules',
-      description: 'Automate actions when records are created, updated, or deleted. Set field values, send notifications, and trigger workflows.',
+      description: 'Automate actions when records are created, updated, or deleted. Set property values, send notifications, and trigger process flows.',
       category: 'automation',
       features: [
         'Trigger on record events (insert, update, delete)',
@@ -333,15 +333,15 @@ export class PlatformKnowledgeService {
         'Set default values on record creation',
         'Escalate after X hours without response',
       ],
-      relatedCapabilities: ['workflow_automation', 'notifications', 'scripts'],
+      relatedCapabilities: ['process_flow_automation', 'notifications', 'scripts'],
     },
     {
-      code: 'workflow_automation',
-      name: 'Workflow Automation',
-      description: 'Design multi-step approval and fulfillment workflows with parallel/serial steps, conditions, and automatic transitions.',
+      code: 'process_flow_automation',
+      name: 'Process Flow Automation',
+      description: 'Design multi-step approval and fulfillment process flows with parallel/serial steps, conditions, and automatic transitions.',
       category: 'automation',
       features: [
-        'Visual workflow designer',
+        'Visual process flow designer',
         'Approval steps with multiple approvers',
         'Parallel and serial execution',
         'Conditional branching',
@@ -350,7 +350,7 @@ export class PlatformKnowledgeService {
         'Due dates and reminders',
       ],
       useCases: [
-        'Build a change approval workflow',
+        'Build a change approval process flow',
         'Create a hiring approval process',
         'Design a purchase request flow',
       ],
@@ -602,7 +602,7 @@ export class PlatformKnowledgeService {
     {
       code: 'notifications',
       name: 'Notifications',
-      description: 'Send email and in-app notifications triggered by events, workflows, or schedules.',
+      description: 'Send email and in-app notifications triggered by events, process flows, or schedules.',
       category: 'automation',
       features: [
         'Email notifications',
@@ -617,7 +617,7 @@ export class PlatformKnowledgeService {
         'Email approver for pending approvals',
         'Alert on SLA breach',
       ],
-      relatedCapabilities: ['business_rules', 'workflow_automation'],
+      relatedCapabilities: ['business_rules', 'process_flow_automation'],
     },
 
     // Import/Export
@@ -683,7 +683,7 @@ export class PlatformKnowledgeService {
       ],
       useCases: [
         'Customize field labels',
-        'Extend default workflows',
+        'Extend default process flows',
         'Add custom validations',
         'Modify default forms',
       ],
@@ -794,12 +794,12 @@ export class PlatformKnowledgeService {
   }
 
   /**
-   * Check if a capability is available for a user's role/tenant
+   * Check if a capability is available for a user's role/instance
    */
   isCapabilityAvailable(
     code: string,
     userRole?: string,
-    tenantModules?: string[]
+    instanceModules?: string[]
   ): { available: boolean; reason?: string } {
     const capability = this.getCapability(code);
     if (!capability) {
@@ -814,7 +814,7 @@ export class PlatformKnowledgeService {
       return { available: false, reason: 'This feature requires an Enterprise license' };
     }
 
-    if (capability.module && tenantModules && !tenantModules.includes(capability.module)) {
+    if (capability.module && instanceModules && !instanceModules.includes(capability.module)) {
       return { available: false, reason: `This feature requires the ${capability.module} module to be enabled` };
     }
 

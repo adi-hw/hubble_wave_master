@@ -1,12 +1,73 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PropertyDefinition } from '@hubblewave/instance-db';
 import { v4 as uuidv4 } from 'uuid';
+import { Parser } from 'expr-eval';
 import {
   DefaultValueConfig,
   DefaultValueContext,
   DefaultValueResult,
 } from './default-value.types';
 import { SequenceGeneratorService } from './sequence-generator.service';
+
+const BLOCKED_PATTERNS = [
+  /\beval\b/i,
+  /\bFunction\b/i,
+  /\bprocess\b/i,
+  /\brequire\b/i,
+  /\bimport\b/i,
+  /\bglobal\b/i,
+  /\bwindow\b/i,
+  /\bdocument\b/i,
+  /\bconstructor\b/i,
+  /\b__proto__\b/i,
+  /\bprototype\b/i,
+  /\bthis\b/i,
+  /\bnew\s+/i,
+  /\bdelete\b/i,
+  /\bfetch\b/i,
+  /\bsetTimeout\b/i,
+  /\bsetInterval\b/i,
+  /\bPromise\b/i,
+  /\basync\b/i,
+  /\bawait\b/i,
+];
+
+const SAFE_DEFAULT_FUNCTIONS = {
+  // String
+  length: (s: unknown) => String(s ?? '').length,
+  upper: (s: unknown) => String(s ?? '').toUpperCase(),
+  lower: (s: unknown) => String(s ?? '').toLowerCase(),
+  trim: (s: unknown) => String(s ?? '').trim(),
+  substring: (s: unknown, start: number, end?: number) => String(s ?? '').substring(start, end),
+  contains: (s: unknown, search: string) => String(s ?? '').includes(search),
+
+  // Math
+  round: Math.round,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  abs: Math.abs,
+  min: Math.min,
+  max: Math.max,
+
+  // Date
+  now: () => new Date().toISOString(),
+  today: () => new Date().toISOString().split('T')[0],
+
+  // Type checks
+  isNull: (v: unknown) => v === null || v === undefined,
+  isEmpty: (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0),
+  isNumber: (v: unknown) => typeof v === 'number' && !isNaN(v),
+  isString: (v: unknown) => typeof v === 'string',
+  isArray: (v: unknown) => Array.isArray(v),
+
+  // Conversion
+  toString: (v: unknown) => String(v ?? ''),
+  toNumber: (v: unknown) => {
+    const n = Number(v);
+    return isNaN(n) ? 0 : n;
+  },
+  toBoolean: (v: unknown) => Boolean(v),
+};
 
 /**
  * DefaultValueService - Evaluates and applies default values for properties
@@ -25,8 +86,20 @@ import { SequenceGeneratorService } from './sequence-generator.service';
 @Injectable()
 export class DefaultValueService {
   private readonly logger = new Logger(DefaultValueService.name);
+  private readonly parser: Parser;
 
-  constructor(private readonly sequenceGenerator: SequenceGeneratorService) {}
+  constructor(private readonly sequenceGenerator: SequenceGeneratorService) {
+    this.parser = new Parser({
+      operators: {
+        'in': false,
+        assignment: false,
+      },
+    });
+
+    for (const [name, fn] of Object.entries(SAFE_DEFAULT_FUNCTIONS)) {
+      this.parser.functions[name] = fn;
+    }
+  }
 
   /**
    * Apply default values to a record for properties that are not set
@@ -186,6 +259,7 @@ export class DefaultValueService {
     }
 
     try {
+      this.validateExpressionSecurity(config.expression);
       // Create evaluation context
       const evalContext = {
         record: context.record,
@@ -202,24 +276,8 @@ export class DefaultValueService {
         isCreate: context.isCreate,
       };
 
-      // Create safe evaluator function
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const evaluator = new Function(
-        'record',
-        'user',
-        'now',
-        'collection',
-        'isCreate',
-        `return (${config.expression})`
-      );
-
-      const result = evaluator(
-        evalContext.record,
-        evalContext.user,
-        evalContext.now,
-        evalContext.collection,
-        evalContext.isCreate
-      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = this.parser.parse(config.expression).evaluate(evalContext as any);
 
       return {
         success: true,
@@ -231,6 +289,20 @@ export class DefaultValueService {
         value: null,
         error: `Expression evaluation failed: ${(error as Error).message}`,
       };
+    }
+  }
+
+  private validateExpressionSecurity(expression: string): void {
+    for (const pattern of BLOCKED_PATTERNS) {
+      if (pattern.test(expression)) {
+        throw new BadRequestException(
+          'Default value expression contains blocked pattern. Only safe expressions are allowed.'
+        );
+      }
+    }
+
+    if (expression.length > 2000) {
+      throw new BadRequestException('Default value expression exceeds maximum length');
     }
   }
 
@@ -251,16 +323,14 @@ export class DefaultValueService {
       };
     }
 
-    // TODO: Integrate with ScriptSandboxService for full script execution
-    // For now, log a warning and return null
     this.logger.warn(
-      `Script-based default values not yet fully implemented. Script ID: ${config.scriptId}`
+      `Script-based default values require ScriptSandboxService. Script ID: ${config.scriptId}`
     );
 
     return {
       success: false,
       value: null,
-      error: 'Script execution not yet implemented',
+      error: 'Script execution requires ScriptSandboxService integration',
     };
   }
 

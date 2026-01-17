@@ -3,7 +3,7 @@
  *
  * A flexible toast notification system with multiple variants,
  * auto-dismiss, and stacking support.
- * Uses HubbleWave design tokens for consistent styling.
+ * Uses Tailwind CSS classes for consistent styling.
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
@@ -66,48 +66,33 @@ export const useToastHelpers = () => {
 
 const variantConfig: Record<ToastVariant, {
   icon: React.ReactNode;
-  styles: React.CSSProperties;
-  iconStyles: React.CSSProperties;
+  containerClass: string;
+  iconClass: string;
 }> = {
   success: {
     icon: <CheckCircle className="h-5 w-5" />,
-    styles: {
-      backgroundColor: 'var(--bg-surface)',
-      borderLeft: '4px solid var(--color-success-500)',
-    },
-    iconStyles: { color: 'var(--color-success-500)' },
+    containerClass: 'bg-card border-l-4 border-l-green-500',
+    iconClass: 'text-success-text',
   },
   error: {
     icon: <AlertCircle className="h-5 w-5" />,
-    styles: {
-      backgroundColor: 'var(--bg-surface)',
-      borderLeft: '4px solid var(--color-danger-500)',
-    },
-    iconStyles: { color: 'var(--color-danger-500)' },
+    containerClass: 'bg-card border-l-4 border-l-destructive',
+    iconClass: 'text-destructive',
   },
   warning: {
     icon: <AlertTriangle className="h-5 w-5" />,
-    styles: {
-      backgroundColor: 'var(--bg-surface)',
-      borderLeft: '4px solid var(--color-warning-500)',
-    },
-    iconStyles: { color: 'var(--color-warning-500)' },
+    containerClass: 'bg-card border-l-4 border-l-yellow-500',
+    iconClass: 'text-warning-text',
   },
   info: {
     icon: <Info className="h-5 w-5" />,
-    styles: {
-      backgroundColor: 'var(--bg-surface)',
-      borderLeft: '4px solid var(--color-primary-500)',
-    },
-    iconStyles: { color: 'var(--color-primary-500)' },
+    containerClass: 'bg-card border-l-4 border-l-primary',
+    iconClass: 'text-primary',
   },
   loading: {
     icon: <Loader2 className="h-5 w-5 animate-spin" />,
-    styles: {
-      backgroundColor: 'var(--bg-surface)',
-      borderLeft: '4px solid var(--color-primary-500)',
-    },
-    iconStyles: { color: 'var(--color-primary-500)' },
+    containerClass: 'bg-card border-l-4 border-l-primary',
+    iconClass: 'text-primary',
   },
 };
 
@@ -145,33 +130,29 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
     <div
       className={cn(
         'flex items-start gap-3 w-80 px-4 py-3 rounded-xl transition-all duration-200',
+        'border border-border shadow-lg',
+        config.containerClass,
         isExiting ? 'opacity-0 translate-x-2' : 'opacity-100 translate-x-0'
       )}
-      style={{
-        ...config.styles,
-        border: '1px solid var(--border-default)',
-        boxShadow: 'var(--shadow-lg)',
-      }}
       role="alert"
     >
       {/* Icon */}
-      <span className="flex-shrink-0 mt-0.5" style={config.iconStyles}>
+      <span className={cn('flex-shrink-0 mt-0.5', config.iconClass)}>
         {config.icon}
       </span>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         {toast.title && (
-          <p
-            className="text-sm font-semibold"
-            style={{ color: 'var(--text-primary)' }}
-          >
+          <p className="text-sm font-semibold text-foreground">
             {toast.title}
           </p>
         )}
         <p
-          className={cn('text-sm', toast.title && 'mt-0.5')}
-          style={{ color: toast.title ? 'var(--text-secondary)' : 'var(--text-primary)' }}
+          className={cn(
+            'text-sm',
+            toast.title ? 'mt-0.5 text-muted-foreground' : 'text-foreground'
+          )}
         >
           {toast.message}
         </p>
@@ -183,10 +164,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
               toast.action?.onClick();
               handleDismiss();
             }}
-            className="mt-2 text-sm font-medium transition-colors"
-            style={{ color: 'var(--text-brand)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            className="mt-2 text-sm font-medium text-primary hover:opacity-80 transition-opacity"
           >
             {toast.action.label}
           </button>
@@ -197,16 +175,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
       {toast.dismissible !== false && (
         <button
           onClick={handleDismiss}
-          className="flex-shrink-0 p-1 -m-1 rounded-lg transition-colors"
-          style={{ color: 'var(--text-muted)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-            e.currentTarget.style.color = 'var(--text-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--text-muted)';
-          }}
+          className="flex-shrink-0 p-1 -m-1 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />

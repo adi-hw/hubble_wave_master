@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ModelField, ModelLayout } from '../../services/platform.service';
+import { ModelProperty, ModelLayout } from '../../services/platform.service';
 import { resolveFieldRenderer } from './FieldRegistry';
 import {
   FileText,
@@ -14,11 +14,11 @@ import {
 } from 'lucide-react';
 
 interface FormLayoutProps {
-  fields: ModelField[];
+  fields: ModelProperty[];
   layout: ModelLayout | null;
   values: Record<string, any>;
   errors: Record<string, string>;
-  onChange: (field: ModelField, value: any) => void;
+  onChange: (field: ModelProperty, value: any) => void;
 }
 
 type TabConfig = {
@@ -76,16 +76,16 @@ const columnsClass = (cols: number) => {
 // Collapsible section component
 const CollapsibleSection: React.FC<{
   section: SectionConfig;
-  fields: ModelField[];
+  fields: ModelProperty[];
   values: Record<string, any>;
   errors: Record<string, string>;
-  onChange: (field: ModelField, value: any) => void;
+  onChange: (field: ModelProperty, value: any) => void;
 }> = ({ section, fields, values, errors, onChange }) => {
   const [isCollapsed, setIsCollapsed] = useState(section.defaultCollapsed ?? false);
 
   const sectionFields = section.fields
     .map((code) => fields.find((f) => f.code === code))
-    .filter(Boolean) as ModelField[];
+    .filter(Boolean) as ModelProperty[];
 
   if (sectionFields.length === 0) return null;
 
@@ -94,28 +94,20 @@ const CollapsibleSection: React.FC<{
 
   return (
     <div
-      className="rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-      }}
+      className="rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-card border border-border"
     >
       {section.label && (
         <button
           type="button"
           onClick={() => section.collapsible && setIsCollapsed(!isCollapsed)}
-          className={`w-full px-4 py-3 flex items-center justify-between group ${
+          className={`w-full px-4 py-3 flex items-center justify-between group bg-muted border-b border-border ${
             section.collapsible ? 'cursor-pointer' : 'cursor-default'
           }`}
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            borderBottom: '1px solid var(--border-subtle)',
-          }}
         >
           <div className="flex items-center gap-2">
-            <div className="w-1 h-4 rounded-full" style={{ backgroundColor: 'var(--bg-primary)' }} />
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{section.label}</h3>
-            <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
+            <div className="w-1 h-4 rounded-full bg-primary" />
+            <h3 className="text-sm font-semibold text-foreground">{section.label}</h3>
+            <span className="text-xs font-normal text-muted-foreground">
               {sectionFields.length} field{sectionFields.length !== 1 ? 's' : ''}
             </span>
             {errorCount > 0 && (
@@ -125,7 +117,7 @@ const CollapsibleSection: React.FC<{
             )}
           </div>
           {section.collapsible && (
-            <div style={{ color: 'var(--text-muted)' }}>
+            <div className="text-muted-foreground">
               {isCollapsed ? (
                 <ChevronRight className="h-4 w-4" />
               ) : (
@@ -218,12 +210,11 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center">
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-            style={{ backgroundColor: 'var(--bg-elevated)' }}
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-muted"
           >
-            <FileText className="h-8 w-8" style={{ color: 'var(--text-muted)' }} />
+            <FileText className="h-8 w-8 text-muted-foreground" />
           </div>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No fields configured for this form.</p>
+          <p className="text-sm text-muted-foreground">No fields configured for this form.</p>
         </div>
       </div>
     );
@@ -237,17 +228,12 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-hidden"
-      style={{ backgroundColor: 'var(--bg-base)' }}
+      className="flex-1 flex flex-col overflow-hidden bg-background"
     >
       {/* Tab Bar - Only show if multiple tabs */}
       {tabs.length > 1 && (
         <div
-          className="px-4"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderBottom: '1px solid var(--border-default)',
-          }}
+          className="px-4 bg-card border-b border-border"
         >
           <div className="flex gap-1 -mb-px overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
@@ -260,12 +246,11 @@ export const FormLayout: React.FC<FormLayoutProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTabId(tab.id)}
-                  className="tab group flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap"
-                  style={{
-                    borderBottom: isActive ? '2px solid var(--bg-primary)' : '2px solid transparent',
-                    color: isActive ? 'var(--text-brand)' : 'var(--text-muted)',
-                    backgroundColor: isActive ? 'var(--bg-primary-subtle)' : 'transparent',
-                  }}
+                  className={`tab group flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                    isActive
+                      ? 'border-primary text-primary bg-primary/10'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
                 >
                   <TabIcon className="h-4 w-4" />
                   <span>{tab.label}</span>

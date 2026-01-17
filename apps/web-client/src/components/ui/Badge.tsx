@@ -13,7 +13,7 @@ export type BadgeVariant =
 export type ConfigType =
   | 'collection'
   | 'property'
-  | 'workflow'
+  | 'process_flow'
   | 'access_rule'
   | 'script'
   | 'approval'
@@ -69,7 +69,7 @@ export const Badge: React.FC<BadgeProps> = ({
         warning: 'badge bg-warning text-warning-foreground',
         danger: 'badge-danger-solid',
         info: 'badge bg-info text-info-foreground',
-        neutral: 'badge bg-neutral-700 text-white',
+        neutral: 'badge bg-muted text-foreground',
       }
     : {
         primary: 'badge-primary',
@@ -94,7 +94,7 @@ export const Badge: React.FC<BadgeProps> = ({
     warning: 'bg-warning',
     danger: 'bg-danger',
     info: 'bg-info',
-    neutral: 'bg-neutral-400',
+    neutral: 'bg-muted-foreground',
   };
 
   return (
@@ -129,7 +129,7 @@ export interface ConfigTypeBadgeProps {
 const configLabels: Record<ConfigType, string> = {
   collection: 'Collection',
   property: 'Property',
-  workflow: 'Workflow',
+  process_flow: 'Process Flow',
   access_rule: 'Access Rule',
   script: 'Script',
   approval: 'Approval',
@@ -141,7 +141,7 @@ const configLabels: Record<ConfigType, string> = {
 const configVariants: Record<ConfigType, BadgeVariant> = {
   collection: 'primary',
   property: 'accent',
-  workflow: 'success',
+  process_flow: 'success',
   access_rule: 'warning',
   script: 'danger',
   approval: 'warning',

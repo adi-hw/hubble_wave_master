@@ -69,18 +69,12 @@ function ToggleSwitch({ checked, onChange, disabled }: ToggleSwitchProps) {
       type="button"
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-      }`}
-      style={{
-        background: checked
-          ? 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)'
-          : 'var(--glass-bg)',
-        border: `1px solid ${checked ? 'transparent' : 'var(--glass-border)'}`,
-      }}
+      className={`toggle-track h-6 w-11 ${
+        checked ? 'toggle-track-on' : ''
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform ${
+        className={`toggle-thumb inline-block h-4 w-4 transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -100,25 +94,25 @@ function OptionCard({ selected, onClick, icon, label, description }: OptionCardP
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center p-4 rounded-xl transition-all text-center"
-      style={{
-        background: selected ? 'rgba(99, 102, 241, 0.15)' : 'var(--glass-bg)',
-        border: `2px solid ${selected ? 'var(--color-primary-500)' : 'var(--glass-border)'}`,
-      }}
+      className={`flex flex-col items-center p-4 rounded-xl transition-all text-center border-2 ${
+        selected
+          ? 'bg-primary/15 border-primary'
+          : 'bg-muted border-border hover:border-primary/50'
+      }`}
     >
-      <div className="mb-2" style={{ color: selected ? 'var(--color-primary-400)' : 'var(--text-secondary)' }}>
+      <div className={`mb-2 ${selected ? 'text-primary' : 'text-muted-foreground'}`}>
         {icon}
       </div>
-      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+      <span className="text-sm font-medium text-foreground">
         {label}
       </span>
       {description && (
-        <span className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+        <span className="text-xs mt-1 text-muted-foreground">
           {description}
         </span>
       )}
       {selected && (
-        <Check size={14} className="mt-2" style={{ color: 'var(--color-success-500)' }} />
+        <Check size={14} className="mt-2 text-success-text" />
       )}
     </button>
   );
@@ -132,13 +126,13 @@ interface SettingRowProps {
 
 function SettingRow({ label, description, children }: SettingRowProps) {
   return (
-    <div className="flex items-center justify-between py-4" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+    <div className="flex items-center justify-between py-4 border-b border-border last:border-b-0">
       <div className="flex-1">
-        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+        <div className="text-sm font-medium text-foreground">
           {label}
         </div>
         {description && (
-          <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+          <div className="text-xs mt-0.5 text-muted-foreground">
             {description}
           </div>
         )}
@@ -159,25 +153,13 @@ function Select({ value, onChange, options }: SelectProps) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="settings-select px-3 py-1.5 rounded-lg text-sm appearance-none cursor-pointer"
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        color: 'var(--text-primary)',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 8px center',
-        paddingRight: '32px',
-      }}
+      className="settings-select px-3 py-1.5 rounded-lg text-sm appearance-none cursor-pointer bg-card border border-border text-foreground pr-8 bg-no-repeat bg-[position:right_8px_center] bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2716%27%20height%3D%2716%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23888%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]"
     >
       {options.map((opt) => (
         <option
           key={opt.value}
           value={opt.value}
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            color: 'var(--text-primary)',
-          }}
+          className="bg-card text-foreground"
         >
           {opt.label}
         </option>
@@ -217,27 +199,24 @@ export function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--void-deep)' }}>
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <Loader2 size={32} className="mx-auto mb-3 animate-spin" style={{ color: 'var(--color-primary-500)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading settings...</p>
+          <Loader2 size={32} className="mx-auto mb-3 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading settings...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--void-deep)' }}>
+    <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <header
-        className="px-6 py-4 flex items-center justify-between shrink-0"
-        style={{ borderBottom: '1px solid var(--glass-border)' }}
-      >
+      <header className="px-6 py-4 flex items-center justify-between shrink-0 border-b border-border">
         <div className="flex items-center gap-3">
-          <SettingsIcon size={24} style={{ color: 'var(--color-primary-400)' }} />
+          <SettingsIcon size={24} className="text-primary" />
           <div>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Settings</h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            <h1 className="text-xl font-bold text-foreground">Settings</h1>
+            <p className="text-xs mt-0.5 text-muted-foreground">
               Customize your HubbleWave experience
             </p>
           </div>
@@ -248,7 +227,7 @@ export function SettingsPage() {
             Reset All
           </Button>
           {saved && (
-            <span className="text-xs flex items-center gap-1" style={{ color: 'var(--color-success-500)' }}>
+            <span className="text-xs flex items-center gap-1 text-success-text">
               <Check size={12} /> Saved
             </span>
           )}
@@ -258,75 +237,69 @@ export function SettingsPage() {
       {/* Main Layout */}
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
-        <nav className="w-64 p-4 shrink-0 overflow-y-auto" style={{ borderRight: '1px solid var(--glass-border)' }}>
+        <nav className="w-64 p-4 shrink-0 overflow-y-auto border-r border-border">
           {/* Account Section */}
           <div className="mb-4">
-            <span
-              className="text-xs font-medium uppercase tracking-wider px-3"
-              style={{ color: 'var(--text-muted)' }}
-            >
+            <span className="text-xs font-medium uppercase tracking-wider px-3 text-muted-foreground">
               Account
             </span>
             <div className="mt-2 space-y-1">
               {/* Profile Link */}
               <button
                 onClick={() => navigate('/settings/profile')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[var(--glass-bg-hover)]"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-muted"
               >
-                <User size={18} style={{ color: 'var(--color-primary-400)' }} />
+                <User size={18} className="text-primary" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <div className="text-sm font-medium text-foreground">
                     Your Profile
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-xs text-muted-foreground">
                     Personal information
                   </div>
                 </div>
-                <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
+                <ChevronRight size={14} className="text-muted-foreground" />
               </button>
 
               {/* Security Link */}
               <button
                 onClick={() => navigate('/settings/security')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[var(--glass-bg-hover)]"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-muted"
               >
-                <Shield size={18} style={{ color: 'var(--color-success-400)' }} />
+                <Shield size={18} className="text-success-text" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <div className="text-sm font-medium text-foreground">
                     Security
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-xs text-muted-foreground">
                     Password & sessions
                   </div>
                 </div>
-                <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
+                <ChevronRight size={14} className="text-muted-foreground" />
               </button>
 
               {/* Theme Customizer Link */}
               <button
                 onClick={() => navigate('/settings/themes')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[var(--glass-bg-hover)]"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-muted"
               >
-                <Palette size={18} style={{ color: 'var(--color-accent-400)' }} />
+                <Palette size={18} className="text-purple-500" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <div className="text-sm font-medium text-foreground">
                     Theme Customizer
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-xs text-muted-foreground">
                     Advanced theme options
                   </div>
                 </div>
-                <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
+                <ChevronRight size={14} className="text-muted-foreground" />
               </button>
             </div>
           </div>
 
           {/* Preferences Section */}
-          <div className="pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
-            <span
-              className="text-xs font-medium uppercase tracking-wider px-3"
-              style={{ color: 'var(--text-muted)' }}
-            >
+          <div className="pt-4 border-t border-border">
+            <span className="text-xs font-medium uppercase tracking-wider px-3 text-muted-foreground">
               Preferences
             </span>
             <div className="mt-2 space-y-1">
@@ -337,27 +310,27 @@ export function SettingsPage() {
                   <button
                     key={section.id}
                     onClick={() => setActiveSection(section.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors"
-                    style={{
-                      background: isActive ? 'var(--glass-bg-hover)' : 'transparent',
-                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                      isActive ? 'bg-muted' : 'hover:bg-muted/50'
+                    }`}
                   >
                     <Icon
                       size={18}
-                      style={{ color: isActive ? 'var(--color-primary-400)' : 'var(--text-tertiary)' }}
+                      className={isActive ? 'text-primary' : 'text-muted-foreground'}
                     />
                     <div className="flex-1 min-w-0">
                       <div
-                        className="text-sm font-medium truncate"
-                        style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                        className={`text-sm font-medium truncate ${
+                          isActive ? 'text-foreground' : 'text-muted-foreground'
+                        }`}
                       >
                         {section.label}
                       </div>
-                      <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                      <div className="text-xs truncate text-muted-foreground">
                         {section.description}
                       </div>
                     </div>
-                    {isActive && <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />}
+                    {isActive && <ChevronRight size={14} className="text-muted-foreground" />}
                   </button>
                 );
               })}
@@ -371,13 +344,13 @@ export function SettingsPage() {
             {/* Layout Section */}
             {activeSection === 'layout' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Layout
                 </h2>
 
                 {/* Density Mode */}
                 <div className="mb-8">
-                  <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3 className="text-sm font-medium mb-3 text-muted-foreground">
                     Density Mode
                   </h3>
                   <div className="grid grid-cols-3 gap-3">
@@ -407,7 +380,7 @@ export function SettingsPage() {
 
                 {/* Sidebar Position */}
                 <div className="mb-8">
-                  <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3 className="text-sm font-medium mb-3 text-muted-foreground">
                     Sidebar Position
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -428,13 +401,10 @@ export function SettingsPage() {
 
                 {/* Layout Settings */}
                 <div>
-                  <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3 className="text-sm font-medium mb-3 text-muted-foreground">
                     Display Options
                   </h3>
-                  <div
-                    className="rounded-xl p-4"
-                    style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                  >
+                  <div className="rounded-xl p-4 bg-card border border-border">
                     <SettingRow label="Show Breadcrumbs" description="Display navigation breadcrumbs">
                       <ToggleSwitch
                         checked={preferences?.showBreadcrumbs ?? true}
@@ -466,26 +436,23 @@ export function SettingsPage() {
             {/* Locale Section */}
             {activeSection === 'locale' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Language & Region
                 </h2>
 
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                >
+                <div className="rounded-xl p-4 bg-card border border-border">
                   <SettingRow label="Language">
                     <Select
                       value={preferences?.language ?? 'en'}
                       onChange={(value) => handleSave({ language: value })}
                       options={[
                         { value: 'en', label: 'English' },
-                        { value: 'es', label: 'Español' },
-                        { value: 'fr', label: 'Français' },
+                        { value: 'es', label: 'Espanol' },
+                        { value: 'fr', label: 'Francais' },
                         { value: 'de', label: 'Deutsch' },
-                        { value: 'pt', label: 'Português' },
-                        { value: 'zh', label: '中文' },
-                        { value: 'ja', label: '日本語' },
+                        { value: 'pt', label: 'Portugues' },
+                        { value: 'zh', label: 'Chinese' },
+                        { value: 'ja', label: 'Japanese' },
                       ]}
                     />
                   </SettingRow>
@@ -529,19 +496,16 @@ export function SettingsPage() {
             {/* Notifications Section */}
             {activeSection === 'notifications' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Notifications
                 </h2>
 
                 {/* Email Notifications */}
                 <div className="mb-6">
-                  <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3 className="text-sm font-medium mb-3 text-muted-foreground">
                     Email Notifications
                   </h3>
-                  <div
-                    className="rounded-xl p-4"
-                    style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                  >
+                  <div className="rounded-xl p-4 bg-card border border-border">
                     <SettingRow label="Enable Email Notifications">
                       <ToggleSwitch
                         checked={preferences?.notificationPreferences?.email?.enabled ?? true}
@@ -580,13 +544,10 @@ export function SettingsPage() {
 
                 {/* In-App Notifications */}
                 <div>
-                  <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3 className="text-sm font-medium mb-3 text-muted-foreground">
                     In-App Notifications
                   </h3>
-                  <div
-                    className="rounded-xl p-4"
-                    style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                  >
+                  <div className="rounded-xl p-4 bg-card border border-border">
                     <SettingRow label="Enable In-App Notifications">
                       <ToggleSwitch
                         checked={preferences?.notificationPreferences?.inApp?.enabled ?? true}
@@ -634,14 +595,11 @@ export function SettingsPage() {
             {/* Accessibility Section */}
             {activeSection === 'accessibility' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Accessibility
                 </h2>
 
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                >
+                <div className="rounded-xl p-4 bg-card border border-border">
                   <SettingRow label="Reduce Motion" description="Minimize animations">
                     <ToggleSwitch
                       checked={preferences?.accessibility?.reduceMotion ?? false}
@@ -699,14 +657,11 @@ export function SettingsPage() {
             {/* Keyboard Shortcuts Section */}
             {activeSection === 'keyboard' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Keyboard Shortcuts
                 </h2>
 
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                >
+                <div className="rounded-xl p-4 bg-card border border-border">
                   <SettingRow label="Enable Keyboard Shortcuts" description="Use keyboard shortcuts throughout the app">
                     <ToggleSwitch
                       checked={preferences?.keyboardShortcutsEnabled ?? true}
@@ -715,12 +670,12 @@ export function SettingsPage() {
                   </SettingRow>
                 </div>
 
-                <div className="mt-6 text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                <div className="mt-6 text-sm text-muted-foreground">
                   <p>Common shortcuts:</p>
                   <ul className="mt-2 space-y-1">
-                    <li><kbd className="px-1.5 py-0.5 rounded bg-glass-bg border border-glass-border">Ctrl+K</kbd> Open command palette</li>
-                    <li><kbd className="px-1.5 py-0.5 rounded bg-glass-bg border border-glass-border">Ctrl+/</kbd> Toggle sidebar</li>
-                    <li><kbd className="px-1.5 py-0.5 rounded bg-glass-bg border border-glass-border">Esc</kbd> Close modals</li>
+                    <li><kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl+K</kbd> Open command palette</li>
+                    <li><kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl+/</kbd> Toggle sidebar</li>
+                    <li><kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Esc</kbd> Close modals</li>
                   </ul>
                 </div>
               </div>
@@ -729,14 +684,11 @@ export function SettingsPage() {
             {/* Tables Section */}
             {activeSection === 'tables' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   Tables & Lists
                 </h2>
 
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                >
+                <div className="rounded-xl p-4 bg-card border border-border">
                   <SettingRow label="Default Page Size">
                     <Select
                       value={String(preferences?.tablePreferences?.defaultPageSize ?? 25)}
@@ -790,14 +742,11 @@ export function SettingsPage() {
             {/* AVA Section */}
             {activeSection === 'ava' && (
               <div>
-                <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-lg font-semibold mb-6 text-foreground">
                   AVA Assistant
                 </h2>
 
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
-                >
+                <div className="rounded-xl p-4 bg-card border border-border">
                   <SettingRow label="Enable AVA" description="AI-powered assistant">
                     <ToggleSwitch
                       checked={preferences?.avaEnabled ?? true}

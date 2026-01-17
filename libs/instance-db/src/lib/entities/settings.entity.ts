@@ -252,6 +252,16 @@ export class AuditLog {
   @Column({ name: 'user_agent', type: 'text', nullable: true })
   userAgent?: string | null;
 
+  /** Permission code that authorized the action */
+  @Column({ name: 'permission_code', type: 'varchar', length: 100, nullable: true })
+  permissionCode?: string | null;
+
+  @Column({ name: 'previous_hash', type: 'varchar', length: 64, nullable: true })
+  previousHash?: string | null;
+
+  @Column({ name: 'hash', type: 'varchar', length: 64, nullable: true })
+  hash?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

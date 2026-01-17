@@ -4,3 +4,6 @@ export * from './lib/current-user.decorator';
 export * from './lib/request-context.interface';
 export * from './lib/roles.decorator';
 export * from './lib/roles.guard';
+export * from './lib/public.decorator';
+export * from './lib/permissions.decorator';
+export * from './lib/permissions.guard';

@@ -1,21 +1,10 @@
 import { useState, useEffect } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  LinearProgress,
-  Chip,
-  IconButton,
-  Skeleton,
-} from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   Server,
   Users,
   DollarSign,
-  TrendingUp,
-  TrendingDown,
   Activity,
   RefreshCw,
 } from 'lucide-react';
@@ -26,61 +15,40 @@ interface StatCardProps {
   icon: React.ReactNode;
   label: string;
   value: string | number;
-  change?: string;
-  isPositive?: boolean;
   color: string;
   loading?: boolean;
 }
 
-function StatCard({ icon, label, value, change, isPositive, color, loading }: StatCardProps) {
+function StatCard({ icon, label, value, color, loading }: StatCardProps) {
   return (
-    <Card>
-      <CardContent sx={{ p: 2.5 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              borderRadius: 2.5,
-              bgcolor: `${color}20`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color,
-            }}
-          >
-            {icon}
-          </Box>
-          {change && (
-            <Chip
-              size="small"
-              icon={isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-              label={change}
-              sx={{
-                bgcolor: isPositive ? colors.success.glow : colors.danger.glow,
-                color: isPositive ? colors.success.base : colors.danger.base,
-                fontWeight: 600,
-                fontSize: 11,
-                height: 24,
-                '& .MuiChip-icon': { color: 'inherit' },
-              }}
-            />
-          )}
-        </Box>
-        <Box sx={{ mt: 2 }}>
-          {loading ? (
-            <Skeleton variant="text" width={80} height={40} />
-          ) : (
-            <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
-              {value}
-            </Typography>
-          )}
-          <Typography variant="body2" sx={{ color: colors.text.tertiary, mt: 0.5 }}>
-            {label}
-          </Typography>
-        </Box>
-      </CardContent>
-    </Card>
+    <div
+      className="p-5 rounded-2xl border"
+      style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+    >
+      <div className="flex items-start justify-between">
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: `${color}20`, color }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="mt-4">
+        {loading ? (
+          <div
+            className="h-10 w-20 rounded animate-pulse"
+            style={{ backgroundColor: colors.glass.medium }}
+          />
+        ) : (
+          <div className="text-2xl font-bold" style={{ color: colors.text.primary }}>
+            {value}
+          </div>
+        )}
+        <div className="text-sm mt-1" style={{ color: colors.text.tertiary }}>
+          {label}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -93,21 +61,14 @@ interface HealthCardProps {
 
 function HealthCard({ label, count, color, bgColor }: HealthCardProps) {
   return (
-    <Box
-      sx={{
-        p: 2,
-        bgcolor: bgColor,
-        borderRadius: 3,
-        textAlign: 'center',
-      }}
-    >
-      <Typography variant="h3" sx={{ fontWeight: 700, color }}>
+    <div className="p-4 rounded-xl text-center" style={{ backgroundColor: bgColor }}>
+      <div className="text-xl font-bold" style={{ color }}>
         {count}
-      </Typography>
-      <Typography variant="body2" sx={{ color: colors.text.secondary, mt: 0.5 }}>
+      </div>
+      <div className="text-sm mt-1" style={{ color: colors.text.secondary }}>
         {label}
-      </Typography>
-    </Box>
+      </div>
+    </div>
   );
 }
 
@@ -119,33 +80,30 @@ interface ResourceBarProps {
 
 function ResourceBar({ label, value, color }: ResourceBarProps) {
   return (
-    <Box sx={{ mb: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="body2" sx={{ color: colors.text.secondary }}>
+    <div className="mb-4">
+      <div className="flex justify-between mb-2">
+        <span className="text-sm" style={{ color: colors.text.secondary }}>
           {label}
-        </Typography>
-        <Typography variant="body2" sx={{ fontWeight: 600, color: colors.text.primary }}>
+        </span>
+        <span className="text-sm font-semibold" style={{ color: colors.text.primary }}>
           {value.toFixed(0)}%
-        </Typography>
-      </Box>
-      <LinearProgress
-        variant="determinate"
-        value={value}
-        sx={{
-          height: 6,
-          borderRadius: 3,
-          bgcolor: colors.glass.medium,
-          '& .MuiLinearProgress-bar': {
-            bgcolor: color,
-            borderRadius: 3,
-          },
-        }}
-      />
-    </Box>
+        </span>
+      </div>
+      <div
+        className="h-1.5 rounded-full overflow-hidden"
+        style={{ backgroundColor: colors.glass.medium }}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${value}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
   );
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -154,14 +112,13 @@ export function DashboardPage() {
     try {
       const [metricsData, activityData] = await Promise.all([
         controlPlaneApi.getMetrics(),
-        controlPlaneApi.getRecentActivity()
+        controlPlaneApi.getRecentActivity(),
       ]);
-      
-      // Combine metrics with recent activity
+
       setMetrics({
         ...metricsData,
-        recentActivity: activityData
-      } as any); // Cast to any or extend interface loosely for now since PlatformMetrics strictly doesn't have it
+        recentActivity: activityData,
+      });
     } catch (error) {
       console.error('Failed to load metrics:', error);
     } finally {
@@ -179,288 +136,301 @@ export function DashboardPage() {
     loadMetrics();
   };
 
-  // Initial empty state
   const emptyMetrics: PlatformMetrics = {
-    customers: { total: 0, active: 0, trial: 0, byTier: { enterprise: 0, professional: 0, starter: 0 } },
-    instances: { total: 0, healthy: 0, degraded: 0, provisioning: 0, byEnvironment: { production: 0, staging: 0, development: 0 }, byRegion: {} },
+    customers: {
+      total: 0,
+      active: 0,
+      trial: 0,
+      byTier: { enterprise: 0, professional: 0, starter: 0 },
+      totalUsers: 0,
+      totalAssets: 0,
+    },
+    instances: {
+      total: 0,
+      healthy: 0,
+      degraded: 0,
+      unhealthy: 0,
+      unknown: 0,
+      provisioning: 0,
+      byEnvironment: { production: 0, staging: 0, dev: 0 },
+      byRegion: {},
+    },
     revenue: { totalMrr: 0, avgMrr: 0 },
     resources: { avgCpu: 0, avgMemory: 0, avgDisk: 0, avgNetwork: 0 },
   };
 
   const displayMetrics = metrics || emptyMetrics;
+  const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
+  const unhealthyInstances = displayMetrics.instances.unhealthy ?? 0;
+  const unknownInstances = displayMetrics.instances.unknown
+    ?? Math.max(
+      0,
+      displayMetrics.instances.total
+        - displayMetrics.instances.healthy
+        - displayMetrics.instances.degraded
+        - unhealthyInstances
+        - displayMetrics.instances.provisioning
+    );
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold" style={{ color: colors.text.primary }}>
           Platform Dashboard
-        </Typography>
-        <IconButton
+        </h1>
+        <button
+          type="button"
           onClick={handleRefresh}
           disabled={refreshing}
-          sx={{ color: colors.text.tertiary }}
+          className="p-2 rounded-lg transition-colors disabled:opacity-50"
+          style={{ color: colors.text.tertiary }}
         >
           <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-        </IconButton>
-      </Box>
+        </button>
+      </div>
 
       {/* Stats Grid */}
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 2,
-          mb: 3,
-        }}
-      >
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <StatCard
           icon={<Building2 size={24} />}
           label="Total Customers"
-          value={displayMetrics.customers.total}
-          change="+3"
-          isPositive
+          value={formatNumber(displayMetrics.customers.total)}
           color={colors.brand.primary}
           loading={loading}
         />
         <StatCard
           icon={<Server size={24} />}
-          label="Active Instances"
-          value={displayMetrics.instances.total}
-          change="+2"
-          isPositive
+          label="Total Instances"
+          value={formatNumber(displayMetrics.instances.total)}
           color={colors.cyan.base}
           loading={loading}
         />
         <StatCard
           icon={<Users size={24} />}
           label="Total Users"
-          value={`${(displayMetrics.customers.total * 420 / 1000).toFixed(0)}K`}
-          change="+8%"
-          isPositive
+          value={formatNumber(displayMetrics.customers.totalUsers)}
           color={colors.success.base}
           loading={loading}
         />
         <StatCard
           icon={<DollarSign size={24} />}
           label="Monthly Revenue"
-          value={`$${(displayMetrics.revenue.totalMrr / 1000).toFixed(0)}K`}
-          change="+12%"
-          isPositive
+          value={formatCurrency(displayMetrics.revenue.totalMrr)}
           color={colors.warning.base}
           loading={loading}
         />
-      </Box>
+      </div>
 
       {/* Health & Resources Row */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 3 }}>
+      <div className="grid grid-cols-3 gap-6">
         {/* Instance Health */}
-        <Card>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: colors.text.primary, mb: 2.5 }}>
-              Instance Health
-            </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5 }}>
-              <HealthCard
-                label="Healthy"
-                count={displayMetrics.instances.healthy}
-                color={colors.success.base}
-                bgColor={colors.success.glow}
-              />
-              <HealthCard
-                label="Degraded"
-                count={displayMetrics.instances.degraded}
-                color={colors.warning.base}
-                bgColor={colors.warning.glow}
-              />
-              <HealthCard
-                label="Provisioning"
-                count={displayMetrics.instances.provisioning}
-                color={colors.info.base}
-                bgColor={colors.info.glow}
-              />
-              <HealthCard
-                label="Unknown"
-                count={0}
-                color={colors.text.muted}
-                bgColor={colors.glass.medium}
-              />
-            </Box>
-          </CardContent>
-        </Card>
+        <div
+          className="col-span-2 p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <h3 className="text-base font-semibold mb-5" style={{ color: colors.text.primary }}>
+            Instance Health
+          </h3>
+          <div className="grid grid-cols-4 gap-3">
+            <HealthCard
+              label="Healthy"
+              count={displayMetrics.instances.healthy}
+              color={colors.success.base}
+              bgColor={colors.success.glow}
+            />
+            <HealthCard
+              label="Degraded"
+              count={displayMetrics.instances.degraded}
+              color={colors.warning.base}
+              bgColor={colors.warning.glow}
+            />
+            <HealthCard
+              label="Provisioning"
+              count={displayMetrics.instances.provisioning}
+              color={colors.info.base}
+              bgColor={colors.info.glow}
+            />
+            <HealthCard
+              label="Unknown"
+              count={unknownInstances}
+              color={colors.text.muted}
+              bgColor={colors.glass.medium}
+            />
+          </div>
+        </div>
 
         {/* Resource Usage */}
-        <Card>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: colors.text.primary, mb: 2.5 }}>
-              Resource Usage
-            </Typography>
-            <ResourceBar label="CPU" value={displayMetrics.resources.avgCpu} color={colors.brand.primary} />
-            <ResourceBar label="Memory" value={displayMetrics.resources.avgMemory} color={colors.cyan.base} />
-            <ResourceBar label="Disk" value={displayMetrics.resources.avgDisk} color={colors.success.base} />
-          </CardContent>
-        </Card>
-      </Box>
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <h3 className="text-base font-semibold mb-5" style={{ color: colors.text.primary }}>
+            Resource Usage
+          </h3>
+          <ResourceBar label="CPU" value={displayMetrics.resources.avgCpu} color={colors.brand.primary} />
+          <ResourceBar label="Memory" value={displayMetrics.resources.avgMemory} color={colors.cyan.base} />
+          <ResourceBar label="Disk" value={displayMetrics.resources.avgDisk} color={colors.success.base} />
+        </div>
+      </div>
 
       {/* Quick Stats */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3, mt: 3 }}>
+      <div className="grid grid-cols-3 gap-6 mt-6">
         {/* By Tier */}
-        <Card>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: colors.text.primary, mb: 2 }}>
-              Customers by Tier
-            </Typography>
-            {Object.entries(displayMetrics.customers.byTier).map(([tier, count]) => (
-              <Box
-                key={tier}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  py: 1.5,
-                  borderBottom: `1px solid ${colors.glass.border}`,
-                  '&:last-child': { borderBottom: 'none' },
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <h3 className="text-base font-semibold mb-4" style={{ color: colors.text.primary }}>
+            Customers by Tier
+          </h3>
+          {Object.entries(displayMetrics.customers.byTier).map(([tier, count]) => (
+            <div
+              key={tier}
+              className="flex items-center justify-between py-3"
+              style={{ borderBottom: `1px solid ${colors.glass.border}` }}
+            >
+              <span
+                className="px-2 py-1 rounded-md text-xs font-semibold capitalize"
+                style={{
+                  backgroundColor:
+                    tier === 'enterprise'
+                      ? colors.brand.glow
+                      : tier === 'professional'
+                      ? colors.cyan.glow
+                      : colors.glass.medium,
+                  color:
+                    tier === 'enterprise'
+                      ? colors.brand.primary
+                      : tier === 'professional'
+                      ? colors.cyan.base
+                      : colors.text.secondary,
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Chip
-                    size="small"
-                    label={tier}
-                    sx={{
-                      bgcolor: tier === 'enterprise' ? colors.brand.glow :
-                               tier === 'professional' ? colors.cyan.glow :
-                               colors.glass.medium,
-                      color: tier === 'enterprise' ? colors.brand.primary :
-                             tier === 'professional' ? colors.cyan.base :
-                             colors.text.secondary,
-                      fontWeight: 600,
-                      textTransform: 'capitalize',
-                    }}
-                  />
-                </Box>
-                <Typography variant="body1" sx={{ fontWeight: 600, color: colors.text.primary }}>
-                  {count}
-                </Typography>
-              </Box>
-            ))}
-          </CardContent>
-        </Card>
+                {tier}
+              </span>
+              <span className="text-sm font-semibold" style={{ color: colors.text.primary }}>
+                {count}
+              </span>
+            </div>
+          ))}
+        </div>
 
         {/* By Environment */}
-        <Card>
-          <CardContent sx={{ p: 2.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: colors.text.primary, mb: 2 }}>
-              Instances by Environment
-            </Typography>
-            {Object.entries(displayMetrics.instances.byEnvironment).map(([env, count]) => (
-              <Box
-                key={env}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  py: 1.5,
-                  borderBottom: `1px solid ${colors.glass.border}`,
-                  '&:last-child': { borderBottom: 'none' },
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <h3 className="text-base font-semibold mb-4" style={{ color: colors.text.primary }}>
+            Instances by Environment
+          </h3>
+          {Object.entries(displayMetrics.instances.byEnvironment).map(([env, count]) => (
+            <div
+              key={env}
+              className="flex items-center justify-between py-3"
+              style={{ borderBottom: `1px solid ${colors.glass.border}` }}
+            >
+              <span
+                className="px-2 py-1 rounded-md text-xs font-semibold capitalize"
+                style={{
+                  backgroundColor:
+                    env === 'production'
+                      ? colors.success.glow
+                      : env === 'staging'
+                      ? colors.warning.glow
+                      : colors.info.glow,
+                  color:
+                    env === 'production'
+                      ? colors.success.base
+                      : env === 'staging'
+                      ? colors.warning.base
+                      : colors.info.base,
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Chip
-                    size="small"
-                    label={env}
-                    sx={{
-                      bgcolor: env === 'production' ? colors.success.glow :
-                               env === 'staging' ? colors.warning.glow :
-                               colors.info.glow,
-                      color: env === 'production' ? colors.success.base :
-                             env === 'staging' ? colors.warning.base :
-                             colors.info.base,
-                      fontWeight: 600,
-                      textTransform: 'capitalize',
-                    }}
-                  />
-                </Box>
-                <Typography variant="body1" sx={{ fontWeight: 600, color: colors.text.primary }}>
-                  {count}
-                </Typography>
-              </Box>
-            ))}
-          </CardContent>
-        </Card>
+                {env}
+              </span>
+              <span className="text-sm font-semibold" style={{ color: colors.text.primary }}>
+                {count}
+              </span>
+            </div>
+          ))}
+        </div>
 
-            {/* Recent Activity */}
-        <Card>
-          <CardContent sx={{ p: 2.5 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: colors.text.primary }}>
-                Recent Activity
-              </Typography>
-              <Typography
-                variant="caption"
-                sx={{ color: colors.brand.primary, cursor: 'pointer', fontWeight: 500 }}
-              >
-                View all
-              </Typography>
-            </Box>
-            
-            {(metrics?.recentActivity || []).length === 0 ? (
-                <Typography variant="body2" sx={{ color: colors.text.tertiary, py: 2, textAlign: 'center' }}>
-                    No recent activity found.
-                </Typography>
-            ) : (
-                (metrics?.recentActivity || []).map((item: any, i: number) => {
-                  const isError = item.severity === 'error' || item.severity === 'critical';
-                  const isWarning = item.severity === 'warning';
-                  const isSuccess = item.severity === 'info'; // Mapping info to success for visual flair if not strictly error/warning
-                  
-                  return (
-                  <Box
-                    key={item.id}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5,
-                      py: 1.5,
-                      borderBottom: `1px solid ${colors.glass.border}`,
-                      '&:last-child': { borderBottom: 'none' },
+        {/* Recent Activity */}
+        <div
+          className="p-5 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold" style={{ color: colors.text.primary }}>
+              Recent Activity
+            </h3>
+            <button
+              type="button"
+              onClick={() => navigate('/audit')}
+              className="text-xs font-medium cursor-pointer"
+              style={{ color: colors.brand.primary }}
+            >
+              View all
+            </button>
+          </div>
+
+          {(metrics?.recentActivity || []).length === 0 ? (
+            <p className="text-sm text-center py-4" style={{ color: colors.text.tertiary }}>
+              No recent activity found.
+            </p>
+          ) : (
+            (metrics?.recentActivity || []).map((item: any) => {
+              const isError = item.severity === 'error' || item.severity === 'critical';
+              const isWarning = item.severity === 'warning';
+
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 py-3"
+                  style={{ borderBottom: `1px solid ${colors.glass.border}` }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{
+                      backgroundColor: isError
+                        ? colors.danger.glow
+                        : isWarning
+                        ? colors.warning.glow
+                        : colors.info.glow,
                     }}
                   >
-                    <Box
-                      sx={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 2,
-                        bgcolor: isError ? colors.danger.glow :
-                                 isWarning ? colors.warning.glow :
-                                 colors.info.glow,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                    <Activity
+                      size={14}
+                      style={{
+                        color: isError
+                          ? colors.danger.base
+                          : isWarning
+                          ? colors.warning.base
+                          : colors.info.base,
                       }}
-                    >
-                      <Activity
-                        size={14}
-                        color={
-                          isError ? colors.danger.base :
-                          isWarning ? colors.warning.base :
-                          colors.info.base
-                        }
-                      />
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ color: colors.text.primary, fontWeight: 500 }}>
-                        {item.description}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: colors.text.muted }}>
-                        {item.target} • {new Date(item.createdAt).toLocaleString()}
-                      </Typography>
-                    </Box>
-                  </Box>
-                )})
-            )}
-          </CardContent>
-        </Card>
-      </Box>
-    </Box>
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: colors.text.primary }}>
+                      {item.description}
+                    </p>
+                    <p className="text-xs truncate" style={{ color: colors.text.muted }}>
+                      {item.target} • {new Date(item.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

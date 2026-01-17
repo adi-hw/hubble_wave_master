@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { instanceEntities } from './entities/index';
-import { TenantDbService } from './tenant-db.service';
+import { AuditLogSubscriber } from './subscribers/audit-log.subscriber';
+import { InstanceDbService } from './instance-db.service';
 
 /**
  * Instance Database Module
@@ -10,12 +11,10 @@ import { TenantDbService } from './tenant-db.service';
  * Provides access to the Customer Instance database.
  * Each customer has their own completely isolated database.
  *
- * IMPORTANT: This replaces the old "TenantDbModule" and "TenantDbService".
- * In the new single-instance-per-customer architecture:
+ * Architecture:
  * - There is NO dynamic database switching
- * - There is NO tenant_id column
- * - There is NO TenantDbService
- * - Just standard TypeORM with a single database connection
+ * - There is NO instance_id column in business tables
+ * - Just standard TypeORM with a single database connection per customer instance
  *
  * Configuration is via environment variables:
  * - DB_HOST: Database host (default: localhost)
@@ -36,13 +35,13 @@ import { TenantDbService } from './tenant-db.service';
         host: configService.get('DB_HOST', 'localhost'),
         port: parseInt(configService.get('DB_PORT', '5432'), 10),
         username: configService.get('DB_USER', 'hubblewave'),
-        // Temporary fix: Force correct credentials to bypass stubborn cache
-        password: 'hubblewave', 
-        database: 'hubblewave',
+        password: configService.get('DB_PASSWORD', 'hubblewave'),
+        database: configService.get('DB_NAME', 'hubblewave'),
         entities: instanceEntities,
         synchronize: false, // Always use migrations in production
         migrationsRun: configService.get('RUN_MIGRATIONS', 'true') === 'true',
-        migrations: ['dist/migrations/instance/*.js', 'dist/libs/instance-db/src/migrations/*.js'],
+        migrations: ['dist/migrations/instance/*.js'],
+        subscribers: [AuditLogSubscriber],
         logging: configService.get('DB_LOGGING', 'false') === 'true',
         ssl: configService.get('DB_SSL', 'false') === 'true' 
           ? { rejectUnauthorized: false } 
@@ -58,7 +57,7 @@ import { TenantDbService } from './tenant-db.service';
     }),
     TypeOrmModule.forFeature(instanceEntities),
   ],
-  providers: [TenantDbService],
-  exports: [TypeOrmModule, TenantDbService],
+  providers: [InstanceDbService],
+  exports: [TypeOrmModule, InstanceDbService],
 })
 export class InstanceDbModule {}

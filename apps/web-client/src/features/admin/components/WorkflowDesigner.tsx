@@ -40,15 +40,15 @@ interface WorkflowDesignerProps {
 }
 
 const stepTypes = [
-  { type: 'start', name: 'Start', icon: Play, color: 'bg-green-500', category: 'control' },
-  { type: 'end', name: 'End', icon: CheckCircle, color: 'bg-red-500', category: 'control' },
-  { type: 'condition', name: 'Condition', icon: GitBranch, color: 'bg-amber-500', category: 'control' },
-  { type: 'wait', name: 'Wait', icon: Clock, color: 'bg-slate-500', category: 'control' },
-  { type: 'update_record', name: 'Update Record', icon: FileText, color: 'bg-blue-500', category: 'action' },
-  { type: 'create_record', name: 'Create Record', icon: Plus, color: 'bg-blue-500', category: 'action' },
+  { type: 'start', name: 'Start', icon: Play, color: 'bg-success', category: 'control' },
+  { type: 'end', name: 'End', icon: CheckCircle, color: 'bg-danger', category: 'control' },
+  { type: 'condition', name: 'Condition', icon: GitBranch, color: 'bg-warning', category: 'control' },
+  { type: 'wait', name: 'Wait', icon: Clock, color: 'bg-muted-foreground', category: 'control' },
+  { type: 'update_record', name: 'Update Record', icon: FileText, color: 'bg-info', category: 'action' },
+  { type: 'create_record', name: 'Create Record', icon: Plus, color: 'bg-info', category: 'action' },
   { type: 'send_email', name: 'Send Email', icon: Mail, color: 'bg-purple-500', category: 'notification' },
   { type: 'send_notification', name: 'Notification', icon: Zap, color: 'bg-purple-500', category: 'notification' },
-  { type: 'create_approval', name: 'Create Approval', icon: CheckCircle, color: 'bg-amber-500', category: 'approval' },
+  { type: 'create_approval', name: 'Create Approval', icon: CheckCircle, color: 'bg-warning', category: 'approval' },
 ];
 
 const getStepConfig = (type: string) => {
@@ -147,14 +147,14 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
   return (
     <div className={`flex h-full ${className}`}>
       {/* Step Palette */}
-      <div className="w-56 flex-shrink-0 border-r border-slate-200 bg-slate-50 p-4 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+      <div className="w-56 flex-shrink-0 border-r border-border bg-muted p-4 overflow-y-auto">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Add Steps
         </h3>
 
         {['control', 'action', 'notification', 'approval'].map((category) => (
           <div key={category} className="mb-4">
-            <h4 className="text-xs font-medium text-slate-400 uppercase mb-2">
+            <h4 className="text-xs font-medium text-muted-foreground uppercase mb-2">
               {category}
             </h4>
             <div className="space-y-1">
@@ -164,7 +164,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
                   <button
                     key={stepType.type}
                     onClick={() => handleAddStep(stepType.type)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 bg-white rounded-lg border border-slate-200 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-card rounded-lg border border-border hover:border-primary hover:bg-primary-subtle transition-colors"
                   >
                     <div className={`h-6 w-6 rounded-md ${stepType.color} flex items-center justify-center`}>
                       <stepType.icon className="h-3.5 w-3.5 text-white" />
@@ -180,17 +180,13 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
       {/* Canvas */}
       <div
         ref={canvasRef}
-        className="flex-1 relative overflow-auto bg-slate-100"
-        style={{
-          backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
-          backgroundSize: '20px 20px',
-        }}
+        className="flex-1 relative overflow-auto bg-muted bg-[radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] bg-[length:20px_20px]"
         onMouseMove={handleDragMove}
         onMouseUp={handleDragEnd}
         onMouseLeave={handleDragEnd}
       >
         {/* Connections SVG */}
-        <svg className="absolute inset-0 pointer-events-none" style={{ minWidth: '100%', minHeight: '100%' }}>
+        <svg className="absolute inset-0 pointer-events-none min-w-full min-h-full">
           <defs>
             <marker
               id="arrowhead"
@@ -200,7 +196,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
               refY="3.5"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+              <polygon points="0 0, 10 3.5, 0 7" fill="hsl(var(--border))" />
             </marker>
           </defs>
           {connections.map((conn, idx) => {
@@ -219,7 +215,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
               <path
                 key={idx}
                 d={`M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`}
-                stroke="#94a3b8"
+                stroke="hsl(var(--border))"
                 strokeWidth="2"
                 fill="none"
                 markerEnd="url(#arrowhead)"
@@ -234,10 +230,10 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
           return (
             <div
               key={step.id}
-              className={`absolute w-48 bg-white rounded-xl border-2 shadow-sm transition-shadow ${
+              className={`absolute w-48 bg-card rounded-xl border-2 shadow-sm transition-shadow ${
                 selectedStepId === step.id
-                  ? 'border-primary-500 shadow-md'
-                  : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-primary shadow-md'
+                  : 'border-border hover:border-muted-foreground/40'
               }`}
               style={{
                 left: step.position.x,
@@ -259,13 +255,13 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
 
               {/* Body */}
               <div className="px-3 py-2">
-                <p className="text-xs text-slate-500 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {step.type}
                 </p>
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-border">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -273,8 +269,8 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
                   }}
                   className={`p-1 rounded transition-colors ${
                     connecting === step.id
-                      ? 'bg-primary-100 text-primary-600'
-                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                      ? 'bg-primary-subtle text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                   title="Connect to another step"
                 >
@@ -287,7 +283,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
                       e.stopPropagation();
                       handleConnect(connecting, step.id);
                     }}
-                    className="px-2 py-1 text-xs bg-primary-100 text-primary-600 rounded hover:bg-primary-200 transition-colors"
+                    className="px-2 py-1 text-xs bg-primary-subtle text-primary rounded hover:opacity-90 transition-colors"
                   >
                     Connect Here
                   </button>
@@ -299,7 +295,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
                       e.stopPropagation();
                       onSelectStep(step.id);
                     }}
-                    className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
                     title="Settings"
                   >
                     <Settings className="h-4 w-4" />
@@ -309,7 +305,7 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
                       e.stopPropagation();
                       handleDeleteStep(step.id);
                     }}
-                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                    className="p-1 text-muted-foreground hover:text-danger-text hover:bg-danger-subtle rounded transition-colors"
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -323,12 +319,12 @@ export const WorkflowDesigner: React.FC<WorkflowDesignerProps> = ({
         {steps.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <GitBranch className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 mb-2">
-                Start Building Your Workflow
+              <GitBranch className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">
+                Start Building Your Process Flow
               </h3>
-              <p className="text-sm text-slate-500 max-w-sm">
-                Add steps from the palette on the left to create your workflow.
+              <p className="text-sm text-muted-foreground max-w-sm">
+                Add steps from the palette on the left to create your process flow.
                 Connect steps by clicking the arrow icon.
               </p>
             </div>

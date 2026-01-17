@@ -1,7 +1,7 @@
 /**
  * GridController - REST API endpoints for HubbleDataGrid SSRM
  *
- * Endpoints:
+ * Endpoints (with global prefix 'api'):
  * - POST /api/grid/query - Query data with pagination, filtering, sorting
  * - POST /api/grid/count - Get filtered row count
  * - POST /api/grid/grouped - Query grouped data with aggregations
@@ -16,7 +16,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, TenantRequest } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, RequestContext, InstanceRequest } from '@hubblewave/auth-guard';
 import {
   GridQueryService,
   GridQueryRequest,
@@ -78,7 +78,7 @@ class GridCountDto implements GridCountRequest {
 // CONTROLLER
 // =============================================================================
 
-@Controller('api/grid')
+@Controller('grid')
 @UseGuards(JwtAuthGuard)
 export class GridController {
   constructor(private readonly gridQueryService: GridQueryService) {}
@@ -102,7 +102,7 @@ export class GridController {
   @Post('query')
   @HttpCode(HttpStatus.OK)
   async query(
-    @Req() req: TenantRequest,
+    @Req() req: InstanceRequest,
     @Body() dto: GridQueryDto,
   ): Promise<GridQueryResponse> {
     const ctx: RequestContext = req.context;
@@ -132,7 +132,7 @@ export class GridController {
   @Post('count')
   @HttpCode(HttpStatus.OK)
   async count(
-    @Req() req: TenantRequest,
+    @Req() req: InstanceRequest,
     @Body() dto: GridCountDto,
   ): Promise<{ count: number }> {
     const ctx: RequestContext = req.context;
@@ -166,7 +166,7 @@ export class GridController {
   @Post('grouped')
   @HttpCode(HttpStatus.OK)
   async queryGrouped(
-    @Req() req: TenantRequest,
+    @Req() req: InstanceRequest,
     @Body() dto: GridQueryDto,
   ): Promise<GridQueryResponse> {
     const ctx: RequestContext = req.context;

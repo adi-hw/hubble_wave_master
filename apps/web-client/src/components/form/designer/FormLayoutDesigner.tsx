@@ -33,9 +33,9 @@ import {
   Link2,
   Table2,
 } from 'lucide-react';
-import { ModelField } from '../../../services/platform.service';
+import { ModelProperty } from '../../../services/platform.service';
 import { useDesignerState } from './hooks/useDesignerState';
-import { FieldPalette } from './FieldPalette';
+import { PropertyPalette } from './FieldPalette';
 import { LayoutCanvas } from './LayoutCanvas';
 import { PropertiesPanel } from './PropertiesPanel';
 import { DotWalkSelector } from './DotWalkSelector';
@@ -43,43 +43,45 @@ import { EmbeddedListConfig } from './EmbeddedListConfig';
 import {
   DesignerLayout,
   DesignerItem,
-  DesignerDotWalkField,
+  DesignerDotWalkProperty,
   DesignerEmbeddedList,
-  FieldProtection,
+  PropertyProtection,
   PaletteItem,
-  createDefaultField,
+  createDefaultProperty,
   createDefaultSection,
   createDefaultTab,
   generateId,
 } from './types';
 
-interface RelatedTable {
-  tableCode: string;
-  tableName: string;
-  referenceField: string;
+interface RelatedCollection {
+  collectionCode: string;
+  collectionName: string;
+  referenceProperty: string;
   description?: string;
 }
 
 interface FormLayoutDesignerProps {
-  tableCode: string;
-  fields: ModelField[];
+  collectionCode: string;
+  fields: ModelProperty[];
   initialLayout?: DesignerLayout;
-  fieldProtections?: FieldProtection[];
-  relatedTables?: RelatedTable[];
-  onFetchTableFields?: (tableCode: string) => Promise<ModelField[]>;
+  propertyProtections?: PropertyProtection[];
+  relatedCollections?: RelatedCollection[];
+  onFetchCollectionProperties?: (collectionCode: string) => Promise<ModelProperty[]>;
   onSave: (layout: DesignerLayout) => Promise<void>;
   onClose: () => void;
+  variant?: 'modal' | 'embedded';
 }
 
 export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
-  tableCode,
+  collectionCode,
   fields,
   initialLayout,
-  fieldProtections = [],
-  relatedTables = [],
-  onFetchTableFields,
+  propertyProtections = [],
+  relatedCollections = [],
+  onFetchCollectionProperties,
   onSave,
   onClose,
+  variant = 'modal',
 }) => {
   const {
     layout,
@@ -92,7 +94,7 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
     selectedItem,
     selectedSection,
     selectedTab,
-    fieldsInLayout,
+    propertiesInLayout,
     selectItem,
     updateItem,
     addItem,
@@ -112,11 +114,21 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
   const [activeTabId, setActiveTabId] = useState<string>(layout.tabs[0]?.id || '');
   const [showPalette, setShowPalette] = useState(true);
-  const [showProperties, setShowProperties] = useState(true);
+  const [showProperties, setShowProperties] = useState(variant === 'modal');
   const [saving, setSaving] = useState(false);
   const [draggedItem, setDraggedItem] = useState<PaletteItem | DesignerItem | null>(null);
   const [showDotWalkSelector, setShowDotWalkSelector] = useState(false);
   const [showEmbeddedListConfig, setShowEmbeddedListConfig] = useState(false);
+  const isEmbedded = variant === 'embedded';
+  const panelCollapsedWidth = isEmbedded ? 'w-9' : 'w-10';
+  const paletteWidth = isEmbedded ? 'w-56' : 'w-64';
+  const propertiesWidth = isEmbedded ? 'w-64' : 'w-72';
+  const headerHeight = isEmbedded ? 'h-12 px-3' : 'h-14 px-4';
+  const tabBarHeight = isEmbedded ? 'h-10 px-3' : 'h-12 px-4';
+  const tabButtonClasses = isEmbedded
+    ? 'px-3 py-1.5 text-xs min-h-[36px]'
+    : 'px-4 py-2 text-sm min-h-[44px]';
+  const addTabLabel = isEmbedded ? 'New Tab' : 'Add Tab';
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -157,7 +169,7 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
       // Delete: Delete or Backspace
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItemId) {
         e.preventDefault();
-        if (selectedItemType === 'field' || selectedItemType === 'embedded_list') {
+        if (selectedItemType === 'property' || selectedItemType === 'embedded_list') {
           removeItem(selectedItemId);
         } else if (selectedItemType === 'section' && selectedSection) {
           removeSection(selectedItemId);
@@ -218,10 +230,10 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
   // Build protection map
   const protectionMap = useMemo(() => {
-    const map = new Map<string, FieldProtection>();
-    fieldProtections.forEach((p) => map.set(p.fieldCode, p));
+    const map = new Map<string, PropertyProtection>();
+    propertyProtections.forEach((p) => map.set(p.propertyCode, p));
     return map;
-  }, [fieldProtections]);
+  }, [propertyProtections]);
 
   // Build palette items from fields
   const paletteItems = useMemo<PaletteItem[]>(() => {
@@ -229,18 +241,18 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
       const protection = protectionMap.get(field.code);
       return {
         id: `palette-${field.code}`,
-        type: 'field' as const,
+        type: 'property' as const,
         label: field.label,
         icon: getFieldTypeIcon(field.type),
         description: field.code,
-        category: 'fields' as const,
+        category: 'properties' as const,
         protection: protection?.protectionLevel || 'flexible',
-        fieldCode: field.code,
-        fieldType: field.type,
-        isInLayout: fieldsInLayout.has(field.code),
+        propertyCode: field.code,
+        propertyType: field.type,
+        isInLayout: propertiesInLayout.has(field.code),
       };
     });
-  }, [fields, protectionMap, fieldsInLayout]);
+  }, [fields, protectionMap, propertiesInLayout]);
 
   // Get current tab
   const currentTab = useMemo(
@@ -250,6 +262,12 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
   // Handle drag start
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    const paletteItem = event.active.data.current?.item as PaletteItem | undefined;
+    if (paletteItem) {
+      setDraggedItem(paletteItem);
+      return;
+    }
+
     const { active } = event;
     const id = active.id as string;
 
@@ -279,32 +297,57 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
     if (!over) return;
 
-    const activeId = active.id as string;
     const overId = over.id as string;
+    const paletteItem = active.data.current?.item as PaletteItem | undefined;
+    const targetLocation = parseDropTarget(overId, layout, currentTab.id) || getFallbackLocation(layout, currentTab.id);
 
-    // Handle palette item drop
-    if (activeId.startsWith('palette-')) {
-      const paletteItem = paletteItems.find((p) => p.id === activeId);
-      if (!paletteItem || paletteItem.protection === 'locked') return;
+    if (paletteItem) {
+      if (paletteItem.protection === 'locked') return;
 
-      // Create new field item
-      if (paletteItem.type === 'field' && paletteItem.fieldCode) {
-        const newItem = createDefaultField(paletteItem.fieldCode, paletteItem.label);
-
-        // Determine target location from overId
-        const location = parseDropTarget(overId, layout, currentTab.id);
-        if (location) {
-          addItem(newItem, location);
+      if (paletteItem.type === 'property' && paletteItem.propertyCode) {
+        const newItem = createDefaultProperty(paletteItem.propertyCode, paletteItem.label);
+        if (targetLocation) {
+          addItem(newItem, targetLocation);
+          selectItem(newItem.id, 'property');
         }
+        return;
       }
-    } else if (activeId !== overId) {
+
+      if (paletteItem.type === 'new_section') {
+        const tabId = targetLocation?.tabId || currentTab.id;
+        const insertIndex = resolveSectionInsertIndex(layout, tabId, targetLocation?.sectionId);
+        const newSection = createDefaultSection('New Section');
+        addSection(newSection, tabId, insertIndex);
+        selectItem(newSection.id, 'section');
+        return;
+      }
+
+      if (paletteItem.type === 'new_tab') {
+        const newTab = createDefaultTab('New Tab');
+        addTab(newTab);
+        setActiveTabId(newTab.id);
+        selectItem(newTab.id, 'tab');
+        return;
+      }
+
+      const layoutItem = createLayoutItemFromPalette(paletteItem);
+      if (layoutItem && targetLocation) {
+        addItem(layoutItem, targetLocation);
+        selectItem(layoutItem.id, 'property');
+      }
+      return;
+    }
+
+    const activeId = active.id as string;
+
+    if (activeId !== overId) {
       // Handle reordering within layout
       const targetLocation = parseDropTarget(overId, layout, currentTab.id);
       if (targetLocation) {
         moveItem(activeId, targetLocation);
       }
     }
-  }, [paletteItems, layout, currentTab.id, addItem, moveItem]);
+  }, [layout, currentTab.id, addItem, addSection, addTab, moveItem, selectItem, setActiveTabId]);
 
   const handleDragOver = useCallback((_event: DragOverEvent) => {
     // Could be used for visual feedback during drag
@@ -342,17 +385,17 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
     }
   };
 
-  // Handle add dot-walk field
-  const handleAddDotWalkField = (fieldPath: string[], displayLabel: string, _finalField: ModelField) => {
+  // Handle add dot-walk property
+  const handleAddDotWalkProperty = (propertyPath: string[], displayLabel: string, _finalProperty: ModelProperty) => {
     if (!currentTab || currentTab.sections.length === 0) return;
 
-    const newItem: DesignerDotWalkField = {
+    const newItem: DesignerDotWalkProperty = {
       type: 'dot_walk',
       id: generateId(),
-      basePath: fieldPath.slice(0, -1).join('.'),
-      fieldCode: fieldPath[fieldPath.length - 1],
+      basePath: propertyPath.slice(0, -1).join('.'),
+      propertyCode: propertyPath[propertyPath.length - 1],
       displayLabel,
-      referenceChain: fieldPath.slice(0, -1),
+      referenceChain: propertyPath.slice(0, -1),
       span: 1,
     };
 
@@ -365,7 +408,7 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
     });
 
     setShowDotWalkSelector(false);
-    selectItem(newItem.id, 'field');
+    selectItem(newItem.id, 'property');
   };
 
   // Handle add embedded list
@@ -384,49 +427,90 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
     selectItem(config.id, 'embedded_list');
   };
 
-  // Default fetch table fields handler (placeholder)
-  const fetchTableFieldsHandler = onFetchTableFields || (async (_tableCode: string): Promise<ModelField[]> => {
+  // Default fetch collection properties handler (placeholder)
+  const fetchCollectionPropertiesHandler = onFetchCollectionProperties || (async (_collectionCode: string): Promise<ModelProperty[]> => {
     // In a real implementation, this would fetch from the API
-    console.warn('No onFetchTableFields handler provided');
+    console.warn('No onFetchCollectionProperties handler provided');
     return [];
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-stretch">
-      <div className="flex-1 flex flex-col bg-white">
+    <div
+      className={
+        isEmbedded
+          ? 'relative w-full flex flex-col rounded-xl border border-border bg-card shadow-sm overflow-hidden min-h-[70vh]'
+          : 'fixed inset-0 z-[60] flex items-stretch bg-overlay/50'
+      }
+      role={isEmbedded ? 'region' : 'dialog'}
+      aria-modal={isEmbedded ? undefined : true}
+      aria-label="Form Layout Designer"
+    >
+      <div className={`flex-1 flex flex-col ${isEmbedded ? '' : 'bg-card'}`}>
         {/* Header */}
-        <div className="h-14 px-4 border-b border-slate-200 bg-white flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary-100 flex items-center justify-center">
-              <Layers className="h-5 w-5 text-primary-600" />
+        <div
+          className={`${headerHeight} flex items-center justify-between flex-shrink-0 border-b border-border bg-card`}
+        >
+          {isEmbedded ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10">
+                <Layers className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  Form Builder
+                </h2>
+                <p className="text-[11px] text-muted-foreground">
+                  {collectionCode}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Form Layout Designer</h2>
-              <p className="text-xs text-slate-500">{tableCode}</p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10"
+              >
+                <Layers className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  Form Layout Designer
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {collectionCode}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex items-center gap-2">
             {/* Mode Toggle */}
-            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+            <div className="flex items-center rounded-lg p-0.5 bg-muted">
               <button
                 onClick={() => setMode('edit')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                className={`${
+                  isEmbedded ? 'px-2.5 py-1' : 'px-3 py-1.5'
+                } text-xs font-medium rounded-md transition-colors ${
                   mode === 'edit'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
+                aria-pressed={mode === 'edit'}
+                aria-label="Edit mode"
               >
                 <Pencil className="h-3.5 w-3.5 inline-block mr-1" />
                 Edit
               </button>
               <button
                 onClick={() => setMode('preview')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                className={`${
+                  isEmbedded ? 'px-2.5 py-1' : 'px-3 py-1.5'
+                } text-xs font-medium rounded-md transition-colors ${
                   mode === 'preview'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
+                aria-pressed={mode === 'preview'}
+                aria-label="Preview mode"
               >
                 <Eye className="h-3.5 w-3.5 inline-block mr-1" />
                 Preview
@@ -434,20 +518,30 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
             </div>
 
             {/* Undo/Redo */}
-            <div className="flex items-center border-l border-slate-200 pl-2 ml-2">
+            <div className="flex items-center pl-2 ml-2 border-l border-border">
               <button
                 onClick={undo}
                 disabled={!canUndo}
-                className="p-2 text-slate-500 hover:text-slate-700 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors"
+                className={`p-2 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${
+                  !canUndo
+                    ? 'text-muted-foreground/50 cursor-not-allowed'
+                    : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                }`}
                 title="Undo (Ctrl+Z)"
+                aria-label="Undo (Ctrl+Z)"
               >
                 <Undo2 className="h-4 w-4" />
               </button>
               <button
                 onClick={redo}
                 disabled={!canRedo}
-                className="p-2 text-slate-500 hover:text-slate-700 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors"
+                className={`p-2 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${
+                  !canRedo
+                    ? 'text-muted-foreground/50 cursor-not-allowed'
+                    : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                }`}
                 title="Redo (Ctrl+Y)"
+                aria-label="Redo (Ctrl+Y)"
               >
                 <Redo2 className="h-4 w-4" />
               </button>
@@ -457,65 +551,88 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
             <button
               onClick={reset}
               disabled={!isDirty}
-              className="p-2 text-slate-500 hover:text-slate-700 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors"
+              className={`p-2 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${
+                !isDirty
+                  ? 'text-muted-foreground/50 cursor-not-allowed'
+                  : 'text-muted-foreground hover:text-foreground cursor-pointer'
+              }`}
               title="Reset to original"
+              aria-label="Reset to original"
             >
               <RotateCcw className="h-4 w-4" />
             </button>
 
-            {/* Save & Close */}
-            <div className="flex items-center border-l border-slate-200 pl-2 ml-2 gap-2">
-              <button
-                onClick={onClose}
-                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="flex items-center pl-2 ml-2 gap-2 border-l border-border">
+              {!isEmbedded && (
+                <button
+                  onClick={onClose}
+                  className="px-3 py-1.5 text-sm font-medium transition-colors min-h-[44px] text-muted-foreground hover:text-foreground"
+                  aria-label="Cancel"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 onClick={handleSave}
                 disabled={saving || !isDirty}
-                className="px-4 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
+                className={`${
+                  isEmbedded ? 'px-3 py-1.5 text-xs' : 'px-4 py-1.5 text-sm'
+                } font-medium rounded-lg transition-colors flex items-center gap-2 min-h-[44px] text-primary-foreground ${
+                  saving || !isDirty
+                    ? 'bg-primary opacity-50 cursor-not-allowed'
+                    : 'bg-primary hover:bg-primary/90 cursor-pointer'
+                }`}
+                aria-label="Save layout"
               >
                 {saving ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                     Saving...
                   </>
                 ) : (
                   <>
                     <Save className="h-4 w-4" />
-                    Save Layout
+                    {isEmbedded ? 'Save' : 'Save Layout'}
                   </>
                 )}
               </button>
             </div>
 
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-600 transition-colors ml-2"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {!isEmbedded && (
+              <button
+                onClick={onClose}
+                className="p-2 transition-colors ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground/50 hover:text-muted-foreground"
+                aria-label="Close designer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Tab Bar */}
-        <div className="h-12 px-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2 flex-shrink-0">
-          <div className="flex-1 flex items-center gap-1 overflow-x-auto">
+        <div
+          className={`${tabBarHeight} flex items-center gap-2 flex-shrink-0 border-b border-border ${isEmbedded ? 'bg-card' : 'bg-muted'}`}
+        >
+          <div className="flex-1 flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Form tabs">
             {layout.tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTabId(tab.id)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-2 ${
+                className={`${tabButtonClasses} font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-2 ${
                   tab.id === activeTabId
-                    ? 'bg-white text-primary-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                    ? 'bg-card text-primary shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-hover'
                 }`}
+                role="tab"
+                aria-selected={tab.id === activeTabId}
+                aria-controls={`tabpanel-${tab.id}`}
               >
                 {tab.label}
                 {mode === 'edit' && (
-                  <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded text-muted-foreground/50 bg-muted"
+                  >
                     {tab.sections.reduce((acc, s) => acc + s.items.length, 0)}
                   </span>
                 )}
@@ -526,10 +643,11 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
           {mode === 'edit' && (
             <button
               onClick={handleAddTab}
-              className="h-8 px-3 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors flex items-center gap-1"
+              className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 min-h-[44px] text-primary hover:bg-primary/10"
+              aria-label="Add new tab"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Tab
+              {addTabLabel}
             </button>
           )}
         </div>
@@ -546,15 +664,15 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
             {/* Left Panel - Field Palette */}
             {mode === 'edit' && (
               <div
-                className={`border-r border-slate-200 bg-white transition-all duration-200 ${
-                  showPalette ? 'w-64' : 'w-10'
-                }`}
+                className={`transition-all duration-200 ${showPalette ? paletteWidth : panelCollapsedWidth} border-r border-border bg-card`}
               >
                 <div className="h-full flex flex-col">
                   {/* Toggle Button */}
                   <button
                     onClick={() => setShowPalette(!showPalette)}
-                    className="h-10 px-3 border-b border-slate-100 flex items-center gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="h-10 px-3 flex items-center gap-2 transition-colors min-h-[44px] border-b border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    aria-label={showPalette ? 'Hide field palette' : 'Show field palette'}
+                    aria-expanded={showPalette}
                   >
                     {showPalette ? (
                       <>
@@ -567,9 +685,9 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
                   </button>
 
                   {showPalette && (
-                    <FieldPalette
+                    <PropertyPalette
                       items={paletteItems}
-                      fieldsInLayout={fieldsInLayout}
+                      propertiesInLayout={propertiesInLayout}
                     />
                   )}
                 </div>
@@ -577,7 +695,12 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
             )}
 
             {/* Center - Layout Canvas */}
-            <div className="flex-1 overflow-auto bg-slate-100 p-6">
+            <div
+              className="flex-1 overflow-auto p-5 bg-muted/40"
+              role="tabpanel"
+              id={`tabpanel-${activeTabId}`}
+              aria-labelledby={`tab-${activeTabId}`}
+            >
               <LayoutCanvas
                 tab={currentTab}
                 mode={mode}
@@ -593,9 +716,11 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
             {/* Drag Overlay */}
             <DragOverlay>
               {draggedItem && (
-                <div className="px-3 py-2 bg-white border border-primary-300 rounded-lg shadow-lg opacity-80">
-                  <span className="text-sm font-medium text-slate-900">
-                    {'label' in draggedItem ? draggedItem.label : 'fieldCode' in draggedItem ? draggedItem.fieldCode : 'Item'}
+                <div
+                  className="px-3 py-2 rounded-lg shadow-lg opacity-80 bg-card border border-primary"
+                >
+                  <span className="text-sm font-medium text-foreground">
+                    {'label' in draggedItem ? draggedItem.label : 'propertyCode' in draggedItem ? draggedItem.propertyCode : 'Item'}
                   </span>
                 </div>
               )}
@@ -605,15 +730,15 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
           {/* Right Panel - Properties */}
           {mode === 'edit' && (
             <div
-              className={`border-l border-slate-200 bg-white transition-all duration-200 ${
-                showProperties ? 'w-72' : 'w-10'
-              }`}
+              className={`transition-all duration-200 ${showProperties ? propertiesWidth : panelCollapsedWidth} border-l border-border bg-card`}
             >
               <div className="h-full flex flex-col">
                 {/* Toggle Button */}
                 <button
                   onClick={() => setShowProperties(!showProperties)}
-                  className="h-10 px-3 border-b border-slate-100 flex items-center justify-end gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="h-10 px-3 flex items-center justify-end gap-2 transition-colors min-h-[44px] border-b border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  aria-label={showProperties ? 'Hide properties panel' : 'Show properties panel'}
+                  aria-expanded={showProperties}
                 >
                   {showProperties ? (
                     <>
@@ -646,21 +771,26 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
         </div>
 
         {/* Footer Toolbar */}
-        {mode === 'edit' && selectedSection && (
-          <div className="h-12 px-4 border-t border-slate-200 bg-white flex items-center justify-between flex-shrink-0">
+        {mode === 'edit' && selectedSection && !isEmbedded && (
+          <div
+            className="h-12 px-4 flex items-center justify-between flex-shrink-0 border-t border-border bg-card"
+          >
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">Section columns:</span>
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+              <span className="text-xs text-muted-foreground">
+                Section columns:
+              </span>
+              <div className="flex items-center rounded-lg p-0.5 bg-muted">
                 {([1, 2, 3, 4] as const).map((cols) => (
                   <button
                     key={cols}
                     onClick={() => handleColumnsChange(cols)}
-                    className={`w-8 h-7 flex items-center justify-center rounded-md transition-colors ${
+                    className={`w-8 h-7 flex items-center justify-center rounded-md transition-colors min-w-[44px] min-h-[44px] ${
                       selectedSection.columns === cols
-                        ? 'bg-white text-primary-600 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                        ? 'bg-card text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                     title={`${cols} column${cols > 1 ? 's' : ''}`}
+                    aria-label={`${cols} column${cols > 1 ? 's' : ''}`}
                   >
                     {cols === 1 && <Square className="h-3.5 w-3.5" />}
                     {cols === 2 && <Columns2 className="h-3.5 w-3.5" />}
@@ -675,19 +805,21 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
               {/* Dot-Walk Field Button */}
               <button
                 onClick={() => setShowDotWalkSelector(true)}
-                className="h-8 px-3 text-xs font-medium text-pink-600 hover:text-pink-700 hover:bg-pink-50 rounded-lg transition-colors flex items-center gap-1"
-                title="Add field from related table"
+                className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 min-h-[44px] text-primary hover:bg-primary/10"
+                title="Add property from related collection"
+                aria-label="Add dot-walk property from related collection"
               >
                 <Link2 className="h-3.5 w-3.5" />
                 Dot-Walk
               </button>
 
               {/* Embedded List Button */}
-              {relatedTables.length > 0 && (
+              {relatedCollections.length > 0 && (
                 <button
                   onClick={() => setShowEmbeddedListConfig(true)}
-                  className="h-8 px-3 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1"
+                  className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 min-h-[44px] text-primary hover:bg-primary/10"
                   title="Add embedded related list"
+                  aria-label="Add embedded related list"
                 >
                   <Table2 className="h-3.5 w-3.5" />
                   Related List
@@ -697,7 +829,8 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
               {/* Add Section Button */}
               <button
                 onClick={handleAddSection}
-                className="h-8 px-3 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors flex items-center gap-1"
+                className="h-8 px-3 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 min-h-[44px] text-primary hover:bg-primary/10"
+                aria-label="Add new section"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add Section
@@ -708,12 +841,17 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
         {/* Dot-Walk Selector Modal */}
         {showDotWalkSelector && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50">
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/50"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dot-walk property selector"
+          >
             <DotWalkSelector
-              baseTableCode={tableCode}
-              baseFields={fields}
-              onFetchTableFields={fetchTableFieldsHandler}
-              onSelectField={handleAddDotWalkField}
+              baseCollectionCode={collectionCode}
+              baseProperties={fields}
+              onFetchCollectionProperties={fetchCollectionPropertiesHandler}
+              onSelectProperty={handleAddDotWalkProperty}
               onClose={() => setShowDotWalkSelector(false)}
             />
           </div>
@@ -721,11 +859,16 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
         {/* Embedded List Config Modal */}
         {showEmbeddedListConfig && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50">
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/50"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Embedded list configuration"
+          >
             <EmbeddedListConfig
-              parentTableCode={tableCode}
-              relatedTables={relatedTables}
-              onFetchTableFields={fetchTableFieldsHandler}
+              parentCollectionCode={collectionCode}
+              relatedCollections={relatedCollections}
+              onFetchCollectionProperties={fetchCollectionPropertiesHandler}
               onSave={handleAddEmbeddedList}
               onClose={() => setShowEmbeddedListConfig(false)}
             />
@@ -804,6 +947,61 @@ function parseDropTarget(
   }
 
   return null;
+}
+
+function getFallbackLocation(
+  layout: DesignerLayout,
+  currentTabId: string
+): { tabId: string; sectionId: string; index: number } | null {
+  const tab = layout.tabs.find((t) => t.id === currentTabId) || layout.tabs[0];
+  if (!tab || tab.sections.length === 0) return null;
+  const section = tab.sections[tab.sections.length - 1];
+  return {
+    tabId: tab.id,
+    sectionId: section.id,
+    index: section.items.length,
+  };
+}
+
+function resolveSectionInsertIndex(
+  layout: DesignerLayout,
+  tabId: string,
+  sectionId?: string
+): number {
+  const tab = layout.tabs.find((t) => t.id === tabId);
+  if (!tab) return 0;
+  if (!sectionId) return tab.sections.length;
+  const sectionIndex = tab.sections.findIndex((section) => section.id === sectionId);
+  return sectionIndex === -1 ? tab.sections.length : sectionIndex + 1;
+}
+
+function createLayoutItemFromPalette(paletteItem: PaletteItem): DesignerItem | null {
+  switch (paletteItem.type) {
+    case 'spacer':
+      return {
+        type: 'spacer',
+        id: generateId(),
+        height: 'medium',
+        span: 1,
+      };
+    case 'divider':
+      return {
+        type: 'divider',
+        id: generateId(),
+        span: 1,
+      };
+    case 'info_box':
+      return {
+        type: 'info_box',
+        id: generateId(),
+        title: 'Info',
+        content: 'Add details here.',
+        variant: 'info',
+        span: 1,
+      };
+    default:
+      return null;
+  }
 }
 
 export default FormLayoutDesigner;

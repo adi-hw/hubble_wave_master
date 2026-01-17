@@ -29,12 +29,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   return (
     <>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 backdrop-blur-xl px-3 py-2 safe-area-pb"
-        style={{
-          backgroundColor: 'color-mix(in srgb, var(--bg-surface) 95%, transparent)',
-          borderTop: '1px solid var(--border-default)',
-          height: 'var(--bottom-nav-height, 56px)',
-        }}
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 backdrop-blur-xl bg-card/95 border-t border-border h-14 px-3 py-2 pb-safe"
       >
         <div className="flex items-center justify-between">
           {bottomNav.map((item) => {
@@ -59,20 +54,16 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                 className="flex flex-col items-center flex-1 gap-0.5"
               >
                 <span
-                  className="h-9 w-9 rounded-2xl flex items-center justify-center transition"
-                  style={{
-                    backgroundColor: active ? 'var(--bg-primary-subtle)' : 'transparent',
-                    color: active ? 'var(--text-brand)' : 'var(--text-muted)',
-                  }}
+                  className={`h-9 w-9 rounded-2xl flex items-center justify-center transition ${
+                    active ? 'bg-primary/10 text-primary' : 'bg-transparent text-muted-foreground'
+                  }`}
                 >
                   <Icon name={item.icon} className="h-4 w-4" />
                 </span>
                 <span
-                  className="text-[11px]"
-                  style={{
-                    color: active ? 'var(--text-brand)' : 'var(--text-muted)',
-                    fontWeight: active ? 500 : 400,
-                  }}
+                  className={`text-[11px] ${
+                    active ? 'text-primary font-medium' : 'text-muted-foreground font-normal'
+                  }`}
                 >
                   {item.label}
                 </span>

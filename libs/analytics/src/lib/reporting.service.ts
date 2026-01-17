@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Report } from '@hubblewave/instance-db';
+import { Report, ReportColumn, ReportFilter, ReportSorting } from './analytics-entities';
 
 export interface RunReportRequest {
   reportId: string;
@@ -125,7 +125,7 @@ export class ReportingService {
     totals?: Record<string, number>;
   }> {
     // Build columns from report definition
-    const columns: ReportResultColumn[] = (report.columns || []).map((col) => ({
+    const columns: ReportResultColumn[] = (report.columns || []).map((col: ReportColumn) => ({
       id: col.id,
       label: col.label,
       dataType: this.inferDataType(col),
@@ -150,8 +150,8 @@ export class ReportingService {
 
       // Apply column selections
       const selectColumns = (report.columns || [])
-        .filter((col) => col.visible !== false)
-        .map((col) => `record.${col.propertyCode} as "${col.id}"`);
+        .filter((col: ReportColumn) => col.visible !== false)
+        .map((col: ReportColumn) => `record.${col.propertyCode} as "${col.id}"`);
 
       if (selectColumns.length > 0) {
         queryBuilder.select(selectColumns);
@@ -159,7 +159,7 @@ export class ReportingService {
 
       // Apply filters
       if (report.filters && report.filters.length > 0) {
-        report.filters.forEach((filter, index) => {
+        report.filters.forEach((filter: ReportFilter, index: number) => {
           const paramName = `param${index}`;
           let value = filter.value;
 
@@ -182,14 +182,14 @@ export class ReportingService {
 
       // Apply sorting
       if (report.sorting && report.sorting.length > 0) {
-        report.sorting.forEach((sort) => {
+        report.sorting.forEach((sort: ReportSorting) => {
           queryBuilder.addOrderBy(`record.${sort.field}`, sort.direction.toUpperCase() as 'ASC' | 'DESC');
         });
       }
 
       // Apply grouping
       if (report.grouping && report.grouping.fields.length > 0) {
-        report.grouping.fields.forEach((field) => {
+        report.grouping.fields.forEach((field: string) => {
           queryBuilder.addGroupBy(`record.${field}`);
         });
       }
@@ -271,11 +271,11 @@ export class ReportingService {
 
     if (!collectionCode) return totals;
 
-    const aggregateColumns = (report.columns || []).filter((col) => col.aggregate);
+    const aggregateColumns = (report.columns || []).filter((col: ReportColumn) => col.aggregate);
 
     if (aggregateColumns.length === 0) return totals;
 
-    const aggregateSelects = aggregateColumns.map((col) => {
+    const aggregateSelects = aggregateColumns.map((col: ReportColumn) => {
       switch (col.aggregate) {
         case 'sum':
           return `SUM(${col.propertyCode}) as "${col.id}"`;
@@ -355,25 +355,25 @@ export class ReportingService {
   }
 
   /**
-   * Export to PDF (placeholder - would use pdfmake or similar)
+   * Export to PDF format
    */
   private exportToPdf(result: ReportResult): ExportResult {
-    // In production, use pdfmake or puppeteer to generate PDF
-    this.logger.warn('PDF export not implemented, returning JSON');
+    // PDF generation requires additional runtime dependencies; falling back to JSON
+    this.logger.warn('PDF export not available, returning JSON');
     return this.exportToJson(result);
   }
 
   /**
-   * Export to Excel (placeholder - would use exceljs or similar)
+   * Export to Excel format
    */
   private exportToExcel(result: ReportResult): ExportResult {
-    // In production, use exceljs to generate XLSX
-    this.logger.warn('Excel export not implemented, returning CSV');
+    // Excel generation requires additional runtime dependencies; falling back to CSV
+    this.logger.warn('Excel export not available, returning CSV');
     return this.exportToCsv(result);
   }
 
   /**
-   * Get available reports for a tenant
+   * Get available reports for the current instance
    */
   async getReports(moduleId?: string): Promise<Report[]> {
     const where: Record<string, unknown> = {

@@ -15,7 +15,6 @@ export interface UserAccessContext {
   groupIds: string[];
   departmentId?: string;
   locationId?: string;
-  tenantId: string;
 }
 
 // ============================================================================
@@ -104,7 +103,6 @@ export const SPECIAL_VALUES = {
   '@currentUser.groupIds': (ctx: UserAccessContext) => ctx.groupIds,
   '@currentUser.departmentId': (ctx: UserAccessContext) => ctx.departmentId,
   '@currentUser.locationId': (ctx: UserAccessContext) => ctx.locationId,
-  '@currentTenant': (ctx: UserAccessContext) => ctx.tenantId,
   '@currentTime': () => new Date(),
   '@currentDate': () => {
     const now = new Date();

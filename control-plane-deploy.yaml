@@ -1,0 +1,227 @@
+# =============================================================================
+# HubbleWave Control Plane - Kubernetes Deployment
+# =============================================================================
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hubblewave-control-plane
+  labels:
+    app.kubernetes.io/name: hubblewave-control-plane
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: control-plane-config
+  namespace: hubblewave-control-plane
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  CONTROL_PLANE_URL: "https://control.hubblewave.com"
+  CONTROL_PLANE_PORT: "3003"
+  CONTROL_PLANE_CORS_ORIGINS: "https://control.hubblewave.com,https://hubblewave.com"
+  DB_SSL: "true"
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-api
+  namespace: hubblewave-control-plane
+  labels:
+    app: control-plane-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: control-plane-api
+  template:
+    metadata:
+      labels:
+        app: control-plane-api
+    spec:
+      serviceAccountName: control-plane-sa
+      containers:
+        - name: api
+          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/svc-control-plane:v1
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: control-plane-config
+            - secretRef:
+                name: control-plane-database
+            - secretRef:
+                name: control-plane-redis
+            - secretRef:
+                name: control-plane-jwt
+            - secretRef:
+                name: license-signing-keys
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3003
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-api
+  namespace: hubblewave-control-plane
+spec:
+  selector:
+    app: control-plane-api
+  ports:
+    - port: 80
+      targetPort: 3003
+  type: ClusterIP
+---
+# Web Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-web
+  namespace: hubblewave-control-plane
+  labels:
+    app: control-plane-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: control-plane-web
+  template:
+    metadata:
+      labels:
+        app: control-plane-web
+    spec:
+      containers:
+        - name: web
+          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/web-control-plane:v1
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+# Web Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-web
+  namespace: hubblewave-control-plane
+spec:
+  selector:
+    app: control-plane-web
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+# Ingress - API
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: control-plane-api-ingress
+  namespace: hubblewave-control-plane
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.hubblewave.com
+      secretName: control-plane-api-tls
+  rules:
+    - host: api.hubblewave.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: control-plane-api
+                port:
+                  number: 80
+---
+# Ingress - Web
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: control-plane-web-ingress
+  namespace: hubblewave-control-plane
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - control.hubblewave.com
+      secretName: control-plane-web-tls
+  rules:
+    - host: control.hubblewave.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: control-plane-web
+                port:
+                  number: 80
+---
+# HPA - API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: control-plane-api-hpa
+  namespace: hubblewave-control-plane
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: control-plane-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

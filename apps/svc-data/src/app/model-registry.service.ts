@@ -3,9 +3,9 @@ import { CollectionDefinition, PropertyDefinition } from '@hubblewave/instance-d
 import { DataSource } from 'typeorm';
 import NodeCache from 'node-cache';
 
-/** Return type for getTable method */
-export interface TableInfo {
-  tableName: string;
+/** Return type for getCollection method */
+export interface CollectionInfo {
+  collectionCode: string;
   label: string;
   storageTable: string;
   storageSchema: string;
@@ -21,8 +21,8 @@ interface PropertyUiConfig {
     isVisibleInList?: boolean;
 }
 
-/** Return type for getFields method */
-export interface FieldInfo {
+/** Return type for getProperties method */
+export interface PropertyInfo {
   code: string;
   label: string;
   type: string;
@@ -36,8 +36,8 @@ export interface FieldInfo {
     maxLength?: number | null;
     precision?: number | null;
     choices?: Array<{ value: string; label: string }> | null;
-    referenceTable?: string | null;
-    referenceDisplayField?: string | null;
+    referenceCollection?: string | null;
+    referenceDisplayProperty?: string | null;
   };
   validators: Record<string, unknown>;
   isInternal: boolean;
@@ -49,12 +49,11 @@ export interface FieldInfo {
 
 /**
  * Database-first model registry service.
- * Discovers tables and columns from information_schema instead of relying on model_table/model_field.
+ * Discovers collections and properties from information_schema and collection_definitions.
  *
  * Cache Strategy:
  * - Default TTL: 30 seconds for automatic expiration
  * - Manual invalidation: Call invalidateCache() when schema or UI config changes
- * - Per-tenant isolation: Each tenant's cache is prefixed with tenantId
  */
 @Injectable()
 export class ModelRegistryService implements OnModuleDestroy {
@@ -66,99 +65,94 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Invalidate cache for a specific table, or all tables for a tenant.
+   * Invalidate cache for a specific collection, or all collections.
    * Call this method when:
-   * - Table schema changes (columns added/removed)
-   * - table_ui_config or field_ui_config is updated
+   * - Collection schema changes (properties added/removed)
+   * - UI config is updated
    * - Admin manually requests cache refresh
    *
-   * @param tenantId - The tenant whose cache to invalidate
-   * @param tableName - Optional specific table to invalidate. If not provided, invalidates all tables for tenant.
+   * @param collectionCode - Optional specific collection to invalidate. If not provided, invalidates all collections.
    */
-  invalidateCache(tenantId: string, tableName?: string): void {
-    if (tableName) {
-      // Invalidate specific table and its fields
-      const tableKey = `${tenantId}:table:${tableName}`;
-      const fieldsKey = `${tenantId}:fields:${tableName}`;
-      this.cache.del([tableKey, fieldsKey]);
-      this.logger.debug(`Invalidated cache for tenant ${tenantId}, table ${tableName}`);
+  invalidateCache(collectionCode?: string): void {
+    if (collectionCode) {
+      const collectionKey = `collection:${collectionCode}`;
+      const propertiesKey = `properties:${collectionCode}`;
+      this.cache.del([collectionKey, propertiesKey]);
+      this.logger.debug(`Invalidated cache for collection ${collectionCode}`);
     } else {
-      // Invalidate all cache entries for this tenant
-      this.clearCache(tenantId);
-      this.logger.debug(`Invalidated all cache entries for tenant ${tenantId}`);
+      this.clearAllCache();
+      this.logger.debug(`Invalidated all cache entries`);
     }
   }
 
   /**
-   * Force refresh cache for a specific table by fetching fresh data.
+   * Force refresh cache for a specific collection by fetching fresh data.
    * Useful when you need the latest data immediately after a schema change.
    *
-   * @param tableName - The table to refresh
-   * @param tenantId - The tenant ID
-   * @param roles - Optional roles for field visibility
-   * @returns Fresh table and field data
+   * @param collectionCode - The collection to refresh
+   * @param roles - Optional roles for property visibility
+   * @returns Fresh collection and property data
    */
-  async refreshTableCache(
-    tableName: string,
-    tenantId: string,
+  async refreshCollectionCache(
+    collectionCode: string,
     roles?: string[]
-  ): Promise<{ table: TableInfo; fields: FieldInfo[] }> {
-    this.invalidateCache(tenantId, tableName);
-    const table = await this.getTable(tableName, tenantId);
-    const fields = await this.getFields(tableName, tenantId, roles);
-    return { table, fields };
+  ): Promise<{ collection: CollectionInfo; properties: PropertyInfo[] }> {
+    this.invalidateCache(collectionCode);
+    const collection = await this.getCollection(collectionCode);
+    const properties = await this.getProperties(collectionCode, roles);
+    return { collection, properties };
   }
 
   /**
-   * Get table info from information_schema and collection_definitions
+   * Get collection info from information_schema and collection_definitions
    */
-  async getTable(tableName: string, instanceId: string): Promise<TableInfo> {
-    const cacheKey = `${instanceId}:table:${tableName}`;
-    const cached = this.cache.get<TableInfo>(cacheKey);
+  async getCollection(collectionCode: string): Promise<CollectionInfo> {
+    const cacheKey = `collection:${collectionCode}`;
+    const cached = this.cache.get<CollectionInfo>(cacheKey);
     if (cached) return cached;
 
     const ds = this.dataSource;
 
-    // Check if table exists in information_schema
+    // Check if storage table exists in information_schema
     const result = await ds.query(`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
         AND table_name = $1
-    `, [tableName]);
+    `, [collectionCode]);
 
     if (!result || result.length === 0) {
-      throw new NotFoundException(`Table '${tableName}' not found in database`);
+      throw new NotFoundException(`Collection '${collectionCode}' not found in database`);
     }
 
     // Get collection definition if exists
     const collectionRepo = ds.getRepository(CollectionDefinition);
-    const collection = await collectionRepo.findOne({ where: { tableName, isActive: true } });
+    const collection = await collectionRepo.findOne({ where: { tableName: collectionCode, isActive: true } });
 
-    const tableInfo = {
-      tableName,
-      label: collection?.name || this.formatTableName(tableName),
-      storageTable: tableName,
+    const collectionInfo: CollectionInfo = {
+      collectionCode,
+      label: collection?.name || this.formatCollectionName(collectionCode),
+      storageTable: collectionCode,
       storageSchema: 'public',
       category: collection?.category || 'application',
       isSystem: collection?.isSystem ?? false,
     };
 
-    this.cache.set(cacheKey, tableInfo);
-    return tableInfo;
+    this.cache.set(cacheKey, collectionInfo);
+    return collectionInfo;
   }
 
-  private formatTableName(tableName: string): string {
-    return tableName
+  private formatCollectionName(code: string): string {
+    return code
       .replace(/^app_/, '')
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   }
 
-  private formatColumnName(columnName: string): string {
-    return columnName
+  private formatPropertyName(propertyCode: string): string {
+    return propertyCode
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
@@ -169,9 +163,9 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Map PostgreSQL data types to field types
+   * Map PostgreSQL data types to property types
    */
-  private mapDataTypeToFieldType(dataType: string): { type: string; backendType: string; uiWidget: string } {
+  private mapDataTypeToPropertyType(dataType: string): { type: string; backendType: string; uiWidget: string } {
     const typeMap: Record<string, { type: string; backendType: string; uiWidget: string }> = {
       'uuid': { type: 'uuid', backendType: 'uuid', uiWidget: 'text' },
       'character varying': { type: 'string', backendType: 'varchar', uiWidget: 'text' },
@@ -196,25 +190,25 @@ export class ModelRegistryService implements OnModuleDestroy {
   }
 
   /**
-   * Get fields from property_definitions for a collection
+   * Get properties from property_definitions for a collection
    */
-  async getFields(tableName: string, instanceId: string, roles?: string[]): Promise<FieldInfo[]> {
-    const cacheKey = `${instanceId}:fields:${tableName}`;
-    const cached = this.cache.get<FieldInfo[]>(cacheKey);
+  async getProperties(collectionCode: string, roles?: string[]): Promise<PropertyInfo[]> {
+    const cacheKey = `properties:${collectionCode}`;
+    const cached = this.cache.get<PropertyInfo[]>(cacheKey);
     if (cached) return cached;
 
-    // First ensure table exists
-    await this.getTable(tableName, instanceId);
+    // First ensure collection exists
+    await this.getCollection(collectionCode);
 
     const ds = this.dataSource;
 
     // Get collection first
     const collectionRepo = ds.getRepository(CollectionDefinition);
-    const collection = await collectionRepo.findOne({ where: { tableName, isActive: true } });
+    const collection = await collectionRepo.findOne({ where: { tableName: collectionCode, isActive: true } });
 
     if (!collection) {
       // Fall back to information_schema if no collection definition
-      return this.getFieldsFromSchema(tableName, instanceId, roles);
+      return this.getPropertiesFromSchema(collectionCode, roles);
     }
 
     // Get property definitions for this collection
@@ -224,27 +218,47 @@ export class ModelRegistryService implements OnModuleDestroy {
       order: { position: 'ASC' },
     });
 
-    // UI Config disabled for now
-    // const uiConfigRepo = ds.getRepository(PropertyUiConfig);
-    // const uiConfigs = await uiConfigRepo.find({
-    //   where: { propertyId: properties.map(p => p.id).length > 0 ? undefined : undefined },
-    // });
+    // Collect all unique reference collection IDs to look up their codes
+    const referenceCollectionIds = new Set<string>();
+    for (const prop of properties) {
+      if (prop.referenceCollectionId) {
+        referenceCollectionIds.add(prop.referenceCollectionId);
+      }
+    }
+
+    // Build a map of collection ID -> collectionCode for reference lookups
+    const referenceCollectionMap = new Map<string, string>();
+    if (referenceCollectionIds.size > 0) {
+      const refCollections = await collectionRepo.find({
+        where: [...referenceCollectionIds].map(id => ({ id })),
+        select: ['id', 'tableName'],
+      });
+      for (const refCol of refCollections) {
+        referenceCollectionMap.set(refCol.id, refCol.tableName);
+      }
+    }
+
     const uiConfigMap = new Map<string, PropertyUiConfig>();
 
     const showHidden = this.isAdmin(roles);
 
-    const fields: FieldInfo[] = properties
+    const propertyInfoList: PropertyInfo[] = properties
       .map((prop) => {
         const uiConfig = uiConfigMap.get(prop.id);
         const dataType = (prop.config as Record<string, unknown>)?.dataType as string || 'string';
-        const typeInfo = this.mapDataTypeToFieldType(dataType);
+        const typeInfo = this.mapDataTypeToPropertyType(dataType);
 
-        // System columns are hidden by default
-        const isSystemColumn = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(prop.columnName || prop.code);
+        // System properties are hidden by default
+        const isSystemProperty = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(prop.columnName || prop.code);
+
+        // Get reference collection code from the map (looked up from referenceCollectionId)
+        const referenceCollection = prop.referenceCollectionId
+          ? referenceCollectionMap.get(prop.referenceCollectionId) || null
+          : null;
 
         return {
           code: prop.code,
-          label: uiConfig?.label || prop.name || this.formatColumnName(prop.code),
+          label: uiConfig?.label || prop.name || this.formatPropertyName(prop.code),
           type: typeInfo.type,
           backendType: typeInfo.backendType,
           uiWidget: typeInfo.uiWidget,
@@ -256,31 +270,31 @@ export class ModelRegistryService implements OnModuleDestroy {
             maxLength: (prop.config as Record<string, unknown>)?.maxLength as number | null,
             precision: (prop.config as Record<string, unknown>)?.precision as number | null,
             choices: (prop.config as Record<string, unknown>)?.choices as Array<{ value: string; label: string }> | null,
-            referenceTable: (prop.config as Record<string, unknown>)?.referenceCollection as string | null,
-            referenceDisplayField: (prop.config as Record<string, unknown>)?.referenceDisplayProperty as string | null,
+            referenceCollection: referenceCollection,
+            referenceDisplayProperty: prop.referenceDisplayProperty || null,
           },
           validators: (prop.config as Record<string, unknown>)?.validators as Record<string, unknown> || {},
           isInternal: !prop.isVisible,
-          isSystem: prop.isSystem ?? isSystemColumn,
-          showInForms: uiConfig?.isVisibleInForm ?? !isSystemColumn,
-          showInLists: uiConfig?.isVisibleInList ?? !isSystemColumn,
+          isSystem: prop.isSystem ?? isSystemProperty,
+          showInForms: uiConfig?.isVisibleInForm ?? !isSystemProperty,
+          showInLists: uiConfig?.isVisibleInList ?? !isSystemProperty,
           displayOrder: prop.position ?? 0,
         };
       })
       .filter((f) => showHidden || !f.isInternal)
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
-    this.cache.set(cacheKey, fields);
-    return fields;
+    this.cache.set(cacheKey, propertyInfoList);
+    return propertyInfoList;
   }
 
   /**
-   * Fallback: Get fields from information_schema when no collection definition exists
+   * Fallback: Get properties from information_schema when no collection definition exists
    */
-  private async getFieldsFromSchema(tableName: string, _instanceId: string, roles?: string[]): Promise<FieldInfo[]> {
+  private async getPropertiesFromSchema(collectionCode: string, roles?: string[]): Promise<PropertyInfo[]> {
     const ds = this.dataSource;
 
-    // Get columns from information_schema
+    // Get columns from information_schema for the storage table
     const columnsResult = await ds.query(`
       SELECT
         column_name,
@@ -294,7 +308,7 @@ export class ModelRegistryService implements OnModuleDestroy {
       WHERE table_schema = 'public'
         AND table_name = $1
       ORDER BY ordinal_position
-    `, [tableName]);
+    `, [collectionCode]);
 
     const showHidden = this.isAdmin(roles);
 
@@ -309,16 +323,16 @@ export class ModelRegistryService implements OnModuleDestroy {
       ordinal_position: number;
     }
 
-    const fields: FieldInfo[] = (columnsResult as ColumnResult[])
+    const propertyList: PropertyInfo[] = (columnsResult as ColumnResult[])
       .map((col) => {
-        const typeInfo = this.mapDataTypeToFieldType(col.data_type);
+        const typeInfo = this.mapDataTypeToPropertyType(col.data_type);
 
-        // System columns are hidden by default
-        const isSystemColumn = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(col.column_name);
+        // System properties are hidden by default
+        const isSystemProperty = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'row_version'].includes(col.column_name);
 
         return {
           code: col.column_name,
-          label: this.formatColumnName(col.column_name),
+          label: this.formatPropertyName(col.column_name),
           type: typeInfo.type,
           backendType: typeInfo.backendType,
           uiWidget: typeInfo.uiWidget,
@@ -330,40 +344,33 @@ export class ModelRegistryService implements OnModuleDestroy {
             maxLength: col.character_maximum_length,
             precision: col.numeric_precision,
             choices: null,
-            referenceTable: null,
-            referenceDisplayField: null,
+            referenceCollection: null,
+            referenceDisplayProperty: null,
           },
           validators: {},
           isInternal: false,
-          isSystem: isSystemColumn,
-          showInForms: !isSystemColumn,
-          showInLists: !isSystemColumn,
+          isSystem: isSystemProperty,
+          showInForms: !isSystemProperty,
+          showInLists: !isSystemProperty,
           displayOrder: col.ordinal_position,
         };
       })
       .filter((f) => showHidden || !f.isInternal)
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
-    return fields;
+    return propertyList;
   }
 
   /**
-   * Get form layout (placeholder - returns null for now as layouts are no longer table-based)
+   * Get form layout (returns null as layouts are generated dynamically)
    */
-  async getLayout(_tableName: string, _tenantId: string): Promise<any> {
-    // In the new database-first approach, form layouts are generated dynamically
-    // based on field_ui_config settings (formSection, formWidth, displayOrder)
+  async getLayout(_collectionCode: string): Promise<any> {
+    // Form layouts are generated dynamically based on property definitions and UI config
     return null;
   }
 
-  clearCache(tenantId?: string) {
-    if (tenantId) {
-      const keys = this.cache.keys();
-      const tenantKeys = keys.filter((k) => k.startsWith(`${tenantId}:`));
-      this.cache.del(tenantKeys);
-    } else {
-      this.cache.flushAll();
-    }
+  clearAllCache() {
+    this.cache.flushAll();
   }
 
   onModuleDestroy() {

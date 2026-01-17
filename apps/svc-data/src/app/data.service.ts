@@ -1,12 +1,10 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { AuthorizationService, AuthorizedFieldMeta } from '@hubblewave/authorization';
+import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
 import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
 import { ModelRegistryService } from './model-registry.service';
 
-// Instance ID for this single-instance deployment
-const INSTANCE_ID = process.env['INSTANCE_ID'] || 'default';
 
 @Injectable()
 export class DataService {
@@ -81,7 +79,7 @@ export class DataService {
   }
 
   // List records with pagination
-  async list(ctx: RequestContext, tableCode: string, query?: ListRecordsDto) {
+  async list(ctx: RequestContext, collectionCode: string, query?: ListRecordsDto) {
     const page = query?.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
     const limit = Math.min(
       query?.limit ?? PAGINATION_CONSTANTS.DEFAULT_PAGE_SIZE,
@@ -89,23 +87,23 @@ export class DataService {
     );
     const skip = (page - 1) * limit;
 
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
-    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
-    if (!readableFields.length) {
-      throw new ForbiddenException('No readable fields on this table');
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const readableProperties = await this.authz.filterReadableFields(ctx, model.storageTable, allProperties);
+    if (!readableProperties.length) {
+      throw new ForbiddenException('No readable properties on this collection');
     }
 
     const selectParts = ['t.id', 't.created_at', 't.updated_at'];
-    readableFields.forEach((f) => {
-      if (!f.storagePath) return;
-      const parsed = this.parseStoragePath(f.storagePath);
+    readableProperties.forEach((p) => {
+      if (!p.storagePath) return;
+      const parsed = this.parseStoragePath(p.storagePath);
       if (parsed.type === 'column') {
-        selectParts.push(`t."${parsed.column}" AS "${f.code}"`);
+        selectParts.push(`t."${parsed.column}" AS "${p.code}"`);
       } else if (parsed.type === 'json') {
-        selectParts.push(`t."${parsed.column}"->>'${parsed.path}' AS "${f.code}"`);
+        selectParts.push(`t."${parsed.column}"->>'${parsed.path}' AS "${p.code}"`);
       }
     });
 
@@ -128,8 +126,8 @@ export class DataService {
     // Apply sorting
     const sortBy = query?.sortBy || 'created_at';
     const sortOrder = query?.sortOrder || 'DESC';
-    if (readableFields.some(f => f.code === sortBy) || ['id', 'created_at', 'updated_at'].includes(sortBy)) {
-      qb.orderBy(`t."${this.ensureSafeIdentifier(sortBy, 'sort field')}"`, sortOrder);
+    if (readableProperties.some(p => p.code === sortBy) || ['id', 'created_at', 'updated_at'].includes(sortBy)) {
+      qb.orderBy(`t."${this.ensureSafeIdentifier(sortBy, 'sort property')}"`, sortOrder);
     } else {
       qb.orderBy('t."created_at"', 'DESC');
     }
@@ -138,11 +136,11 @@ export class DataService {
     qb.offset(skip).limit(limit);
 
     const rows = await qb.getRawMany();
-    const masked = await Promise.all(rows.map((row: unknown) => this.authz.maskRecord(ctx, model.storageTable, row as Record<string, unknown>, readableFields as AuthorizedFieldMeta[])));
+    const masked = await Promise.all(rows.map((row: unknown) => this.authz.maskRecord(ctx, model.storageTable, row as Record<string, unknown>, readableProperties as AuthorizedPropertyMeta[])));
 
     return {
       data: masked,
-      fields: readableFields,
+      properties: readableProperties,
       meta: {
         page,
         limit,
@@ -153,24 +151,24 @@ export class DataService {
   }
 
   // Get single record
-  async getOne(ctx: RequestContext, tableCode: string, id: string) {
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+  async getOne(ctx: RequestContext, collectionCode: string, id: string) {
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
-    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
-    if (!readableFields.length) {
-      throw new ForbiddenException('No readable fields on this table');
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const readableProperties = await this.authz.filterReadableFields(ctx, model.storageTable, allProperties);
+    if (!readableProperties.length) {
+      throw new ForbiddenException('No readable properties on this collection');
     }
 
     const selectParts = ['t.id', 't.created_at', 't.updated_at'];
-    readableFields.forEach((f) => {
-      if (!f.storagePath) return;
-      const parsed = this.parseStoragePath(f.storagePath);
+    readableProperties.forEach((p) => {
+      if (!p.storagePath) return;
+      const parsed = this.parseStoragePath(p.storagePath);
       if (parsed.type === 'column') {
-        selectParts.push(`t."${parsed.column}" AS "${f.code}"`);
+        selectParts.push(`t."${parsed.column}" AS "${p.code}"`);
       } else if (parsed.type === 'json') {
-        selectParts.push(`t."${parsed.column}"->>'${parsed.path}' AS "${f.code}"`);
+        selectParts.push(`t."${parsed.column}"->>'${parsed.path}' AS "${p.code}"`);
       }
     });
 
@@ -186,19 +184,19 @@ export class DataService {
     if (!result[0]) throw new NotFoundException();
 
     return {
-      record: await this.authz.maskRecord(ctx, model.storageTable, result[0], readableFields as AuthorizedFieldMeta[]),
-      fields: readableFields,
+      record: await this.authz.maskRecord(ctx, model.storageTable, result[0], readableProperties as AuthorizedPropertyMeta[]),
+      properties: readableProperties,
     };
   }
 
   // Create record
-  async create(ctx: RequestContext, tableCode: string, payload: Record<string, any>) {
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+  async create(ctx: RequestContext, collectionCode: string, payload: Record<string, any>) {
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'create');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
-    const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
-    const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const columns: string[] = [];
     const values: string[] = [];
@@ -207,10 +205,10 @@ export class DataService {
     const jsonUpdates: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(payload)) {
-      if (!allowedFieldCodes.has(key)) continue;
-      const field = allFields.find((f) => f.code === key);
-      if (!field) continue;
-      const parsed = this.parseStoragePath(field.storagePath);
+      if (!allowedPropertyCodes.has(key)) continue;
+      const property = allProperties.find((p) => p.code === key);
+      if (!property) continue;
+      const parsed = this.parseStoragePath(property.storagePath);
       if (parsed.type === 'column') {
         columns.push(`"${parsed.column}"`);
         values.push(`$${paramIdx++}`);
@@ -228,24 +226,24 @@ export class DataService {
     }
 
     if (columns.length === 0) {
-      throw new ForbiddenException('No writable fields in payload');
+      throw new ForbiddenException('No writable properties in payload');
     }
 
     const physicalTable = this.buildPhysicalTableRaw(model);
     const sql = `INSERT INTO ${physicalTable} (${columns.join(', ')}) VALUES (${values.join(', ')}) RETURNING id`;
     const ds = this.dataSource;
     const result = await ds.query(sql, params);
-    return this.getOne(ctx, tableCode, result[0].id);
+    return this.getOne(ctx, collectionCode, result[0].id);
   }
 
   // Update record
-  async update(ctx: RequestContext, tableCode: string, id: string, payload: Record<string, any>) {
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+  async update(ctx: RequestContext, collectionCode: string, id: string, payload: Record<string, any>) {
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
-    const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
-    const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const ds = this.dataSource;
 
@@ -258,10 +256,10 @@ export class DataService {
     const jsonUpdates: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(payload)) {
-      if (!allowedFieldCodes.has(key)) continue;
-      const field = allFields.find((f) => f.code === key);
-      if (!field) continue;
-      const parsed = this.parseStoragePath(field.storagePath);
+      if (!allowedPropertyCodes.has(key)) continue;
+      const property = allProperties.find((p) => p.code === key);
+      if (!property) continue;
+      const parsed = this.parseStoragePath(property.storagePath);
       if (parsed.type === 'column') {
         updateValues[parsed.column] = value;
       } else if (parsed.type === 'json') {
@@ -275,7 +273,7 @@ export class DataService {
     }
 
     if (Object.keys(updateValues).length === 0) {
-      throw new BadRequestException('No valid fields provided to update');
+      throw new BadRequestException('No valid properties provided to update');
     }
 
     qb.set(updateValues);
@@ -287,12 +285,12 @@ export class DataService {
 
     const result = await qb.execute();
     if (result.affected === 0) throw new NotFoundException();
-    return this.getOne(ctx, tableCode, id);
+    return this.getOne(ctx, collectionCode, id);
   }
 
   // Delete record
-  async delete(ctx: RequestContext, tableCode: string, id: string) {
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+  async delete(ctx: RequestContext, collectionCode: string, id: string) {
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
 
     const ds = this.dataSource;
@@ -316,7 +314,7 @@ export class DataService {
   // Bulk update multiple records
   async bulkUpdate(
     ctx: RequestContext,
-    tableCode: string,
+    collectionCode: string,
     ids: (string | number)[],
     payload: Record<string, any>
   ) {
@@ -329,12 +327,12 @@ export class DataService {
       );
     }
 
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
 
-    const allFields = await this.modelRegistry.getFields(tableCode, INSTANCE_ID, ctx.roles);
-    const writableFields = await this.authz.filterWritableFields(ctx, model.storageTable, allFields);
-    const allowedFieldCodes = new Set(writableFields.map((f) => f.code));
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const ds = this.dataSource;
 
@@ -347,10 +345,10 @@ export class DataService {
     const jsonUpdates: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(payload)) {
-      if (!allowedFieldCodes.has(key)) continue;
-      const field = allFields.find((f) => f.code === key);
-      if (!field) continue;
-      const parsed = this.parseStoragePath(field.storagePath);
+      if (!allowedPropertyCodes.has(key)) continue;
+      const property = allProperties.find((p) => p.code === key);
+      if (!property) continue;
+      const parsed = this.parseStoragePath(property.storagePath);
       if (parsed.type === 'column') {
         updateValues[parsed.column] = value;
       } else if (parsed.type === 'json') {
@@ -365,7 +363,7 @@ export class DataService {
     }
 
     if (Object.keys(updateValues).length === 0) {
-      throw new BadRequestException('No valid fields provided to update');
+      throw new BadRequestException('No valid properties provided to update');
     }
 
     // Add updated_at timestamp
@@ -388,7 +386,7 @@ export class DataService {
   }
 
   // Bulk delete multiple records
-  async bulkDelete(ctx: RequestContext, tableCode: string, ids: (string | number)[]) {
+  async bulkDelete(ctx: RequestContext, collectionCode: string, ids: (string | number)[]) {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided for bulk delete');
     }
@@ -398,7 +396,7 @@ export class DataService {
       );
     }
 
-    const model = await this.modelRegistry.getTable(tableCode, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
 
     const ds = this.dataSource;

@@ -1,8 +1,7 @@
 /**
- * useThemeTokens - Legacy hook for theme tokens
+ * useThemeTokens - Theme token accessor hook
  *
- * NOTE: This hook is deprecated. Use useThemePreference() instead.
- * Kept for backwards compatibility.
+ * Provides access to resolved theme tokens. Delegates to useThemePreference.
  */
 import { useThemePreference } from './useThemePreference';
 

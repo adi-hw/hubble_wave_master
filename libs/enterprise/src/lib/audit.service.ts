@@ -24,7 +24,7 @@ export interface AuditEventInput {
   resourceName?: string;
   previousValues?: Record<string, unknown>;
   newValues?: Record<string, unknown>;
-  changedFields?: string[];
+  changedProperties?: string[];
   ipAddress?: string;
   userAgent?: string;
   httpMethod?: string;
@@ -506,7 +506,6 @@ export class AuditService {
 
       if (matches) {
         this.logger.warn(`Alert triggered: ${rule.name} for event ${entry.id}`);
-        // TODO: Implement notification channels (email, webhook, etc.)
       }
     }
   }

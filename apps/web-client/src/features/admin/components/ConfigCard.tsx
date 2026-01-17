@@ -37,9 +37,9 @@ export const ConfigCard: React.FC<ConfigCardProps> = ({
   return (
     <div
       className={`
-        bg-white rounded-xl border transition-all
-        ${onClick ? 'cursor-pointer hover:border-primary-300 hover:shadow-md' : ''}
-        ${isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}
+        bg-card rounded-xl border transition-all
+        ${onClick ? 'cursor-pointer hover:border-primary hover:shadow-md' : ''}
+        ${isActive ? 'border-border' : 'border-border opacity-60'}
         ${className}
       `}
       onClick={onClick}
@@ -48,27 +48,27 @@ export const ConfigCard: React.FC<ConfigCardProps> = ({
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {icon && (
-              <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
                 {icon}
               </div>
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-medium text-slate-900 truncate">{title}</h3>
+                <h3 className="font-medium text-foreground truncate">{title}</h3>
                 {customizationType && (
                   <CustomizationBadge type={customizationType} size="sm" />
                 )}
                 {!isActive && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                     Inactive
                   </span>
                 )}
               </div>
               {subtitle && (
-                <p className="text-sm text-slate-500 truncate mt-0.5">{subtitle}</p>
+                <p className="text-sm text-muted-foreground truncate mt-0.5">{subtitle}</p>
               )}
               {description && (
-                <p className="text-sm text-slate-500 mt-1 line-clamp-2">{description}</p>
+                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{description}</p>
               )}
             </div>
           </div>
@@ -81,19 +81,19 @@ export const ConfigCard: React.FC<ConfigCardProps> = ({
                   e.stopPropagation();
                   onMenuClick(e);
                 }}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               >
                 <MoreVertical className="h-4 w-4" />
               </button>
             )}
             {onClick && (
-              <ChevronRight className="h-5 w-5 text-slate-300" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
             )}
           </div>
         </div>
 
         {lastModified && (
-          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
               {new Date(lastModified.at).toLocaleDateString()}
@@ -108,7 +108,7 @@ export const ConfigCard: React.FC<ConfigCardProps> = ({
         )}
 
         {children && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className="mt-3 pt-3 border-t border-border">
             {children}
           </div>
         )}

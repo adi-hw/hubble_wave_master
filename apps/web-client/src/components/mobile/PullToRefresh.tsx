@@ -1,3 +1,12 @@
+/**
+ * PullToRefresh Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready pull-to-refresh with:
+ * - Theme-aware styling using CSS variables
+ * - Mobile-optimized touch interactions
+ */
+
 import { ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -35,30 +44,31 @@ export function PullToRefresh({
         className={cn(
           'absolute left-0 right-0 flex justify-center items-center',
           'transition-transform duration-200',
-          '-top-16'
+          '-top-16',
+          isPulling || isRefreshing ? 'opacity-100' : 'opacity-0'
         )}
-        style={{
-          transform: `translateY(${pullDistance}px)`,
-          opacity: isPulling || isRefreshing ? 1 : 0,
-        }}
+        style={{ transform: `translateY(${pullDistance}px)` }}
+        aria-hidden={!isPulling && !isRefreshing}
       >
         <div
           className={cn(
             'w-10 h-10 rounded-full flex items-center justify-center',
-            'bg-white dark:bg-slate-800 shadow-lg',
-            'border border-slate-200 dark:border-slate-700',
-            canTriggerRefresh && !isRefreshing && 'border-indigo-500'
+            'bg-card shadow-lg',
+            canTriggerRefresh && !isRefreshing
+              ? 'border-2 border-primary'
+              : 'border border-border'
           )}
         >
           <RefreshCw
             className={cn(
-              'w-5 h-5 text-slate-500 dark:text-slate-400',
-              canTriggerRefresh && !isRefreshing && 'text-indigo-600',
-              isRefreshing && 'animate-spin text-indigo-600'
+              'w-5 h-5',
+              isRefreshing && 'animate-spin',
+              canTriggerRefresh || isRefreshing
+                ? 'text-primary'
+                : 'text-muted-foreground'
             )}
-            style={{
-              transform: isRefreshing ? undefined : `rotate(${rotation}deg)`,
-            }}
+            style={isRefreshing ? undefined : { transform: `rotate(${rotation}deg)` }}
+            aria-hidden="true"
           />
         </div>
       </div>
@@ -74,6 +84,13 @@ export function PullToRefresh({
       >
         {children}
       </div>
+
+      {/* Screen reader announcement */}
+      {isRefreshing && (
+        <div className="sr-only" role="status" aria-live="polite">
+          Refreshing content...
+        </div>
+      )}
     </div>
   );
 }

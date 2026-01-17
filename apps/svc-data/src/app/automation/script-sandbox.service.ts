@@ -204,7 +204,6 @@ export class ScriptSandboxService {
         userRoles: context.user?.roles || [],
 
         // Metadata
-        tenantId: context.tenantId,
         isCreate: !context.previousRecord,
         isUpdate: !!context.previousRecord,
 
@@ -214,7 +213,7 @@ export class ScriptSandboxService {
         false: false,
       };
 
-      // Flatten record fields for easier access
+      // Flatten record properties for easier access
       for (const [key, value] of Object.entries(context.record || {})) {
         variables[key] = value;
       }
@@ -223,7 +222,7 @@ export class ScriptSandboxService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = expression.evaluate(variables as any);
 
-      // Calculate field changes if the script returns an object with field updates
+      // Calculate property changes if the script returns an object with property updates
       let changes: Record<string, unknown> | undefined;
       if (result && typeof result === 'object' && !Array.isArray(result)) {
         changes = {};

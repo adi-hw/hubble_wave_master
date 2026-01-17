@@ -8,15 +8,18 @@ async function bootstrap() {
   // This will throw in production if insecure defaults are detected
   assertSecureConfig();
 
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
+  // Ensure JWT secret is set from either JWT_SECRET or IDENTITY_JWT_SECRET
+  const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+
+  if (!jwtSecret) {
+    throw new Error(
+      'JWT_SECRET or IDENTITY_JWT_SECRET environment variable is required. ' +
+      'Set one of these to a secure random string (min 32 chars) before starting the application.'
+    );
   }
 
-  // Ensure JWT secret is set BEFORE module initialization (dev fallback only)
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-only-insecure-secret' : undefined);
+  // Set JWT_SECRET for consistent usage across the application
+  process.env.JWT_SECRET = jwtSecret;
 
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';
@@ -33,7 +36,7 @@ async function bootstrap() {
     return origin;
   });
 
-  // Support *.localhost patterns for tenant subdomains in development
+  // Support *.localhost patterns for instance subdomains in development
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
   }
@@ -65,7 +68,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       process.env.CORS_ALLOWED_HEADERS ??
-      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Tenant-Slug',
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
   const globalPrefix = 'api';

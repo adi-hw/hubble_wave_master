@@ -2,69 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Loader2, Lock, CheckCircle, XCircle, ArrowLeft, Eye, EyeOff, AlertCircle, Shield } from 'lucide-react';
 
-// Design tokens matching Login page - using CSS variables for theme consistency
-const tokens = {
-  colors: {
-    voidPure: '#000000',
-    voidDeep: '#030308',
-    voidOverlay: '#1e1e2e',
-    // Use CSS variables for theme-aware colors
-    primary400: 'var(--color-primary-400)',
-    primary500: 'var(--color-primary-500)',
-    primary600: 'var(--color-primary-600)',
-    accent400: 'var(--color-accent-400)',
-    accent500: 'var(--color-accent-500)',
-    success: 'var(--color-success-500)',
-    warning: 'var(--color-warning-500)',
-    danger: 'var(--color-danger-500)',
-    gray100: 'var(--color-neutral-100)',
-    gray200: 'var(--color-neutral-200)',
-    gray300: 'var(--color-neutral-300)',
-    gray400: 'var(--color-neutral-400)',
-    gray500: 'var(--color-neutral-500)',
-  },
-  glass: {
-    bg: 'rgba(255, 255, 255, 0.03)',
-    bgHover: 'rgba(255, 255, 255, 0.06)',
-    border: 'rgba(255, 255, 255, 0.08)',
-    borderHover: 'rgba(255, 255, 255, 0.15)',
-  },
-};
+// Animated Background - using predefined Tailwind classes for each orb
+const AnimatedBackground = () => {
+  const orbs = [
+    { size: 'w-[150px] h-[150px]', position: 'left-[10%] top-[20%]', color: 'bg-primary', delay: 'delay-0', duration: 'duration-[3000ms]' },
+    { size: 'w-[200px] h-[200px]', position: 'left-[30%] top-[45%]', color: 'bg-accent', delay: 'delay-500', duration: 'duration-[4000ms]' },
+    { size: 'w-[250px] h-[250px]', position: 'left-[50%] top-[20%]', color: 'bg-primary', delay: 'delay-1000', duration: 'duration-[5000ms]' },
+    { size: 'w-[300px] h-[300px]', position: 'left-[70%] top-[45%]', color: 'bg-accent', delay: 'delay-[1500ms]', duration: 'duration-[6000ms]' },
+    { size: 'w-[350px] h-[350px]', position: 'left-[90%] top-[20%]', color: 'bg-primary', delay: 'delay-[2000ms]', duration: 'duration-[7000ms]' },
+  ];
 
-// Animated Background
-const AnimatedBackground = () => (
-  <div
-    className="fixed inset-0 overflow-hidden"
-    style={{
-      background: `radial-gradient(ellipse at 50% 0%, ${tokens.colors.voidOverlay} 0%, ${tokens.colors.voidDeep} 50%, ${tokens.colors.voidPure} 100%)`,
-      zIndex: 0,
-    }}
-  >
-    {[...Array(5)].map((_, i) => (
-      <div
-        key={i}
-        className="absolute rounded-full blur-3xl"
-        style={{
-          width: `${150 + i * 50}px`,
-          height: `${150 + i * 50}px`,
-          background: `radial-gradient(circle, ${
-            i % 2 === 0 ? tokens.colors.primary500 : tokens.colors.accent500
-          }15 0%, transparent 70%)`,
-          left: `${10 + i * 20}%`,
-          top: `${20 + (i % 3) * 25}%`,
-          animation: `float-${i} ${15 + i * 2}s ease-in-out infinite`,
-        }}
-      />
-    ))}
-    <style>{`
-      @keyframes float-0 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(30px, -20px); } }
-      @keyframes float-1 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-20px, 30px); } }
-      @keyframes float-2 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(25px, 25px); } }
-      @keyframes float-3 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-30px, -15px); } }
-      @keyframes float-4 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(15px, -30px); } }
-    `}</style>
-  </div>
-);
+  return (
+    <div className="fixed inset-0 overflow-hidden bg-gradient-to-b from-[color:rgb(var(--bg-surface-rgb))] via-[color:rgb(var(--bg-base-rgb))] to-[color:rgb(var(--bg-sunken-rgb))] z-0">
+      {orbs.map((orb, i) => (
+        <div
+          key={i}
+          className={`absolute rounded-full blur-3xl opacity-10 animate-pulse ${orb.size} ${orb.position} ${orb.color} ${orb.delay} ${orb.duration}`}
+        />
+      ))}
+    </div>
+  );
+};
 
 // Glass Card
 const GlassCard: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -72,14 +30,7 @@ const GlassCard: React.FC<{ children: React.ReactNode; className?: string }> = (
   className = '',
 }) => (
   <div
-    className={`rounded-3xl ${className}`}
-    style={{
-      background: tokens.glass.bg,
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      border: `1px solid ${tokens.glass.border}`,
-      boxShadow: '0 25px 80px rgba(0, 0, 0, 0.5)',
-    }}
+    className={`rounded-3xl bg-card/60 backdrop-blur-xl border border-border/50 shadow-2xl ${className}`}
   >
     {children}
   </div>
@@ -102,27 +53,28 @@ const PasswordStrength: React.FC<{ password: string }> = ({ password }) => {
 
   const metCount = requirements.filter((r) => r.met).length;
   const strength = metCount === 5 ? 'Strong' : metCount >= 3 ? 'Medium' : 'Weak';
-  const strengthColor =
+
+  // Map metCount to Tailwind width classes (0-5 requirements = 0%, 20%, 40%, 60%, 80%, 100%)
+  const widthClasses = ['w-0', 'w-1/5', 'w-2/5', 'w-3/5', 'w-4/5', 'w-full'];
+  const widthClass = widthClasses[metCount];
+
+  const strengthColorClass =
     strength === 'Strong'
-      ? 'var(--color-success-500)'
+      ? 'bg-success text-success'
       : strength === 'Medium'
-      ? 'var(--color-warning-500)'
-      : 'var(--color-danger-500)';
+      ? 'bg-warning text-warning'
+      : 'bg-danger text-danger';
 
   return (
     <div className="mt-3 space-y-2">
       {/* Strength bar */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: tokens.glass.bg }}>
+        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-card/10">
           <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{
-              width: `${(metCount / 5) * 100}%`,
-              background: strengthColor,
-            }}
+            className={`h-full rounded-full transition-all duration-300 ${widthClass} ${strengthColorClass.split(' ')[0]}`}
           />
         </div>
-        <span className="text-xs font-medium" style={{ color: strengthColor }}>
+        <span className={`text-xs font-medium ${strengthColorClass.split(' ')[1]}`}>
           {strength}
         </span>
       </div>
@@ -132,11 +84,11 @@ const PasswordStrength: React.FC<{ password: string }> = ({ password }) => {
         {requirements.map((req, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             {req.met ? (
-              <CheckCircle size={12} style={{ color: 'var(--color-success-500)' }} />
+              <CheckCircle size={12} className="text-success" />
             ) : (
-              <XCircle size={12} style={{ color: 'var(--color-neutral-500)' }} />
+              <XCircle size={12} className="text-muted-foreground" />
             )}
-            <span style={{ color: req.met ? 'var(--color-success-500)' : 'var(--color-neutral-500)' }}>
+            <span className={req.met ? 'text-success' : 'text-muted-foreground'}>
               {req.label}
             </span>
           </div>
@@ -246,8 +198,8 @@ export const ResetPassword: React.FC = () => {
   // Render different views
   const renderLoading = () => (
     <div className="p-10 text-center">
-      <Loader2 size={48} className="mx-auto animate-spin" style={{ color: tokens.colors.primary400 }} />
-      <p className="mt-4 text-sm" style={{ color: tokens.colors.gray400 }}>
+      <Loader2 size={48} className="mx-auto animate-spin text-primary" />
+      <p className="mt-4 text-sm text-muted-foreground">
         Validating your reset link...
       </p>
     </div>
@@ -255,22 +207,18 @@ export const ResetPassword: React.FC = () => {
 
   const renderError = () => (
     <div className="p-10 text-center">
-      <div
-        className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center"
-        style={{ background: `${tokens.colors.danger}20` }}
-      >
-        <XCircle size={32} style={{ color: tokens.colors.danger }} />
+      <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center bg-danger/20">
+        <XCircle size={32} className="text-danger" />
       </div>
-      <h1 className="text-2xl font-bold mb-3" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-2xl font-bold mb-3 text-foreground">
         Invalid Link
       </h1>
-      <p className="text-sm mb-6" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-6 text-muted-foreground">
         {error}
       </p>
       <Link
         to="/login"
-        className="inline-flex items-center gap-2 text-sm font-medium"
-        style={{ color: tokens.colors.primary400 }}
+        className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
       >
         <ArrowLeft size={16} />
         Back to login
@@ -280,25 +228,18 @@ export const ResetPassword: React.FC = () => {
 
   const renderExpired = () => (
     <div className="p-10 text-center">
-      <div
-        className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center"
-        style={{ background: `${tokens.colors.warning}20` }}
-      >
-        <AlertCircle size={32} style={{ color: tokens.colors.warning }} />
+      <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center bg-warning/20">
+        <AlertCircle size={32} className="text-warning" />
       </div>
-      <h1 className="text-2xl font-bold mb-3" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-2xl font-bold mb-3 text-foreground">
         Link Expired
       </h1>
-      <p className="text-sm mb-6" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-6 text-muted-foreground">
         This password reset link has expired. Please request a new one.
       </p>
       <Link
         to="/login"
-        className="inline-block w-full py-3.5 rounded-xl font-semibold text-white text-center transition-all"
-        style={{
-          background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-          boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
-        }}
+        className="inline-block w-full py-3.5 rounded-xl font-semibold text-primary-foreground text-center transition-all bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40"
       >
         Request New Link
       </Link>
@@ -307,25 +248,18 @@ export const ResetPassword: React.FC = () => {
 
   const renderSuccess = () => (
     <div className="p-10 text-center">
-      <div
-        className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center"
-        style={{ background: `${tokens.colors.success}20` }}
-      >
-        <CheckCircle size={32} style={{ color: tokens.colors.success }} />
+      <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center bg-success/20">
+        <CheckCircle size={32} className="text-success" />
       </div>
-      <h1 className="text-2xl font-bold mb-3" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-2xl font-bold mb-3 text-foreground">
         Password Updated!
       </h1>
-      <p className="text-sm mb-8" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-8 text-muted-foreground">
         Your password has been successfully reset. You can now sign in with your new password.
       </p>
       <button
         onClick={() => navigate('/login')}
-        className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all"
-        style={{
-          background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-          boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
-        }}
+        className="w-full py-3.5 rounded-xl font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40"
       >
         Continue to Sign In
       </button>
@@ -334,29 +268,19 @@ export const ResetPassword: React.FC = () => {
 
   const renderForm = () => (
     <div className="p-10">
-      <div
-        className="w-14 h-14 mb-6 rounded-xl flex items-center justify-center"
-        style={{ background: `${tokens.colors.primary500}20` }}
-      >
-        <Shield size={24} style={{ color: tokens.colors.primary400 }} />
+      <div className="w-14 h-14 mb-6 rounded-xl flex items-center justify-center bg-primary/20">
+        <Shield size={24} className="text-primary" />
       </div>
 
-      <h1 className="text-2xl font-bold mb-2" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-2xl font-bold mb-2 text-foreground">
         Create New Password
       </h1>
-      <p className="text-sm mb-8" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-8 text-muted-foreground">
         Enter a strong password that you haven't used before.
       </p>
 
       {error && (
-        <div
-          className="p-3 rounded-xl mb-6 flex items-center gap-2 text-sm"
-          style={{
-            background: `${tokens.colors.danger}15`,
-            border: `1px solid ${tokens.colors.danger}30`,
-            color: tokens.colors.danger,
-          }}
-        >
+        <div className="p-3 rounded-xl mb-6 flex items-center gap-2 text-sm bg-danger/10 border border-danger/30 text-danger">
           <AlertCircle size={18} />
           {error}
         </div>
@@ -367,16 +291,14 @@ export const ResetPassword: React.FC = () => {
         <div className="mb-5">
           <label
             htmlFor="new-password"
-            className="block text-sm font-medium mb-2"
-            style={{ color: tokens.colors.gray300 }}
+            className="block text-sm font-medium mb-2 text-muted-foreground"
           >
             New Password
           </label>
           <div className="relative">
             <Lock
-              className="absolute left-4 top-1/2 -translate-y-1/2"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
               size={18}
-              style={{ color: tokens.colors.gray500 }}
             />
             <input
               id="new-password"
@@ -386,20 +308,13 @@ export const ResetPassword: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter new password"
-              className="w-full py-3.5 pl-12 pr-12 rounded-xl outline-none transition-all"
-              style={{
-                background: tokens.glass.bg,
-                border: `1px solid ${tokens.glass.border}`,
-                color: tokens.colors.gray100,
-                fontSize: '15px',
-              }}
+              className="w-full py-3.5 pl-12 pr-12 rounded-xl outline-none transition-all bg-card/10 border border-border/40 text-foreground text-[15px] placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/50"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1"
-              style={{ color: tokens.colors.gray500 }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -411,16 +326,14 @@ export const ResetPassword: React.FC = () => {
         <div className="mb-6">
           <label
             htmlFor="confirm-password"
-            className="block text-sm font-medium mb-2"
-            style={{ color: tokens.colors.gray300 }}
+            className="block text-sm font-medium mb-2 text-muted-foreground"
           >
             Confirm New Password
           </label>
           <div className="relative">
             <Lock
-              className="absolute left-4 top-1/2 -translate-y-1/2"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
               size={18}
-              style={{ color: tokens.colors.gray500 }}
             />
             <input
               id="confirm-password"
@@ -430,26 +343,23 @@ export const ResetPassword: React.FC = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm new password"
-              className="w-full py-3.5 pl-12 pr-12 rounded-xl outline-none transition-all"
-              style={{
-                background: tokens.glass.bg,
-                border: `1px solid ${password && confirmPassword && password !== confirmPassword ? tokens.colors.danger : tokens.glass.border}`,
-                color: tokens.colors.gray100,
-                fontSize: '15px',
-              }}
+              className={`w-full py-3.5 pl-12 pr-12 rounded-xl outline-none transition-all bg-card/10 text-foreground text-[15px] placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/50 ${
+                password && confirmPassword && password !== confirmPassword
+                  ? 'border border-danger'
+                  : 'border border-border/40'
+              }`}
               required
             />
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1"
-              style={{ color: tokens.colors.gray500 }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
             >
               {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
           {password && confirmPassword && password !== confirmPassword && (
-            <p className="mt-2 text-xs" style={{ color: tokens.colors.danger }}>
+            <p className="mt-2 text-xs text-danger">
               Passwords do not match
             </p>
           )}
@@ -458,11 +368,7 @@ export const ResetPassword: React.FC = () => {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-          style={{
-            background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
-          }}
+          className="w-full py-3.5 rounded-xl font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40"
         >
           {isSubmitting ? (
             <>
@@ -477,8 +383,7 @@ export const ResetPassword: React.FC = () => {
 
       <Link
         to="/login"
-        className="mt-6 flex items-center justify-center gap-2 text-sm"
-        style={{ color: tokens.colors.gray500 }}
+        className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} />
         Back to sign in
@@ -487,10 +392,7 @@ export const ResetPassword: React.FC = () => {
   );
 
   return (
-    <div
-      className="min-h-screen font-sans flex items-center justify-center p-5"
-      style={{ color: tokens.colors.gray100 }}
-    >
+    <div className="dark min-h-screen font-sans flex items-center justify-center p-5 text-foreground">
       <AnimatedBackground />
 
       <div className="relative z-10 w-full max-w-md">
@@ -502,7 +404,7 @@ export const ResetPassword: React.FC = () => {
           {view === 'expired' && renderExpired()}
         </GlassCard>
 
-        <p className="text-center text-xs mt-6" style={{ color: tokens.colors.gray500 }}>
+        <p className="text-center text-xs mt-6 text-muted-foreground">
           &copy; {new Date().getFullYear()} HubbleWave. All rights reserved.
         </p>
       </div>

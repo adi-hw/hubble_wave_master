@@ -73,14 +73,13 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
-// Theme-aware status styles using CSS variables
-const statusStyles: Record<UserStatus, { bg: string; text: string; dot: string }> = {
-  invited: { bg: 'var(--bg-info-subtle)', text: 'var(--text-info)', dot: 'var(--bg-info)' },
-  pending_activation: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)', dot: 'var(--bg-warning)' },
-  active: { bg: 'var(--bg-success-subtle)', text: 'var(--text-success)', dot: 'var(--bg-success)' },
-  inactive: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-tertiary)', dot: 'var(--text-muted)' },
-  suspended: { bg: 'var(--bg-danger-subtle)', text: 'var(--text-danger)', dot: 'var(--bg-danger)' },
-  deleted: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-muted)', dot: 'var(--text-disabled)' },
+const statusStyles: Record<UserStatus, { containerClass: string; textClass: string; dotClass: string }> = {
+  invited: { containerClass: 'bg-info-subtle', textClass: 'text-info-text', dotClass: 'bg-info' },
+  pending_activation: { containerClass: 'bg-warning-subtle', textClass: 'text-warning-text', dotClass: 'bg-warning' },
+  active: { containerClass: 'bg-success-subtle', textClass: 'text-success-text', dotClass: 'bg-success' },
+  inactive: { containerClass: 'bg-muted', textClass: 'text-muted-foreground', dotClass: 'bg-muted-foreground' },
+  suspended: { containerClass: 'bg-danger-subtle', textClass: 'text-danger-text', dotClass: 'bg-danger' },
+  deleted: { containerClass: 'bg-muted', textClass: 'text-muted-foreground', dotClass: 'bg-muted-foreground/50' },
 };
 
 const statusLabels: Record<UserStatus, string> = {
@@ -107,7 +106,6 @@ export const UserDetailPage: React.FC = () => {
 
   const [editData, setEditData] = useState<Partial<UserData>>({});
 
-  // Fetch user data
   useEffect(() => {
     const fetchUser = async () => {
       if (!id) return;
@@ -120,20 +118,23 @@ export const UserDetailPage: React.FC = () => {
           identityApi.get<AuditLogEntry[] | { data: AuditLogEntry[] }>(`/users/${id}/audit?limit=20`),
         ]);
 
-        // Handle both wrapped { data: user } and direct user response
         const userData = userRes.data;
         const userObj = (userData && typeof userData === 'object' && 'data' in userData && (userData as { data: UserData }).data)
           ? (userData as { data: UserData }).data
           : (userData as UserData);
         setUser(userObj);
         setEditData(userObj);
-        // Handle both array response and wrapped { data: [...] } response
         const rolesData = rolesRes.data;
         setRoles(Array.isArray(rolesData) ? rolesData : (rolesData?.data ?? []));
         const groupsData = groupsRes.data;
         setGroups(Array.isArray(groupsData) ? groupsData : (groupsData?.data ?? []));
         const auditData = auditRes.data;
-        setAuditLog(Array.isArray(auditData) ? auditData : (auditData?.data ?? []));
+        const auditEntries = Array.isArray(auditData) ? auditData : (auditData?.data ?? []);
+        const uniqueEntries = auditEntries.filter(
+          (entry: AuditLogEntry, index: number, self: AuditLogEntry[]) =>
+            index === self.findIndex((e) => e.id === entry.id)
+        );
+        setAuditLog(uniqueEntries);
       } catch (err) {
         setError('Failed to load user data');
         setRoles([]);
@@ -180,7 +181,6 @@ export const UserDetailPage: React.FC = () => {
         navigate('/studio/users');
       } else {
         await identityApi.post(`/users/${id}/${action}`, payload || {});
-        // Refresh user data
         const userRes = await identityApi.get<UserData>(`/users/${id}`);
         setUser(userRes.data);
       }
@@ -192,7 +192,7 @@ export const UserDetailPage: React.FC = () => {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center">
-        <RefreshCw className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -200,56 +200,48 @@ export const UserDetailPage: React.FC = () => {
   if (!user) {
     return (
       <div className="p-6 text-center">
-        <AlertCircle className="h-8 w-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-        <p style={{ color: 'var(--text-muted)' }}>User not found</p>
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+        <p className="text-muted-foreground">User not found</p>
       </div>
     );
   }
 
-  const colors = statusStyles[user.status];
+  const statusStyle = statusStyles[user.status];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/studio/users')}
-            className="p-2 rounded-lg transition-colors"
-            style={{ backgroundColor: 'transparent' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-2 rounded-lg transition-colors hover:bg-muted"
           >
-            <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+            <ArrowLeft className="h-5 w-5 text-muted-foreground" />
           </button>
           <div className="flex items-center gap-4">
-            <div
-              className="h-16 w-16 rounded-full flex items-center justify-center overflow-hidden"
-              style={{ backgroundColor: 'var(--bg-surface-tertiary)' }}
-            >
+            <div className="h-16 w-16 rounded-full flex items-center justify-center overflow-hidden bg-muted">
               {user.avatarUrl ? (
                 <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User className="h-8 w-8" style={{ color: 'var(--text-muted)' }} />
+                <User className="h-8 w-8 text-muted-foreground" />
               )}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                <h1 className="text-2xl font-semibold text-foreground">
                   {user.displayName}
                 </h1>
                 {user.isAdmin && (
-                  <span title="Administrator"><Shield className="h-5 w-5" style={{ color: 'var(--text-warning)' }} /></span>
+                  <span title="Administrator"><Shield className="h-5 w-5 text-warning-text" /></span>
                 )}
                 <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                  style={{ backgroundColor: colors.bg, color: colors.text }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.containerClass} ${statusStyle.textClass}`}
                 >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dotClass}`} />
                   {statusLabels[user.status]}
                 </span>
               </div>
-              <div className="flex items-center gap-4 mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Mail className="h-3.5 w-3.5" />
                   {user.workEmail}
@@ -298,10 +290,7 @@ export const UserDetailPage: React.FC = () => {
               {user.status === 'active' && (
                 <button
                   onClick={() => handleAction('suspend', { reason: 'Suspended by admin' })}
-                  className="flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors"
-                  style={{ borderColor: 'var(--border-danger)', color: 'var(--text-danger)' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  className="flex items-center gap-2 px-3 py-2 border border-destructive text-destructive rounded-lg transition-colors hover:bg-danger-subtle"
                 >
                   <Ban className="h-4 w-4" />
                   Suspend
@@ -310,10 +299,7 @@ export const UserDetailPage: React.FC = () => {
               {user.status === 'suspended' && (
                 <button
                   onClick={() => handleAction('unsuspend')}
-                  className="flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors"
-                  style={{ borderColor: 'var(--border-success)', color: 'var(--text-success)' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-success-subtle)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  className="flex items-center gap-2 px-3 py-2 border border-success-border text-success-text rounded-lg transition-colors hover:bg-success-subtle"
                 >
                   <UserCheck className="h-4 w-4" />
                   Unsuspend
@@ -325,29 +311,23 @@ export const UserDetailPage: React.FC = () => {
       </div>
 
       {error && (
-        <div
-          className="mb-6 p-4 rounded-lg border flex items-start gap-3"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)', borderColor: 'var(--border-danger)' }}
-        >
-          <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>{error}</p>
+        <div className="mb-6 p-4 rounded-lg border border-destructive bg-danger-subtle flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-destructive" />
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="border-b mb-6" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="border-b border-border mb-6">
         <nav className="flex gap-6">
           {(['profile', 'roles', 'audit'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className="py-3 border-b-2 text-sm font-medium transition-colors"
-              style={{
-                borderColor: activeTab === tab ? 'var(--border-brand)' : 'transparent',
-                color: activeTab === tab ? 'var(--text-brand)' : 'var(--text-muted)',
-              }}
-              onMouseEnter={(e) => activeTab !== tab && (e.currentTarget.style.borderColor = 'var(--border-default)')}
-              onMouseLeave={(e) => activeTab !== tab && (e.currentTarget.style.borderColor = 'transparent')}
+              className={`py-3 border-b-2 text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:border-border'
+              }`}
             >
               {tab === 'profile' && 'Profile'}
               {tab === 'roles' && 'Roles & Groups'}
@@ -357,20 +337,15 @@ export const UserDetailPage: React.FC = () => {
         </nav>
       </div>
 
-      {/* Profile Tab */}
       {activeTab === 'profile' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Personal Info */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Personal Information
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Display Name
                 </label>
                 {isEditing ? (
@@ -379,16 +354,15 @@ export const UserDetailPage: React.FC = () => {
                     name="displayName"
                     value={editData.displayName || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.displayName}</p>
+                  <p className="text-foreground">{user.displayName}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Job Title
                 </label>
                 {isEditing ? (
@@ -397,16 +371,15 @@ export const UserDetailPage: React.FC = () => {
                     name="title"
                     value={editData.title || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.title || '-'}</p>
+                  <p className="text-foreground">{user.title || '-'}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Department
                 </label>
                 {isEditing ? (
@@ -415,16 +388,15 @@ export const UserDetailPage: React.FC = () => {
                     name="department"
                     value={editData.department || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.department || '-'}</p>
+                  <p className="text-foreground">{user.department || '-'}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Location
                 </label>
                 {isEditing ? (
@@ -433,34 +405,29 @@ export const UserDetailPage: React.FC = () => {
                     name="location"
                     value={editData.location || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.location || '-'}</p>
+                  <p className="text-foreground">{user.location || '-'}</p>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Contact Info */}
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Contact Information
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Email
                 </label>
-                <p style={{ color: 'var(--text-primary)' }}>{user.workEmail}</p>
+                <p className="text-foreground">{user.workEmail}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Work Phone
                 </label>
                 {isEditing ? (
@@ -469,16 +436,15 @@ export const UserDetailPage: React.FC = () => {
                     name="workPhone"
                     value={editData.workPhone || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.workPhone || '-'}</p>
+                  <p className="text-foreground">{user.workPhone || '-'}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Mobile Phone
                 </label>
                 {isEditing ? (
@@ -487,73 +453,64 @@ export const UserDetailPage: React.FC = () => {
                     name="mobilePhone"
                     value={editData.mobilePhone || ''}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 ) : (
-                  <p style={{ color: 'var(--text-primary)' }}>{user.mobilePhone || '-'}</p>
+                  <p className="text-foreground">{user.mobilePhone || '-'}</p>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Status Info */}
-          <div
-            className="rounded-xl border p-6 lg:col-span-2"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
-            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+          <div className="rounded-xl border border-border bg-card p-6 lg:col-span-2">
+            <h3 className="text-lg font-medium mb-4 text-foreground">
               Account Status
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Status
                 </label>
                 <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                  style={{ backgroundColor: colors.bg, color: colors.text }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.containerClass} ${statusStyle.textClass}`}
                 >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dotClass}`} />
                   {statusLabels[user.status]}
                 </span>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Invited
                 </label>
-                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm text-foreground">
                   {user.invitedAt ? new Date(user.invitedAt).toLocaleString() : '-'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Activated
                 </label>
-                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm text-foreground">
                   {user.activatedAt ? new Date(user.activatedAt).toLocaleString() : '-'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">
                   Last Login
                 </label>
-                <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm text-foreground">
                   {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '-'}
                 </p>
               </div>
             </div>
 
             {user.status === 'suspended' && user.suspensionReason && (
-              <div
-                className="mt-4 p-3 rounded-lg"
-                style={{ backgroundColor: 'var(--bg-danger-subtle)' }}
-              >
-                <p className="text-sm" style={{ color: 'var(--text-danger)' }}>
+              <div className="mt-4 p-3 rounded-lg bg-danger-subtle">
+                <p className="text-sm text-destructive">
                   <strong>Suspension Reason:</strong> {user.suspensionReason}
                 </p>
                 {user.suspensionExpiresAt && (
-                  <p className="text-sm mt-1" style={{ color: 'var(--text-danger)' }}>
+                  <p className="text-sm mt-1 text-destructive">
                     Expires: {new Date(user.suspensionExpiresAt).toLocaleString()}
                   </p>
                 )}
@@ -563,32 +520,27 @@ export const UserDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Roles Tab */}
       {activeTab === 'roles' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
+          <div className="rounded-xl border border-border bg-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <h3 className="text-lg font-medium flex items-center gap-2 text-foreground">
                 <Shield className="h-5 w-5" />
                 Roles
               </h3>
             </div>
             {roles.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No roles assigned</p>
+              <p className="text-sm text-muted-foreground">No roles assigned</p>
             ) : (
               <div className="space-y-2">
                 {roles.map((role) => (
                   <div
                     key={role.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
-                    style={{ borderColor: 'var(--border-default)' }}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border"
                   >
                     <div>
-                      <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{role.name}</div>
-                      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{role.slug}</div>
+                      <div className="font-medium text-foreground">{role.name}</div>
+                      <div className="text-xs text-muted-foreground">{role.slug}</div>
                     </div>
                   </div>
                 ))}
@@ -596,27 +548,23 @@ export const UserDetailPage: React.FC = () => {
             )}
           </div>
 
-          <div
-            className="rounded-xl border p-6"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-          >
+          <div className="rounded-xl border border-border bg-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <h3 className="text-lg font-medium flex items-center gap-2 text-foreground">
                 <Users className="h-5 w-5" />
                 Groups
               </h3>
             </div>
             {groups.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No group memberships</p>
+              <p className="text-sm text-muted-foreground">No group memberships</p>
             ) : (
               <div className="space-y-2">
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
-                    style={{ borderColor: 'var(--border-default)' }}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border"
                   >
-                    <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{group.name}</div>
+                    <div className="font-medium text-foreground">{group.name}</div>
                   </div>
                 ))}
               </div>
@@ -625,40 +573,33 @@ export const UserDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Audit Tab */}
       {activeTab === 'audit' && (
-        <div
-          className="rounded-xl border overflow-hidden"
-          style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-        >
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           {auditLog.length === 0 ? (
             <div className="p-8 text-center">
-              <History className="h-8 w-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No activity recorded</p>
+              <History className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No activity recorded</p>
             </div>
           ) : (
-            <div className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="divide-y divide-border">
               {auditLog.map((entry) => (
                 <div key={entry.id} className="flex items-start gap-4 p-4">
-                  <div
-                    className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-                  >
-                    <History className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
+                    <History className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium capitalize" style={{ color: 'var(--text-primary)' }}>
+                      <span className="font-medium capitalize text-foreground">
                         {entry.action.replace(/_/g, ' ')}
                       </span>
                       {entry.actorName && (
                         <>
-                          <span style={{ color: 'var(--text-muted)' }}>by</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{entry.actorName}</span>
+                          <span className="text-muted-foreground">by</span>
+                          <span className="text-muted-foreground">{entry.actorName}</span>
                         </>
                       )}
                     </div>
-                    <div className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-sm mt-1 text-muted-foreground">
                       {new Date(entry.createdAt).toLocaleString()}
                     </div>
                   </div>
@@ -669,14 +610,10 @@ export const UserDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Danger Zone */}
       <div className="mt-8">
-        <div
-          className="rounded-xl border p-6"
-          style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-danger)' }}
-        >
-          <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-danger)' }}>Danger Zone</h3>
-          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+        <div className="rounded-xl border border-destructive bg-card p-6">
+          <h3 className="text-lg font-medium mb-2 text-destructive">Danger Zone</h3>
+          <p className="text-sm mb-4 text-muted-foreground">
             These actions are destructive and cannot be undone.
           </p>
           <button
@@ -685,10 +622,7 @@ export const UserDetailPage: React.FC = () => {
                 handleAction('delete');
               }
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-            style={{ backgroundColor: 'var(--bg-danger)', color: 'white' }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-destructive text-destructive-foreground hover:opacity-90"
           >
             <Trash2 className="h-4 w-4" />
             Delete User

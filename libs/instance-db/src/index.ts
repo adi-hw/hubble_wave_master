@@ -3,5 +3,6 @@
 
 export * from './lib/entities/index';
 export * from './lib/utils';
+export * from './lib/audit-log-hash';
 export { InstanceDbModule } from './lib/instance-db.module';
-export { TenantDbService } from './lib/tenant-db.service';
+export { InstanceDbService, TenantDbService } from './lib/instance-db.service';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Settings2,
   Type,
@@ -12,13 +12,14 @@ import {
   Layers,
   ToggleLeft,
 } from 'lucide-react';
-import { ModelField } from '../../../services/platform.service';
+import { useState } from 'react';
+import { ModelProperty } from '../../../services/platform.service';
 import {
   DesignerItem,
   DesignerSection,
   DesignerTab,
   DesignerState,
-  DesignerField,
+  DesignerProperty,
   VisibilityCondition,
 } from './types';
 import { ConditionBuilder } from './ConditionBuilder';
@@ -28,7 +29,7 @@ interface PropertiesPanelProps {
   selectedSection: DesignerSection | null;
   selectedTab: DesignerTab | null;
   selectedItemType: DesignerState['selectedItemType'];
-  fields: ModelField[];
+  fields: ModelProperty[];
   onUpdateItem: (id: string, updates: Partial<DesignerItem>) => void;
   onUpdateSection: (id: string, updates: Partial<DesignerSection>) => void;
   onUpdateTab: (id: string, updates: Partial<DesignerTab>) => void;
@@ -47,19 +48,21 @@ const PropertySection: React.FC<{
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-b border-slate-100 last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        className="w-full px-4 min-h-[44px] py-3 flex items-center justify-between transition-colors hover:bg-muted"
+        aria-expanded={isOpen}
+        aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${title} section`}
       >
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           {icon}
           {title}
         </div>
         {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-slate-400" />
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-slate-400" />
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
         )}
       </button>
       {isOpen && <div className="px-4 pb-4 space-y-3">{children}</div>}
@@ -75,29 +78,49 @@ const PropertyInput: React.FC<{
   placeholder?: string;
   helpText?: string;
   type?: 'text' | 'textarea';
-}> = ({ label, value, onChange, placeholder, helpText, type = 'text' }) => (
-  <div>
-    <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-    {type === 'textarea' ? (
-      <textarea
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none resize-none"
-        rows={3}
-      />
-    ) : (
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none"
-      />
-    )}
-    {helpText && <p className="text-[10px] text-slate-400 mt-1">{helpText}</p>}
-  </div>
-);
+}> = ({ label, value, onChange, placeholder, helpText, type = 'text' }) => {
+  const inputId = `property-input-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+  return (
+    <div>
+      <label
+        htmlFor={inputId}
+        className="block text-xs font-medium mb-1 text-muted-foreground"
+      >
+        {label}
+      </label>
+      {type === 'textarea' ? (
+        <textarea
+          id={inputId}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-3 py-2 text-sm rounded-lg resize-none border border-border bg-card text-foreground"
+          rows={3}
+          aria-describedby={helpText ? `${inputId}-help` : undefined}
+        />
+      ) : (
+        <input
+          id={inputId}
+          type="text"
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-card text-foreground"
+          aria-describedby={helpText ? `${inputId}-help` : undefined}
+        />
+      )}
+      {helpText && (
+        <p
+          id={`${inputId}-help`}
+          className="text-[10px] mt-1 text-muted-foreground"
+        >
+          {helpText}
+        </p>
+      )}
+    </div>
+  );
+};
 
 // Toggle component
 const PropertyToggle: React.FC<{
@@ -105,26 +128,44 @@ const PropertyToggle: React.FC<{
   checked: boolean | undefined;
   onChange: (checked: boolean) => void;
   helpText?: string;
-}> = ({ label, checked, onChange, helpText }) => (
-  <div className="flex items-start justify-between">
-    <div className="flex-1">
-      <span className="text-sm text-slate-700">{label}</span>
-      {helpText && <p className="text-[10px] text-slate-400 mt-0.5">{helpText}</p>}
-    </div>
-    <button
-      onClick={() => onChange(!checked)}
-      className={`relative w-10 h-5 rounded-full transition-colors ${
-        checked ? 'bg-primary-600' : 'bg-slate-200'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-          checked ? 'translate-x-5' : 'translate-x-0'
+}> = ({ label, checked, onChange, helpText }) => {
+  const toggleId = `property-toggle-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+  return (
+    <div className="flex items-start justify-between">
+      <div className="flex-1">
+        <label htmlFor={toggleId} className="text-sm text-foreground">
+          {label}
+        </label>
+        {helpText && (
+          <p
+            id={`${toggleId}-help`}
+            className="text-[10px] mt-0.5 text-muted-foreground"
+          >
+            {helpText}
+          </p>
+        )}
+      </div>
+      <button
+        id={toggleId}
+        onClick={() => onChange(!checked)}
+        className={`toggle-track w-10 min-h-[44px] h-5 ${
+          checked ? 'toggle-track-on' : ''
         }`}
-      />
-    </button>
-  </div>
-);
+        role="switch"
+        aria-checked={checked}
+        aria-describedby={helpText ? `${toggleId}-help` : undefined}
+        aria-label={label}
+      >
+        <span
+          className={`toggle-thumb absolute top-0.5 left-0.5 w-4 h-4 transition-transform ${
+            checked ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  );
+};
 
 // Select component
 const PropertySelect: React.FC<{
@@ -133,51 +174,79 @@ const PropertySelect: React.FC<{
   onChange: (value: string) => void;
   options: { value: string | number; label: string }[];
   helpText?: string;
-}> = ({ label, value, onChange, options, helpText }) => (
-  <div>
-    <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-    <select
-      value={value || ''}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-primary-400 focus:ring-2 focus:ring-primary-100 focus:outline-none bg-white"
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-    {helpText && <p className="text-[10px] text-slate-400 mt-1">{helpText}</p>}
-  </div>
-);
+}> = ({ label, value, onChange, options, helpText }) => {
+  const selectId = `property-select-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+  return (
+    <div>
+      <label
+        htmlFor={selectId}
+        className="block text-xs font-medium mb-1 text-muted-foreground"
+      >
+        {label}
+      </label>
+      <select
+        id={selectId}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-card text-foreground"
+        aria-describedby={helpText ? `${selectId}-help` : undefined}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {helpText && (
+        <p
+          id={`${selectId}-help`}
+          className="text-[10px] mt-1 text-muted-foreground"
+        >
+          {helpText}
+        </p>
+      )}
+    </div>
+  );
+};
 
 // Column selector
 const ColumnSelector: React.FC<{
   value: 1 | 2 | 3 | 4;
   onChange: (value: 1 | 2 | 3 | 4) => void;
-}> = ({ value, onChange }) => (
-  <div>
-    <label className="block text-xs font-medium text-slate-600 mb-2">Columns</label>
-    <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-      {([1, 2, 3, 4] as const).map((cols) => (
-        <button
-          key={cols}
-          onClick={() => onChange(cols)}
-          className={`flex-1 h-8 flex items-center justify-center rounded-md transition-colors ${
-            value === cols
-              ? 'bg-white text-primary-600 shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          {cols === 1 && <Square className="h-4 w-4" />}
-          {cols === 2 && <Columns2 className="h-4 w-4" />}
-          {cols === 3 && <Columns3 className="h-4 w-4" />}
-          {cols === 4 && <span className="text-sm font-medium">4</span>}
-        </button>
-      ))}
+}> = ({ value, onChange }) => {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-2 text-muted-foreground">
+        Columns
+      </label>
+      <div
+        className="flex items-center gap-1 rounded-lg p-1 bg-muted"
+        role="group"
+        aria-label="Column layout selector"
+      >
+        {([1, 2, 3, 4] as const).map((cols) => (
+          <button
+            key={cols}
+            onClick={() => onChange(cols)}
+            className={`flex-1 flex items-center justify-center rounded-md transition-colors min-h-[44px] h-8 ${
+              value === cols
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-label={`${cols} column${cols > 1 ? 's' : ''}`}
+            aria-pressed={value === cols}
+          >
+            {cols === 1 && <Square className="h-4 w-4" />}
+            {cols === 2 && <Columns2 className="h-4 w-4" />}
+            {cols === 3 && <Columns3 className="h-4 w-4" />}
+            {cols === 4 && <span className="text-sm font-medium">4</span>}
+          </button>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Span selector for fields
 const SpanSelector: React.FC<{
@@ -189,17 +258,25 @@ const SpanSelector: React.FC<{
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-600 mb-2">Width (Column Span)</label>
-      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+      <label className="block text-xs font-medium mb-2 text-muted-foreground">
+        Width (Column Span)
+      </label>
+      <div
+        className="flex items-center gap-1 rounded-lg p-1 bg-muted"
+        role="group"
+        aria-label="Column span selector"
+      >
         {spans.map((span) => (
           <button
             key={span}
             onClick={() => onChange(span)}
-            className={`flex-1 h-8 flex items-center justify-center rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 flex items-center justify-center rounded-md text-sm font-medium transition-colors min-h-[44px] h-8 ${
               (value || 1) === span
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
+            aria-label={`Span ${span} column${span > 1 ? 's' : ''}`}
+            aria-pressed={(value || 1) === span}
           >
             {span}
           </button>
@@ -226,11 +303,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   if (!selectedItem && !selectedSection && !selectedTab) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-          <Settings2 className="h-6 w-6 text-slate-400" />
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3 bg-muted">
+          <Settings2 className="h-6 w-6 text-muted-foreground" />
         </div>
-        <h3 className="text-sm font-medium text-slate-700 mb-1">No Selection</h3>
-        <p className="text-xs text-slate-500">
+        <h3 className="text-sm font-medium mb-1 text-foreground">
+          No Selection
+        </h3>
+        <p className="text-xs text-muted-foreground">
           Select a field, section, or tab to view its properties
         </p>
       </div>
@@ -242,16 +321,18 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     return (
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div className="px-4 py-3 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-slate-700">Tab</span>
+              <Layers className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Tab
+              </span>
             </div>
             <button
               onClick={() => onRemoveTab(selectedTab.id)}
-              className="p-1.5 text-slate-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
-              title="Delete tab"
+              className="p-1.5 rounded transition-colors min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label="Delete tab"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -260,7 +341,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="General"
-          icon={<Settings2 className="h-4 w-4 text-slate-400" />}
+          icon={<Settings2 className="h-4 w-4 text-muted-foreground" />}
         >
           <PropertyInput
             label="Label"
@@ -286,7 +367,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Visibility"
-          icon={<Eye className="h-4 w-4 text-slate-400" />}
+          icon={<Eye className="h-4 w-4 text-muted-foreground" />}
           defaultOpen={false}
         >
           <ConditionBuilder
@@ -308,16 +389,18 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     return (
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div className="px-4 py-3 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-slate-700">Section</span>
+              <Layers className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Section
+              </span>
             </div>
             <button
               onClick={() => onRemoveSection(selectedSection.id)}
-              className="p-1.5 text-slate-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
-              title="Delete section"
+              className="p-1.5 rounded transition-colors min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label="Delete section"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -326,7 +409,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="General"
-          icon={<Settings2 className="h-4 w-4 text-slate-400" />}
+          icon={<Settings2 className="h-4 w-4 text-muted-foreground" />}
         >
           <PropertyInput
             label="Label"
@@ -345,7 +428,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Layout"
-          icon={<Columns2 className="h-4 w-4 text-slate-400" />}
+          icon={<Columns2 className="h-4 w-4 text-muted-foreground" />}
         >
           <ColumnSelector
             value={selectedSection.columns}
@@ -355,7 +438,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Behavior"
-          icon={<ToggleLeft className="h-4 w-4 text-slate-400" />}
+          icon={<ToggleLeft className="h-4 w-4 text-muted-foreground" />}
         >
           <PropertyToggle
             label="Collapsible"
@@ -375,7 +458,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Visibility"
-          icon={<Eye className="h-4 w-4 text-slate-400" />}
+          icon={<Eye className="h-4 w-4 text-muted-foreground" />}
           defaultOpen={false}
         >
           <ConditionBuilder
@@ -392,33 +475,37 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     );
   }
 
-  // Field item properties
-  if (selectedItem && selectedItem.type === 'field') {
-    const field = fields.find((f) => f.code === selectedItem.fieldCode);
+  // Property item properties
+  if (selectedItem && selectedItem.type === 'property') {
+    const field = fields.find((f) => f.code === selectedItem.propertyCode);
 
     return (
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div className="px-4 py-3 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Type className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-slate-700">Field</span>
+              <Type className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Field
+              </span>
             </div>
             <button
               onClick={() => onRemoveItem(selectedItem.id)}
-              className="p-1.5 text-slate-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
-              title="Remove field"
+              className="p-1.5 rounded transition-colors min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label="Remove field"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
-          <p className="text-xs text-slate-500 mt-1">{selectedItem.fieldCode}</p>
+          <p className="text-xs mt-1 text-muted-foreground">
+            {selectedItem.propertyCode}
+          </p>
         </div>
 
         <PropertySection
           title="Display"
-          icon={<Type className="h-4 w-4 text-slate-400" />}
+          icon={<Type className="h-4 w-4 text-muted-foreground" />}
         >
           <PropertyInput
             label="Label Override"
@@ -450,7 +537,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Layout"
-          icon={<Columns2 className="h-4 w-4 text-slate-400" />}
+          icon={<Columns2 className="h-4 w-4 text-muted-foreground" />}
         >
           <SpanSelector
             value={selectedItem.span}
@@ -463,7 +550,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Behavior"
-          icon={<ToggleLeft className="h-4 w-4 text-slate-400" />}
+          icon={<ToggleLeft className="h-4 w-4 text-muted-foreground" />}
         >
           <PropertyToggle
             label="Read Only"
@@ -477,12 +564,12 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         <PropertySection
           title="Visibility"
-          icon={<Eye className="h-4 w-4 text-slate-400" />}
+          icon={<Eye className="h-4 w-4 text-muted-foreground" />}
           defaultOpen={false}
         >
           <ConditionBuilder
             fields={fields}
-            condition={(selectedItem as DesignerField).visibilityCondition}
+            condition={(selectedItem as DesignerProperty).visibilityCondition}
             onChange={(condition: VisibilityCondition | undefined) =>
               onUpdateItem(selectedItem.id, { visibilityCondition: condition } as Partial<DesignerItem>)
             }
@@ -492,16 +579,20 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         </PropertySection>
 
         {/* Field Info */}
-        <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-          <p className="text-[10px] font-medium uppercase text-slate-400 mb-1">Field Info</p>
+        <div className="px-4 py-3 border-t border-border bg-muted">
+          <p className="text-[10px] font-medium uppercase mb-1 text-muted-foreground">
+            Field Info
+          </p>
           <div className="space-y-1">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Type:</span>
-              <span className="text-slate-700 font-medium">{field?.type || 'Unknown'}</span>
+              <span className="text-muted-foreground">Type:</span>
+              <span className="font-medium text-foreground">
+                {field?.type || 'Unknown'}
+              </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Required:</span>
-              <span className="text-slate-700 font-medium">
+              <span className="text-muted-foreground">Required:</span>
+              <span className="font-medium text-foreground">
                 {field?.config?.validators?.required ? 'Yes' : 'No'}
               </span>
             </div>
@@ -515,18 +606,18 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   if (selectedItem) {
     return (
       <div className="flex-1 overflow-y-auto">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div className="px-4 py-3 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-slate-700 capitalize">
+              <Layers className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium capitalize text-foreground">
                 {selectedItem.type.replace('_', ' ')}
               </span>
             </div>
             <button
               onClick={() => onRemoveItem(selectedItem.id)}
-              className="p-1.5 text-slate-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors"
-              title="Remove item"
+              className="p-1.5 rounded transition-colors min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              aria-label="Remove item"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -534,7 +625,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         </div>
 
         <div className="p-4">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Properties for {selectedItem.type} items will be displayed here.
           </p>
         </div>

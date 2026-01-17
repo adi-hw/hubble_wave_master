@@ -34,20 +34,20 @@ export const LoadingOverlay = memo(function LoadingOverlay({
         <div
           className={cn(
             'absolute inset-0 rounded-full',
-            'border-2 border-[var(--glass-border)]'
+            'border-2 border-border'
           )}
         />
         <div
           className={cn(
             'absolute inset-0 rounded-full',
-            'border-2 border-transparent border-t-[var(--primary-400)]',
+            'border-2 border-transparent border-t-primary',
             'animate-spin'
           )}
         />
       </div>
 
       {/* Message */}
-      <p className="text-sm text-[var(--grid-cell-muted-color)]">{message}</p>
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 });
@@ -134,8 +134,8 @@ export const EmptyState = memo(function EmptyState({
       <div
         className={cn(
           'w-16 h-16 mb-4 rounded-full',
-          'bg-[var(--glass-bg)] flex items-center justify-center',
-          'text-[var(--grid-cell-muted-color)]'
+          'bg-muted flex items-center justify-center',
+          'text-muted-foreground'
         )}
       >
         {icon ?? (
@@ -148,13 +148,13 @@ export const EmptyState = memo(function EmptyState({
       </div>
 
       {/* Message */}
-      <h3 className="text-lg font-medium text-[var(--grid-cell-color)] mb-1">
+      <h3 className="text-lg font-medium text-foreground mb-1">
         {message}
       </h3>
 
       {/* Description */}
       {description && (
-        <p className="text-sm text-[var(--grid-cell-muted-color)] text-center max-w-md mb-4">
+        <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
           {description}
         </p>
       )}
@@ -163,13 +163,7 @@ export const EmptyState = memo(function EmptyState({
       {action && (
         <button
           onClick={action.onClick}
-          className={cn(
-            'px-4 py-2 rounded-lg',
-            'bg-[var(--primary-500)] text-white',
-            'text-sm font-medium',
-            'hover:bg-[var(--primary-600)]',
-            'transition-colors'
-          )}
+          className="btn-primary btn-sm"
         >
           {action.label}
         </button>
@@ -208,8 +202,8 @@ export const ErrorState = memo(function ErrorState({
       <div
         className={cn(
           'w-16 h-16 mb-4 rounded-full',
-          'bg-[var(--priority-critical)]/10 flex items-center justify-center',
-          'text-[var(--priority-critical)]'
+          'bg-danger-subtle flex items-center justify-center',
+          'text-danger-text'
         )}
       >
         <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -220,13 +214,13 @@ export const ErrorState = memo(function ErrorState({
       </div>
 
       {/* Message */}
-      <h3 className="text-lg font-medium text-[var(--grid-cell-color)] mb-1">
+      <h3 className="text-lg font-medium text-foreground mb-1">
         {message}
       </h3>
 
       {/* Error details */}
       {errorMessage && (
-        <p className="text-sm text-[var(--grid-cell-muted-color)] text-center max-w-md mb-4">
+        <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
           {errorMessage}
         </p>
       )}
@@ -235,13 +229,7 @@ export const ErrorState = memo(function ErrorState({
       {onRetry && (
         <button
           onClick={onRetry}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg',
-            'bg-[var(--glass-bg)] border border-[var(--glass-border)]',
-            'text-sm font-medium text-[var(--grid-cell-color)]',
-            'hover:bg-[var(--glass-bg-hover)]',
-            'transition-colors'
-          )}
+          className="btn-secondary btn-sm"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M2 8C2 4.68629 4.68629 2 8 2C10.3304 2 12.3445 3.36474 13.2891 5.33333" />

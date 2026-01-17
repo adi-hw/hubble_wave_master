@@ -1,34 +1,32 @@
+/**
+ * PropertiesPage
+ * HubbleWave Platform - Phase 3
+ *
+ * Page for managing property definitions within a collection.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  Button, 
-  Typography, 
-  Breadcrumbs, 
-  Link,
-  Container,
-  Stack
-} from '@mui/material';
-import { Add as AddIcon, ArrowBack, AutoAwesome } from '@mui/icons-material';
+import { Plus, ArrowLeft, Sparkles, ChevronRight } from 'lucide-react';
 import { PropertyList } from './PropertyList';
 import { PropertyEditor } from './PropertyEditor';
 import { AvaSuggestionsModal } from './AvaSuggestionsModal';
 import { propertyApi, PropertyDefinition } from '../../../services/propertyApi';
 
 export const PropertiesPage: React.FC = () => {
-  // Route uses :id for collection, so we need to extract it as 'id' and alias it
   const { id: collectionId, propertyId } = useParams<{ id: string; propertyId?: string }>();
   const navigate = useNavigate();
-  
+
   const [editorOpen, setEditorOpen] = useState(false);
   const [avaOpen, setAvaOpen] = useState(false);
-  const [selectedProperty, setSelectedProperty] = useState<PropertyDefinition | undefined>(undefined);
+  const [selectedProperty, setSelectedProperty] = useState<PropertyDefinition | undefined>(
+    undefined
+  );
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Deep link handling
   useEffect(() => {
     if (collectionId && propertyId) {
-       loadPropertyForEdit(collectionId, propertyId);
+      loadPropertyForEdit(collectionId, propertyId);
     }
   }, [collectionId, propertyId]);
 
@@ -39,7 +37,6 @@ export const PropertiesPage: React.FC = () => {
       setEditorOpen(true);
     } catch (error) {
       console.error('Failed to load property', error);
-      // If not found, maybe just stay on list
     }
   };
 
@@ -62,93 +59,96 @@ export const PropertiesPage: React.FC = () => {
   };
 
   const handleDelete = async (property: PropertyDefinition) => {
-      // Implement delete confirmation dialog
-      console.log('Delete', property);
-      // For now, let's just trigger refresh for mockup
-      setRefreshTrigger(prev => prev + 1); 
+    console.log('Delete', property);
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   const handleSave = () => {
-    setRefreshTrigger(prev => prev + 1);
+    setRefreshTrigger((prev) => prev + 1);
   };
 
-  const handleSmartCreate = (suggestion: { dataType: string; formatOptions?: any }) => {
+  const handleSmartCreate = (suggestion: { dataType: string; formatOptions?: Record<string, unknown> }) => {
     console.log('Applying suggestion:', suggestion);
     setSelectedProperty(undefined);
-    // TODO: Pass these defaults to the editor. 
-    // Currently editor doesn't accept external defaults well without property object.
-    // For now we just open editor.
     setEditorOpen(true);
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-       {/* Header */}
-       <Box mb={4}>
-         <Button 
-            startIcon={<ArrowBack />} 
-            onClick={() => navigate('/studio/collections')}
-            sx={{ mb: 2 }}
-         >
-            Back to Collections
-         </Button>
-         
-         <Stack direction="row" justifyContent="space-between" alignItems="center">
-           <Box>
-             <Typography variant="h4" component="h1" gutterBottom>
-               Properties
-             </Typography>
-             <Breadcrumbs aria-label="breadcrumb">
-               <Link color="inherit" onClick={() => navigate('/studio/collections')}>
-                 Collections
-               </Link>
-               <Typography color="text.primary">{collectionId}</Typography>
-             </Breadcrumbs>
-           </Box>
+    <div className="max-w-5xl mx-auto py-8 px-4">
+      <div className="mb-6">
+        <button
+          type="button"
+          onClick={() => navigate('/collections.list')}
+          className="flex items-center gap-2 text-sm mb-4 transition-colors hover:opacity-80 text-muted-foreground"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Collections
+        </button>
 
-           <Stack direction="row" spacing={2}>
-              <Button 
-                variant="outlined" 
-                startIcon={<AutoAwesome />}
-                onClick={() => setAvaOpen(true)}
+        <div className="flex justify-between items-start">
+          <div>
+            <h1
+              className="text-2xl font-semibold mb-2 text-foreground"
+            >
+              Properties
+            </h1>
+            <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+              <button
+                type="button"
+                onClick={() => navigate('/studio/collections')}
+                className="transition-colors hover:opacity-80 text-muted-foreground"
               >
-                Smart Detect
-              </Button>
-              <Button 
-                variant="contained" 
-                startIcon={<AddIcon />}
-                onClick={handleCreate}
-              >
-                New Property
-              </Button>
-           </Stack>
-         </Stack>
-       </Box>
+                Collections
+              </button>
+              <ChevronRight
+                className="w-4 h-4 text-muted-foreground"
+              />
+              <span className="text-foreground">{collectionId}</span>
+            </nav>
+          </div>
 
-       {/* List */}
-       <PropertyList 
-         collectionId={collectionId} 
-         refreshTrigger={refreshTrigger}
-         onEdit={handleEdit}
-         onDelete={handleDelete}
-       />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAvaOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm rounded border transition-colors hover:bg-hover border-border text-foreground"
+            >
+              <Sparkles className="w-4 h-4" />
+              Smart Detect
+            </button>
+            <button
+              type="button"
+              onClick={handleCreate}
+              className="flex items-center gap-2 px-4 py-2 text-sm rounded transition-colors hover:opacity-90 bg-primary text-primary-foreground"
+            >
+              <Plus className="w-4 h-4" />
+              New Property
+            </button>
+          </div>
+        </div>
+      </div>
 
-       {/* Editor Dialog */}
-       <PropertyEditor
-         open={editorOpen}
-         collectionId={collectionId}
-         property={selectedProperty}
-         onClose={handleCloseEditor}
-         onSave={handleSave}
-       />
+      <PropertyList
+        collectionId={collectionId}
+        refreshTrigger={refreshTrigger}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
 
-       {/* AVA Dialog */}
-       <AvaSuggestionsModal
-         open={avaOpen}
-         collectionId={collectionId}
-         onClose={() => setAvaOpen(false)}
-         onApply={handleSmartCreate}
-       />
-    </Container>
+      <PropertyEditor
+        open={editorOpen}
+        collectionId={collectionId}
+        property={selectedProperty}
+        onClose={handleCloseEditor}
+        onSave={handleSave}
+      />
+
+      <AvaSuggestionsModal
+        open={avaOpen}
+        collectionId={collectionId}
+        onClose={() => setAvaOpen(false)}
+        onApply={handleSmartCreate}
+      />
+    </div>
   );
 };

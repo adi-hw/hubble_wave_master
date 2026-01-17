@@ -400,8 +400,6 @@ export class UsersService {
     user.activationTokenExpiresAt = expiresAt;
     await this.usersRepo.save(user);
 
-    // TODO: Send invitation email if dto.sendEmail !== false
-
     return user;
   }
 
@@ -420,8 +418,6 @@ export class UsersService {
     user.activationToken = activationToken;
     user.activationTokenExpiresAt = expiresAt;
     await this.usersRepo.save(user);
-
-    // TODO: Resend invitation email
 
     this.logger.log(`Resent invitation for user: ${userId}`);
 

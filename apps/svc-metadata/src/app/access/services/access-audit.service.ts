@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccessAuditLog, AccessRuleAuditLog } from '@hubblewave/instance-db';
 
 @Injectable()
 export class AccessAuditService {
+  private readonly logger = new Logger(AccessAuditService.name);
+
   constructor(
     @InjectRepository(AccessAuditLog)
     private readonly auditRepo: Repository<AccessAuditLog>,
@@ -38,7 +40,7 @@ export class AccessAuditService {
     // Fire and forget - don't block request on audit write
     // In production, we might want a safer queue mechanism
     this.auditRepo.save(log).catch(err => {
-      console.error('Failed to write audit log:', err);
+      this.logger.error('Failed to write audit log', err);
     });
   }
 
@@ -64,7 +66,7 @@ export class AccessAuditService {
     } as any);
 
     this.ruleAuditRepo.save(log).catch(err => {
-      console.error('Failed to write rule audit log:', err);
+      this.logger.error('Failed to write rule audit log', err);
     });
   }
 }

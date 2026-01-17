@@ -214,7 +214,7 @@ export const RolesPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="h-10 w-10 rounded-xl bg-[var(--gradient-brand)] flex items-center justify-center" style={{ background: 'var(--gradient-brand)' }}>
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
               <Shield className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -280,27 +280,26 @@ export const RolesPage: React.FC = () => {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Roles', value: stats.total, icon: Shield, bgColor: 'var(--bg-primary-subtle)', iconColor: 'var(--text-brand)' },
-            { label: 'System Roles', value: stats.system, icon: Lock, bgColor: 'var(--bg-warning-subtle)', iconColor: 'var(--text-warning)' },
-            { label: 'Custom Roles', value: stats.custom, icon: Edit, bgColor: 'var(--bg-success-subtle)', iconColor: 'var(--text-success)' },
-            { label: 'Permissions', value: stats.permissions, icon: Key, bgColor: 'var(--bg-accent-subtle)', iconColor: 'var(--text-accent)' },
+            { label: 'Total Roles', value: stats.total, icon: Shield, bgClass: 'bg-primary/10', iconClass: 'text-primary' },
+            { label: 'System Roles', value: stats.system, icon: Lock, bgClass: 'bg-warning-subtle', iconClass: 'text-warning-text' },
+            { label: 'Custom Roles', value: stats.custom, icon: Edit, bgClass: 'bg-success-subtle', iconClass: 'text-success-text' },
+            { label: 'Permissions', value: stats.permissions, icon: Key, bgClass: 'bg-info-subtle', iconClass: 'text-info-text' },
           ].map((stat) => (
             <div
               key={stat.label}
-              className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-default)] p-3"
+              className="bg-card rounded-xl border border-border p-3"
             >
               <div className="flex items-center gap-3">
                 <div
-                  className="h-8 w-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: stat.bgColor }}
+                  className={`h-8 w-8 rounded-lg flex items-center justify-center ${stat.bgClass}`}
                 >
-                  <stat.icon className="h-4 w-4" style={{ color: stat.iconColor }} />
+                  <stat.icon className={`h-4 w-4 ${stat.iconClass}`} />
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-[var(--text-primary)]">
+                  <div className="text-lg font-bold text-foreground">
                     {stat.value}
                   </div>
-                  <div className="text-xs text-[var(--text-secondary)]">{stat.label}</div>
+                  <div className="text-xs text-muted-foreground">{stat.label}</div>
                 </div>
               </div>
             </div>
@@ -403,6 +402,17 @@ const RoleListItem: React.FC<{
 }> = ({ role, roles, selected, onSelect, onDelete }) => {
   const parent = role.parentId ? roles.find((r) => r.id === role.parentId) : null;
 
+  const colorMap: Record<string, string> = {
+    '#ef4444': 'bg-danger',
+    '#f59e0b': 'bg-warning',
+    '#10b981': 'bg-success',
+    '#06b6d4': 'bg-info',
+    '#6366f1': 'bg-primary',
+    '#8b5cf6': 'bg-violet-500',
+  };
+
+  const roleColorClass = colorMap[role.color] || 'bg-primary';
+
   return (
     <div
       onClick={onSelect}
@@ -413,8 +423,7 @@ const RoleListItem: React.FC<{
       }`}
     >
       <div
-        className="w-3.5 h-3.5 rounded"
-        style={{ backgroundColor: role.color }}
+        className={`w-3.5 h-3.5 rounded ${roleColorClass}`}
       />
 
       <div className="flex-1 min-w-0">
@@ -486,6 +495,28 @@ const RoleTreeItem: React.FC<{
   const [expanded, setExpanded] = useState(true);
   const hasChildren = role.children && role.children.length > 0;
 
+  const colorMap: Record<string, string> = {
+    '#ef4444': 'bg-danger',
+    '#f59e0b': 'bg-warning',
+    '#10b981': 'bg-success',
+    '#06b6d4': 'bg-info',
+    '#6366f1': 'bg-primary',
+    '#8b5cf6': 'bg-violet-500',
+  };
+
+  const roleColorClass = colorMap[role.color] || 'bg-primary';
+
+  const levelPaddingMap: Record<number, string> = {
+    0: 'ml-0',
+    1: 'ml-6',
+    2: 'ml-12',
+    3: 'ml-18',
+    4: 'ml-24',
+    5: 'ml-30',
+  };
+
+  const levelPadding = levelPaddingMap[level] || `ml-[${level * 24}px]`;
+
   return (
     <div>
       <div
@@ -494,8 +525,7 @@ const RoleTreeItem: React.FC<{
           selected
             ? 'bg-[var(--bg-selected)] border border-[var(--border-primary)]'
             : 'hover:bg-[var(--bg-hover)] border border-transparent'
-        }`}
-        style={{ marginLeft: level * 24 }}
+        } ${levelPadding}`}
       >
         {hasChildren ? (
           <button
@@ -512,8 +542,7 @@ const RoleTreeItem: React.FC<{
         )}
 
         <div
-          className="w-2.5 h-2.5 rounded"
-          style={{ backgroundColor: role.color }}
+          className={`w-2.5 h-2.5 rounded ${roleColorClass}`}
         />
 
         <div className="flex-1">
@@ -565,6 +594,17 @@ const RoleDetailPanel: React.FC<{
     direct: Permission[];
     inherited: Permission[];
   }>({ direct: [], inherited: [] });
+
+  const colorMap: Record<string, string> = {
+    '#ef4444': 'bg-danger',
+    '#f59e0b': 'bg-warning',
+    '#10b981': 'bg-success',
+    '#06b6d4': 'bg-info',
+    '#6366f1': 'bg-primary',
+    '#8b5cf6': 'bg-violet-500',
+  };
+
+  const roleColorClass = colorMap[role.color] || 'bg-primary';
 
   useEffect(() => {
     loadRolePermissions();
@@ -630,8 +670,7 @@ const RoleDetailPanel: React.FC<{
         </button>
 
         <div
-          className="w-4 h-4 rounded"
-          style={{ backgroundColor: role.color }}
+          className={`w-4 h-4 rounded ${roleColorClass}`}
         />
 
         <div className="flex-1">
@@ -999,12 +1038,18 @@ const RoleSettingsTab: React.FC<{
             className="w-12 h-10 rounded-lg cursor-pointer border-0"
           />
           <div className="flex gap-2">
-            {['#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#6366f1', '#8b5cf6'].map((c) => (
+            {[
+              { hex: '#ef4444', cls: 'bg-danger' },
+              { hex: '#f59e0b', cls: 'bg-warning' },
+              { hex: '#10b981', cls: 'bg-success' },
+              { hex: '#06b6d4', cls: 'bg-info' },
+              { hex: '#6366f1', cls: 'bg-primary' },
+              { hex: '#8b5cf6', cls: 'bg-violet-500' },
+            ].map((c) => (
               <button
-                key={c}
-                onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-lg ${color === c ? 'ring-2 ring-[var(--ring-color)] ring-offset-2' : ''}`}
-                style={{ backgroundColor: c }}
+                key={c.hex}
+                onClick={() => setColor(c.hex)}
+                className={`w-8 h-8 rounded-lg ${c.cls} ${color === c.hex ? 'ring-2 ring-ring ring-offset-2' : ''}`}
               />
             ))}
           </div>
@@ -1022,13 +1067,15 @@ const RoleSettingsTab: React.FC<{
         </div>
         <button
           onClick={() => setIsDefault(!isDefault)}
-          className={`relative w-11 h-6 rounded-full transition-colors ${
-            isDefault ? 'bg-[var(--bg-primary)]' : 'bg-[var(--bg-surface-tertiary)]'
+          role="switch"
+          aria-checked={isDefault}
+          className={`toggle-track w-11 h-6 ${
+            isDefault ? 'toggle-track-on' : ''
           }`}
         >
-          <div
-            className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-              isDefault ? 'translate-x-5' : ''
+          <span
+            className={`toggle-thumb absolute top-0.5 left-0.5 w-5 h-5 transition-transform ${
+              isDefault ? 'translate-x-5' : 'translate-x-0'
             }`}
           />
         </button>
@@ -1307,12 +1354,18 @@ const CreateRoleModal: React.FC<{
                 className="w-10 h-10 rounded-lg cursor-pointer border-0"
               />
               <div className="flex gap-2">
-                {['#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#6366f1', '#8b5cf6'].map((c) => (
+                {[
+                  { hex: '#ef4444', cls: 'bg-danger' },
+                  { hex: '#f59e0b', cls: 'bg-warning' },
+                  { hex: '#10b981', cls: 'bg-success' },
+                  { hex: '#06b6d4', cls: 'bg-info' },
+                  { hex: '#6366f1', cls: 'bg-primary' },
+                  { hex: '#8b5cf6', cls: 'bg-violet-500' },
+                ].map((c) => (
                   <button
-                    key={c}
-                    onClick={() => setColor(c)}
-                    className={`w-7 h-7 rounded-lg ${color === c ? 'ring-2 ring-[var(--ring-color)]' : ''}`}
-                    style={{ backgroundColor: c }}
+                    key={c.hex}
+                    onClick={() => setColor(c.hex)}
+                    className={`w-7 h-7 rounded-lg ${c.cls} ${color === c.hex ? 'ring-2 ring-ring' : ''}`}
                   />
                 ))}
               </div>

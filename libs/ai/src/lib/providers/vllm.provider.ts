@@ -30,31 +30,12 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   private available = false;
 
   constructor() {
-    // HARDCODED FIX: Environment variables are not being picked up reliably.
-    // Pointing directly to local Ollama instance.
-    this.baseUrl = 'http://localhost:11434'; // Ollama default
-    this.defaultModel = 'llama3:latest'; // Found installed on local Ollama
-    this.embeddingModel = 'nomic-embed-text'; // Common default for Ollama
+    this.baseUrl = process.env['VLLM_BASE_URL'] || process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434';
+    this.defaultModel = process.env['VLLM_DEFAULT_MODEL'] || process.env['OLLAMA_MODEL'] || 'llama3:latest';
+    this.embeddingModel = process.env['VLLM_EMBEDDING_MODEL'] || process.env['OLLAMA_EMBEDDING_MODEL'] || 'nomic-embed-text';
+    this.apiKey = process.env['VLLM_API_KEY'] || '';
 
-    this.logger.log(`[HARDCODED CONFIG] VLLM Provider initialized with URL: ${this.baseUrl}, Model: ${this.defaultModel}`);
-
-    /*
-    this.baseUrl = this.configService.get<string>(
-      'VLLM_BASE_URL',
-      'http://localhost:8000'
-    );
-    this.defaultModel = this.configService.get<string>(
-      'VLLM_DEFAULT_MODEL',
-      'meta-llama/Llama-3.2-3B-Instruct'
-    );
-    this.embeddingModel = this.configService.get<string>(
-      'VLLM_EMBEDDING_MODEL',
-      'BAAI/bge-large-en-v1.5'
-    );
-    // vLLM can optionally require an API key
-    this.apiKey = this.configService.get<string>('VLLM_API_KEY', '');
-    */
-    this.apiKey = '';
+    this.logger.log(`LLM Provider initialized - URL: ${this.baseUrl}, Model: ${this.defaultModel}`);
   }
 
   async onModuleInit() {

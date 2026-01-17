@@ -85,4 +85,15 @@ export {
   SchemaSyncService,
   SyncIssue,
   SyncCheckResult,
+
+  // Versioning
+  SchemaVersionService,
+  SchemaVersion,
+  CollectionSnapshot,
+  PropertySnapshot,
+  IndexSnapshot,
+  SchemaChangeType,
+  SchemaVersionCompare,
+  SchemaChange,
+  RollbackResult,
 } from './lib/services';

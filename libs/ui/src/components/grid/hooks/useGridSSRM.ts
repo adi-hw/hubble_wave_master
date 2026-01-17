@@ -192,8 +192,23 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
   void _pageSize;
   const queryClient = useQueryClient();
   const [loadedBlocksVersion, setLoadedBlocksVersion] = useState(0);
+  // Use a counter ref to track concurrent fetches accurately
+  const fetchingCountRef = useRef(0);
   const [isFetchingBlocks, setIsFetchingBlocks] = useState(false);
   const [blockError, setBlockError] = useState<Error | null>(null);
+
+  // Helper to increment/decrement fetch counter and update state
+  const incrementFetching = useCallback(() => {
+    fetchingCountRef.current += 1;
+    setIsFetchingBlocks(true);
+  }, []);
+
+  const decrementFetching = useCallback(() => {
+    fetchingCountRef.current = Math.max(0, fetchingCountRef.current - 1);
+    if (fetchingCountRef.current === 0) {
+      setIsFetchingBlocks(false);
+    }
+  }, []);
 
   // Stable reference to data manager
   const dataManagerRef = useRef<GridDataManager<TData> | null>(null);
@@ -223,18 +238,23 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
     };
   }, [collection, blockSize, maxCacheBlocks, enabled, fetcher]);
 
-  // Update config when dependencies change
-  useEffect(() => {
-    if (!dataManagerRef.current) return;
+  // Synchronously update config during render when dependencies change
+  // This ensures the config is updated BEFORE any effects run
+  const configVersionRef = useRef<string | null>(null);
+  const currentConfigKey = JSON.stringify({ sorting, columnFilters, grouping, globalFilter });
 
+  if (dataManagerRef.current && configVersionRef.current !== currentConfigKey) {
     dataManagerRef.current.updateConfig({
       sorting,
       filters: columnFilters,
       grouping,
       globalFilter,
     });
+    configVersionRef.current = currentConfigKey;
+  }
 
-    // Trigger re-render to update loadedBlocks
+  // Trigger re-render when config changes (to update loadedBlocks)
+  useEffect(() => {
     setLoadedBlocksVersion((v) => v + 1);
   }, [sorting, columnFilters, grouping, globalFilter]);
 
@@ -258,8 +278,10 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
   // Get rows for visible range
   const getRows = useCallback(
     async (startRow: number, endRow: number): Promise<TData[]> => {
-      if (!dataManagerRef.current) return [];
-      setIsFetchingBlocks(true);
+      if (!dataManagerRef.current) {
+        return [];
+      }
+      incrementFetching();
       try {
         const rows = await dataManagerRef.current.getRows(startRow, endRow);
         setLoadedBlocksVersion((v) => v + 1);
@@ -269,10 +291,10 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
         setBlockError(err as Error);
         throw err;
       } finally {
-        setIsFetchingBlocks(false);
+        decrementFetching();
       }
     },
-    []
+    [incrementFetching, decrementFetching]
   );
 
   // Update scroll position for velocity tracking
@@ -289,7 +311,7 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
       const endRow = (blockIndex + 1) * blockSize;
 
       // Fire and forget
-      setIsFetchingBlocks(true);
+      incrementFetching();
       dataManagerRef.current
         .getRows(startRow, endRow)
         .then(() => {
@@ -300,9 +322,9 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
           setBlockError(err as Error);
           console.error(err);
         })
-        .finally(() => setIsFetchingBlocks(false));
+        .finally(() => decrementFetching());
     },
-    [blockSize]
+    [blockSize, incrementFetching, decrementFetching]
   );
 
   // Invalidate and refetch
@@ -319,9 +341,14 @@ export function useGridSSRM<TData extends GridRowData = GridRowData>({
     return dataManagerRef.current?.getLoadedBlocks() ?? new Map<number, BlockCacheEntry<TData>>();
   }, [loadedBlocksVersion]);
 
+  const estimatedRowCount =
+    countQuery.data ??
+    dataManagerRef.current?.lastKnownTotalRows ??
+    0;
+
   return {
     data: [] as TData[], // Data is fetched on-demand, not stored here
-    totalRowCount: countQuery.data ?? 0,
+    totalRowCount: estimatedRowCount,
     isLoading: countQuery.isLoading || isFetchingBlocks,
     isError: countQuery.isError || !!blockError,
     error: (countQuery.error as Error) ?? blockError,

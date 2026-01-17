@@ -1,7 +1,8 @@
-import { IsIn, IsOptional, IsPositive, IsString, Length } from 'class-validator';
+import { IsIn, IsOptional, IsPositive, IsString, Length, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
 import { InstanceEnvironment, InstanceHealth, InstanceStatus, ResourceTier } from '@hubblewave/control-plane-db';
 
-const INSTANCE_ENV = ['production', 'staging', 'development'] as const;
+const INSTANCE_ENV = ['production', 'staging', 'dev'] as const;
 const INSTANCE_STATUS = ['provisioning', 'active', 'suspended', 'terminated', 'failed'] as const;
 const INSTANCE_HEALTH = ['healthy', 'degraded', 'unhealthy', 'unknown'] as const;
 const RESOURCE_TIER = ['standard', 'professional', 'enterprise'] as const;
@@ -29,10 +30,12 @@ export class InstanceQueryParams {
 
   @IsOptional()
   @IsPositive()
+  @Type(() => Number)
   page?: number;
 
   @IsOptional()
   @IsPositive()
+  @Type(() => Number)
   limit?: number;
 }
 
@@ -49,6 +52,9 @@ export class CreateInstanceDto {
 
   @IsString()
   @Length(1, 50)
+  @Matches(/^\d{8}-[0-9a-f]{7,64}$/, {
+    message: 'version must be a release id in the form YYYYMMDD-<git-sha>',
+  })
   version!: string;
 
   @IsOptional()
@@ -67,6 +73,9 @@ export class UpdateInstanceDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{8}-[0-9a-f]{7,64}$/, {
+    message: 'version must be a release id in the form YYYYMMDD-<git-sha>',
+  })
   version?: string;
 
   @IsOptional()

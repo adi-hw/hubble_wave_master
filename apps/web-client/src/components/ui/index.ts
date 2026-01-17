@@ -25,9 +25,9 @@ export type {
   ImpactSeverityBadgeProps,
 } from './Badge';
 
-// Command Palette
-export { CommandPalette, createAdminCommands } from './CommandPalette';
-export type { CommandItem, CommandGroup } from './CommandPalette';
+// Command Palette (exported from shell directory)
+export { CommandPalette } from '../shell/CommandPalette';
+export type { CommandItem, CommandGroup } from '../shell/CommandPalette';
 
 // Diff Viewer
 export { DiffViewer } from './DiffViewer';

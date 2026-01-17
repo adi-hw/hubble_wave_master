@@ -23,6 +23,10 @@ import { MacAddressField } from './fields/MacAddressField';
 import { KeyValueField } from './fields/KeyValueField';
 import { ReadOnlyField } from './fields/ReadOnlyField';
 import { NotImplementedField } from './fields/NotImplementedField';
+import { FormulaField } from './fields/FormulaField';
+import { RollupField } from './fields/RollupField';
+import { LookupField } from './fields/LookupField';
+import { HierarchicalField } from './fields/HierarchicalField';
 
 type FieldRenderer = React.FC<FieldComponentProps<any>>;
 
@@ -116,14 +120,21 @@ const registry: Record<string, FieldRenderer> = {
   // ═══════════════════════════════════════════════════════════════════════════
   // COMPUTED TYPES (Read-only / Calculated)
   // ═══════════════════════════════════════════════════════════════════════════
-  formula: ReadOnlyField,
+  formula: FormulaField,
+  rollup: RollupField,
+  lookup: LookupField,
   condition: ReadOnlyField,
   script_ref: ReadOnlyField,
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // WORKFLOW TYPE
+  // HIERARCHICAL TYPES
   // ═══════════════════════════════════════════════════════════════════════════
-  workflow_stage: ReadOnlyField,
+  hierarchical: HierarchicalField,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROCESS FLOW TYPE
+  // ═══════════════════════════════════════════════════════════════════════════
+  process_flow_stage: ReadOnlyField,
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCALIZATION TYPES

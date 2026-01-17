@@ -1,6 +1,6 @@
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, IsObject } from 'class-validator';
 
-const THEME_TYPE = ['system', 'tenant', 'custom'] as const;
+const THEME_TYPE = ['system', 'instance', 'custom'] as const;
 const CONTRAST = ['normal', 'high', 'highest'] as const;
 const SCHEME = ['dark', 'light'] as const;
 const COLOR_SCHEME_PREF = ['dark', 'light', 'auto'] as const;

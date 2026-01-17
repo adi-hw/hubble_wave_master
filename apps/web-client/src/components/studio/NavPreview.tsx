@@ -7,7 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { Eye, Users, Key, Flag, RefreshCw, ChevronRight, Loader2 } from 'lucide-react';
 import { Icon } from '../Icon';
-import { ResolvedNavNode } from '../../types/navigation-v2';
+import { ResolvedNavNode } from '../../types/navigation';
 
 interface PreviewContext {
   roles: string[];
@@ -32,20 +32,20 @@ interface PreviewTreeProps {
 
 const PreviewTree: React.FC<PreviewTreeProps> = ({ nodes, depth = 0 }) => {
   return (
-    <div className={depth > 0 ? 'ml-4 border-l border-slate-200 pl-2' : ''}>
+    <div
+      className={depth > 0 ? 'ml-4 border-l border-border pl-2' : ''}
+      role={depth === 0 ? 'tree' : 'group'}
+    >
       {nodes.map((node) => (
-        <div key={node.key} className="py-1">
-          <div 
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-          >
+        <div key={node.key} className="py-1" role="treeitem">
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-muted hover:opacity-80 transition-opacity">
             {node.icon && (
-              <span style={{ color: 'var(--text-muted)' }}>
+              <span className="text-muted-foreground">
                 <Icon name={node.icon} className="h-4 w-4" />
               </span>
             )}
-            <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{node.label}</span>
-            <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{node.type}</span>
+            <span className="text-sm text-foreground">{node.label}</span>
+            <span className="text-xs ml-auto text-muted-foreground">{node.type}</span>
           </div>
           {node.children && node.children.length > 0 && (
             <PreviewTree nodes={node.children} depth={depth + 1} />
@@ -108,7 +108,6 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
     setContext((prev) => ({ ...prev, contextTags: tags }));
   };
 
-  // Preset configurations
   const presets = [
     { label: 'Admin', roles: ['admin', 'admin'], permissions: [], flags: [] },
     { label: 'Standard User', roles: ['user'], permissions: ['asset.view'], flags: [] },
@@ -125,29 +124,17 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
   };
 
   return (
-    <div 
-      className="h-full flex flex-col rounded-xl overflow-hidden border"
-      style={{ 
-        backgroundColor: 'var(--bg-surface)', 
-        borderColor: 'var(--border-default)' 
-      }}
-    >
-      {/* Header */}
-      <div 
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ 
-          backgroundColor: 'var(--bg-surface-secondary)', 
-          borderColor: 'var(--border-default)' 
-        }}
-      >
+    <div className="h-full flex flex-col rounded-xl overflow-hidden border border-border bg-card">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted">
         <div className="flex items-center gap-2">
-          <Eye className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
-          <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Preview</h3>
+          <Eye className="h-5 w-5 text-muted-foreground" />
+          <h3 className="font-semibold text-foreground">Preview</h3>
         </div>
         <button
           onClick={handleRefresh}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-primary-foreground rounded-lg disabled:opacity-50 transition-colors bg-primary min-h-[44px]"
+          aria-label="Refresh preview"
         >
           {loading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -158,12 +145,12 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
         </button>
       </div>
 
-      {/* Context Editor */}
-      <div className="flex-shrink-0 border-b" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="flex-shrink-0 border-b border-border">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium hover:opacity-80 transition-opacity"
-          style={{ color: 'var(--text-muted)' }}
+          className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:opacity-80 transition-opacity min-h-[44px]"
+          aria-expanded={isExpanded}
+          aria-label="Toggle preview context editor"
         >
           {isExpanded ? (
             <ChevronRight className="h-4 w-4 rotate-90 transition-transform" />
@@ -175,40 +162,36 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
 
         {isExpanded && (
           <div className="px-4 pb-4 space-y-4">
-            {/* Presets */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Preview presets">
               {presets.map((preset) => (
                 <button
                   key={preset.label}
                   onClick={() => applyPreset(preset)}
-                  className="px-2.5 py-1 text-xs font-medium rounded transition-colors"
-                  style={{ 
-                    backgroundColor: 'var(--bg-surface-secondary)',
-                    color: 'var(--text-muted)' 
-                  }}
+                  className="px-2.5 py-2 text-xs font-medium rounded transition-colors bg-muted text-muted-foreground min-h-[44px] hover:opacity-80"
+                  aria-label={`Apply ${preset.label} preset`}
                 >
                   {preset.label}
                 </button>
               ))}
             </div>
 
-            {/* Roles */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Users className="h-3.5 w-3.5" />
                 Roles
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Available roles">
                 {availableRoles.slice(0, 10).map((role) => (
                   <button
                     key={role}
                     onClick={() => toggleRole(role)}
-                    className="px-2 py-0.5 text-xs rounded transition-colors border"
-                    style={{
-                      backgroundColor: context.roles.includes(role) ? 'var(--bg-selected)' : 'var(--bg-surface-secondary)',
-                      borderColor: context.roles.includes(role) ? 'var(--border-primary)' : 'var(--border-default)',
-                      color: context.roles.includes(role) ? 'var(--text-brand)' : 'var(--text-muted)'
-                    }}
+                    className={`px-2 py-2 text-xs rounded transition-colors border min-h-[44px] ${
+                      context.roles.includes(role)
+                        ? 'bg-primary/10 border-primary text-primary'
+                        : 'bg-muted border-border text-muted-foreground hover:opacity-80'
+                    }`}
+                    aria-pressed={context.roles.includes(role)}
+                    aria-label={`Toggle ${role} role`}
                   >
                     {role}
                   </button>
@@ -216,23 +199,23 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
               </div>
             </div>
 
-            {/* Permissions */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Key className="h-3.5 w-3.5" />
                 Permissions
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Available permissions">
                 {availablePermissions.slice(0, 10).map((perm) => (
                   <button
                     key={perm}
                     onClick={() => togglePermission(perm)}
-                    className="px-2 py-0.5 text-xs rounded transition-colors border"
-                    style={{
-                      backgroundColor: context.permissions.includes(perm) ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-surface-secondary)',
-                      borderColor: context.permissions.includes(perm) ? 'rgba(16, 185, 129, 0.2)' : 'var(--border-default)',
-                      color: context.permissions.includes(perm) ? 'rgb(16, 185, 129)' : 'var(--text-muted)'
-                    }}
+                    className={`px-2 py-2 text-xs rounded transition-colors border min-h-[44px] ${
+                      context.permissions.includes(perm)
+                        ? 'bg-primary/10 border-primary text-primary'
+                        : 'bg-muted border-border text-muted-foreground hover:opacity-80'
+                    }`}
+                    aria-pressed={context.permissions.includes(perm)}
+                    aria-label={`Toggle ${perm} permission`}
                   >
                     {perm}
                   </button>
@@ -240,24 +223,24 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
               </div>
             </div>
 
-            {/* Feature Flags */}
             {availableFlags.length > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Flag className="h-3.5 w-3.5" />
                   Feature Flags
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Available feature flags">
                   {availableFlags.map((flag) => (
                     <button
                       key={flag}
                       onClick={() => toggleFlag(flag)}
-                      className="px-2 py-0.5 text-xs rounded transition-colors border"
-                      style={{
-                        backgroundColor: context.featureFlags.includes(flag) ? 'rgba(168, 85, 247, 0.1)' : 'var(--bg-surface-secondary)',
-                        borderColor: context.featureFlags.includes(flag) ? 'rgba(168, 85, 247, 0.2)' : 'var(--border-default)',
-                        color: context.featureFlags.includes(flag) ? 'rgb(168, 85, 247)' : 'var(--text-muted)'
-                      }}
+                      className={`px-2 py-2 text-xs rounded transition-colors border min-h-[44px] ${
+                        context.featureFlags.includes(flag)
+                          ? 'bg-primary/10 border-primary text-primary'
+                          : 'bg-muted border-border text-muted-foreground hover:opacity-80'
+                      }`}
+                      aria-pressed={context.featureFlags.includes(flag)}
+                      aria-label={`Toggle ${flag} feature flag`}
                     >
                       {flag}
                     </button>
@@ -266,36 +249,32 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
               </div>
             )}
 
-            {/* Context Tags */}
             <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              <label htmlFor="context-tags-input" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 Context Tags
               </label>
               <input
+                id="context-tags-input"
                 type="text"
                 value={context.contextTags.join(', ')}
                 onChange={contextTagsChange}
                 placeholder="mobile, desktop, beta"
-                className="w-full px-2.5 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-sky-500"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)'
-                }}
+                className="w-full px-2.5 py-2 text-xs border rounded-lg transition-colors bg-card border-border text-foreground min-h-[44px] focus:outline-none focus:ring-2 focus:ring-primary"
+                aria-label="Context tags (comma-separated)"
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* Preview Tree */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" role="region" aria-label="Preview navigation tree">
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+          <div className="flex items-center justify-center h-32" role="status" aria-live="polite">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="sr-only">Loading preview...</span>
           </div>
         ) : nodes.length === 0 ? (
-          <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-center py-8 text-muted-foreground">
             <Eye className="h-8 w-8 mx-auto mb-2 opacity-40" />
             <p className="text-sm">No navigation items visible</p>
             <p className="text-xs mt-1">Try adjusting the preview context</p>
@@ -305,14 +284,11 @@ export const NavPreview: React.FC<NavPreviewProps> = ({
         )}
       </div>
 
-      {/* Footer */}
-      <div 
-        className="px-4 py-2 border-t text-xs"
-        style={{ 
-          backgroundColor: 'var(--bg-surface-secondary)',
-          borderColor: 'var(--border-default)',
-          color: 'var(--text-muted)'
-        }}
+      <div
+        className="px-4 py-2 border-t border-border text-xs bg-muted text-muted-foreground"
+        role="status"
+        aria-live="polite"
+        aria-label="Preview summary"
       >
         {nodes.length} items visible
         {context.roles.length > 0 && ` • ${context.roles.length} roles`}

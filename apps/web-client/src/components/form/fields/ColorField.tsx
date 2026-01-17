@@ -26,8 +26,8 @@ export const ColorField: React.FC<FieldComponentProps<unknown>> = ({
           value={strValue || '#000000'}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled || readOnly}
-          className="w-12 h-10 p-1 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ border: '1px solid var(--border-default)' }}
+          className="w-12 h-10 p-1 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-border"
+          aria-label="Color picker"
         />
         <input
           type="text"
@@ -41,8 +41,9 @@ export const ColorField: React.FC<FieldComponentProps<unknown>> = ({
         />
         {strValue && (
           <div
-            className="w-10 h-10 rounded-lg shadow-inner"
-            style={{ backgroundColor: strValue, border: '1px solid var(--border-subtle)' }}
+            className="w-10 h-10 rounded-lg shadow-inner border border-border"
+            style={{ backgroundColor: strValue }}
+            aria-label={`Color preview: ${strValue}`}
             title={strValue}
           />
         )}

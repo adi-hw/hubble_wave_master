@@ -1,8 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Queue, Job, QueueEvents } from 'bullmq';
+import { Queue, Job, QueueEvents, ConnectionOptions } from 'bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import Redis from 'ioredis';
 
 export interface EmbeddingJob {
   sourceType: 'knowledge_article' | 'catalog_item' | 'record' | 'bulk_reindex';
@@ -30,10 +29,10 @@ export interface QueueStats {
 @Injectable()
 export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EmbeddingQueueService.name);
-  private readonly tenantId = process.env.INSTANCE_ID || 'default-instance';
-  private queue: Queue<EmbeddingJob, EmbeddingJobResult> | null = null;
+  private readonly instanceId = process.env['INSTANCE_ID'] || 'default-instance';
+  private queue: Queue<EmbeddingJob, EmbeddingJobResult, string, EmbeddingJob, EmbeddingJobResult, string> | null = null;
   private queueEvents: QueueEvents | null = null;
-  private connection: Redis | null = null;
+  private connectionOptions: ConnectionOptions | null = null;
   private isEnabled = false;
 
   constructor(
@@ -52,13 +51,14 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      this.connection = new Redis(redisUrl, {
+      this.connectionOptions = {
+        url: redisUrl,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-      });
+      };
 
-      this.queue = new Queue<EmbeddingJob, EmbeddingJobResult>('embedding-jobs', {
-        connection: this.connection,
+      this.queue = new Queue<EmbeddingJob, EmbeddingJobResult, string, EmbeddingJob, EmbeddingJobResult, string>('embedding-jobs', {
+        connection: this.connectionOptions,
         defaultJobOptions: {
           removeOnComplete: 100, // Keep last 100 completed jobs
           removeOnFail: 500, // Keep last 500 failed jobs for debugging
@@ -71,7 +71,7 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.queueEvents = new QueueEvents('embedding-jobs', {
-        connection: this.connection.duplicate(),
+        connection: this.connectionOptions,
       });
 
       this.setupEventListeners();
@@ -90,9 +90,7 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
     if (this.queue) {
       await this.queue.close();
     }
-    if (this.connection) {
-      this.connection.disconnect();
-    }
+    this.connectionOptions = null;
   }
 
   private setupEventListeners() {
@@ -131,7 +129,7 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
       { ...job },
       {
         priority: job.priority || 10,
-        jobId: `${this.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
+        jobId: `${this.instanceId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
       }
     );
 
@@ -152,7 +150,7 @@ export class EmbeddingQueueService implements OnModuleInit, OnModuleDestroy {
       data: { ...job },
       opts: {
         priority: job.priority || 10,
-        jobId: `${this.tenantId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
+        jobId: `${this.instanceId}:${job.sourceType}:${job.sourceId}:${Date.now()}`,
       },
     }));
 

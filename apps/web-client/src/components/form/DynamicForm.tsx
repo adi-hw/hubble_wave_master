@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { ModelField } from '../../services/platform.service';
+import { ModelProperty } from '../../services/platform.service';
 import { useModel } from '../../hooks/useModel';
 import { FormLayout } from './FormLayout';
 import { FormLayoutDesigner, DesignerLayout, generateId } from './designer';
@@ -24,8 +24,8 @@ import {
 export type FormData = Record<string, unknown>;
 
 interface DynamicFormProps {
-  tableCode: string;
-  tableLabel?: string;
+  collectionCode: string;
+  collectionLabel?: string;
   recordLabel?: string;
   recordId?: string;
   onSubmit: (data: FormData, goBack?: boolean) => void | Promise<void>;
@@ -38,8 +38,8 @@ interface DynamicFormProps {
 }
 
 export const DynamicForm: React.FC<DynamicFormProps> = ({
-  tableCode,
-  tableLabel,
+  collectionCode,
+  collectionLabel,
   recordLabel,
   onSubmit,
   initialData,
@@ -49,7 +49,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
   onDelete,
   onDuplicate,
 }) => {
-  const { fields, layout, loading, error } = useModel(tableCode);
+  const { properties: fields, layout, loading, error } = useModel(collectionCode);
   const initialDataMemo = useMemo(() => initialData || {}, [initialData]);
   const [formData, setFormData] = useState<FormData>(initialDataMemo);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -87,7 +87,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
   };
 
   // Display title computed from props (used in header and PDF export)
-  const displayTitle = recordLabel || tableLabel || tableCode;
+  const displayTitle = recordLabel || collectionLabel || collectionCode;
 
   // Export form to PDF using jsPDF text-based approach
   const handleExportPdf = async () => {
@@ -178,7 +178,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
         yPos += fieldHeight + 4;
       }
 
-      const filename = recordLabel || tableLabel || tableCode;
+      const filename = recordLabel || collectionLabel || collectionCode;
       pdf.save(`${filename}-${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('Failed to export PDF:', err);
@@ -204,7 +204,6 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     setPersonalLayout(newLayout);
     setActiveLayoutType('personal');
     setShowLayoutDesigner(false);
-    // TODO: Save to user_layout_preferences API
   };
 
   // Convert admin layout to designer layout format
@@ -245,10 +244,10 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             columns: (section.columns || 2) as 1 | 2 | 3 | 4,
             collapsible: section.collapsible ?? false,
             defaultCollapsed: section.defaultCollapsed ?? false,
-            items: (section.fields || []).map((fieldCode: string) => ({
-              type: 'field' as const,
+            items: (section.fields || []).map((propertyCode: string) => ({
+              type: 'property' as const,
               id: generateId(),
-              fieldCode,
+              propertyCode,
               span: 1 as const,
             })),
           })),
@@ -270,9 +269,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
               label: 'General Information',
               columns: 2,
               items: fields.map((f) => ({
-                type: 'field' as const,
+                type: 'property' as const,
                 id: generateId(),
-                fieldCode: f.code,
+                propertyCode: f.code,
                 span: 1,
               })),
             },
@@ -282,7 +281,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     };
   };
 
-  const validateField = (field: ModelField, value: unknown): boolean => {
+  const validateField = (field: ModelProperty, value: unknown): boolean => {
     const validators = field.config?.validators || {};
     let errorMsg = '';
 
@@ -344,7 +343,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     return !errorMsg;
   };
 
-  const handleChange = (field: ModelField, value: unknown) => {
+  const handleChange = (field: ModelProperty, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field.code]: value }));
     validateField(field, value);
   };
@@ -381,43 +380,31 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
   if (loading) {
     return (
-      <div
-        className="h-[calc(100vh-8rem)] min-h-[500px] rounded-2xl shadow-sm overflow-hidden flex flex-col"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-        }}
-      >
-        <div
-          className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderBottom: '1px solid var(--border-subtle)',
-          }}
-        >
+      <div className="h-[calc(100vh-8rem)] min-h-[500px] rounded-2xl shadow-sm overflow-hidden flex flex-col bg-card border border-border">
+        <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 bg-card border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="h-5 w-5 rounded animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-            <div className="h-5 w-32 rounded animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+            <div className="h-5 w-5 rounded animate-pulse bg-muted" />
+            <div className="h-5 w-32 rounded animate-pulse bg-muted" />
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-            <div className="h-8 w-8 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+            <div className="h-8 w-8 rounded-lg animate-pulse bg-muted" />
+            <div className="h-8 w-8 rounded-lg animate-pulse bg-muted" />
           </div>
         </div>
         <div className="flex-1 overflow-auto p-5 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <div className="h-4 w-20 rounded animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-              <div className="h-10 w-full rounded-lg animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+              <div className="h-4 w-20 rounded animate-pulse bg-muted" />
+              <div className="h-10 w-full rounded-lg animate-pulse bg-muted" />
             </div>
             <div className="space-y-2">
-              <div className="h-4 w-24 rounded animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-              <div className="h-10 w-full rounded-lg animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+              <div className="h-4 w-24 rounded animate-pulse bg-muted" />
+              <div className="h-10 w-full rounded-lg animate-pulse bg-muted" />
             </div>
           </div>
           <div className="space-y-2">
-            <div className="h-4 w-28 rounded animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-            <div className="h-24 w-full rounded-lg animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+            <div className="h-4 w-28 rounded animate-pulse bg-muted" />
+            <div className="h-24 w-full rounded-lg animate-pulse bg-muted" />
           </div>
         </div>
       </div>
@@ -426,21 +413,12 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
   if (error) {
     return (
-      <div
-        className="h-[calc(100vh-8rem)] min-h-[500px] rounded-2xl shadow-sm flex flex-col items-center justify-center p-6"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-danger)',
-        }}
-      >
-        <div
-          className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
-          style={{ backgroundColor: 'var(--bg-danger-subtle)' }}
-        >
-          <AlertCircle className="h-7 w-7" style={{ color: 'var(--text-danger)' }} />
+      <div className="h-[calc(100vh-8rem)] min-h-[500px] rounded-2xl shadow-sm flex flex-col items-center justify-center p-6 bg-card border border-destructive">
+        <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4 bg-destructive/10">
+          <AlertCircle className="h-7 w-7 text-destructive" />
         </div>
-        <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-danger)' }}>Unable to load form</h3>
-        <p className="text-sm mb-4" style={{ color: 'var(--text-danger)' }}>{error}</p>
+        <h3 className="text-base font-semibold mb-1 text-destructive">Unable to load form</h3>
+        <p className="text-sm mb-4 text-destructive">{error}</p>
         <button
           type="button"
           onClick={() => window.location.reload()}
@@ -456,21 +434,10 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="dynamic-form h-[calc(100vh-8rem)] min-h-[500px] w-full flex flex-col rounded-2xl shadow-sm overflow-hidden"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-default)',
-      }}
+      className="dynamic-form h-[calc(100vh-8rem)] min-h-[500px] w-full flex flex-col rounded-2xl shadow-sm overflow-hidden bg-card text-foreground border border-border"
     >
       {/* Sticky Header with Title and Icon Actions */}
-      <div
-        className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 sticky top-0 z-10"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderBottom: '1px solid var(--border-subtle)',
-        }}
-      >
+      <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 sticky top-0 z-10 bg-card border-b border-border">
         {/* Left side - Back button, Title and mode icon */}
         <div className="flex items-center gap-3 min-w-0">
           {/* Back Button */}
@@ -478,35 +445,20 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             <button
               type="button"
               onClick={onBack}
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all flex-shrink-0"
-              style={{ color: 'var(--text-secondary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--text-primary)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all flex-shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Go back"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
-          <div className="flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex-shrink-0 text-muted-foreground">
             <FileEdit className="h-5 w-5" />
           </div>
-          <h2 className="text-base font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-base font-semibold truncate text-foreground">
             {displayTitle}
           </h2>
           {totalErrors > 0 && (
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg flex-shrink-0"
-              style={{
-                backgroundColor: 'var(--bg-danger-subtle)',
-                color: 'var(--text-danger)',
-              }}
-            >
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg flex-shrink-0 bg-destructive/10 text-destructive">
               <AlertCircle className="h-4 w-4" />
               <span className="text-xs font-medium">
                 {totalErrors} error{totalErrors !== 1 ? 's' : ''}
@@ -519,10 +471,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
         {/* Right side - Action buttons */}
         <div className="flex items-center gap-2">
           {/* Tool buttons group */}
-          <div
-            className="flex items-center rounded-xl p-1 gap-0.5"
-            style={{ backgroundColor: 'var(--bg-elevated)' }}
-          >
+          <div className="flex items-center rounded-xl p-1 gap-0.5 bg-muted">
             {/* Save buttons - Edit mode only */}
             {!hideSubmit && (
               <>
@@ -531,11 +480,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                   type="button"
                   onClick={() => handleSave(false)}
                   disabled={!canSave}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                  style={{
-                    color: canSave ? 'var(--text-secondary)' : 'var(--text-disabled)',
-                    cursor: canSave ? 'pointer' : 'not-allowed',
-                  }}
+                  className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${canSave ? 'text-muted-foreground cursor-pointer hover:bg-background hover:text-foreground' : 'text-muted-foreground/50 cursor-not-allowed'}`}
                   title="Save"
                 >
                   {submitting === 'stay' ? (
@@ -550,11 +495,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                   type="button"
                   onClick={() => handleSave(true)}
                   disabled={!canSave}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                  style={{
-                    color: canSave ? 'var(--text-secondary)' : 'var(--text-disabled)',
-                    cursor: canSave ? 'pointer' : 'not-allowed',
-                  }}
+                  className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${canSave ? 'text-muted-foreground cursor-pointer hover:bg-background hover:text-foreground' : 'text-muted-foreground/50 cursor-not-allowed'}`}
                   title="Save & Close"
                 >
                   {submitting === 'go' ? (
@@ -570,11 +511,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                     type="button"
                     onClick={onDuplicate}
                     disabled={isSubmitting}
-                    className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                    style={{
-                      color: isSubmitting ? 'var(--text-disabled)' : 'var(--text-secondary)',
-                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    }}
+                    className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${isSubmitting ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground cursor-pointer hover:bg-background hover:text-foreground'}`}
                     title="Duplicate"
                   >
                     <Copy className="h-4 w-4" />
@@ -587,11 +524,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                     type="button"
                     onClick={onDelete}
                     disabled={isSubmitting}
-                    className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-                    style={{
-                      color: isSubmitting ? 'var(--text-disabled)' : 'var(--text-secondary)',
-                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    }}
+                    className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${isSubmitting ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground cursor-pointer hover:bg-background hover:text-foreground'}`}
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -599,7 +532,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                 )}
 
                 {/* Divider */}
-                <div className="w-px h-5 mx-0.5" style={{ backgroundColor: 'var(--border-default)' }} />
+                <div className="w-px h-5 mx-0.5 bg-border" />
               </>
             )}
 
@@ -608,11 +541,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
               type="button"
               onClick={handleExportPdf}
               disabled={exporting}
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-all"
-              style={{
-                color: exporting ? 'var(--text-disabled)' : 'var(--text-secondary)',
-                cursor: exporting ? 'not-allowed' : 'pointer',
-              }}
+              className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${exporting ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground cursor-pointer hover:bg-background hover:text-foreground'}`}
               title="Export to PDF"
             >
               {exporting ? (
@@ -626,26 +555,20 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             {!hideSubmit && (
               <>
                 {/* Divider */}
-                <div className="w-px h-5 mx-0.5" style={{ backgroundColor: 'var(--border-default)' }} />
+                <div className="w-px h-5 mx-0.5 bg-border" />
 
                 {/* Layout Switcher */}
                 <div ref={layoutSwitcherRef} className="relative">
                   <button
                     type="button"
                     onClick={() => setShowLayoutSwitcher(!showLayoutSwitcher)}
-                    className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg transition-all"
-                    style={{
-                      backgroundColor: showLayoutSwitcher
-                        ? 'var(--bg-primary)'
+                    className={`h-8 px-2.5 flex items-center gap-1.5 rounded-lg transition-all ${
+                      showLayoutSwitcher
+                        ? 'bg-primary text-primary-foreground'
                         : activeLayoutType === 'personal'
-                          ? 'var(--bg-accent-subtle)'
-                          : 'transparent',
-                      color: showLayoutSwitcher
-                        ? 'white'
-                        : activeLayoutType === 'personal'
-                          ? 'var(--text-accent)'
-                          : 'var(--text-secondary)',
-                    }}
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                    }`}
                     title="Switch layout"
                   >
                     {activeLayoutType === 'personal' ? (
@@ -658,21 +581,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
                   {/* Layout Switcher Dropdown */}
                   {showLayoutSwitcher && (
-                    <div
-                      className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl py-1 min-w-[200px]"
-                      style={{
-                        backgroundColor: 'var(--bg-surface)',
-                        border: '1px solid var(--border-default)',
-                      }}
-                    >
-                      <div
-                        className="px-3 py-2"
-                        style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                      >
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wide"
-                          style={{ color: 'var(--text-muted)' }}
-                        >
+                    <div className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl py-1 min-w-[200px] bg-card border border-border">
+                      <div className="px-3 py-2 border-b border-border">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           Form Layout
                         </span>
                       </div>
@@ -683,11 +594,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                           setActiveLayoutType('default');
                           setShowLayoutSwitcher(false);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                        style={{
-                          backgroundColor: activeLayoutType === 'default' ? 'var(--bg-primary-subtle)' : 'transparent',
-                          color: activeLayoutType === 'default' ? 'var(--text-brand)' : 'var(--text-primary)',
-                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+                          activeLayoutType === 'default' ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'
+                        }`}
                       >
                         <Building2 className="h-4 w-4" />
                         <span className="flex-1 text-left">Default Layout</span>
@@ -701,11 +610,9 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                             setActiveLayoutType('personal');
                             setShowLayoutSwitcher(false);
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                          style={{
-                            backgroundColor: activeLayoutType === 'personal' ? 'var(--bg-primary-subtle)' : 'transparent',
-                            color: activeLayoutType === 'personal' ? 'var(--text-brand)' : 'var(--text-primary)',
-                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+                            activeLayoutType === 'personal' ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'
+                          }`}
                         >
                           <User className="h-4 w-4" />
                           <span className="flex-1 text-left">My Layout</span>
@@ -713,7 +620,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                         </button>
                       )}
 
-                      <div className="h-px my-1" style={{ backgroundColor: 'var(--border-subtle)' }} />
+                      <div className="h-px my-1 bg-border" />
 
                       <button
                         type="button"
@@ -721,8 +628,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
                           setShowLayoutSwitcher(false);
                           setShowLayoutDesigner(true);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-                        style={{ color: 'var(--text-brand)' }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-primary hover:bg-muted"
                       >
                         <Sparkles className="h-4 w-4" />
                         <span className="flex-1 text-left font-medium">Customize Layout...</span>
@@ -750,7 +656,7 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
       {/* Layout Designer Modal */}
       {showLayoutDesigner && (
         <FormLayoutDesigner
-          tableCode={tableCode}
+          collectionCode={collectionCode}
           fields={fields}
           initialLayout={getDesignerLayout()}
           onSave={handleSaveLayout}

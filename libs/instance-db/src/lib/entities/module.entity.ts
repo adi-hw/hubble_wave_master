@@ -34,7 +34,7 @@ export class ModuleEntity {
   @Column()
   label!: string;
 
-  // Legacy support alias if needed, primarily using label
+  // Alias for label property
   get name(): string { return this.label; }
 
   @Column({ nullable: true })

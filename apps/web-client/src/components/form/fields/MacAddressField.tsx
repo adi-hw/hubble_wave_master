@@ -47,8 +47,8 @@ export const MacAddressField: React.FC<FieldComponentProps<unknown>> = ({
       helpText={field.config?.helpText || 'Enter MAC address (e.g., AA:BB:CC:DD:EE:FF)'}
     >
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-          <Network className="h-4 w-4" />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+          <Network className="h-4 w-4" aria-hidden="true" />
         </span>
         <input
           type="text"

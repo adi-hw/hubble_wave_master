@@ -22,9 +22,8 @@ export function OfflineIndicator({
         'flex items-center gap-2 px-4 py-2 rounded-full shadow-lg',
         'transition-all duration-300 ease-out',
         'md:bottom-6',
-        isOnline
-          ? 'bg-green-500/90 text-white'
-          : 'bg-amber-500/90 text-white animate-pulse',
+        isOnline ? 'bg-success text-success-foreground' : 'bg-warning text-warning-foreground',
+        !isOnline && 'animate-pulse',
         className
       )}
       role="status"
@@ -32,12 +31,12 @@ export function OfflineIndicator({
     >
       {isOnline ? (
         <>
-          <Wifi className="w-4 h-4" />
+          <Wifi className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-medium">Back online</span>
         </>
       ) : (
         <>
-          <WifiOff className="w-4 h-4" />
+          <WifiOff className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-medium">You're offline</span>
         </>
       )}

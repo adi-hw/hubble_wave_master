@@ -1,0 +1,1 @@
+export { LocalizationStudioPage } from './LocalizationStudioPage';

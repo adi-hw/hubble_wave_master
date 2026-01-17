@@ -3,40 +3,40 @@ import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 
 /**
- * Legacy-compatible model endpoints
+ * Model endpoints for collection metadata
  *
- * These mirror the older /models/* routes expected by the web client:
- * - GET /models/:tableName
- * - GET /models/:tableName/fields
- * - GET /models/:tableName/layout
+ * Provides collection/model information:
+ * - GET /models/:collectionCode - Get collection metadata
+ * - GET /models/:collectionCode/properties - Get collection properties
+ * - GET /models/:collectionCode/layout - Get collection layout
  */
 @Controller('models')
 @UseGuards(JwtAuthGuard)
 export class ModelController {
   constructor(private readonly modelRegistry: ModelRegistryService) {}
 
-  @Get(':tableName')
-  async getModel(@Param('tableName') tableName: string) {
-    const table = await this.modelRegistry.getTable(tableName);
+  @Get(':collectionCode')
+  async getModel(@Param('collectionCode') collectionCode: string) {
+    const collection = await this.modelRegistry.getCollection(collectionCode);
     return {
-      id: table.tableName,
-      code: table.tableName,
-      label: table.label,
-      category: table.category,
+      id: collection.collectionCode,
+      code: collection.collectionCode,
+      label: collection.label,
+      category: collection.category,
       flags: {},
     };
   }
 
-  @Get(':tableName/fields')
-  async getModelFields(@Param('tableName') tableName: string) {
-    await this.modelRegistry.getTable(tableName);
-    return this.modelRegistry.getFields(tableName);
+  @Get(':collectionCode/properties')
+  async getModelProperties(@Param('collectionCode') collectionCode: string) {
+    await this.modelRegistry.getCollection(collectionCode);
+    return this.modelRegistry.getProperties(collectionCode);
   }
 
-  @Get(':tableName/layout')
-  async getModelLayout(@Param('tableName') tableName: string) {
-    await this.modelRegistry.getTable(tableName);
-    const layout = await this.modelRegistry.getLayout(tableName);
+  @Get(':collectionCode/layout')
+  async getModelLayout(@Param('collectionCode') collectionCode: string) {
+    await this.modelRegistry.getCollection(collectionCode);
+    const layout = await this.modelRegistry.getLayout(collectionCode);
     return layout ?? {};
   }
 }

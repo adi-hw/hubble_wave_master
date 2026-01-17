@@ -45,7 +45,7 @@
         "apps/svc-identity-e2e/**/*",
         "apps/svc-data-e2e/**/*",
         "apps/svc-metadata-e2e/**/*",
-        "apps/svc-ai-e2e/**/*",
+        "apps/svc-ava-e2e/**/*",
         "apps/svc-control-plane-e2e/**/*"
       ]
     },

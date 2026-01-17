@@ -323,7 +323,7 @@ function LivePreview({ config }: LivePreviewProps) {
 
         <div className="flex gap-2 mb-3">
           <button
-            className="px-3 py-1.5 text-xs font-medium text-white"
+            className="px-3 py-1.5 text-xs font-medium text-primary-foreground"
             style={{
               background: `linear-gradient(135deg, ${c.primary500 || '#6366f1'}, ${c.accent500 || '#06b6d4'})`,
               borderRadius: `${s.radiusSm || 6}px`,
@@ -455,7 +455,7 @@ function AvaAssistant({ currentTheme, onApplySuggestion: _onApplySuggestion }: A
     const contextMessage = `I'm currently customizing themes in HubbleWave. My current theme is "${currentTheme?.name || 'Void Dark'}". ${message}`;
 
     try {
-      // Use /api/ai/ava which proxies to svc-ai on port 3004
+      // Use /api/ai/ava which proxies to svc-ava on port 3004
       const token = getStoredToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) {
@@ -533,7 +533,7 @@ function AvaAssistant({ currentTheme, onApplySuggestion: _onApplySuggestion }: A
         role: 'assistant',
         content: errMsg.includes('log in')
           ? errMsg
-          : `I couldn't connect to the AI service. Make sure svc-ai is running on port 3004.\n\nError: ${errMsg}`,
+          : `I couldn't connect to the AI service. Make sure svc-ava is running on port 3004.\n\nError: ${errMsg}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);

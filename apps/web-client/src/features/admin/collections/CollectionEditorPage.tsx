@@ -14,6 +14,10 @@ import {
   FolderOpen,
   RefreshCw,
   LayoutList,
+  Zap,
+  Code2,
+  ExternalLink,
+  List,
 } from 'lucide-react';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
@@ -32,6 +36,28 @@ interface CollectionFormData {
   isAudited: boolean;
   isVersioned: boolean;
   tags: string[];
+}
+
+// API response uses different field names than the form
+interface CollectionApiResponse {
+  id: string;
+  code: string;
+  name: string;  // API returns 'name', we display as 'label'
+  pluralName?: string;  // API returns 'pluralName', we use 'labelPlural'
+  description?: string;
+  icon?: string;
+  color?: string;
+  tableName: string;  // API returns 'tableName', we use 'storageTable'
+  category?: string;
+  isSystem: boolean;
+  isExtensible: boolean;
+  isAudited: boolean;
+  enableVersioning: boolean;  // API returns 'enableVersioning', we use 'isVersioned'
+  applicationId?: string;
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface Collection extends CollectionFormData {
@@ -79,6 +105,7 @@ export const CollectionEditorPage: React.FC = () => {
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [form, setForm] = useState<CollectionFormData>(defaultForm);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -96,22 +123,45 @@ export const CollectionEditorPage: React.FC = () => {
   const fetchCollection = async (collectionId: string) => {
     setLoading(true);
     try {
-      const response = await metadataApi.get<Collection>(`/collections/${collectionId}`);
-      const data = response.data;
-      setCollection(data);
+      const response = await metadataApi.get<CollectionApiResponse>(`/collections/${collectionId}`);
+      const apiData = response.data;
+
+      // Map API response to our internal Collection format
+      const mappedCollection: Collection = {
+        id: apiData.id,
+        code: apiData.code,
+        label: apiData.name,  // API 'name' → 'label'
+        labelPlural: apiData.pluralName || '',  // API 'pluralName' → 'labelPlural'
+        description: apiData.description || '',
+        icon: apiData.icon || 'Layers',
+        color: apiData.color || '#4f46e5',
+        storageTable: apiData.tableName,  // API 'tableName' → 'storageTable'
+        category: apiData.category || '',
+        isExtensible: apiData.isExtensible,
+        isAudited: apiData.isAudited,
+        isVersioned: apiData.enableVersioning,  // API 'enableVersioning' → 'isVersioned'
+        tags: (apiData.metadata?.tags as string[]) || [],
+        isSystem: apiData.isSystem,
+        moduleId: apiData.applicationId,
+        publishedAt: apiData.publishedAt,
+        createdAt: apiData.createdAt,
+        updatedAt: apiData.updatedAt,
+      };
+
+      setCollection(mappedCollection);
       setForm({
-        code: data.code,
-        label: data.label,
-        labelPlural: data.labelPlural || '',
-        description: data.description || '',
-        icon: data.icon || 'Layers',
-        color: data.color || '#4f46e5',
-        storageTable: data.storageTable,
-        category: data.category || '',
-        isExtensible: data.isExtensible,
-        isAudited: data.isAudited,
-        isVersioned: data.isVersioned,
-        tags: data.tags || [],
+        code: mappedCollection.code,
+        label: mappedCollection.label,
+        labelPlural: mappedCollection.labelPlural,
+        description: mappedCollection.description,
+        icon: mappedCollection.icon,
+        color: mappedCollection.color,
+        storageTable: mappedCollection.storageTable,
+        category: mappedCollection.category,
+        isExtensible: mappedCollection.isExtensible,
+        isAudited: mappedCollection.isAudited,
+        isVersioned: mappedCollection.isVersioned,
+        tags: mappedCollection.tags,
       });
     } catch (error) {
       console.error('Failed to fetch collection:', error);
@@ -178,15 +228,51 @@ export const CollectionEditorPage: React.FC = () => {
 
     setSaving(true);
     try {
-      let saved: Collection;
+      // Map form data to API format
+      const apiPayload = {
+        code: form.code,
+        label: form.label,  // API expects 'label', service maps to 'name'
+        labelPlural: form.labelPlural,  // API expects 'labelPlural', service maps to 'pluralName'
+        description: form.description,
+        icon: form.icon,
+        color: form.color,
+        storageTable: form.storageTable,  // API expects 'storageTable', service maps to 'tableName'
+        category: form.category,
+        isExtensible: form.isExtensible,
+        isAudited: form.isAudited,
+        isVersioned: form.isVersioned,  // API expects 'isVersioned', service maps to 'enableVersioning'
+        tags: form.tags,
+      };
+
       if (isNew) {
-        const response = await metadataApi.post<Collection>('/collections', form);
-        saved = response.data;
-        navigate(`/studio/collections/${saved.id}`);
+        const response = await metadataApi.post<CollectionApiResponse>('/collections', apiPayload);
+        const apiData = response.data;
+        navigate(`/studio/collections/${apiData.id}`);
       } else {
-        const response = await metadataApi.put<Collection>(`/collections/${id}`, form);
-        saved = response.data;
-        setCollection(saved);
+        const response = await metadataApi.put<CollectionApiResponse>(`/collections/${id}`, apiPayload);
+        const apiData = response.data;
+        // Re-map response to internal format
+        const mappedCollection: Collection = {
+          id: apiData.id,
+          code: apiData.code,
+          label: apiData.name,
+          labelPlural: apiData.pluralName || '',
+          description: apiData.description || '',
+          icon: apiData.icon || 'Layers',
+          color: apiData.color || '#4f46e5',
+          storageTable: apiData.tableName,
+          category: apiData.category || '',
+          isExtensible: apiData.isExtensible,
+          isAudited: apiData.isAudited,
+          isVersioned: apiData.enableVersioning,
+          tags: (apiData.metadata?.tags as string[]) || [],
+          isSystem: apiData.isSystem,
+          moduleId: apiData.applicationId,
+          publishedAt: apiData.publishedAt,
+          createdAt: apiData.createdAt,
+          updatedAt: apiData.updatedAt,
+        };
+        setCollection(mappedCollection);
       }
     } catch (error: any) {
       console.error('Failed to save collection:', error);
@@ -194,6 +280,25 @@ export const CollectionEditorPage: React.FC = () => {
       setErrors({ _form: message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePublishAndDeploy = async () => {
+    if (!id) return;
+
+    setPublishing(true);
+    setErrors((prev) => ({ ...prev, _form: '' }));
+    try {
+      const response = await metadataApi.post<CollectionApiResponse>(`/collections/${id}/publish`);
+      const published = response.data;
+      await metadataApi.post('/schema/deploy', { collectionCodes: [published.code] });
+      await fetchCollection(id);
+    } catch (error: any) {
+      console.error('Failed to publish and deploy:', error);
+      const message = error?.response?.data?.message || 'Failed to publish and deploy schema';
+      setErrors({ _form: message });
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -212,7 +317,7 @@ export const CollectionEditorPage: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <RefreshCw className="h-8 w-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -222,20 +327,17 @@ export const CollectionEditorPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
-          onClick={() => navigate('/studio/collections')}
-          className="p-2 rounded-lg transition-colors"
-          style={{ backgroundColor: 'transparent' }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          onClick={() => navigate('/collections.list')}
+          className="p-2 rounded-lg transition-colors bg-transparent hover:bg-muted"
         >
-          <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+          <ArrowLeft className="h-5 w-5 text-muted-foreground" />
         </button>
         <div className="flex-1">
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-2xl font-semibold text-foreground">
             {isNew ? 'New Collection' : `Edit ${collection?.label}`}
           </h1>
           {!isNew && collection && (
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm mt-1 text-muted-foreground">
               Last updated {new Date(collection.updatedAt).toLocaleDateString()}
             </p>
           )}
@@ -245,16 +347,10 @@ export const CollectionEditorPage: React.FC = () => {
             <Button
               variant="secondary"
               leftIcon={<Eye className="h-4 w-4" />}
-              onClick={async () => {
-                try {
-                  await metadataApi.post(`/collections/${id}/publish`);
-                  fetchCollection(id!);
-                } catch (error) {
-                  console.error('Failed to publish:', error);
-                }
-              }}
+              onClick={handlePublishAndDeploy}
+              loading={publishing}
             >
-              Publish
+              Publish & Deploy
             </Button>
           )}
           <Button
@@ -270,26 +366,14 @@ export const CollectionEditorPage: React.FC = () => {
       </div>
 
       {errors._form && (
-        <div
-          className="mb-6 p-4 rounded-lg border"
-          style={{
-            backgroundColor: 'var(--bg-danger-subtle)',
-            borderColor: 'var(--border-danger)'
-          }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>{errors._form}</p>
+        <div className="mb-6 p-4 rounded-lg border bg-destructive/10 border-destructive">
+          <p className="text-sm text-destructive">{errors._form}</p>
         </div>
       )}
 
       {collection?.isSystem && (
-        <div
-          className="mb-6 p-4 rounded-lg border"
-          style={{
-            backgroundColor: 'var(--bg-warning-subtle)',
-            borderColor: 'var(--border-warning)'
-          }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-warning)' }}>
+        <div className="mb-6 p-4 rounded-lg border bg-warning-subtle border-warning-border">
+          <p className="text-sm text-warning-text">
             This is a system collection. Some properties cannot be modified.
           </p>
         </div>
@@ -298,23 +382,14 @@ export const CollectionEditorPage: React.FC = () => {
       {/* Form Sections */}
       <div className="space-y-8">
         {/* Basic Information */}
-        <section
-          className="rounded-xl border p-6"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-default)'
-          }}
-        >
+        <section className="rounded-xl border p-6 bg-card border-border">
           <div className="flex items-center gap-3 mb-6">
-            <div
-              className="h-10 w-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--bg-primary-subtle)' }}
-            >
-              <Database className="h-5 w-5" style={{ color: 'var(--text-brand)' }} />
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10">
+              <Database className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Basic Information</h2>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Define the collection identity</p>
+              <h2 className="text-lg font-semibold text-foreground">Basic Information</h2>
+              <p className="text-sm text-muted-foreground">Define the collection identity</p>
             </div>
           </div>
 
@@ -351,7 +426,7 @@ export const CollectionEditorPage: React.FC = () => {
               placeholder="e.g., Incidents"
             />
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Description
               </label>
               <textarea
@@ -359,41 +434,27 @@ export const CollectionEditorPage: React.FC = () => {
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="Describe what this collection is used for..."
                 rows={3}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 resize-none"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)'
-                }}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 resize-none bg-card border-border text-foreground"
               />
             </div>
           </div>
         </section>
 
         {/* Appearance */}
-        <section
-          className="rounded-xl border p-6"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-default)'
-          }}
-        >
+        <section className="rounded-xl border p-6 bg-card border-border">
           <div className="flex items-center gap-3 mb-6">
-            <div
-              className="h-10 w-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--bg-accent-subtle)' }}
-            >
-              <Palette className="h-5 w-5" style={{ color: 'var(--text-accent)' }} />
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-violet-500/10">
+              <Palette className="h-5 w-5 text-violet-500" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Appearance</h2>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Customize the visual representation</p>
+              <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
+              <p className="text-sm text-muted-foreground">Customize the visual representation</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Icon
               </label>
               <div className="flex flex-wrap gap-2">
@@ -402,11 +463,11 @@ export const CollectionEditorPage: React.FC = () => {
                     key={icon}
                     type="button"
                     onClick={() => handleChange('icon', icon)}
-                    className="p-2 rounded-lg border transition-colors"
-                    style={{
-                      borderColor: form.icon === icon ? 'var(--border-primary)' : 'var(--border-default)',
-                      backgroundColor: form.icon === icon ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)'
-                    }}
+                    className={`p-2 rounded-lg border transition-colors ${
+                      form.icon === icon
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-card'
+                    }`}
                   >
                     <Layers className="h-5 w-5" />
                   </button>
@@ -414,7 +475,7 @@ export const CollectionEditorPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Color
               </label>
               <div className="flex flex-wrap gap-2">
@@ -423,12 +484,10 @@ export const CollectionEditorPage: React.FC = () => {
                     key={color}
                     type="button"
                     onClick={() => handleChange('color', color)}
-                    className="h-10 w-10 rounded-lg border-2 transition-transform hover:scale-105"
-                    style={{
-                      backgroundColor: color,
-                      borderColor: form.color === color ? 'var(--text-primary)' : 'transparent',
-                      transform: form.color === color ? 'scale(1.1)' : 'scale(1)'
-                    }}
+                    className={`h-10 w-10 rounded-lg border-2 transition-transform hover:scale-105 ${
+                      form.color === color ? 'scale-110 border-foreground' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: color }}
                   />
                 ))}
               </div>
@@ -437,41 +496,27 @@ export const CollectionEditorPage: React.FC = () => {
         </section>
 
         {/* Organization */}
-        <section
-          className="rounded-xl border p-6"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-default)'
-          }}
-        >
+        <section className="rounded-xl border p-6 bg-card border-border">
           <div className="flex items-center gap-3 mb-6">
-            <div
-              className="h-10 w-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--bg-warning-subtle)' }}
-            >
-              <FolderOpen className="h-5 w-5" style={{ color: 'var(--text-warning)' }} />
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-warning-subtle">
+              <FolderOpen className="h-5 w-5 text-warning-text" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Organization</h2>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Categorize and tag the collection</p>
+              <h2 className="text-lg font-semibold text-foreground">Organization</h2>
+              <p className="text-sm text-muted-foreground">Categorize and tag the collection</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Category
               </label>
               <div className="flex gap-2">
                 <select
                   value={form.category}
                   onChange={(e) => handleChange('category', e.target.value)}
-                  className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: 'var(--bg-surface)',
-                    borderColor: 'var(--border-default)',
-                    color: 'var(--text-primary)'
-                  }}
+                  className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-card border-border text-foreground"
                 >
                   <option value="">Select or create category</option>
                   {categories.map((cat) => (
@@ -487,7 +532,7 @@ export const CollectionEditorPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              <label className="block text-sm font-medium mb-1.5 text-muted-foreground">
                 Tags
               </label>
               <div className="flex gap-2 mb-2">
@@ -506,19 +551,14 @@ export const CollectionEditorPage: React.FC = () => {
                 {form.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm"
-                    style={{
-                      backgroundColor: 'var(--bg-surface-secondary)',
-                      color: 'var(--text-secondary)'
-                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm bg-muted text-muted-foreground"
                   >
                     <Tag className="h-3 w-3" />
                     {tag}
                     <button
                       type="button"
                       onClick={() => handleRemoveTag(tag)}
-                      className="ml-1"
-                      style={{ color: 'var(--text-danger)' }}
+                      className="ml-1 text-destructive"
                     >
                       &times;
                     </button>
@@ -530,34 +570,19 @@ export const CollectionEditorPage: React.FC = () => {
         </section>
 
         {/* Behavior */}
-        <section
-          className="rounded-xl border p-6"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-default)'
-          }}
-        >
+        <section className="rounded-xl border p-6 bg-card border-border">
           <div className="flex items-center gap-3 mb-6">
-            <div
-              className="h-10 w-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--bg-success-subtle)' }}
-            >
-              <Settings2 className="h-5 w-5" style={{ color: 'var(--text-success)' }} />
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-success-subtle">
+              <Settings2 className="h-5 w-5 text-success-text" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Behavior</h2>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Configure collection behavior</p>
+              <h2 className="text-lg font-semibold text-foreground">Behavior</h2>
+              <p className="text-sm text-muted-foreground">Configure collection behavior</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <label
-              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
-              style={{
-                borderColor: 'var(--border-default)',
-                backgroundColor: 'var(--bg-surface)'
-              }}
-            >
+            <label className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors border-border bg-card hover:bg-muted">
               <input
                 type="checkbox"
                 checked={form.isExtensible}
@@ -565,23 +590,17 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
+                <div className="flex items-center gap-2 font-medium text-foreground">
                   <Layers className="h-4 w-4" />
                   Extensible
                 </div>
-                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm mt-1 text-muted-foreground">
                   Allow admins to add custom properties
                 </p>
               </div>
             </label>
 
-            <label
-              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
-              style={{
-                borderColor: 'var(--border-default)',
-                backgroundColor: 'var(--bg-surface)'
-              }}
-            >
+            <label className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors border-border bg-card hover:bg-muted">
               <input
                 type="checkbox"
                 checked={form.isAudited}
@@ -589,23 +608,17 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
+                <div className="flex items-center gap-2 font-medium text-foreground">
                   <Shield className="h-4 w-4" />
                   Audited
                 </div>
-                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm mt-1 text-muted-foreground">
                   Track all changes in audit log
                 </p>
               </div>
             </label>
 
-            <label
-              className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors"
-              style={{
-                borderColor: 'var(--border-default)',
-                backgroundColor: 'var(--bg-surface)'
-              }}
-            >
+            <label className="flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors border-border bg-card hover:bg-muted">
               <input
                 type="checkbox"
                 checked={form.isVersioned}
@@ -613,11 +626,11 @@ export const CollectionEditorPage: React.FC = () => {
                 className="mt-0.5"
               />
               <div>
-                <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-primary)' }}>
+                <div className="flex items-center gap-2 font-medium text-foreground">
                   <History className="h-4 w-4" />
                   Versioned
                 </div>
-                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm mt-1 text-muted-foreground">
                   Keep version history of records
                 </p>
               </div>
@@ -627,24 +640,15 @@ export const CollectionEditorPage: React.FC = () => {
 
         {/* Properties Summary (only for existing collections) */}
         {!isNew && collection && (
-          <section
-            className="rounded-xl border p-6"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-default)'
-            }}
-          >
+          <section className="rounded-xl border p-6 bg-card border-border">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div
-                  className="h-10 w-10 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--bg-info-subtle)' }}
-                >
-                  <Layers className="h-5 w-5" style={{ color: 'var(--text-info)' }} />
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-info-subtle">
+                  <Layers className="h-5 w-5 text-info-text" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Properties</h2>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Manage collection properties</p>
+                  <h2 className="text-lg font-semibold text-foreground">Properties</h2>
+                  <p className="text-sm text-muted-foreground">Manage collection properties</p>
                 </div>
               </div>
               <Button
@@ -659,24 +663,15 @@ export const CollectionEditorPage: React.FC = () => {
 
         {/* Views Summary (only for existing collections) */}
         {!isNew && collection && (
-          <section
-            className="rounded-xl border p-6"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-default)'
-            }}
-          >
+          <section className="rounded-xl border p-6 bg-card border-border">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div
-                  className="h-10 w-10 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--bg-accent-subtle)' }}
-                >
-                  <LayoutList className="h-5 w-5" style={{ color: 'var(--text-accent)' }} />
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-violet-500/10">
+                  <LayoutList className="h-5 w-5 text-violet-500" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Views</h2>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Configure list, board, calendar, and form views</p>
+                  <h2 className="text-lg font-semibold text-foreground">Views</h2>
+                  <p className="text-sm text-muted-foreground">Configure list, board, calendar, and form views</p>
                 </div>
               </div>
               <Button
@@ -684,6 +679,99 @@ export const CollectionEditorPage: React.FC = () => {
                 onClick={() => navigate(`/studio/collections/${id}/views`)}
               >
                 Manage Views
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {/* Automations (only for existing collections) */}
+        {!isNew && collection && (
+          <section className="rounded-xl border p-6 bg-card border-border">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-warning-subtle">
+                  <Zap className="h-5 w-5 text-warning-text" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Automations</h2>
+                  <p className="text-sm text-muted-foreground">Configure server-side business rules and triggers</p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/studio/collections/${id}/automations`)}
+              >
+                Manage Automations
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {/* UI Scripts (only for existing collections) */}
+        {!isNew && collection && (
+          <section className="rounded-xl border p-6 bg-card border-border">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-success-subtle">
+                  <Code2 className="h-5 w-5 text-success-text" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">UI Scripts</h2>
+                  <p className="text-sm text-muted-foreground">Configure on load, on change, on submit, and on cell edit logic</p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/studio/collections/${id}/scripts`)}
+              >
+                Manage Scripts
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {/* Access Rules (only for existing collections) */}
+        {!isNew && collection && (
+          <section className="rounded-xl border p-6 bg-card border-border">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-danger-subtle">
+                  <Shield className="h-5 w-5 text-danger-text" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Access Rules</h2>
+                  <p className="text-sm text-muted-foreground">Configure row-level and field-level security</p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/studio/collections/${id}/access`)}
+              >
+                Manage Access
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {/* Quick Actions (only for existing collections) */}
+        {!isNew && collection && (
+          <section className="rounded-xl border p-6 bg-card border-border">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-muted">
+                  <List className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Records</h2>
+                  <p className="text-sm text-muted-foreground">View and manage data in this collection</p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/${collection.code}.list`)}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View Records
               </Button>
             </div>
           </section>

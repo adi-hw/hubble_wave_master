@@ -10,7 +10,7 @@ import {
 /**
  * Control Plane user role
  */
-export type ControlPlaneRole = 'super_admin' | 'admin' | 'support' | 'readonly';
+export type ControlPlaneRole = 'super_admin' | 'admin' | 'operator' | 'support' | 'viewer' | 'readonly';
 
 /**
  * Control Plane user status

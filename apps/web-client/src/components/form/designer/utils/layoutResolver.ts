@@ -2,7 +2,7 @@
  * Layout Resolution Utilities
  *
  * Resolves the effective layout for a user based on the hierarchy:
- * Platform → Tenant Admin → Role → User
+ * Platform → Instance Admin → Role → User
  *
  * Handles fallback logic and ensures users always have a valid layout.
  */
@@ -13,10 +13,10 @@ import {
   LayoutResolutionContext,
   ResolvedLayout,
   LayoutOption,
-  FieldProtection,
+  PropertyProtection,
   LayoutVersionChain,
   PlatformLayout,
-  TenantAdminLayout,
+  InstanceAdminLayout,
   RoleLayout,
   UserLayoutPreference,
   createEmptyLayout,
@@ -36,11 +36,11 @@ import {
  * This should be implemented by your data layer
  */
 export interface LayoutRepository {
-  getPlatformLayout(tableCode: string): Promise<PlatformLayout | null>;
-  getTenantAdminLayout(tenantId: string, tableCode: string): Promise<TenantAdminLayout | null>;
-  getRoleLayouts(tenantId: string, roleCodes: string[], tableCode: string): Promise<RoleLayout[]>;
-  getUserLayout(userId: string, tableCode: string): Promise<UserLayoutPreference | null>;
-  saveUserLayout(userId: string, tableCode: string, layout: UserLayoutPreference): Promise<void>;
+  getPlatformLayout(collectionCode: string): Promise<PlatformLayout | null>;
+  getInstanceAdminLayout(instanceId: string, collectionCode: string): Promise<InstanceAdminLayout | null>;
+  getRoleLayouts(instanceId: string, roleCodes: string[], collectionCode: string): Promise<RoleLayout[]>;
+  getUserLayout(userId: string, collectionCode: string): Promise<UserLayoutPreference | null>;
+  saveUserLayout(userId: string, collectionCode: string, layout: UserLayoutPreference): Promise<void>;
 }
 
 // ============================================================================
@@ -54,14 +54,14 @@ export async function resolveLayout(
   context: LayoutResolutionContext,
   repository: LayoutRepository
 ): Promise<ResolvedLayout> {
-  const { tenantId, userId, userRoles, tableCode, preferUserLayout = true } = context;
+  const { instanceId, userId, userRoles, collectionCode, preferUserLayout = true } = context;
 
   // Fetch all available layouts in parallel
-  const [platformLayout, tenantLayout, roleLayouts, userLayout] = await Promise.all([
-    repository.getPlatformLayout(tableCode),
-    repository.getTenantAdminLayout(tenantId, tableCode),
-    repository.getRoleLayouts(tenantId, userRoles, tableCode),
-    preferUserLayout ? repository.getUserLayout(userId, tableCode) : Promise.resolve(null),
+  const [platformLayout, instanceLayout, roleLayouts, userLayout] = await Promise.all([
+    repository.getPlatformLayout(collectionCode),
+    repository.getInstanceAdminLayout(instanceId, collectionCode),
+    repository.getRoleLayouts(instanceId, userRoles, collectionCode),
+    preferUserLayout ? repository.getUserLayout(userId, collectionCode) : Promise.resolve(null),
   ]);
 
   // Build the available layouts list
@@ -78,16 +78,16 @@ export async function resolveLayout(
     });
   }
 
-  if (tenantLayout) {
+  if (instanceLayout) {
     availableLayouts.push({
-      id: tenantLayout.id,
-      name: tenantLayout.name,
+      id: instanceLayout.id,
+      name: instanceLayout.name,
       source: 'admin',
       isActive: false,
-      isDefault: tenantLayout.isDefault,
-      version: tenantLayout.version,
-      lastModified: tenantLayout.updatedAt,
-      modifiedBy: tenantLayout.createdBy,
+      isDefault: instanceLayout.isDefault,
+      version: instanceLayout.version,
+      lastModified: instanceLayout.updatedAt,
+      modifiedBy: instanceLayout.createdBy,
     });
   }
 
@@ -117,18 +117,18 @@ export async function resolveLayout(
   // Determine the effective layout using the hierarchy
   const { layout, source, sourceId, versionChain } = resolveEffectiveLayout(
     platformLayout,
-    tenantLayout,
+    instanceLayout,
     roleLayouts,
     userLayout
   );
 
-  // Collect effective field protections
-  const effectiveProtections = collectProtections(tenantLayout, roleLayouts);
+  // Collect effective property protections
+  const effectiveProtections = collectProtections(instanceLayout, roleLayouts);
 
   // Check for pending updates
   const hasPendingUpdate = checkForPendingUpdates(
     userLayout,
-    tenantLayout,
+    instanceLayout,
     platformLayout
   );
 
@@ -155,7 +155,7 @@ export async function resolveLayout(
  */
 function resolveEffectiveLayout(
   platformLayout: PlatformLayout | null,
-  tenantLayout: TenantAdminLayout | null,
+  instanceLayout: InstanceAdminLayout | null,
   roleLayouts: RoleLayout[],
   userLayout: UserLayoutPreference | null
 ): {
@@ -168,8 +168,8 @@ function resolveEffectiveLayout(
   const versionChain: LayoutVersionChain = {
     platformVersion: platformLayout?.platformVersion || '0.0.0',
     platformSchemaVersion: platformLayout?.schemaVersion || CURRENT_SCHEMA_VERSION,
-    tenantAdminVersion: tenantLayout?.version,
-    roleLayoutVersion: roleLayouts[0]?.basedOnTenantVersion,
+    instanceAdminVersion: instanceLayout?.version,
+    roleLayoutVersion: roleLayouts[0]?.basedOnInstanceVersion,
     userLayoutVersion: userLayout?.basedOnVersion,
   };
 
@@ -197,12 +197,12 @@ function resolveEffectiveLayout(
     };
   }
 
-  // Priority 3: Tenant admin layout
-  if (tenantLayout?.isPublished && tenantLayout.isDefault) {
+  // Priority 3: Instance admin layout
+  if (instanceLayout?.isPublished && instanceLayout.isDefault) {
     return {
-      layout: tenantLayout.layout,
+      layout: instanceLayout.layout,
       source: 'admin',
-      sourceId: tenantLayout.id,
+      sourceId: instanceLayout.id,
       versionChain,
     };
   }
@@ -227,17 +227,17 @@ function resolveEffectiveLayout(
 }
 
 /**
- * Collects field protections from tenant and role layouts
+ * Collects property protections from instance and role layouts
  */
 function collectProtections(
-  tenantLayout: TenantAdminLayout | null,
+  instanceLayout: InstanceAdminLayout | null,
   _roleLayouts: RoleLayout[]
-): FieldProtection[] {
-  const protections: FieldProtection[] = [];
+): PropertyProtection[] {
+  const protections: PropertyProtection[] = [];
 
-  // Tenant protections have priority
-  if (tenantLayout?.fieldProtections) {
-    for (const protection of tenantLayout.fieldProtections) {
+  // Instance protections have priority
+  if (instanceLayout?.propertyProtections) {
+    for (const protection of instanceLayout.propertyProtections) {
       protections.push(protection);
     }
   }
@@ -252,13 +252,13 @@ function collectProtections(
  */
 function checkForPendingUpdates(
   userLayout: UserLayoutPreference | null,
-  tenantLayout: TenantAdminLayout | null,
+  instanceLayout: InstanceAdminLayout | null,
   platformLayout: PlatformLayout | null
 ): boolean {
   if (!userLayout) return false;
 
-  // Check if user layout is based on an older tenant version
-  if (tenantLayout && userLayout.basedOnVersion < tenantLayout.version) {
+  // Check if user layout is based on an older instance version
+  if (instanceLayout && userLayout.basedOnVersion < instanceLayout.version) {
     return true;
   }
 
@@ -270,7 +270,7 @@ function checkForPendingUpdates(
       {
         platformVersion: platformLayout.platformVersion,
         platformSchemaVersion: platformLayout.schemaVersion,
-        tenantAdminVersion: tenantLayout?.version,
+        instanceAdminVersion: instanceLayout?.version,
       }
     );
     return migration.needsPlatformUpgrade || migration.needsSchemaMigration;
@@ -288,7 +288,7 @@ function checkForPendingUpdates(
  */
 export async function switchLayout(
   userId: string,
-  tableCode: string,
+  collectionCode: string,
   targetLayoutId: string,
   availableLayouts: LayoutOption[],
   repository: LayoutRepository
@@ -298,17 +298,17 @@ export async function switchLayout(
 
   // If switching to user's personal layout, just activate it
   if (targetLayout.source === 'user') {
-    const userLayout = await repository.getUserLayout(userId, tableCode);
+    const userLayout = await repository.getUserLayout(userId, collectionCode);
     if (userLayout) {
       userLayout.isActive = true;
-      await repository.saveUserLayout(userId, tableCode, userLayout);
+      await repository.saveUserLayout(userId, collectionCode, userLayout);
     }
   } else {
     // Deactivate user's personal layout if switching to another source
-    const userLayout = await repository.getUserLayout(userId, tableCode);
+    const userLayout = await repository.getUserLayout(userId, collectionCode);
     if (userLayout) {
       userLayout.isActive = false;
-      await repository.saveUserLayout(userId, tableCode, userLayout);
+      await repository.saveUserLayout(userId, collectionCode, userLayout);
     }
   }
 
@@ -326,24 +326,24 @@ export async function switchLayout(
  */
 export async function createUserCustomization(
   userId: string,
-  tableCode: string,
+  collectionCode: string,
   baseLayout: ResolvedLayout,
   repository: LayoutRepository
 ): Promise<UserLayoutPreference> {
   const newUserLayout: UserLayoutPreference = {
-    id: `user-${userId}-${tableCode}-${Date.now()}`,
+    id: `user-${userId}-${collectionCode}-${Date.now()}`,
     userId,
-    tableCode,
+    collectionCode,
     layoutName: 'My Custom Layout',
     layoutData: JSON.parse(JSON.stringify(baseLayout.layout)),
-    basedOnVersion: baseLayout.versionChain.tenantAdminVersion || 1,
+    basedOnVersion: baseLayout.versionChain.instanceAdminVersion || 1,
     isActive: true,
     isDefault: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
-  await repository.saveUserLayout(userId, tableCode, newUserLayout);
+  await repository.saveUserLayout(userId, collectionCode, newUserLayout);
   return newUserLayout;
 }
 
@@ -352,7 +352,7 @@ export async function createUserCustomization(
  */
 export async function upgradeUserLayout(
   userId: string,
-  tableCode: string,
+  collectionCode: string,
   newBaseLayout: DesignerLayout,
   newVersion: number,
   repository: LayoutRepository
@@ -361,7 +361,7 @@ export async function upgradeUserLayout(
   layout?: UserLayoutPreference;
   conflicts?: string[];
 }> {
-  const userLayout = await repository.getUserLayout(userId, tableCode);
+  const userLayout = await repository.getUserLayout(userId, collectionCode);
   if (!userLayout) {
     return { success: false, conflicts: ['No user layout found'] };
   }
@@ -369,8 +369,8 @@ export async function upgradeUserLayout(
   // Merge the layouts
   const mergeResult = mergeLayouts(userLayout.layoutData, newBaseLayout, {
     preserveUserOrder: true,
-    addNewFieldsToEnd: true,
-    removeDeletedFields: false,
+    addNewPropertiesToEnd: true,
+    removeDeletedProperties: false,
   });
 
   if (mergeResult.success) {
@@ -381,7 +381,7 @@ export async function upgradeUserLayout(
       updatedAt: new Date().toISOString(),
     };
 
-    await repository.saveUserLayout(userId, tableCode, updatedLayout);
+    await repository.saveUserLayout(userId, collectionCode, updatedLayout);
     return { success: true, layout: updatedLayout };
   }
 
@@ -396,13 +396,13 @@ export async function upgradeUserLayout(
  */
 export async function resetUserLayout(
   userId: string,
-  tableCode: string,
+  collectionCode: string,
   repository: LayoutRepository
 ): Promise<void> {
-  const userLayout = await repository.getUserLayout(userId, tableCode);
+  const userLayout = await repository.getUserLayout(userId, collectionCode);
   if (userLayout) {
     userLayout.isActive = false;
-    await repository.saveUserLayout(userId, tableCode, userLayout);
+    await repository.saveUserLayout(userId, collectionCode, userLayout);
   }
 }
 
@@ -415,7 +415,7 @@ export async function resetUserLayout(
  */
 export function validateResolvedLayout(
   resolved: ResolvedLayout,
-  requiredFields: string[]
+  requiredProperties: string[]
 ): {
   isValid: boolean;
   errors: string[];
@@ -424,30 +424,30 @@ export function validateResolvedLayout(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Check for required fields
-  const layoutFields = new Set<string>();
+  // Check for required properties
+  const layoutProperties = new Set<string>();
   for (const tab of resolved.layout.tabs) {
     for (const section of tab.sections) {
       for (const item of section.items) {
-        if (item.type === 'field') {
-          layoutFields.add(item.fieldCode);
+        if (item.type === 'property') {
+          layoutProperties.add(item.propertyCode);
         }
       }
     }
   }
 
-  for (const required of requiredFields) {
-    if (!layoutFields.has(required)) {
-      // Check if it's a protected field that was hidden
+  for (const required of requiredProperties) {
+    if (!layoutProperties.has(required)) {
+      // Check if it's a protected property that was hidden
       const protection = resolved.effectiveProtections.find(
-        (p) => p.fieldCode === required
+        (p) => p.propertyCode === required
       );
       if (protection?.protectionLevel === 'locked') {
-        errors.push(`Required system field "${required}" is missing from layout`);
+        errors.push(`Required system property "${required}" is missing from layout`);
       } else if (protection?.protectionLevel === 'required_visible') {
-        errors.push(`Required field "${required}" cannot be hidden`);
+        errors.push(`Required property "${required}" cannot be hidden`);
       } else {
-        warnings.push(`Field "${required}" is not visible in the current layout`);
+        warnings.push(`Property "${required}" is not visible in the current layout`);
       }
     }
   }

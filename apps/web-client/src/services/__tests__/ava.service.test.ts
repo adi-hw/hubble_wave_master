@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../aiApi', () => {
-  const post = vi.fn().mockResolvedValue({ data: { reply: 'ok' } });
+  const post = vi.fn().mockResolvedValue({ data: { message: 'ok' } });
   return { __esModule: true, default: { post } };
 });
 

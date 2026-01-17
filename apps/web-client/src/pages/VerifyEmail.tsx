@@ -40,41 +40,22 @@ export function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ backgroundColor: 'var(--bg-void)' }}
-    >
-      <div
-        className="w-full max-w-md rounded-xl p-8 text-center"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          boxShadow: 'var(--shadow-lg)',
-          border: '1px solid var(--border-default)',
-        }}
-      >
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="w-full max-w-md rounded-xl p-8 text-center bg-card shadow-lg border border-border">
         {/* Logo */}
         <div className="mb-6 flex justify-center">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold text-white"
-            style={{ background: 'var(--gradient-brand)' }}
-          >
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold text-primary-foreground bg-gradient-to-r from-primary to-primary/80">
             HW
           </div>
         </div>
 
         {state === 'loading' && (
           <>
-            <Loader2
-              className="h-16 w-16 mx-auto mb-4 animate-spin"
-              style={{ color: 'var(--color-primary-500)' }}
-            />
-            <h1
-              className="text-xl font-semibold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
+            <Loader2 className="h-16 w-16 mx-auto mb-4 animate-spin text-primary" />
+            <h1 className="text-xl font-semibold mb-2 text-foreground">
               Verifying your email...
             </h1>
-            <p style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-muted-foreground">
               Please wait while we verify your email address.
             </p>
           </>
@@ -82,17 +63,11 @@ export function VerifyEmailPage() {
 
         {state === 'success' && (
           <>
-            <CheckCircle
-              className="h-16 w-16 mx-auto mb-4"
-              style={{ color: 'var(--color-success-500)' }}
-            />
-            <h1
-              className="text-xl font-semibold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
+            <CheckCircle className="h-16 w-16 mx-auto mb-4 text-success" />
+            <h1 className="text-xl font-semibold mb-2 text-foreground">
               Email Verified!
             </h1>
-            <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
+            <p className="mb-6 text-muted-foreground">
               {message}
             </p>
             <Button onClick={() => navigate('/login')} className="w-full">
@@ -103,24 +78,18 @@ export function VerifyEmailPage() {
 
         {state === 'error' && (
           <>
-            <XCircle
-              className="h-16 w-16 mx-auto mb-4"
-              style={{ color: 'var(--color-danger-500)' }}
-            />
-            <h1
-              className="text-xl font-semibold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
+            <XCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
+            <h1 className="text-xl font-semibold mb-2 text-foreground">
               Verification Failed
             </h1>
-            <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
+            <p className="mb-6 text-muted-foreground">
               {message}
             </p>
             <div className="space-y-3">
               <Button onClick={() => navigate('/login')} className="w-full">
                 Go to Login
               </Button>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-sm text-muted-foreground">
                 If your link has expired, you can request a new verification email after logging in.
               </p>
             </div>
@@ -129,17 +98,11 @@ export function VerifyEmailPage() {
 
         {state === 'no-token' && (
           <>
-            <Mail
-              className="h-16 w-16 mx-auto mb-4"
-              style={{ color: 'var(--text-muted)' }}
-            />
-            <h1
-              className="text-xl font-semibold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
+            <Mail className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+            <h1 className="text-xl font-semibold mb-2 text-foreground">
               Invalid Link
             </h1>
-            <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
+            <p className="mb-6 text-muted-foreground">
               {message}
             </p>
             <Button onClick={() => navigate('/login')} className="w-full">

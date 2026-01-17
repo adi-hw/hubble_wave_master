@@ -22,11 +22,11 @@ export const UserPicker: React.FC<UserPickerProps> = ({ value, onChange, require
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (value && !selectedUser) {
-      // Fetch initial user if value is present but no user selected (could be optimized to fetch specific user)
-      // For now, we'll rely on search to populate options
+      // Fetch initial user if value is present but no user selected
     }
   }, [value, selectedUser]);
 
@@ -59,35 +59,56 @@ export const UserPicker: React.FC<UserPickerProps> = ({ value, onChange, require
     <div className="relative">
       <input
         type="text"
-        className="w-full p-2 border rounded bg-gray-50 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-muted border-border min-h-[44px]"
         placeholder="Search users..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         required={required}
         disabled={disabled}
+        role="combobox"
+        aria-label="Search for users"
+        aria-expanded={users.length > 0 && search ? true : false}
+        aria-autocomplete="list"
+        aria-controls="user-list"
       />
-      {loading && <div className="absolute right-2 top-2 text-gray-400">Loading...</div>}
+      {loading && (
+        <div className="absolute right-2 top-2 text-muted-foreground">
+          Loading...
+        </div>
+      )}
       {users.length > 0 && search && (
-        <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-auto">
-          {users.map((user) => (
+        <ul
+          id="user-list"
+          className="absolute z-10 w-full mt-1 border rounded shadow-lg max-h-60 overflow-auto bg-card border-border"
+          role="listbox"
+        >
+          {users.map((user, index) => (
             <li
               key={user.id}
-              className="p-2 hover:bg-gray-100 cursor-pointer"
+              className={`p-2 cursor-pointer min-h-[44px] flex flex-col justify-center ${hoveredIndex === index ? 'bg-accent' : 'bg-transparent'}`}
               onClick={() => {
                 onChange(user.id);
                 setSelectedUser(user);
                 setSearch(user.displayName || user.username);
                 setUsers([]);
               }}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+              role="option"
+              aria-selected={value === user.id}
             >
               <div className="font-medium">{user.displayName || user.username}</div>
-              <div className="text-xs text-gray-500">{user.email}</div>
+              <div className="text-xs text-muted-foreground">
+                {user.email}
+              </div>
             </li>
           ))}
         </ul>
       )}
       {value && !search && (
-          <div className="mt-1 text-sm text-gray-600">Selected ID: {value}</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Selected ID: {value}
+          </div>
       )}
     </div>
   );

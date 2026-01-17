@@ -79,12 +79,12 @@ const DEFAULT_PERMISSIONS: PermissionDefinition[] = [
   { slug: 'reports.export', name: 'Export Reports', description: 'Export reports to PDF/Excel', category: 'reports' },
   { slug: 'reports.schedule', name: 'Schedule Reports', description: 'Set up automated report delivery', category: 'reports' },
 
-  // Workflows
-  { slug: 'workflows.view', name: 'View Workflows', description: 'View workflow definitions', category: 'workflows' },
-  { slug: 'workflows.create', name: 'Create Workflows', description: 'Design new workflows', category: 'workflows' },
-  { slug: 'workflows.update', name: 'Update Workflows', description: 'Modify workflow definitions', category: 'workflows' },
-  { slug: 'workflows.delete', name: 'Delete Workflows', description: 'Remove workflows', category: 'workflows' },
-  { slug: 'workflows.execute', name: 'Execute Workflows', description: 'Manually trigger workflows', category: 'workflows' },
+  // Process Flows
+  { slug: 'process-flows.view', name: 'View Process Flows', description: 'View process flow definitions', category: 'process-flows' },
+  { slug: 'process-flows.create', name: 'Create Process Flows', description: 'Design new process flows', category: 'process-flows' },
+  { slug: 'process-flows.update', name: 'Update Process Flows', description: 'Modify process flow definitions', category: 'process-flows' },
+  { slug: 'process-flows.delete', name: 'Delete Process Flows', description: 'Remove process flows', category: 'process-flows' },
+  { slug: 'process-flows.execute', name: 'Execute Process Flows', description: 'Manually trigger process flows', category: 'process-flows' },
 
   // Collections (Schema)
   { slug: 'collections.view', name: 'View Collections', description: 'View collection definitions', category: 'collections' },
@@ -120,7 +120,7 @@ const DEFAULT_ROLES: RoleDefinition[] = [
   {
     slug: 'manager',
     name: 'Manager',
-    description: 'Can manage users, assets, and workflows within their scope',
+    description: 'Can manage users, assets, and process flows within their scope',
     color: '#f59e0b',
     parentSlug: 'admin',
     permissions: [
@@ -129,7 +129,7 @@ const DEFAULT_ROLES: RoleDefinition[] = [
       'users.view', 'users.create', 'users.update', 'users.assign-roles',
       'groups.view', 'groups.create', 'groups.update', 'groups.manage-members',
       'reports.view', 'reports.create', 'reports.export', 'reports.schedule',
-      'workflows.view',
+      'process-flows.view',
     ],
   },
   {

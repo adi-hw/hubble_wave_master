@@ -1,0 +1,96 @@
+﻿apps/svc-data/src/app/process-flow/approval.service.ts(10,22): error TS6133: 'In' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/approval.service.ts(14,3): error TS6133: 'ApprovalStatus' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/approval.service.ts(33,20): error TS6133: 'logger' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/approval.service.ts(39,22): error TS6138: Property 'instanceRepo' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(27,20): error TS6133: 'logger' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(33,22): error TS6138: Property 'preferencesRepo' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(35,22): error TS6138: Property 'deviceTokenRepo' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(40,48): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<InAppNotification>[]): InAppNotification[]', gave the following error.
+    Object literal may only specify known properties, and 'userId' does not exist in type 'DeepPartial<InAppNotification>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<InAppNotification>): InAppNotification', gave the following error.
+    Type '"normal" | "high" | "low" | "urgent"' is not assignable to type '"high" | "low" | "medium" | "urgent" | undefined'.
+      Type '"normal"' is not assignable to type '"high" | "low" | "medium" | "urgent" | undefined'.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(53,41): error TS2339: Property 'id' does not exist on type 'InAppNotification[]'.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(57,5): error TS2740: Type 'InAppNotification[]' is missing the following properties from type 'InAppNotification': id, userId, title, body, and 4 more.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(80,9): error TS2353: Object literal may only specify known properties, and 'isRead' does not exist in type 'FindOptionsWhere<InAppNotification> | FindOptionsWhere<InAppNotification>[]'.
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(94,18): error TS2551: Property 'isRead' does not exist on type 'InAppNotification'. Did you mean 'read'?
+apps/svc-data/src/app/process-flow/in-app-notification.service.ts(102,17): error TS2353: Object literal may only specify known properties, and 'isRead' does not exist in type 'string[] | Date | number[] | ObjectId | Date[] | ObjectId[] | FindOptionsWhere<InAppNotification> | FindOptionsWhere<InAppNotification>[]'.
+apps/svc-data/src/app/process-flow/notification.service.ts(30,22): error TS6138: Property 'historyRepo' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/notification.service.ts(43,40): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<NotificationTemplate>[]): NotificationTemplate[]', gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type 'DeepPartial<NotificationTemplate>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<NotificationTemplate>): NotificationTemplate', gave the following error.
+    Object literal may only specify known properties, and 'channel' does not exist in type 'DeepPartial<NotificationTemplate>'.
+apps/svc-data/src/app/process-flow/notification.service.ts(52,5): error TS2740: Type 'NotificationTemplate[]' is missing the following properties from type 'NotificationTemplate': id, name, code, category, and 7 more.
+apps/svc-data/src/app/process-flow/notification.service.ts(70,45): error TS2339: Property 'channel' does not exist on type 'NotificationTemplate'.
+apps/svc-data/src/app/process-flow/notification.service.ts(71,54): error TS2339: Property 'bodyTemplate' does not exist on type 'NotificationTemplate'.
+apps/svc-data/src/app/process-flow/notification.service.ts(72,30): error TS2339: Property 'subject' does not exist on type 'NotificationTemplate'.
+apps/svc-data/src/app/process-flow/notification.service.ts(73,45): error TS2339: Property 'subject' does not exist on type 'NotificationTemplate'.
+apps/svc-data/src/app/process-flow/notification.service.ts(76,38): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<NotificationQueue>[]): NotificationQueue[]', gave the following error.
+    Object literal may only specify known properties, and 'templateId' does not exist in type 'DeepPartial<NotificationQueue>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<NotificationQueue>): NotificationQueue', gave the following error.
+    Type '"normal" | "high" | "low" | "urgent"' is not assignable to type '"high" | "low" | "medium" | "urgent" | undefined'.
+      Type '"normal"' is not assignable to type '"high" | "low" | "medium" | "urgent" | undefined'.
+apps/svc-data/src/app/process-flow/notification.service.ts(113,14): error TS2339: Property 'sentAt' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(116,14): error TS2339: Property 'errorMessage' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(117,14): error TS2339: Property 'retryCount' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(117,33): error TS2339: Property 'retryCount' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(119,18): error TS2339: Property 'retryCount' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(129,18): error TS2551: Property 'channel' does not exist on type 'NotificationQueue'. Did you mean 'channels'?
+apps/svc-data/src/app/process-flow/notification.service.ts(133,25): error TS2339: Property 'subject' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(134,22): error TS2339: Property 'body' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(141,22): error TS2339: Property 'body' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(148,23): error TS2339: Property 'subject' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(149,22): error TS2339: Property 'body' does not exist on type 'NotificationQueue'.
+apps/svc-data/src/app/process-flow/notification.service.ts(157,51): error TS2551: Property 'channel' does not exist on type 'NotificationQueue'. Did you mean 'channels'?
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(20,20): error TS6133: 'logger' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(30,22): error TS6138: Property 'businessHoursRepo' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(43,40): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<SLADefinition>[]): SLADefinition[]', gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type 'DeepPartial<SLADefinition>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<SLADefinition>): SLADefinition', gave the following error.
+    Object literal may only specify known properties, but 'warningThresholdPercent' does not exist in type 'DeepPartial<SLADefinition>'. Did you mean to write 'warningThreshold1'?
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(54,5): error TS2740: Type 'SLADefinition[]' is missing the following properties from type 'SLADefinition': id, name, code, slaType, and 8 more.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(69,43): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<SLAInstance>[]): SLAInstance[]', gave the following error.
+    Object literal may only specify known properties, and 'slaDefinitionId' does not exist in type 'DeepPartial<SLAInstance>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<SLAInstance>): SLAInstance', gave the following error.
+    Object literal may only specify known properties, and 'startedAt' does not exist in type 'DeepPartial<SLAInstance>'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(77,5): error TS2740: Type 'SLAInstance[]' is missing the following properties from type 'SLAInstance': id, slaDefinitionId, recordId, state, and 11 more.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(90,14): error TS2339: Property 'completedAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(91,14): error TS2339: Property 'actualMinutes' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(92,17): error TS2339: Property 'completedAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(92,50): error TS2339: Property 'startedAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(108,20): error TS2339: Property 'dueAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(108,44): error TS2339: Property 'dueAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(118,36): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<SLABreach>[]): SLABreach[]', gave the following error.
+    Object literal may only specify known properties, and 'slaInstanceId' does not exist in type 'DeepPartial<SLABreach>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<SLABreach>): SLABreach', gave the following error.
+    Object literal may only specify known properties, and 'breachedAt' does not exist in type 'DeepPartial<SLABreach>'.
+apps/svc-data/src/app/process-flow/sla-timer.service.ts(122,32): error TS2339: Property 'dueAt' does not exist on type 'SLAInstance'.
+apps/svc-data/src/app/process-flow/sla.controller.ts(8,3): error TS6133: 'Get' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(6,49): error TS6133: 'BadRequestException' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(19,20): error TS6133: 'logger' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(26,22): error TS6138: Property 'eventEmitter' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(37,48): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<StateMachineDefinition>[]): StateMachineDefinition[]', gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type 'DeepPartial<StateMachineDefinition>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<StateMachineDefinition>): StateMachineDefinition', gave the following error.
+    Object literal may only specify known properties, and 'propertyCode' does not exist in type 'DeepPartial<StateMachineDefinition>'.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(47,5): error TS2740: Type 'StateMachineDefinition[]' is missing the following properties from type 'StateMachineDefinition': id, name, code, stateField, and 5 more.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(66,5): error TS6133: 'userId' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(71,16): error TS2339: Property 'from' does not exist on type 'StateMachineTransition'.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(71,40): error TS2339: Property 'to' does not exist on type 'StateMachineTransition'.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(85,38): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<StateChangeHistory>[]): StateChangeHistory[]', gave the following error.
+    Object literal may only specify known properties, and 'stateMachineId' does not exist in type 'DeepPartial<StateChangeHistory>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<StateChangeHistory>): StateChangeHistory', gave the following error.
+    Object literal may only specify known properties, and 'comments' does not exist in type 'DeepPartial<StateChangeHistory>'.
+apps/svc-data/src/app/process-flow/state-machine.service.ts(94,5): error TS2739: Type 'StateChangeHistory[]' is missing the following properties from type 'StateChangeHistory': id, recordId, toState, createdAt
+apps/svc-data/src/app/process-flow/template-engine.service.ts(10,20): error TS6133: 'logger' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/trigger-manager.service.ts(10,22): error TS6133: 'In' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/trigger-manager.service.ts(36,22): error TS6138: Property 'eventEmitter' is declared but its value is never read.
+apps/svc-data/src/app/process-flow/trigger-manager.service.ts(159,59): error TS6133: 'now' is declared but its value is never read.

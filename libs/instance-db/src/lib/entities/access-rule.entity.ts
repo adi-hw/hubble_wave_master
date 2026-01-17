@@ -25,6 +25,7 @@ import { PropertyDefinition } from './property-definition.entity';
  */
 @Entity('collection_access_rules')
 @Index(['collectionId'])
+@Index(['collectionId', 'ruleKey'])
 @Index(['roleId'])
 @Index(['groupId'])
 @Index(['userId'])
@@ -52,6 +53,12 @@ export class CollectionAccessRule {
   /** Description */
   @Column({ type: 'text', nullable: true })
   description?: string | null;
+
+  @Column({ name: 'rule_key', type: 'varchar', length: 120, nullable: true })
+  ruleKey?: string | null;
+
+  @Column({ type: 'jsonb', default: () => `'{}'` })
+  metadata!: Record<string, unknown>;
 
   // ─────────────────────────────────────────────────────────────────
   // Scope (who does this rule apply to)
@@ -150,6 +157,7 @@ export class CollectionAccessRule {
  */
 @Entity('property_access_rules')
 @Index(['propertyId'])
+@Index(['propertyId', 'ruleKey'])
 @Index(['roleId'])
 @Index(['groupId'])
 @Index(['userId'])
@@ -203,6 +211,9 @@ export class PropertyAccessRule {
   @Column({ name: 'can_write', type: 'boolean', default: true })
   canWrite!: boolean;
 
+  @Column({ name: 'masking_strategy', type: 'varchar', length: 20, default: 'NONE' })
+  maskingStrategy!: 'NONE' | 'PARTIAL' | 'FULL';
+
   // ─────────────────────────────────────────────────────────────────
   // Conditions
   // ─────────────────────────────────────────────────────────────────
@@ -232,6 +243,15 @@ export class PropertyAccessRule {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+
+  @Column({ name: 'rule_key', type: 'varchar', length: 120, nullable: true })
+  ruleKey?: string | null;
+
+  @Column({ type: 'jsonb', default: () => `'{}'` })
+  metadata!: Record<string, unknown>;
 }
 
 // ============================================================
@@ -336,4 +356,168 @@ export class UserSession {
   /** Revocation reason */
   @Column({ name: 'revoked_reason', type: 'varchar', length: 100, nullable: true })
   revokedReason?: string | null;
+}
+
+// ============================================================
+// BREAK-GLASS SESSION ENTITY
+// ============================================================
+
+/**
+ * Reason codes for break-glass access
+ */
+export type BreakGlassReasonCode =
+  | 'emergency'
+  | 'investigation'
+  | 'maintenance'
+  | 'compliance_review'
+  | 'support_escalation'
+  | 'data_recovery';
+
+/**
+ * Status of a break-glass session
+ */
+export type BreakGlassStatus =
+  | 'active'
+  | 'expired'
+  | 'revoked'
+  | 'completed';
+
+/**
+ * BreakGlassSession entity - tracks emergency access sessions
+ *
+ * Break-glass access allows authorized users to bypass normal access controls
+ * in emergency situations. All break-glass access is heavily audited.
+ */
+@Entity('break_glass_sessions')
+@Index(['userId'])
+@Index(['collectionId'])
+@Index(['status'])
+@Index(['expiresAt'])
+export class BreakGlassSession {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  // ─────────────────────────────────────────────────────────────────
+  // User & Target
+  // ─────────────────────────────────────────────────────────────────
+
+  /** User who requested break-glass access */
+  @Column({ name: 'user_id', type: 'uuid' })
+  userId!: string;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user?: User;
+
+  /** Collection being accessed (optional - null means all collections) */
+  @Column({ name: 'collection_id', type: 'uuid', nullable: true })
+  collectionId?: string | null;
+
+  @ManyToOne(() => CollectionDefinition, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'collection_id' })
+  collection?: CollectionDefinition | null;
+
+  /** Specific record being accessed (optional) */
+  @Column({ name: 'record_id', type: 'uuid', nullable: true })
+  recordId?: string | null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Reason & Justification
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Reason code for break-glass access */
+  @Column({ name: 'reason_code', type: 'varchar', length: 50 })
+  reasonCode!: string;
+
+  /** Detailed justification for the access request */
+  @Column({ name: 'justification', type: 'text' })
+  justification!: string;
+
+  /** External reference (ticket number, incident ID, etc.) */
+  @Column({ name: 'external_reference', type: 'varchar', length: 255, nullable: true })
+  externalReference?: string | null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Status & Timing
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Current status of the session */
+  @Column({ name: 'status', type: 'varchar', length: 20, default: 'active' })
+  status!: string;
+
+  /** When the session started */
+  @CreateDateColumn({ name: 'started_at', type: 'timestamptz' })
+  startedAt!: Date;
+
+  /** When the session expires */
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
+
+  /** When the session ended (completed, revoked, or expired) */
+  @Column({ name: 'ended_at', type: 'timestamptz', nullable: true })
+  endedAt?: Date | null;
+
+  /** Duration in minutes granted */
+  @Column({ name: 'duration_minutes', type: 'integer', default: 60 })
+  durationMinutes!: number;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Approvals
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Whether approval was required for this access */
+  @Column({ name: 'approval_required', type: 'boolean', default: false })
+  approvalRequired!: boolean;
+
+  /** User who approved the access (if approval was required) */
+  @Column({ name: 'approved_by', type: 'uuid', nullable: true })
+  approvedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by' })
+  approver?: User | null;
+
+  /** When the access was approved */
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt?: Date | null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Revocation
+  // ─────────────────────────────────────────────────────────────────
+
+  /** User who revoked the access (if revoked) */
+  @Column({ name: 'revoked_by', type: 'uuid', nullable: true })
+  revokedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'revoked_by' })
+  revoker?: User | null;
+
+  /** Reason for revocation */
+  @Column({ name: 'revocation_reason', type: 'text', nullable: true })
+  revocationReason?: string | null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Audit & Context
+  // ─────────────────────────────────────────────────────────────────
+
+  /** IP address of the requester */
+  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
+  ipAddress?: string | null;
+
+  /** User agent of the requester */
+  @Column({ name: 'user_agent', type: 'text', nullable: true })
+  userAgent?: string | null;
+
+  /** Additional context data */
+  @Column({ name: 'context_data', type: 'jsonb', nullable: true })
+  contextData?: Record<string, unknown> | null;
+
+  /** Count of actions performed during this session */
+  @Column({ name: 'action_count', type: 'integer', default: 0 })
+  actionCount!: number;
+
+  /** Last action timestamp */
+  @Column({ name: 'last_action_at', type: 'timestamptz', nullable: true })
+  lastActionAt?: Date | null;
 }

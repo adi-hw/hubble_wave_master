@@ -124,10 +124,10 @@ export function ProfileSettingsPage() {
 
   if (profileLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--void-deep)' }}>
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <Loader2 size={32} className="mx-auto mb-3 animate-spin" style={{ color: 'var(--color-primary-500)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading profile...</p>
+          <Loader2 size={32} className="mx-auto mb-3 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading profile...</p>
         </div>
       </div>
     );
@@ -137,10 +137,10 @@ export function ProfileSettingsPage() {
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-2xl font-bold text-foreground">
           Your Profile
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-sm mt-1 text-muted-foreground">
           Manage your personal information and preferences.
         </p>
       </div>
@@ -148,11 +148,11 @@ export function ProfileSettingsPage() {
       {/* Status Message */}
       {message && (
         <div
-          className="p-4 rounded-xl flex items-center gap-3"
-          style={{
-            backgroundColor: message.type === 'success' ? 'var(--bg-success-subtle)' : 'var(--bg-danger-subtle)',
-            color: message.type === 'success' ? 'var(--text-success)' : 'var(--text-danger)',
-          }}
+          className={`p-4 rounded-xl flex items-center gap-3 ${
+            message.type === 'success'
+              ? 'bg-success-subtle text-success-text'
+              : 'bg-destructive/10 text-destructive'
+          }`}
         >
           {message.type === 'success' ? <Check className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
           {message.text}
@@ -167,24 +167,20 @@ export function ProfileSettingsPage() {
 
       {/* Profile Picture */}
       <section>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <Camera className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-foreground">
+          <Camera className="h-5 w-5 text-muted-foreground" />
           Profile Picture
         </h2>
-        <Card className="p-5" style={{ border: '1px solid var(--border-default)' }}>
+        <Card className="p-5 border border-border">
           <div className="flex items-center gap-6">
             {/* Avatar */}
             <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
-              style={{
-                background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-                color: 'white',
-              }}
+              className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold bg-gradient-to-br from-primary to-accent text-primary-foreground"
             >
               {getInitials()}
             </div>
             <div className="flex-1">
-              <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-sm mb-3 text-muted-foreground">
                 Your profile picture is generated from your initials. Avatar upload coming soon.
               </p>
               <div className="flex gap-2">
@@ -200,28 +196,23 @@ export function ProfileSettingsPage() {
 
       {/* Personal Information */}
       <section>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <User className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-foreground">
+          <User className="h-5 w-5 text-muted-foreground" />
           Personal Information
         </h2>
-        <Card className="p-5 space-y-4" style={{ border: '1px solid var(--border-default)' }}>
+        <Card className="p-5 space-y-4 border border-border">
           {/* Display Name */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Display Name
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <input
                 type="text"
                 value={formData.displayName}
                 onChange={(e) => handleInputChange('displayName', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-primary)',
-                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder="Your display name"
               />
             </div>
@@ -229,46 +220,36 @@ export function ProfileSettingsPage() {
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Email Address
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <input
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-primary)',
-                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder="your.email@example.com"
               />
             </div>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs mt-1 text-muted-foreground/60">
               Used for notifications and account recovery
             </p>
           </div>
 
           {/* Phone Number */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Phone Number
             </label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <input
                 type="tel"
                 value={formData.phoneNumber}
                 onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-primary)',
-                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder="+1 (555) 000-0000"
               />
             </div>
@@ -278,28 +259,23 @@ export function ProfileSettingsPage() {
 
       {/* Work Information */}
       <section>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <Building2 className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-foreground">
+          <Building2 className="h-5 w-5 text-muted-foreground" />
           Work Information
         </h2>
-        <Card className="p-5 space-y-4" style={{ border: '1px solid var(--border-default)' }}>
+        <Card className="p-5 space-y-4 border border-border">
           {/* Job Title */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Job Title
             </label>
             <div className="relative">
-              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => handleInputChange('title', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-primary)',
-                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder="Your job title"
               />
             </div>
@@ -307,21 +283,16 @@ export function ProfileSettingsPage() {
 
           {/* Department */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Department
             </label>
             <div className="relative">
-              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <input
                 type="text"
                 value={formData.department}
                 onChange={(e) => handleInputChange('department', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-primary)',
-                }}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder="Your department"
               />
             </div>
@@ -331,39 +302,28 @@ export function ProfileSettingsPage() {
 
       {/* Regional Settings */}
       <section>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <Globe className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-foreground">
+          <Globe className="h-5 w-5 text-muted-foreground" />
           Regional Settings
         </h2>
-        <Card className="p-5 space-y-4" style={{ border: '1px solid var(--border-default)' }}>
+        <Card className="p-5 space-y-4 border border-border">
           {/* Locale */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Language & Region
             </label>
             <div className="relative">
-              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <select
                 value={formData.locale}
                 onChange={(e) => handleInputChange('locale', e.target.value)}
-                className="settings-select w-full pl-10 pr-8 py-2.5 rounded-lg text-sm appearance-none cursor-pointer"
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 8px center',
-                }}
+                className="settings-select w-full pl-10 pr-8 py-2.5 rounded-lg text-sm appearance-none cursor-pointer bg-card border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
                 {locales.map((locale) => (
                   <option
                     key={locale.value}
                     value={locale.value}
-                    style={{
-                      backgroundColor: 'var(--bg-surface)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="bg-card text-foreground"
                   >
                     {locale.label}
                   </option>
@@ -374,39 +334,28 @@ export function ProfileSettingsPage() {
 
           {/* Timezone */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-1.5 text-foreground">
               Time Zone
             </label>
             <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
               <select
                 value={formData.timeZone}
                 onChange={(e) => handleInputChange('timeZone', e.target.value)}
-                className="settings-select w-full pl-10 pr-8 py-2.5 rounded-lg text-sm appearance-none cursor-pointer"
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 8px center',
-                }}
+                className="settings-select w-full pl-10 pr-8 py-2.5 rounded-lg text-sm appearance-none cursor-pointer bg-card border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
                 {timezones.map((tz) => (
                   <option
                     key={tz.value}
                     value={tz.value}
-                    style={{
-                      backgroundColor: 'var(--bg-surface)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="bg-card text-foreground"
                   >
                     {tz.label}
                   </option>
                 ))}
               </select>
             </div>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs mt-1 text-muted-foreground/60">
               Used for displaying dates and times throughout the application
             </p>
           </div>
@@ -414,7 +363,7 @@ export function ProfileSettingsPage() {
       </section>
 
       {/* Save Button */}
-      <div className="flex justify-end gap-3 pt-4" style={{ borderTop: '1px solid var(--glass-border)' }}>
+      <div className="flex justify-end gap-3 pt-4 border-t border-border">
         <Button variant="primary" onClick={handleSave} disabled={saving}>
           {saving ? (
             <>

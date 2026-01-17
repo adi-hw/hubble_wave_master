@@ -1,7 +1,7 @@
 import metadataApi from './metadataApi';
 import dataApi from './api';
 
-export interface ModelField {
+export interface ModelProperty {
   code: string;
   label: string;
   type: string;
@@ -15,7 +15,7 @@ export interface ModelField {
   validators: any;
 }
 
-export interface ModelTable {
+export interface ModelCollection {
   id: string;
   code: string;
   label: string;
@@ -30,28 +30,28 @@ export interface ModelLayout {
 }
 
 // ============================================================================
-// Metadata Service Calls (port 3333) - Model info, fields, layouts
+// Metadata Service Calls (port 3333) - Model info, properties, layouts
 // ============================================================================
 
-export const getTableMetadata = async (tableCode: string) => {
-  const [tableRes, fieldsRes] = await Promise.all([
-    metadataApi.get<ModelTable>(`/models/${tableCode}`),
-    metadataApi.get<ModelField[]>(`/models/${tableCode}/fields`),
+export const getCollectionMetadata = async (collectionCode: string) => {
+  const [collectionRes, propertiesRes] = await Promise.all([
+    metadataApi.get<ModelCollection>(`/models/${collectionCode}`),
+    metadataApi.get<ModelProperty[]>(`/models/${collectionCode}/properties`),
   ]);
 
   return {
-    table: tableRes.data,
-    fields: fieldsRes.data,
+    collection: collectionRes.data,
+    properties: propertiesRes.data,
   };
 };
 
-export const getModelFields = async (tableCode: string): Promise<ModelField[]> => {
-  const response = await metadataApi.get<ModelField[]>(`/models/${tableCode}/fields`);
+export const getModelProperties = async (collectionCode: string): Promise<ModelProperty[]> => {
+  const response = await metadataApi.get<ModelProperty[]>(`/models/${collectionCode}/properties`);
   return response.data;
 };
 
-export const getModelLayout = async (tableCode: string): Promise<ModelLayout | null> => {
-  const response = await metadataApi.get<ModelLayout>(`/models/${tableCode}/layout`);
+export const getModelLayout = async (collectionCode: string): Promise<ModelLayout | null> => {
+  const response = await metadataApi.get<ModelLayout>(`/models/${collectionCode}/layout`);
   return response.data;
 };
 
@@ -61,7 +61,7 @@ export const getModelLayout = async (tableCode: string): Promise<ModelLayout | n
 
 export interface ListDataResponse {
   data: any[];
-  fields: ModelField[];
+  properties: ModelProperty[];
   meta: {
     page: number;
     limit: number;
@@ -70,59 +70,55 @@ export interface ListDataResponse {
   };
 }
 
-export const listData = async (tableCode: string): Promise<any[]> => {
-  const response = await dataApi.get<ListDataResponse>(`/data/${tableCode}`);
-  // Backend returns { data, fields, meta } - extract just the data array
+export const listData = async (collectionCode: string): Promise<any[]> => {
+  const response = await dataApi.get<ListDataResponse>(`/data/${collectionCode}`);
   return response.data?.data || [];
 };
 
-export const listDataWithMeta = async (tableCode: string): Promise<ListDataResponse> => {
-  const response = await dataApi.get<ListDataResponse>(`/data/${tableCode}`);
+export const listDataWithMeta = async (collectionCode: string): Promise<ListDataResponse> => {
+  const response = await dataApi.get<ListDataResponse>(`/data/${collectionCode}`);
   return response.data;
 };
 
 export interface GetDataResponse {
   record: any;
-  fields: ModelField[];
+  properties: ModelProperty[];
 }
 
-export const createData = async (tableCode: string, data: any): Promise<any> => {
-  const response = await dataApi.post<GetDataResponse>(`/data/${tableCode}`, { data });
-  // Backend returns { record, fields } - extract just the record
+export const createData = async (collectionCode: string, data: any): Promise<any> => {
+  const response = await dataApi.post<GetDataResponse>(`/data/${collectionCode}`, { data });
   return response.data?.record || response.data;
 };
 
-export const getData = async (tableCode: string, id: string): Promise<any> => {
-  const response = await dataApi.get<GetDataResponse>(`/data/${tableCode}/${id}`);
-  // Backend returns { record, fields } - extract just the record
+export const getData = async (collectionCode: string, id: string): Promise<any> => {
+  const response = await dataApi.get<GetDataResponse>(`/data/${collectionCode}/${id}`);
   return response.data?.record || response.data;
 };
 
-export const getDataWithFields = async (tableCode: string, id: string): Promise<GetDataResponse> => {
-  const response = await dataApi.get<GetDataResponse>(`/data/${tableCode}/${id}`);
+export const getDataWithProperties = async (collectionCode: string, id: string): Promise<GetDataResponse> => {
+  const response = await dataApi.get<GetDataResponse>(`/data/${collectionCode}/${id}`);
   return response.data;
 };
 
-export const updateData = async (tableCode: string, id: string, data: any): Promise<any> => {
-  const response = await dataApi.patch<GetDataResponse>(`/data/${tableCode}/${id}`, { data });
-  // Backend returns { record, fields } - extract just the record
+export const updateData = async (collectionCode: string, id: string, data: any): Promise<any> => {
+  const response = await dataApi.patch<GetDataResponse>(`/data/${collectionCode}/${id}`, { data });
   return response.data?.record || response.data;
 };
 
-export const deleteData = async (tableCode: string, id: string) => {
-  const response = await dataApi.delete<any>(`/data/${tableCode}/${id}`);
+export const deleteData = async (collectionCode: string, id: string) => {
+  const response = await dataApi.delete<any>(`/data/${collectionCode}/${id}`);
   return response.data;
 };
 
 /**
- * Bulk update multiple records with the same field values
+ * Bulk update multiple records with the same property values
  */
 export const bulkUpdateRecords = async (
-  tableCode: string,
+  collectionCode: string,
   ids: (string | number)[],
   updates: Record<string, any>
 ) => {
-  const response = await dataApi.patch<any>(`/data/${tableCode}/bulk`, {
+  const response = await dataApi.patch<any>(`/data/${collectionCode}/bulk`, {
     ids,
     updates,
   });
@@ -133,10 +129,10 @@ export const bulkUpdateRecords = async (
  * Bulk delete multiple records
  */
 export const bulkDeleteRecords = async (
-  tableCode: string,
+  collectionCode: string,
   ids: (string | number)[]
 ) => {
-  const response = await dataApi.delete<any>(`/data/${tableCode}/bulk`, {
+  const response = await dataApi.delete<any>(`/data/${collectionCode}/bulk`, {
     data: { ids },
   });
   return response.data;

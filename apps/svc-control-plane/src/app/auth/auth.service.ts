@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { ControlPlaneUser, ControlPlaneRole } from '@hubblewave/control-plane-db';
@@ -47,7 +47,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<ControlPlaneUser | null> {
     const user = await this.userRepo.findOne({
-      where: { email: email.toLowerCase(), isActive: true, deletedAt: IsNull() },
+      where: { email: email.toLowerCase(), status: 'active' },
     });
 
     if (!user) {
@@ -57,6 +57,10 @@ export class AuthService {
     // Check if account is locked
     if (user.lockedUntil && new Date() < user.lockedUntil) {
       throw new UnauthorizedException('Account is temporarily locked. Please try again later.');
+    }
+
+    if (!user.passwordHash) {
+      return null;
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
@@ -118,10 +122,10 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
         role: user.role,
-        avatarUrl: user.avatarUrl || undefined,
+        avatarUrl: user.avatarUrl ?? undefined,
       },
     };
   }
@@ -141,15 +145,18 @@ export class AuthService {
     // Hash password
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
+    const displayName = [dto.firstName, dto.lastName].filter(Boolean).join(' ') || dto.email;
+    void createdBy; // Reserved for audit tracking
+
     const user = this.userRepo.create({
       email: dto.email.toLowerCase(),
       passwordHash,
       firstName: dto.firstName,
       lastName: dto.lastName,
-      role: dto.role || 'viewer',
-      isActive: true,
+      displayName,
+      role: (dto.role as ControlPlaneRole) || 'readonly',
+      status: 'active',
       passwordChangedAt: new Date(),
-      createdBy,
     });
 
     return this.userRepo.save(user);
@@ -157,7 +164,7 @@ export class AuthService {
 
   async findById(id: string): Promise<ControlPlaneUser | null> {
     return this.userRepo.findOne({
-      where: { id, isActive: true, deletedAt: IsNull() },
+      where: { id, status: 'active' },
     });
   }
 
@@ -166,6 +173,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('User not found');
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Password not set for this account');
     }
 
     const isCurrentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);

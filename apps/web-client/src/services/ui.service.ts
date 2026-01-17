@@ -35,8 +35,7 @@ export interface AdminNavProfile {
 export interface ThemeDefinition {
   id: string;
   name: string;
-  code: string;  // API returns 'code', not 'slug'
-  slug?: string; // Kept for backwards compatibility
+  code: string;
   description?: string | null;
   config: Record<string, any>;
   themeType: string;

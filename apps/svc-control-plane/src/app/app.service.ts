@@ -16,19 +16,28 @@ export class AppService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    // Simple polling loop; replace with queue/cron in production.
-    this.intervalHandle = setInterval(() => {
-      this.terraformWorker.processPendingJobs();
-    }, 5000);
-    this.logger.log('Terraform worker polling started (5s interval)');
+    const workerEnabled = this.configService.get<string>('TERRAFORM_WORKER_ENABLED', 'false') === 'true';
+    if (workerEnabled) {
+      this.intervalHandle = setInterval(() => {
+        this.terraformWorker.processPendingJobs();
+      }, 5000);
+      this.logger.log('Terraform worker polling started (5s interval)');
+    } else {
+      this.logger.log('Terraform worker polling disabled');
+    }
 
-    const retentionDays = this.configService.get<number>('AUDIT_RETENTION_DAYS', 180);
-    this.auditPruneHandle = setInterval(() => {
-      this.auditService
-        .purgeOlderThan(retentionDays)
-        .catch((err) => this.logger.warn(`Audit purge failed: ${err?.message || err}`));
-    }, 24 * 60 * 60 * 1000);
-    this.logger.log(`Audit retention set to ${retentionDays} days`);
+    const auditEnabled = this.configService.get<string>('AUDIT_PRUNE_ENABLED', 'true') === 'true';
+    if (auditEnabled) {
+      const retentionDays = this.configService.get<number>('AUDIT_RETENTION_DAYS', 180);
+      this.auditPruneHandle = setInterval(() => {
+        this.auditService
+          .purgeOlderThan(retentionDays)
+          .catch((err) => this.logger.warn(`Audit purge failed: ${err?.message || err}`));
+      }, 24 * 60 * 60 * 1000);
+      this.logger.log(`Audit retention set to ${retentionDays} days`);
+    } else {
+      this.logger.log('Audit pruning disabled');
+    }
   }
 
   onModuleDestroy() {

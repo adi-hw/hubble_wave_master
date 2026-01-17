@@ -8,6 +8,11 @@ export class HealthController {
   @SkipThrottle()
   @Get()
   health() {
-    return { status: 'ok', service: 'identity' };
+    return {
+      status: 'ok',
+      service: 'svc-identity',
+      timestamp: new Date().toISOString(),
+      dependencies: {},
+    };
   }
 }

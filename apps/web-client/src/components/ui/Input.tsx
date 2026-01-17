@@ -73,18 +73,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium mb-1.5"
-            style={{ color: 'var(--text-primary)' }}
+            className="block text-sm font-medium mb-1.5 text-foreground"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {hasLeftIcon && (
-            <div
-              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ color: 'var(--text-muted)' }}
-            >
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
               {showSearch ? <Search className="h-4 w-4" /> : leftIcon}
             </div>
           )}
@@ -113,14 +109,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
           {hasRightContent && (
             <div
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{
-                color: error
-                  ? 'var(--text-danger)'
+              className={cn(
+                'absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none',
+                error
+                  ? 'text-destructive'
                   : success
-                  ? 'var(--text-success)'
-                  : 'var(--text-muted)',
-              }}
+                  ? 'text-success-text'
+                  : 'text-muted-foreground'
+              )}
             >
               {error ? (
                 <AlertCircle className="h-4 w-4" />
@@ -135,8 +131,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {error && (
           <p
             id={`${inputId}-error`}
-            className="mt-1.5 text-sm"
-            style={{ color: 'var(--text-danger)' }}
+            className="mt-1.5 text-sm text-destructive"
           >
             {error}
           </p>
@@ -144,8 +139,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {success && !error && (
           <p
             id={`${inputId}-success`}
-            className="mt-1.5 text-sm"
-            style={{ color: 'var(--text-success)' }}
+            className="mt-1.5 text-sm text-success-text"
           >
             {success}
           </p>
@@ -153,8 +147,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {hint && !error && !success && (
           <p
             id={`${inputId}-hint`}
-            className="mt-1.5 text-sm"
-            style={{ color: 'var(--text-tertiary)' }}
+            className="mt-1.5 text-sm text-muted-foreground"
           >
             {hint}
           </p>

@@ -79,8 +79,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium mb-1.5"
-            style={{ color: 'var(--text-primary)' }}
+            className="block text-sm font-medium mb-1.5 text-foreground"
           >
             {label}
           </label>
@@ -88,8 +87,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
         <div className="relative">
           {leftAddon && (
             <div
-              className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center text-muted-foreground"
             >
               {leftAddon}
             </div>
@@ -111,8 +109,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
           />
           {rightAddon && (
             <div
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-muted-foreground"
             >
               {rightAddon}
             </div>
@@ -121,8 +118,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
         {errorMessage && error && (
           <p
             id={`${inputId}-error`}
-            className="mt-1.5 text-xs"
-            style={{ color: 'var(--text-danger)' }}
+            className="mt-1.5 text-xs text-destructive"
           >
             {errorMessage}
           </p>
@@ -130,8 +126,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
         {helperText && !errorMessage && (
           <p
             id={`${inputId}-helper`}
-            className="mt-1.5 text-xs"
-            style={{ color: 'var(--text-muted)' }}
+            className="mt-1.5 text-xs text-muted-foreground"
           >
             {helperText}
           </p>
@@ -198,8 +193,7 @@ export const GlassTextarea = React.forwardRef<HTMLTextAreaElement, GlassTextarea
         {label && (
           <label
             htmlFor={textareaId}
-            className="block text-sm font-medium mb-1.5"
-            style={{ color: 'var(--text-primary)' }}
+            className="block text-sm font-medium mb-1.5 text-foreground"
           >
             {label}
           </label>
@@ -214,12 +208,12 @@ export const GlassTextarea = React.forwardRef<HTMLTextAreaElement, GlassTextarea
           {...props}
         />
         {errorMessage && error && (
-          <p className="mt-1.5 text-xs" style={{ color: 'var(--text-danger)' }}>
+          <p className="mt-1.5 text-xs text-destructive">
             {errorMessage}
           </p>
         )}
         {helperText && !errorMessage && (
-          <p className="mt-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-1.5 text-xs text-muted-foreground">
             {helperText}
           </p>
         )}
@@ -289,8 +283,7 @@ export const GlassSelect = React.forwardRef<HTMLSelectElement, GlassSelectProps>
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-sm font-medium mb-1.5"
-            style={{ color: 'var(--text-primary)' }}
+            className="block text-sm font-medium mb-1.5 text-foreground"
           >
             {label}
           </label>
@@ -315,8 +308,7 @@ export const GlassSelect = React.forwardRef<HTMLSelectElement, GlassSelectProps>
             ))}
           </select>
           <div
-            className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: 'var(--text-muted)' }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path
@@ -330,7 +322,7 @@ export const GlassSelect = React.forwardRef<HTMLSelectElement, GlassSelectProps>
           </div>
         </div>
         {errorMessage && error && (
-          <p className="mt-1.5 text-xs" style={{ color: 'var(--text-danger)' }}>
+          <p className="mt-1.5 text-xs text-destructive">
             {errorMessage}
           </p>
         )}

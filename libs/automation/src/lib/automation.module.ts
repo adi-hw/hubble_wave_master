@@ -1,14 +1,15 @@
 import { Module, Global } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { TenantDbModule } from '@hubblewave/instance-db';
-import { RuleEngineService } from './rule-engine.service';
+import { InstanceDbModule } from '@hubblewave/instance-db';
 import { EventBusService } from './event-bus.service';
-import { WorkflowEngineService } from './workflow-engine.service';
-import { ScriptSandboxService, ExpressionEvaluatorService } from './script-sandbox.service';
+import { ProcessFlowEngineService } from './process-flow-engine.service';
+import { ProcessFlowQueueService } from './process-flow-queue.service';
 
 @Global()
 @Module({
   imports: [
+    ConfigModule,
     EventEmitterModule.forRoot({
       wildcard: true,
       delimiter: '.',
@@ -18,21 +19,17 @@ import { ScriptSandboxService, ExpressionEvaluatorService } from './script-sandb
       verboseMemoryLeak: true,
       ignoreErrors: false,
     }),
-    TenantDbModule,
+    InstanceDbModule,
   ],
   providers: [
-    RuleEngineService,
     EventBusService,
-    WorkflowEngineService,
-    ScriptSandboxService,
-    ExpressionEvaluatorService,
+    ProcessFlowEngineService,
+    ProcessFlowQueueService,
   ],
   exports: [
-    RuleEngineService,
     EventBusService,
-    WorkflowEngineService,
-    ScriptSandboxService,
-    ExpressionEvaluatorService,
+    ProcessFlowEngineService,
+    ProcessFlowQueueService,
   ],
 })
 export class AutomationModule {}

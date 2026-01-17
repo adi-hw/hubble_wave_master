@@ -95,8 +95,7 @@ export interface BreakGlassSession {
 
 const API_URL = '/api/access';
 
-// We might need to copy these types if we can't import directly from backend libs in frontend
-// due to nx boundary constraints. For now assuming shared libs or re-defining interface.
+// These types are redefined here due to nx boundary constraints
 export interface AccessCondition {
   property: string;
   operator: string;

@@ -13,6 +13,21 @@ export const CheckboxField: React.FC<FieldComponentProps<unknown>> = ({
   // Convert value to boolean safely, handling various truthy/falsy values
   const isChecked = value === true || value === 'true' || value === 1 || value === '1';
 
+  const getCheckboxClasses = () => {
+    const baseClasses = 'w-5 h-5 rounded border-2 flex items-center justify-center transition-all';
+    const stateClasses = disabled || readOnly ? 'opacity-60' : '';
+
+    if (error) {
+      return `${baseClasses} ${stateClasses} border-destructive ${isChecked ? 'bg-primary' : 'bg-card'}`;
+    }
+
+    if (isChecked) {
+      return `${baseClasses} ${stateClasses} bg-primary border-primary`;
+    }
+
+    return `${baseClasses} ${stateClasses} bg-card border-border`;
+  };
+
   return (
     <div className="field-wrapper">
       <label
@@ -30,24 +45,13 @@ export const CheckboxField: React.FC<FieldComponentProps<unknown>> = ({
             disabled={disabled || readOnly}
             className="sr-only peer"
           />
-          <div
-            className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
-            style={{
-              backgroundColor: isChecked ? 'var(--bg-primary)' : 'var(--bg-surface)',
-              borderColor: error
-                ? 'var(--border-danger)'
-                : isChecked
-                  ? 'var(--bg-primary)'
-                  : 'var(--border-default)',
-              opacity: disabled || readOnly ? 0.6 : 1,
-            }}
-          >
-            {isChecked && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+          <div className={getCheckboxClasses()}>
+            {isChecked && <Check className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={3} />}
           </div>
         </div>
 
         {/* Label text */}
-        <span className="text-sm font-medium select-none" style={{ color: 'var(--text-primary)' }}>
+        <span className="text-sm font-medium select-none text-foreground">
           {field.label}
         </span>
       </label>
@@ -55,13 +59,13 @@ export const CheckboxField: React.FC<FieldComponentProps<unknown>> = ({
       {/* Error or Help text */}
       {error ? (
         <div className="flex items-start gap-1.5 mt-1.5 ml-8">
-          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-danger)' }} />
-          <p className="text-xs" style={{ color: 'var(--text-danger)' }}>{error}</p>
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-destructive" />
+          <p className="text-xs text-destructive">{error}</p>
         </div>
       ) : field.config?.helpText ? (
         <div className="flex items-start gap-1.5 mt-1.5 ml-8">
-          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{field.config.helpText}</p>
+          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">{field.config.helpText}</p>
         </div>
       ) : null}
     </div>

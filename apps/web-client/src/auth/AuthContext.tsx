@@ -32,6 +32,7 @@ export interface LoginCredentials {
   username: string;
   password: string;
   rememberMe?: boolean;
+  mfaToken?: string;
 }
 
 export interface MfaVerifyPayload {
@@ -50,6 +51,7 @@ export interface AuthContextType {
   verifyMfa: (payload: MfaVerifyPayload) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 
   // Session management
   getSessions: () => Promise<Session[]>;
@@ -146,7 +148,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const response = await authService.login(
           credentials.username,
-          credentials.password
+          credentials.password,
+          credentials.rememberMe,
+          credentials.mfaToken
         );
 
         // Check if MFA is required
@@ -179,8 +183,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         // Login successful
+        console.log('[AuthContext] Login successful, setting token', {
+          tokenLength: response.accessToken?.length,
+          userId: response.user?.id,
+        });
         setStoredToken(response.accessToken);
         setToken(response.accessToken);
+
+        // Verify token was stored
+        const storedCheck = getStoredToken();
+        console.log('[AuthContext] Token stored check', {
+          wasStored: !!storedCheck,
+          storedLength: storedCheck?.length,
+        });
+
         setAuth({
           user: response.user,
           loading: false,
@@ -268,9 +284,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  const refreshUser = useCallback(async (): Promise<void> => {
+    try {
+      const user = await authService.getCurrentUser();
+      setAuth((prev) => ({
+        ...prev,
+        user,
+      }));
+    } catch (err) {
+      console.error('Failed to refresh user:', err);
+    }
+  }, []);
+
   const refresh = useCallback(async (): Promise<void> => {
+    console.log('[AuthContext] refresh() called');
     try {
       const newToken = await refreshAccessToken();
+      console.log('[AuthContext] refresh() succeeded, token length:', newToken?.length);
       setToken(newToken);
 
       // Fetch updated user profile
@@ -283,7 +313,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         mfaRequired: false,
         mfaSessionToken: null,
       });
-    } catch {
+    } catch (err) {
+      console.error('[AuthContext] refresh() failed, clearing tokens', err);
       clearAllTokens();
       setToken(null);
       setAuth({
@@ -512,6 +543,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       const storedToken = getStoredToken();
+      const debugLog = sessionStorage.getItem('auth_debug');
+      if (debugLog) {
+        console.warn('[AuthContext] Previous auth failure:', JSON.parse(debugLog));
+        sessionStorage.removeItem('auth_debug');
+      }
+      console.log('[AuthContext] initializeAuth', { hasToken: !!storedToken });
 
       if (storedToken) {
         // Token exists in memory, fetch user profile
@@ -525,7 +562,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             mfaRequired: false,
             mfaSessionToken: null,
           });
-        } catch {
+        } catch (err) {
+          console.error('[AuthContext] getCurrentUser failed, trying refresh', err);
           // Token invalid, try refresh
           await refresh();
         }
@@ -562,6 +600,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       verifyMfa,
       logout,
       refresh,
+      refreshUser,
       getSessions,
       revokeSession,
       revokeOtherSessions,
@@ -583,6 +622,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       verifyMfa,
       logout,
       refresh,
+      refreshUser,
       getSessions,
       revokeSession,
       revokeOtherSessions,

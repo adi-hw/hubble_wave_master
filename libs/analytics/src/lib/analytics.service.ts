@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, Between } from 'typeorm';
-import { AnalyticsEvent, AggregatedMetric } from '@hubblewave/instance-db';
+import { AnalyticsEvent, AggregatedMetric } from './analytics-entities';
 
 export interface TrackEventRequest {
   userId?: string;

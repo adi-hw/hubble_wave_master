@@ -1,20 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  CircularProgress,
-  Grid
-} from '@mui/material';
-import { ArrowLeft, Check, Server } from 'lucide-react';
+import { ArrowLeft, Check, Server, Loader2, AlertCircle } from 'lucide-react';
 import { controlPlaneApi, Customer } from '../services/api';
 import { colors } from '../theme/theme';
 
@@ -28,16 +14,16 @@ export function InstanceCreatePage() {
 
   const [formData, setFormData] = useState({
     customerId: location.state?.customerId || '',
-    environment: 'development',
-    region: 'us-east-1',
-    version: '2.4.1',
-    resourceTier: 'standard'
+    environment: 'dev',
+    region: 'us-east-2',
+    version: '',
+    resourceTier: 'standard',
   });
 
   useEffect(() => {
     async function loadCustomers() {
       try {
-        const response = await controlPlaneApi.getCustomers({ page: 1 });
+        const response = await controlPlaneApi.getCustomers({ page: 1, limit: 200 });
         setCustomers(response.data);
       } catch (err) {
         console.error('Failed to load customers:', err);
@@ -52,14 +38,19 @@ export function InstanceCreatePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.customerId) {
-        setError('Please select a customer');
-        return;
+      setError('Please select a customer');
+      return;
+    }
+    if (!formData.version.trim()) {
+      setError('Platform release id is required');
+      return;
     }
 
     try {
       setSubmitting(true);
       setError(null);
-      await controlPlaneApi.createInstance(formData);
+      const instance = await controlPlaneApi.createInstance(formData);
+      await controlPlaneApi.provisionInstance(instance.id);
       navigate('/instances');
     } catch (err: any) {
       console.error('Failed to create instance:', err);
@@ -71,149 +62,196 @@ export function InstanceCreatePage() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
+      <div className="flex justify-center p-8">
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.brand.primary }} />
+      </div>
     );
   }
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-      <Button
-        startIcon={<ArrowLeft size={16} />}
+    <div className="max-w-3xl mx-auto">
+      <button
+        type="button"
         onClick={() => navigate('/instances')}
-        sx={{ mb: 3, color: colors.text.secondary }}
+        className="flex items-center gap-2 text-sm mb-6 transition-colors"
+        style={{ color: colors.text.secondary }}
       >
+        <ArrowLeft size={16} />
         Back to Instances
-      </Button>
+      </button>
 
-      <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary, mb: 3 }}>
+      <h1 className="text-xl font-bold mb-6" style={{ color: colors.text.primary }}>
         Provision New Instance
-      </Typography>
+      </h1>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
+        <div
+          className="flex items-start gap-3 p-4 rounded-xl mb-6"
+          style={{
+            backgroundColor: colors.danger.glow,
+            border: `1px solid ${colors.danger.base}`,
+          }}
+        >
+          <AlertCircle size={18} style={{ color: colors.danger.base, flexShrink: 0, marginTop: 2 }} />
+          <p className="text-sm" style={{ color: colors.danger.base }}>
+            {error}
+          </p>
+        </div>
       )}
 
       <form onSubmit={handleSubmit}>
-        <Card>
-          <CardContent sx={{ p: 4 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: colors.brand.glow }}>
-                <Server size={24} color={colors.brand.primary} />
-              </Box>
-              <Box>
-                <Typography variant="h6" sx={{ color: colors.text.primary }}>
-                  Instance Configuration
-                </Typography>
-                <Typography variant="body2" sx={{ color: colors.text.tertiary }}>
-                  Configure deployment details for the new tenant environment
-                </Typography>
-              </Box>
-            </Box>
+        <div
+          className="p-6 rounded-2xl border"
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-3 rounded-xl" style={{ backgroundColor: colors.brand.glow }}>
+              <Server size={24} style={{ color: colors.brand.primary }} />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold" style={{ color: colors.text.primary }}>
+                Instance Configuration
+              </h2>
+              <p className="text-sm" style={{ color: colors.text.tertiary }}>
+                Configure deployment details for the new customer instance
+              </p>
+            </div>
+          </div>
 
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Customer</InputLabel>
-                  <Select
-                    value={formData.customerId}
-                    label="Customer"
-                    onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-                  >
-                    {customers.map((c) => (
-                      <MenuItem key={c.id} value={c.id}>
-                        {c.name} ({c.code})
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                 <FormControl fullWidth>
-                  <InputLabel>Environment</InputLabel>
-                  <Select
-                    value={formData.environment}
-                    label="Environment"
-                    onChange={(e) => setFormData({ ...formData, environment: e.target.value })}
-                  >
-                    <MenuItem value="development">Development</MenuItem>
-                    <MenuItem value="staging">Staging</MenuItem>
-                    <MenuItem value="production">Production</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Region</InputLabel>
-                  <Select
-                    value={formData.region}
-                    label="Region"
-                    onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                  >
-                    <MenuItem value="us-east-1">US East (N. Virginia)</MenuItem>
-                    <MenuItem value="us-west-2">US West (Oregon)</MenuItem>
-                    <MenuItem value="eu-west-1">EU (Ireland)</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Version</InputLabel>
-                  <Select
-                    value={formData.version}
-                    label="Version"
-                    onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-                  >
-                    <MenuItem value="2.5.0-beta">2.5.0-beta (Latest)</MenuItem>
-                    <MenuItem value="2.4.1">2.4.1 (Stable)</MenuItem>
-                    <MenuItem value="2.4.0">2.4.0</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Resource Tier</InputLabel>
-                  <Select
-                    value={formData.resourceTier}
-                    label="Resource Tier"
-                    onChange={(e) => setFormData({ ...formData, resourceTier: e.target.value })}
-                  >
-                    <MenuItem value="standard">Standard (2 vCPU, 4GB RAM)</MenuItem>
-                    <MenuItem value="professional">Professional (4 vCPU, 8GB RAM)</MenuItem>
-                    <MenuItem value="enterprise">Enterprise (8 vCPU, 16GB RAM)</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-
-            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button
-                variant="outlined"
-                onClick={() => navigate('/instances')}
-                disabled={submitting}
+          <div className="grid grid-cols-2 gap-6">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Customer *
+              </label>
+              <select
+                value={formData.customerId}
+                onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
               >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="contained"
-                startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : <Check size={20} />}
-                disabled={submitting}
+                <option value="">Select a customer...</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Environment
+              </label>
+              <select
+                value={formData.environment}
+                onChange={(e) => setFormData({ ...formData, environment: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
               >
-                {submitting ? 'Provisioning...' : 'Provision Instance'}
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
+                <option value="dev">Dev</option>
+                <option value="staging">Staging</option>
+                <option value="production">Production</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Region
+              </label>
+              <select
+                value={formData.region}
+                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+              >
+                <option value="us-east-2">US East (Ohio)</option>
+                <option value="us-east-1">US East (N. Virginia)</option>
+                <option value="us-west-2">US West (Oregon)</option>
+                <option value="eu-west-1">EU (Ireland)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Platform Release ID
+              </label>
+              <input
+                value={formData.version}
+                onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+                placeholder="YYYYMMDD-<git-sha>"
+              />
+              <p className="text-xs mt-1" style={{ color: colors.text.muted }}>
+                Use the immutable platform release id for this deployment.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Resource Tier
+              </label>
+              <select
+                value={formData.resourceTier}
+                onChange={(e) => setFormData({ ...formData, resourceTier: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+              >
+                <option value="standard">Standard (2 vCPU, 4GB RAM)</option>
+                <option value="professional">Professional (4 vCPU, 8GB RAM)</option>
+                <option value="enterprise">Enterprise (8 vCPU, 16GB RAM)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-8">
+            <button
+              type="button"
+              onClick={() => navigate('/instances')}
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50"
+              style={{
+                borderColor: colors.glass.border,
+                color: colors.text.secondary,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-opacity disabled:opacity-50"
+              style={{
+                background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
+              }}
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check size={18} />}
+              {submitting ? 'Provisioning...' : 'Provision Instance'}
+            </button>
+          </div>
+        </div>
       </form>
-    </Box>
+    </div>
   );
 }
 

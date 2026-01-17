@@ -161,33 +161,27 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
           }
         }}
         className={`
-          w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-sm outline-none transition-colors
-          ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}
-          ${isOpen ? 'ring-2 ring-sky-500 border-sky-500' : ''}
+          w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-left text-sm outline-none transition-colors
+          ${disabled ? 'cursor-not-allowed opacity-60 bg-muted text-muted-foreground' : 'cursor-pointer bg-card text-foreground'}
+          ${isOpen ? 'ring-2 ring-sky-500 border-info-border' : ''}
         `}
-        style={{
-          backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-          borderColor: 'var(--border-default)',
-          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-        }}
       >
         {selectedModule ? (
           <>
-            <span style={{ color: 'var(--text-muted)' }}>
+            <span className="text-muted-foreground">
               {selectedModule.icon ? (
                 <Icon name={selectedModule.icon} className="h-4 w-4" />
               ) : (
                 getTypeIcon(selectedModule.type)
               )}
             </span>
-            <span className="flex-1 truncate" style={{ color: 'var(--text-primary)' }}>{selectedModule.label}</span>
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{selectedModule.key}</span>
+            <span className="flex-1 truncate text-foreground">{selectedModule.label}</span>
+            <span className="text-xs text-muted-foreground">{selectedModule.key}</span>
             {!disabled && (
               <button
                 type="button"
                 onClick={handleClear}
-                className="hover:opacity-80 transition-opacity"
-                style={{ color: 'var(--text-muted)' }}
+                className="text-muted-foreground hover:opacity-80 transition-opacity"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -195,28 +189,21 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
           </>
         ) : (
           <>
-            <Search className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-            <span className="flex-1" style={{ color: 'var(--text-muted)' }}>{placeholder}</span>
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1 text-muted-foreground">{placeholder}</span>
           </>
         )}
       </div>
 
       {/* Dropdown */}
       {isOpen && (
-        <div 
-          className="absolute z-50 left-0 right-0 mt-1 rounded-lg shadow-lg overflow-hidden border"
-          style={{ 
-            backgroundColor: 'var(--bg-elevated)', 
-            borderColor: 'var(--border-default)' 
-          }}
+        <div
+          className="absolute z-50 left-0 right-0 mt-1 rounded-lg shadow-lg overflow-hidden border border-border bg-card"
         >
           {/* Search Input */}
-          <div className="p-2 border-b" style={{ borderColor: 'var(--border-default)' }}>
-            <div 
-              className="flex items-center gap-2 px-2 py-1.5 rounded-md"
-              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-            >
-              <Search className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <div className="p-2 border-b border-border">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
+              <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 ref={inputRef}
                 type="text"
@@ -227,16 +214,14 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Search modules..."
-                className="flex-1 bg-transparent outline-none text-sm"
-                style={{ color: 'var(--text-primary)' }}
+                className="flex-1 bg-transparent outline-none text-sm text-foreground"
                 autoComplete="off"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="hover:opacity-80"
-                  style={{ color: 'var(--text-muted)' }}
+                  className="text-muted-foreground hover:opacity-80"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -247,19 +232,13 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
           {/* Results */}
           <div className="max-h-64 overflow-y-auto">
             {filteredModules.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                 {search ? 'No modules found' : 'No modules available'}
               </div>
             ) : (
               Object.entries(groupedModules).map(([group, groupModules]) => (
                 <div key={group}>
-                  <div 
-                    className="px-3 py-1.5 text-xs font-semibold uppercase"
-                    style={{ 
-                      color: 'var(--text-muted)', 
-                      backgroundColor: 'var(--bg-surface-secondary)' 
-                    }}
-                  >
+                  <div className="px-3 py-1.5 text-xs font-semibold uppercase text-muted-foreground bg-muted">
                     {group}
                   </div>
                   {groupModules.map((module) => {
@@ -275,14 +254,11 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
                         onMouseEnter={() => setHighlightedIndex(globalIndex)}
                         className={`
                           w-full flex items-center gap-3 px-3 py-2 text-left transition-colors
-                          ${isHighlighted ? 'bg-black/5 dark:bg-white/5' : ''}
-                          ${isSelected ? 'bg-sky-500/10' : ''}
+                          ${isHighlighted && !isSelected ? 'bg-muted/50' : ''}
+                          ${isSelected ? 'bg-primary/10' : ''}
                         `}
-                        style={{
-                            backgroundColor: isSelected ? 'var(--bg-selected)' : (isHighlighted ? 'var(--bg-hover)' : 'transparent')
-                        }}
                       >
-                        <span className="flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                        <span className="flex-shrink-0 text-muted-foreground">
                           {module.icon ? (
                             <Icon name={module.icon} className="h-4 w-4" />
                           ) : (
@@ -290,16 +266,16 @@ export const ModulePicker: React.FC<ModulePickerProps> = ({
                           )}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate" style={{ color: isSelected ? 'var(--text-brand)' : 'var(--text-primary)' }}>
+                          <div className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : 'text-foreground'}`}>
                             {module.label}
                           </div>
                           {module.description && (
-                            <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                            <div className="text-xs truncate text-muted-foreground">
                               {module.description}
                             </div>
                           )}
                         </div>
-                        <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+                        <span className="text-xs font-mono flex-shrink-0 text-muted-foreground">
                           {module.key}
                         </span>
                       </button>

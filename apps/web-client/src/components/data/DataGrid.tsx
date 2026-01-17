@@ -1,3 +1,15 @@
+/**
+ * DataGrid Component
+ * HubbleWave Platform - Phase 1
+ *
+ * A production-ready data grid with:
+ * - Theme-aware styling using Tailwind CSS classes
+ * - Full accessibility (ARIA labels, keyboard navigation)
+ * - Mobile-responsive design
+ * - Sorting, filtering, pagination
+ * - Row selection and bulk actions
+ */
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ChevronUp,
@@ -228,35 +240,48 @@ export function DataGrid<T extends Record<string, unknown>>({
     [onSearch]
   );
 
+  // Build inline style object for width constraints only
+  const getColumnWidthStyle = (column: ColumnDef<T>) => {
+    const width = columnWidths[column.id] || column.width;
+    const result: React.CSSProperties = {};
+    if (width) result.width = width;
+    if (column.minWidth) result.minWidth = column.minWidth;
+    if (column.maxWidth) result.maxWidth = column.maxWidth;
+    return Object.keys(result).length > 0 ? result : undefined;
+  };
+
   // Render header cell
   const renderHeaderCell = (column: ColumnDef<T>) => {
     const sortState = sort.find((s) => s.column === column.id);
-    const width = columnWidths[column.id] || column.width;
+    const widthStyle = getColumnWidthStyle(column);
 
     return (
       <th
         key={column.id}
-        className={`px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50 ${
+        className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-muted text-muted-foreground ${
           column.frozen ? 'sticky left-0 z-10' : ''
         } ${stickyHeader ? 'sticky top-0 z-20' : ''}`}
-        style={{ width, minWidth: column.minWidth, maxWidth: column.maxWidth }}
+        style={widthStyle}
+        role="columnheader"
+        aria-sort={sortState ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
       >
         <div className="flex items-center gap-2">
           {column.sortable !== false && onSortChange ? (
             <button
               onClick={() => handleSort(column.id)}
-              className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200"
+              className="flex items-center gap-1 transition-colors text-muted-foreground hover:text-foreground"
+              aria-label={`Sort by ${column.header}`}
             >
               <span>{column.header}</span>
               {sortState ? (
                 sortState.direction === 'asc' ? (
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-4 h-4" aria-hidden="true" />
                 ) : (
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-4 h-4" aria-hidden="true" />
                 )
               ) : (
                 <div className="w-4 h-4 opacity-0 group-hover:opacity-50">
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-4 h-4" aria-hidden="true" />
                 </div>
               )}
             </button>
@@ -266,8 +291,11 @@ export function DataGrid<T extends Record<string, unknown>>({
         </div>
         {column.resizable !== false && (
           <div
-            className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-indigo-500"
+            className="absolute right-0 top-0 h-full w-1 cursor-col-resize transition-colors bg-transparent hover:bg-primary"
             onMouseDown={(e) => handleResizeStart(e, column.id)}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={`Resize ${column.header} column`}
           />
         )}
       </th>
@@ -282,18 +310,15 @@ export function DataGrid<T extends Record<string, unknown>>({
       typeof column.cellClassName === 'function'
         ? column.cellClassName(row)
         : column.cellClassName || '';
+    const widthStyle = getColumnWidthStyle(column);
 
     return (
       <td
         key={column.id}
-        className={`px-4 py-3 text-sm text-gray-900 dark:text-gray-100 ${
-          column.frozen ? 'sticky left-0 bg-white dark:bg-gray-900 z-10' : ''
+        className={`px-4 py-3 text-sm text-foreground ${
+          column.frozen ? 'sticky left-0 z-10 bg-card' : ''
         } ${column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : ''} ${cellClass}`}
-        style={{
-          width: columnWidths[column.id] || column.width,
-          minWidth: column.minWidth,
-          maxWidth: column.maxWidth,
-        }}
+        style={widthStyle}
       >
         {content}
       </td>
@@ -307,34 +332,48 @@ export function DataGrid<T extends Record<string, unknown>>({
     : data.length;
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div
+      className={`flex flex-col h-full ${className}`}
+      role="grid"
+      aria-label="Data grid"
+      aria-busy={loading}
+    >
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-3 border-b border-border bg-card">
+        <div className="flex items-center gap-3 flex-wrap">
           {searchable && (
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="pl-9 pr-8 py-2 w-64 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Search data"
+                className="pl-9 pr-8 py-2 w-64 rounded-lg text-sm focus:outline-none transition-colors border border-border bg-card text-foreground focus:border-primary"
               />
               {searchQuery && (
                 <button
                   onClick={() => handleSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded transition-colors text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
                 >
-                  <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               )}
             </div>
           )}
 
           {selectable && selectedRows.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
-              <span className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="text-sm font-medium">
                 {selectedRows.length} selected
               </span>
               {bulkActions}
@@ -346,8 +385,11 @@ export function DataGrid<T extends Record<string, unknown>>({
 
         <div className="flex items-center gap-2">
           {filters.length > 0 && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
-              <Filter className="w-4 h-4" />
+            <button
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors bg-primary/10 text-primary"
+              aria-label={`${filters.length} active filters`}
+            >
+              <Filter className="w-4 h-4" aria-hidden="true" />
               {filters.length} filter{filters.length !== 1 ? 's' : ''}
             </button>
           )}
@@ -355,23 +397,32 @@ export function DataGrid<T extends Record<string, unknown>>({
           <div className="relative">
             <button
               onClick={() => setShowColumnPicker(!showColumnPicker)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-muted"
               title="Toggle columns"
+              aria-label="Toggle column visibility"
+              aria-expanded={showColumnPicker}
+              aria-haspopup="menu"
             >
-              <Columns className="w-4 h-4 text-gray-500" />
+              <Columns className="w-4 h-4" aria-hidden="true" />
             </button>
 
             {showColumnPicker && (
-              <div className="absolute right-0 top-10 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-2 z-30">
-                <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div
+                className="absolute right-0 top-12 w-56 rounded-lg shadow-lg py-2 z-30 bg-card border border-border"
+                role="menu"
+                aria-label="Column visibility options"
+              >
+                <div className="px-3 py-2 border-b border-border">
+                  <span className="text-sm font-medium text-foreground">
                     Show Columns
                   </span>
                 </div>
                 {columns.map((col) => (
                   <label
                     key={col.id}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                    className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors text-foreground hover:bg-muted"
+                    role="menuitemcheckbox"
+                    aria-checked={!hiddenColumns.has(col.id)}
                   >
                     <input
                       type="checkbox"
@@ -385,9 +436,10 @@ export function DataGrid<T extends Record<string, unknown>>({
                         }
                         setHiddenColumns(newHidden);
                       }}
-                      className="w-4 h-4 text-indigo-600 rounded"
+                      className="w-4 h-4 rounded accent-primary"
+                      aria-label={`Show ${col.header} column`}
                     />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">{col.header}</span>
+                    <span className="text-sm">{col.header}</span>
                   </label>
                 ))}
               </div>
@@ -398,68 +450,92 @@ export function DataGrid<T extends Record<string, unknown>>({
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+              className="p-2 rounded-lg transition-colors disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-muted"
               title="Refresh"
+              aria-label="Refresh data"
             >
-              <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
             </button>
           )}
 
           {onExport && (
             <button
               onClick={onExport}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-muted"
               title="Export"
+              aria-label="Export data"
             >
-              <Download className="w-4 h-4 text-gray-500" />
+              <Download className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
         </div>
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse">
+      <div className="flex-1 overflow-auto" role="region" aria-label="Data table">
+        <table className="w-full border-collapse" role="grid">
           <thead>
-            <tr>
+            <tr role="row">
               {selectable && (
-                <th className="w-12 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 sticky top-0 left-0 z-30">
+                <th
+                  className="w-12 px-4 py-3 sticky top-0 left-0 z-30 bg-muted"
+                  role="columnheader"
+                >
                   <input
                     type="checkbox"
                     checked={data.length > 0 && selectedRows.length === data.length}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 text-indigo-600 rounded"
+                    className="w-4 h-4 rounded accent-primary"
+                    aria-label="Select all rows"
                   />
                 </th>
               )}
               {visibleColumns.map(renderHeaderCell)}
               {rowActions && (
-                <th className="w-12 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 sticky top-0 right-0 z-20" />
+                <th
+                  className="w-12 px-4 py-3 sticky top-0 right-0 z-20 bg-muted"
+                  role="columnheader"
+                  aria-label="Actions"
+                />
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="border-t border-border">
             {loading ? (
-              <tr>
+              <tr role="row">
                 <td
                   colSpan={visibleColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
                   className="px-4 py-12 text-center"
+                  role="gridcell"
                 >
-                  <Loader2 className="w-8 h-8 mx-auto text-indigo-600 animate-spin" />
-                  <p className="mt-2 text-sm text-gray-500">Loading...</p>
+                  <Loader2
+                    className="w-8 h-8 mx-auto animate-spin text-primary"
+                    aria-hidden="true"
+                  />
+                  <p
+                    className="mt-2 text-sm text-muted-foreground"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Loading...
+                  </p>
                 </td>
               </tr>
             ) : data.length === 0 ? (
-              <tr>
+              <tr role="row">
                 <td
                   colSpan={visibleColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
-                  className="px-4 py-12 text-center text-gray-500"
+                  className="px-4 py-12 text-center text-muted-foreground"
+                  role="gridcell"
                 >
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
-              data.map((row) => {
+              data.map((row, rowIndex) => {
                 const key = getRowKey(row);
                 const isSelected = selectedRows.includes(key);
 
@@ -468,20 +544,32 @@ export function DataGrid<T extends Record<string, unknown>>({
                     key={key}
                     onClick={() => onRowClick?.(row)}
                     onDoubleClick={() => onRowDoubleClick?.(row)}
-                    className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                      onRowClick || onRowDoubleClick ? 'cursor-pointer' : ''
-                    } ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
+                    className={`transition-colors border-b border-border/50 ${
+                      isSelected ? 'bg-primary/10' : 'hover:bg-muted'
+                    } ${onRowClick || onRowDoubleClick ? 'cursor-pointer' : 'cursor-default'}`}
+                    role="row"
+                    aria-selected={isSelected}
+                    aria-rowindex={rowIndex + 1}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick?.(row);
+                      }
+                    }}
                   >
                     {selectable && (
                       <td
                         className="w-12 px-4 py-3 sticky left-0 bg-inherit"
                         onClick={(e) => e.stopPropagation()}
+                        role="gridcell"
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleSelectRow(row)}
-                          className="w-4 h-4 text-indigo-600 rounded"
+                          className="w-4 h-4 rounded accent-primary"
+                          aria-label={`Select row ${key}`}
                         />
                       </td>
                     )}
@@ -490,6 +578,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                       <td
                         className="w-12 px-4 py-3 sticky right-0 bg-inherit"
                         onClick={(e) => e.stopPropagation()}
+                        role="gridcell"
                       >
                         {rowActions(row)}
                       </td>
@@ -504,15 +593,23 @@ export function DataGrid<T extends Record<string, unknown>>({
 
       {/* Pagination */}
       {pagination && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div
+          className="flex items-center justify-between px-4 py-3 flex-wrap gap-3 border-t border-border bg-card"
+          role="navigation"
+          aria-label="Pagination"
+        >
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span
+              className="text-sm text-muted-foreground"
+              aria-live="polite"
+            >
               Showing {showingFrom} to {showingTo} of {pagination.total} results
             </span>
             <select
               value={pagination.pageSize}
               onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
-              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-sm"
+              className="px-2 py-1 rounded text-sm border border-border bg-card text-foreground"
+              aria-label="Results per page"
             >
               {pageSizeOptions.map((size) => (
                 <option key={size} value={size}>
@@ -522,23 +619,25 @@ export function DataGrid<T extends Record<string, unknown>>({
             </select>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" role="group" aria-label="Page navigation">
             <button
               onClick={() => onPageChange?.(1)}
               disabled={pagination.page === 1}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50"
+              className="p-2 rounded disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors text-muted-foreground hover:bg-muted disabled:hover:bg-transparent"
+              aria-label="Go to first page"
             >
-              <ChevronsLeft className="w-4 h-4" />
+              <ChevronsLeft className="w-4 h-4" aria-hidden="true" />
             </button>
             <button
               onClick={() => onPageChange?.(pagination.page - 1)}
               disabled={pagination.page === 1}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50"
+              className="p-2 rounded disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors text-muted-foreground hover:bg-muted disabled:hover:bg-transparent"
+              aria-label="Go to previous page"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
             </button>
 
-            <div className="flex items-center gap-1 mx-2">
+            <div className="flex items-center gap-1 mx-2" role="group" aria-label="Page numbers">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let pageNum: number;
                 if (totalPages <= 5) {
@@ -551,15 +650,19 @@ export function DataGrid<T extends Record<string, unknown>>({
                   pageNum = pagination.page - 2 + i;
                 }
 
+                const isCurrentPage = pageNum === pagination.page;
+
                 return (
                   <button
                     key={pageNum}
                     onClick={() => onPageChange?.(pageNum)}
-                    className={`w-8 h-8 text-sm rounded ${
-                      pageNum === pagination.page
-                        ? 'bg-indigo-600 text-white'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    className={`w-10 h-10 text-sm rounded transition-colors ${
+                      isCurrentPage
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted'
                     }`}
+                    aria-label={`Page ${pageNum}`}
+                    aria-current={isCurrentPage ? 'page' : undefined}
                   >
                     {pageNum}
                   </button>
@@ -570,16 +673,18 @@ export function DataGrid<T extends Record<string, unknown>>({
             <button
               onClick={() => onPageChange?.(pagination.page + 1)}
               disabled={pagination.page === totalPages}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50"
+              className="p-2 rounded disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors text-muted-foreground hover:bg-muted disabled:hover:bg-transparent"
+              aria-label="Go to next page"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </button>
             <button
               onClick={() => onPageChange?.(totalPages)}
               disabled={pagination.page === totalPages}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50"
+              className="p-2 rounded disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors text-muted-foreground hover:bg-muted disabled:hover:bg-transparent"
+              aria-label="Go to last page"
             >
-              <ChevronsRight className="w-4 h-4" />
+              <ChevronsRight className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>

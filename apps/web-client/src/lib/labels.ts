@@ -51,9 +51,9 @@ export const labels = {
     role: { singular: 'Role', plural: 'Roles' } as EntityLabel,
     accessRule: { singular: 'Access Rule', plural: 'Access Rules' } as EntityLabel,
 
-    // Automation & Workflow
+    // Automation & Process Flows
     automation: { singular: 'Automation', plural: 'Automations' } as EntityLabel,
-    flow: { singular: 'Flow', plural: 'Flows' } as EntityLabel,
+    processFlow: { singular: 'Process Flow', plural: 'Process Flows' } as EntityLabel,
     approval: { singular: 'Approval', plural: 'Approvals' } as EntityLabel,
 
     // Communication

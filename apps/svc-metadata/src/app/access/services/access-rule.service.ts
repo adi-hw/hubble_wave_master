@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -6,6 +6,10 @@ import { Cache } from 'cache-manager';
 import {
   CollectionAccessRule,
   PropertyAccessRule,
+  PropertyDefinition,
+  Role,
+  Group,
+  User,
 } from '@hubblewave/instance-db';
 import {
   CreateCollectionAccessRuleDto,
@@ -31,6 +35,14 @@ export class AccessRuleService {
     private readonly collectionRuleRepo: Repository<CollectionAccessRule>,
     @InjectRepository(PropertyAccessRule)
     private readonly propertyRuleRepo: Repository<PropertyAccessRule>,
+    @InjectRepository(PropertyDefinition)
+    private readonly propertyDefRepo: Repository<PropertyDefinition>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
+    @InjectRepository(Group)
+    private readonly groupRepo: Repository<Group>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     @Inject(CACHE_MANAGER)
     private readonly cache: Cache,
     private readonly auditService: AccessAuditService,
@@ -70,12 +82,12 @@ export class AccessRuleService {
   ): Promise<CollectionAccessRule> {
     // Validate principal exists
     if (dto.principalType !== 'everyone' && dto.principalId) {
-      // await this.validatePrincipalExists(dto.principalType, dto.principalId);
+      await this.validatePrincipalExists(dto.principalType, dto.principalId);
     }
 
     // Validate condition properties exist
     if (dto.condition) {
-      // await this.validateConditionProperties(collectionId, dto.condition);
+      await this.validateConditionProperties(collectionId, dto.condition);
     }
 
     const rule = this.collectionRuleRepo.create({
@@ -117,7 +129,7 @@ export class AccessRuleService {
 
     // Validate condition if provided
     if (dto.condition !== undefined && dto.condition !== null) {
-      // await this.validateConditionProperties(rule.collectionId, dto.condition);
+      await this.validateConditionProperties(rule.collectionId, dto.condition);
     }
 
     // Update fields
@@ -397,27 +409,184 @@ export class AccessRuleService {
     return rules;
   }
 
+  /**
+   * Calculate field-level security permissions for a user on a collection.
+   *
+   * This method determines:
+   * - Which properties the user can read/write
+   * - Which properties require masking
+   * - Which properties are PHI and require break-glass access
+   *
+   * The evaluation follows priority order (lower priority = evaluated first).
+   * For each property:
+   * 1. Start with defaults from PropertyDefinition (isReadonly, isSensitive, etc.)
+   * 2. Apply any matching PropertyAccessRules in priority order
+   * 3. User-specific rules override group rules override role rules
+   */
   async getPropertyAccessForUser(
-    _collectionId: string,
-    _rules: PropertyAccessRule[],
-    _user: UserAccessContext
+    collectionId: string,
+    rules: PropertyAccessRule[],
+    user: UserAccessContext
   ): Promise<PropertyAccessResult[]> {
-    // This is a simplified logic. In reality, we merge rules.
-    // For now, let's just return what we have, filtering by principal.
+    // Get all properties for this collection
+    const properties = await this.getPropertiesForCollection(collectionId);
+
+    if (properties.length === 0) {
+      return [];
+    }
+
+    // Get property IDs to filter rules
+    const propertyIds = properties.map(p => p.id);
+
+    // Filter rules to only those that match properties in this collection
+    // and match the user's principals
+    const applicableRules = rules.filter(rule => {
+      // Check property belongs to this collection
+      if (!propertyIds.includes(rule.propertyId)) {
+        return false;
+      }
+
+      // Check principal match
+      return this.checkPropertyRulePrincipalMatch(rule, user);
+    });
+
+    // Build permission map for each property
     const results: PropertyAccessResult[] = [];
-    
-    // Group rules by propertyId/code logic could be here strictly
-    // For now, listing valid props
-    
-    // We need to define property structure. Assuming rules cover distinct properties or merging top priority.
-    // TODO: Implement full merge strategy.
-    
+
+    for (const property of properties) {
+      // Start with default permissions based on property definition
+      let canRead = true; // Default: allow read
+      let canWrite = !property.isReadonly; // Default: allow write unless readonly
+
+      // Get masking info from property definition
+      const isSensitive = property.isSensitive || property.isPhi || property.isPii;
+      const requiresBreakGlass = property.requiresBreakGlass;
+      const maskingStrategy = property.maskingStrategy || 'none';
+      const maskValue = property.maskValue || '****';
+
+      // Find applicable rules for this property (sorted by priority)
+      const propertyRules = applicableRules
+        .filter(r => r.propertyId === property.id)
+        .sort((a, b) => a.priority - b.priority);
+
+      // Apply rules in priority order
+      // More specific rules (user > group > role) take precedence when at same priority
+      const sortedRules = this.sortRulesBySpecificity(propertyRules, user);
+
+      for (const rule of sortedRules) {
+        // Rule explicitly sets permissions
+        canRead = rule.canRead;
+        canWrite = rule.canWrite;
+
+        // First matching rule wins (due to priority ordering)
+        break;
+      }
+
+      // If property requires break-glass and user doesn't have active session, deny
+      // This check would integrate with BreakGlassService in a full implementation
+      const effectiveCanRead = requiresBreakGlass ? false : canRead;
+      const effectiveCanWrite = requiresBreakGlass ? false : canWrite;
+
+      // Determine if masking should be applied
+      const isMasked = isSensitive && maskingStrategy !== 'none' && effectiveCanRead;
+
+      results.push({
+        propertyCode: property.code,
+        canRead: effectiveCanRead,
+        canWrite: effectiveCanWrite,
+        isMasked,
+        maskValue: isMasked ? maskValue : undefined,
+        isPhi: property.isPhi,
+        requiresBreakGlass,
+      });
+    }
+
     return results;
   }
 
-  // private async invalidatePropertyRulesCache(_collectionId: string) {
-  //   await this.cache.del(`property-rules:collection:${collectionId}`);
-  // }
+  /**
+   * Get properties for a collection with caching
+   */
+  private async getPropertiesForCollection(collectionId: string): Promise<PropertyDefinition[]> {
+    const cacheKey = `property-defs:collection:${collectionId}`;
+    const cached = await this.cache.get<PropertyDefinition[]>(cacheKey);
+    if (cached) return cached;
+
+    const properties = await this.propertyDefRepo.find({
+      where: { collectionId, isActive: true },
+      order: { position: 'ASC' },
+    });
+
+    await this.cache.set(cacheKey, properties, 300000); // 5 minutes
+    return properties;
+  }
+
+  /**
+   * Check if a property access rule matches the user's principals
+   */
+  private checkPropertyRulePrincipalMatch(rule: PropertyAccessRule, user: UserAccessContext): boolean {
+    // If no principal specified, rule applies to everyone
+    if (!rule.roleId && !rule.groupId && !rule.userId) {
+      return true;
+    }
+
+    // Check user-specific rule
+    if (rule.userId) {
+      return user.id === rule.userId;
+    }
+
+    // Check role-based rule
+    if (rule.roleId) {
+      return user.roleIds.includes(rule.roleId);
+    }
+
+    // Check group-based rule
+    if (rule.groupId) {
+      return user.groupIds.includes(rule.groupId) || user.teamIds.includes(rule.groupId);
+    }
+
+    return false;
+  }
+
+  /**
+   * Sort rules by specificity (user > group > role > everyone)
+   * within the same priority level
+   */
+  private sortRulesBySpecificity(
+    rules: PropertyAccessRule[],
+    user: UserAccessContext
+  ): PropertyAccessRule[] {
+    return [...rules].sort((a, b) => {
+      // First sort by priority (lower = higher priority)
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+
+      // At same priority, sort by specificity
+      const specificityA = this.getRuleSpecificity(a, user);
+      const specificityB = this.getRuleSpecificity(b, user);
+
+      // Higher specificity wins
+      return specificityB - specificityA;
+    });
+  }
+
+  /**
+   * Get specificity score for a rule
+   * User-specific: 3, Group-specific: 2, Role-specific: 1, Everyone: 0
+   */
+  private getRuleSpecificity(rule: PropertyAccessRule, user: UserAccessContext): number {
+    if (rule.userId && rule.userId === user.id) {
+      return 3; // User-specific (most specific)
+    }
+    if (rule.groupId && (user.groupIds.includes(rule.groupId) || user.teamIds.includes(rule.groupId))) {
+      return 2; // Group-specific
+    }
+    if (rule.roleId && user.roleIds.includes(rule.roleId)) {
+      return 1; // Role-specific
+    }
+    return 0; // Everyone (least specific)
+  }
 
   private evaluateCondition(
     condition: any,
@@ -495,8 +664,8 @@ export class AccessRuleService {
   }
 
   private createTraceEntry(
-         rule: CollectionAccessRule, 
-         result: 'matched' | 'no_principal_match' | 'no_permission' | 'condition_failed' | 'skipped', // Updated result type
+         rule: CollectionAccessRule,
+         result: 'matched' | 'no_principal_match' | 'no_permission' | 'condition_failed' | 'skipped',
          principalMatch: boolean = false,
          permissionCheck: boolean = false,
          conditionCheck: boolean | null = null
@@ -507,9 +676,79 @@ export class AccessRuleService {
            priority: rule.priority,
            principalMatch,
            permissionCheck,
-           conditionCheck, 
-           result: result as any, // Cast to any to bypass strict type check if needed, or align types
+           conditionCheck,
+           result: result as RuleEvaluationTrace['result'],
          };
        }
+
+  // ============================================================================
+  // Validation Methods
+  // ============================================================================
+
+  private async validatePrincipalExists(principalType: string, principalId: string): Promise<void> {
+    let exists = false;
+
+    switch (principalType) {
+      case 'role':
+        const role = await this.roleRepo.findOne({ where: { id: principalId } });
+        exists = !!role;
+        break;
+      case 'team':
+      case 'group':
+        const group = await this.groupRepo.findOne({ where: { id: principalId } });
+        exists = !!group;
+        break;
+      case 'user':
+        const user = await this.userRepo.findOne({ where: { id: principalId } });
+        exists = !!user;
+        break;
+      default:
+        throw new BadRequestException(`Invalid principal type: ${principalType}`);
+    }
+
+    if (!exists) {
+      throw new BadRequestException(`Principal not found: ${principalType}/${principalId}`);
+    }
+  }
+
+  private async validateConditionProperties(collectionId: string, condition: unknown): Promise<void> {
+    if (!condition || typeof condition !== 'object') {
+      return;
+    }
+
+    const properties = await this.getPropertiesForCollection(collectionId);
+    const propertyCodeSet = new Set(properties.map(p => p.code));
+
+    const validateConditionNode = (node: unknown): void => {
+      if (!node || typeof node !== 'object') {
+        return;
+      }
+
+      const conditionObj = node as Record<string, unknown>;
+
+      // Check for group conditions (and/or)
+      if (conditionObj['and'] && Array.isArray(conditionObj['and'])) {
+        for (const sub of conditionObj['and']) {
+          validateConditionNode(sub);
+        }
+      }
+
+      if (conditionObj['or'] && Array.isArray(conditionObj['or'])) {
+        for (const sub of conditionObj['or']) {
+          validateConditionNode(sub);
+        }
+      }
+
+      // Check for leaf condition with property reference
+      if (conditionObj['property'] && typeof conditionObj['property'] === 'string') {
+        const propertyCode = conditionObj['property'];
+        if (!propertyCodeSet.has(propertyCode)) {
+          throw new BadRequestException(`Property not found in collection: ${propertyCode}`);
+        }
+      }
+    };
+
+    validateConditionNode(condition);
+  }
 }
 

@@ -1,23 +1,16 @@
 /**
- * Navigation Service (V2)
+ * Navigation Service
  *
- * API client for the new navigation system.
+ * API client for the navigation system.
  */
 
-import { createApiClient } from './api';
 import {
   ResolvedNavigation,
   NavProfileSummary,
-  NavSearchResult,
-  SwitchProfileRequest,
-  ToggleFavoriteRequest,
-  RecordNavigationRequest,
-  NavigationCacheStats,
-} from '../types/navigation-v2';
+} from '../types/navigation';
+import identityApi from './identityApi';
 
-// Use identity service for navigation endpoints
-const IDENTITY_API_URL = import.meta.env.VITE_IDENTITY_API_URL ?? '/api/identity';
-const navigationApi = createApiClient(IDENTITY_API_URL);
+type NavProfileResponse = Omit<NavProfileSummary, 'isLocked'>;
 
 /**
  * Navigation service for the new navigation system
@@ -27,73 +20,48 @@ export const navigationService = {
    * Get resolved navigation for current user
    */
   async getNavigation(contextTags?: string[]): Promise<ResolvedNavigation> {
-    const params = new URLSearchParams();
-    if (contextTags?.length) {
-      params.set('contextTags', contextTags.join(','));
-    }
-    const query = params.toString();
-    const url = query ? `/navigation?${query}` : '/navigation';
-    const res = await navigationApi.get<ResolvedNavigation>(url);
-    return res.data;
+    const params = contextTags?.length ? { contextTags: contextTags.join(',') } : undefined;
+    const response = await identityApi.get<ResolvedNavigation>('/navigation', { params });
+    return response.data;
   },
 
   /**
    * Get available navigation profiles
    */
   async getProfiles(): Promise<NavProfileSummary[]> {
-    const res = await navigationApi.get<NavProfileSummary[]>('/navigation/profiles');
-    return res.data;
+    const response = await identityApi.get<NavProfileResponse[]>('/navigation/profiles');
+    return response.data.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      description: profile.description,
+      isActive: profile.isActive,
+      isDefault: profile.isDefault,
+      isLocked: false,
+    }));
   },
 
   /**
    * Switch to a different navigation profile
    */
   async switchProfile(profileId: string): Promise<void> {
-    const body: SwitchProfileRequest = { profileId };
-    await navigationApi.post('/navigation/profiles/switch', body);
-  },
-
-  /**
-   * Search navigation items
-   */
-  async search(query: string, limit = 20): Promise<NavSearchResult[]> {
-    const params = new URLSearchParams({ q: query, limit: String(limit) });
-    const res = await navigationApi.get<NavSearchResult[]>(`/navigation/search?${params}`);
-    return res.data;
+    await identityApi.post('/navigation/profiles/switch', { profileId });
   },
 
   /**
    * Toggle favorite status for a module
    */
   async toggleFavorite(moduleKey: string): Promise<{ favorites: string[] }> {
-    const body: ToggleFavoriteRequest = { moduleKey };
-    const res = await navigationApi.post<{ favorites: string[] }>(
+    const response = await identityApi.post<{ favorites: string[] }>(
       '/navigation/favorites/toggle',
-      body
+      { moduleKey }
     );
-    return res.data;
+    return response.data;
   },
 
   /**
    * Record navigation to a module (for recent/frequent tracking)
    */
   async recordNavigation(moduleKey: string): Promise<void> {
-    const body: RecordNavigationRequest = { moduleKey };
-    await navigationApi.post('/navigation/record', body);
-  },
-
-  /**
-   * Get cache statistics (admin only)
-   */
-  async getCacheStats(): Promise<NavigationCacheStats> {
-    const res = await navigationApi.get<NavigationCacheStats>('/navigation/cache/stats');
-    return res.data;
-  },
-
-  /**
-   * Clear navigation cache (admin only)
-   */
-  async clearCache(): Promise<void> {
-    await navigationApi.post('/navigation/cache/clear');
+    await identityApi.post('/navigation/record', { moduleKey });
   },
 };

@@ -50,15 +50,15 @@ const statusLabels: Record<UserStatus, string> = {
   deleted: 'Deleted',
 };
 
-// Theme-aware status styles using CSS variables from design-tokens.css
+// Theme-aware status styles using Tailwind classes
 const statusStyles: Record<UserStatus, { bg: string; text: string; dot: string }> = {
-  invited: { bg: 'var(--bg-info-subtle)', text: 'var(--text-info)', dot: 'var(--bg-info)' },
-  pending_activation: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)', dot: 'var(--bg-warning)' },
-  active: { bg: 'var(--bg-success-subtle)', text: 'var(--text-success)', dot: 'var(--bg-success)' },
-  inactive: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-tertiary)', dot: 'var(--text-muted)' },
-  suspended: { bg: 'var(--bg-danger-subtle)', text: 'var(--text-danger)', dot: 'var(--bg-danger)' },
-  locked: { bg: 'var(--bg-warning-subtle)', text: 'var(--text-warning)', dot: 'var(--bg-warning)' },
-  deleted: { bg: 'var(--bg-surface-secondary)', text: 'var(--text-muted)', dot: 'var(--text-disabled)' },
+  invited: { bg: 'bg-info-subtle', text: 'text-info-text', dot: 'bg-info' },
+  pending_activation: { bg: 'bg-warning-subtle', text: 'text-warning-text', dot: 'bg-warning' },
+  active: { bg: 'bg-success-subtle', text: 'text-success-text', dot: 'bg-success' },
+  inactive: { bg: 'bg-muted', text: 'text-muted-foreground', dot: 'bg-muted-foreground' },
+  suspended: { bg: 'bg-danger-subtle', text: 'text-danger-text', dot: 'bg-danger' },
+  locked: { bg: 'bg-warning-subtle', text: 'text-warning-text', dot: 'bg-warning' },
+  deleted: { bg: 'bg-muted', text: 'text-muted-foreground', dot: 'bg-muted-foreground/50' },
 };
 
 // Status counts type
@@ -187,10 +187,10 @@ export const UsersListPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-2xl font-semibold text-foreground">
             Users
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm mt-1 text-muted-foreground">
             Manage user accounts, roles, and permissions
           </p>
         </div>
@@ -221,30 +221,25 @@ export const UsersListPage: React.FC = () => {
           return (
             <div
               key={status}
-              className="rounded-xl border p-3 cursor-pointer transition-all hover:shadow-md"
-              style={{
-                backgroundColor: 'var(--bg-surface)',
-                borderColor: isSelected ? 'var(--border-brand)' : 'var(--border-default)',
-                boxShadow: isSelected ? '0 0 0 1px var(--border-brand)' : undefined,
-              }}
+              className={`rounded-xl border p-3 cursor-pointer transition-all hover:shadow-md bg-card ${
+                isSelected ? 'border-primary ring-1 ring-primary' : 'border-border'
+              }`}
               onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <div className="text-lg font-semibold text-foreground">
                     {count}
                   </div>
-                  <div className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-xs capitalize text-muted-foreground">
                     {statusLabels[status]}
                   </div>
                 </div>
                 <div
-                  className="h-8 w-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: colors.bg }}
+                  className={`h-8 w-8 rounded-lg flex items-center justify-center ${colors.bg}`}
                 >
                   <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: colors.dot }}
+                    className={`h-2.5 w-2.5 rounded-full ${colors.dot}`}
                   />
                 </div>
               </div>
@@ -256,24 +251,22 @@ export const UsersListPage: React.FC = () => {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search by name, email, or employee ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)' }}
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+          <Filter className="h-4 w-4 text-muted-foreground" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as UserStatus | 'all')}
-            className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            className="px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="all">All Status</option>
             {Object.entries(statusLabels).map(([value, label]) => (
@@ -285,8 +278,7 @@ export const UsersListPage: React.FC = () => {
             <select
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              className="px-3 py-2 border border-border rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Departments</option>
               {departments.map((dept) => (
@@ -298,46 +290,43 @@ export const UsersListPage: React.FC = () => {
       </div>
 
       {/* Users Table */}
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-      >
+      <div className="rounded-xl border border-border overflow-hidden bg-card">
         <table className="w-full">
           <thead>
-            <tr className="border-b" style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface-secondary)' }}>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+            <tr className="border-b border-border bg-muted">
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 User
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Department
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Status
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Role
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Last Activity
               </th>
-              <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
+          <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading users...</p>
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Loading users...</p>
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <AlertCircle className="h-8 w-8 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No users found</p>
+                  <AlertCircle className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No users found</p>
                 </td>
               </tr>
             ) : (
@@ -346,32 +335,26 @@ export const UsersListPage: React.FC = () => {
                 return (
                   <tr
                     key={user.id}
-                    className="cursor-pointer transition-colors"
-                    style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                    className="cursor-pointer transition-colors border-b border-border/50 hover:bg-muted/50"
                     onClick={() => navigate(`/studio/users/${user.id}`)}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div
-                          className="h-10 w-10 rounded-full flex items-center justify-center overflow-hidden"
-                          style={{ backgroundColor: 'var(--bg-surface-tertiary)' }}
-                        >
+                        <div className="h-10 w-10 rounded-full flex items-center justify-center overflow-hidden bg-muted">
                           {user.avatarUrl ? (
                             <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
                           ) : (
-                            <User className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                            <User className="h-5 w-5 text-muted-foreground" />
                           )}
                         </div>
                         <div>
-                          <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                          <div className="font-medium text-foreground">
                             {user.displayName}
                             {user.isAdmin && (
-                              <span title="Administrator"><Shield className="inline-block h-3.5 w-3.5 ml-1.5" style={{ color: 'var(--text-warning)' }} /></span>
+                              <span title="Administrator"><Shield className="inline-block h-3.5 w-3.5 ml-1.5 text-warning-text" /></span>
                             )}
                           </div>
-                          <div className="text-sm flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                          <div className="text-sm flex items-center gap-1 text-muted-foreground">
                             <Mail className="h-3 w-3" />
                             {user.workEmail}
                           </div>
@@ -380,30 +363,28 @@ export const UsersListPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       {user.department ? (
-                        <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                           <Building className="h-3.5 w-3.5" />
                           {user.department}
                         </div>
                       ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-                        style={{ backgroundColor: colors.bg, color: colors.text }}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
                       >
                         <span
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ backgroundColor: colors.dot }}
+                          className={`h-1.5 w-1.5 rounded-full ${colors.dot}`}
                         />
                         {statusLabels[user.status]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
                       {user.title || '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
                       {user.lastLoginAt
                         ? new Date(user.lastLoginAt).toLocaleDateString()
                         : user.activatedAt
@@ -418,21 +399,17 @@ export const UsersListPage: React.FC = () => {
                           e.stopPropagation();
                           setActionMenuOpen(actionMenuOpen === user.id ? null : user.id);
                         }}
-                        className="p-1.5 rounded transition-colors"
-                        style={{ backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="p-1.5 rounded transition-colors hover:bg-muted"
                         aria-label={`Actions for ${user.displayName}`}
                         aria-expanded={actionMenuOpen === user.id}
                         aria-haspopup="menu"
                       >
-                        <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+                        <MoreHorizontal className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       </button>
 
                       {actionMenuOpen === user.id && (
                         <div
-                          className="absolute right-0 mt-1 w-48 rounded-lg border z-10"
-                          style={{ backgroundColor: 'var(--bg-elevated)', borderColor: 'var(--border-default)', boxShadow: 'var(--shadow-lg)' }}
+                          className="absolute right-0 mt-1 w-48 rounded-lg border border-border z-10 bg-popover shadow-lg"
                           onClick={(e) => e.stopPropagation()}
                           role="menu"
                           aria-label={`Actions for ${user.displayName}`}
@@ -441,10 +418,7 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'invited' && (
                               <button
                                 onClick={() => handleAction(user.id, 'resend-invitation')}
-                                className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                               >
                                 Resend Invitation
                               </button>
@@ -453,19 +427,13 @@ export const UsersListPage: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => handleAction(user.id, 'suspend')}
-                                  className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                  style={{ color: 'var(--text-primary)' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                                 >
                                   Suspend User
                                 </button>
                                 <button
                                   onClick={() => handleAction(user.id, 'deactivate')}
-                                  className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                  style={{ color: 'var(--text-primary)' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                                 >
                                   Deactivate User
                                 </button>
@@ -474,10 +442,7 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'inactive' && (
                               <button
                                 onClick={() => handleAction(user.id, 'reactivate')}
-                                className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                               >
                                 Reactivate User
                               </button>
@@ -485,10 +450,7 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'suspended' && (
                               <button
                                 onClick={() => handleAction(user.id, 'unsuspend')}
-                                className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                               >
                                 Unsuspend User
                               </button>
@@ -496,21 +458,15 @@ export const UsersListPage: React.FC = () => {
                             {user.status === 'locked' && (
                               <button
                                 onClick={() => handleAction(user.id, 'unlock')}
-                                className="w-full text-left px-4 py-2 text-sm transition-colors"
-                                style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                className="w-full text-left px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
                               >
                                 Unlock User
                               </button>
                             )}
-                            <hr className="my-1" style={{ borderColor: 'var(--border-subtle)' }} />
+                            <hr className="my-1 border-border" />
                             <button
                               onClick={() => handleAction(user.id, 'delete')}
-                              className="w-full text-left px-4 py-2 text-sm transition-colors"
-                              style={{ color: 'var(--text-danger)' }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              className="w-full text-left px-4 py-2 text-sm transition-colors text-destructive hover:bg-destructive/10"
                             >
                               Delete User
                             </button>
@@ -527,11 +483,8 @@ export const UsersListPage: React.FC = () => {
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderTop: '1px solid var(--border-default)' }}
-          >
-            <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <div className="text-sm text-muted-foreground">
               Showing {((pagination.page - 1) * pagination.pageSize) + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} users
             </div>
             <div className="flex items-center gap-2">

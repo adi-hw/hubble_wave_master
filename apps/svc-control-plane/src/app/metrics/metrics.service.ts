@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Customer, TenantInstance } from '@hubblewave/control-plane-db';
+import { Customer, Instance } from '@hubblewave/control-plane-db';
 
 export interface PlatformMetrics {
   customers: {
@@ -9,11 +9,15 @@ export interface PlatformMetrics {
     active: number;
     trial: number;
     byTier: Record<string, number>;
+    totalUsers: number;
+    totalAssets: number;
   };
   instances: {
     total: number;
     healthy: number;
     degraded: number;
+    unhealthy: number;
+    unknown: number;
     provisioning: number;
     byEnvironment: Record<string, number>;
     byRegion: Record<string, number>;
@@ -35,8 +39,8 @@ export class MetricsService {
   constructor(
     @InjectRepository(Customer)
     private readonly customerRepo: Repository<Customer>,
-    @InjectRepository(TenantInstance)
-    private readonly instanceRepo: Repository<TenantInstance>,
+    @InjectRepository(Instance)
+    private readonly instanceRepo: Repository<Instance>,
   ) {}
 
   async getPlatformMetrics(): Promise<PlatformMetrics> {
@@ -55,6 +59,13 @@ export class MetricsService {
     const totalCustomers = await this.customerRepo.count({ where: { deletedAt: undefined } });
     const activeCustomers = await this.customerRepo.count({ where: { status: 'active', deletedAt: undefined } });
     const trialCustomers = await this.customerRepo.count({ where: { status: 'trial', deletedAt: undefined } });
+
+    const customerTotals = await this.customerRepo
+      .createQueryBuilder('customer')
+      .select('SUM(customer.total_users)', 'totalUsers')
+      .addSelect('SUM(customer.total_assets)', 'totalAssets')
+      .where('customer.deleted_at IS NULL')
+      .getRawOne();
 
     const byTier = customerStats.reduce((acc, s) => {
       acc[s.tier] = (acc[s.tier] || 0) + parseInt(s.count);
@@ -79,6 +90,8 @@ export class MetricsService {
     const totalInstances = await this.instanceRepo.count({ where: { deletedAt: undefined } });
     const healthyInstances = await this.instanceRepo.count({ where: { health: 'healthy', deletedAt: undefined } });
     const degradedInstances = await this.instanceRepo.count({ where: { health: 'degraded', deletedAt: undefined } });
+    const unhealthyInstances = await this.instanceRepo.count({ where: { health: 'unhealthy', deletedAt: undefined } });
+    const unknownInstances = await this.instanceRepo.count({ where: { health: 'unknown', deletedAt: undefined } });
     const provisioningInstances = await this.instanceRepo.count({ where: { status: 'provisioning', deletedAt: undefined } });
 
     const byEnvironment = instanceStats.reduce((acc, s) => {
@@ -108,11 +121,15 @@ export class MetricsService {
         active: activeCustomers,
         trial: trialCustomers,
         byTier,
+        totalUsers: parseInt(customerTotals?.totalUsers) || 0,
+        totalAssets: parseInt(customerTotals?.totalAssets) || 0,
       },
       instances: {
         total: totalInstances,
         healthy: healthyInstances,
         degraded: degradedInstances,
+        unhealthy: unhealthyInstances,
+        unknown: unknownInstances,
         provisioning: provisioningInstances,
         byEnvironment,
         byRegion,

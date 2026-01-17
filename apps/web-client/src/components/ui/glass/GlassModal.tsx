@@ -144,18 +144,13 @@ export const GlassModal: React.FC<GlassModalProps> = ({
   const isFullscreen = variant === 'fullscreen';
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)]">
+    <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
         className={cn(
-          'absolute inset-0 transition-opacity duration-300',
+          'absolute inset-0 transition-opacity duration-300 bg-overlay/50 backdrop-blur-sm',
           open ? 'opacity-100' : 'opacity-0'
         )}
-        style={{
-          backgroundColor: 'var(--bg-overlay)',
-          backdropFilter: 'blur(4px)',
-          WebkitBackdropFilter: 'blur(4px)',
-        }}
         onClick={handleBackdropClick}
         aria-hidden="true"
       />
@@ -175,8 +170,8 @@ export const GlassModal: React.FC<GlassModalProps> = ({
           tabIndex={-1}
           className={cn(
             'glass-modal relative flex flex-col overflow-hidden',
-            'bg-[var(--bg-surface)]',
-            'border border-[var(--border-default)]',
+            'bg-card',
+            'border border-border',
             'shadow-2xl',
             'transition-all duration-300 ease-out',
             !isSlideVariant && !isFullscreen && 'rounded-2xl',
@@ -196,8 +191,7 @@ export const GlassModal: React.FC<GlassModalProps> = ({
           {/* Header */}
           {(title || header || showCloseButton) && (
             <div
-              className="flex items-start justify-between gap-4 px-6 py-4 flex-shrink-0"
-              style={{ borderBottom: '1px solid var(--border-subtle)' }}
+              className="flex items-start justify-between gap-4 px-6 py-4 flex-shrink-0 border-b border-border"
             >
               <div className="flex-1 min-w-0">
                 {header || (
@@ -205,8 +199,7 @@ export const GlassModal: React.FC<GlassModalProps> = ({
                     {title && (
                       <h2
                         id="modal-title"
-                        className="text-lg font-semibold truncate"
-                        style={{ color: 'var(--text-primary)' }}
+                        className="text-lg font-semibold truncate text-foreground"
                       >
                         {title}
                       </h2>
@@ -214,8 +207,7 @@ export const GlassModal: React.FC<GlassModalProps> = ({
                     {description && (
                       <p
                         id="modal-description"
-                        className="mt-1 text-sm"
-                        style={{ color: 'var(--text-secondary)' }}
+                        className="mt-1 text-sm text-muted-foreground"
                       >
                         {description}
                       </p>
@@ -245,8 +237,7 @@ export const GlassModal: React.FC<GlassModalProps> = ({
           {/* Footer */}
           {footer && (
             <div
-              className="flex items-center justify-end gap-3 px-6 py-4 flex-shrink-0"
-              style={{ borderTop: '1px solid var(--border-subtle)' }}
+              className="flex items-center justify-end gap-3 px-6 py-4 flex-shrink-0 border-t border-border"
             >
               {footer}
             </div>
@@ -304,7 +295,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         </>
       }
     >
-      <p style={{ color: 'var(--text-secondary)' }}>{message}</p>
+      <p className="text-muted-foreground">{message}</p>
     </GlassModal>
   );
 };

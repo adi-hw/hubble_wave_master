@@ -4,10 +4,10 @@ import { LLMService } from './llm.service';
 
 /**
  * Upgrade Assistant Service
- * Helps AVA assist tenants before, during, and after platform upgrades.
+ * Helps AVA assist instances before, during, and after platform upgrades.
  *
  * Key responsibilities:
- * 1. Pre-upgrade: Analyze tenant customizations vs upgrade changes
+ * 1. Pre-upgrade: Analyze instance customizations vs upgrade changes
  * 2. During upgrade: Explain what's happening and what to expect
  * 3. Post-upgrade: Help users adapt to new features and resolve issues
  */
@@ -44,7 +44,7 @@ export interface UpgradeConflict {
   resourceKey: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
-  tenantValue: string;
+  instanceValue: string;
   newPlatformValue: string;
   suggestedResolution: string;
 }
@@ -86,12 +86,12 @@ export interface ActionItem {
 @Injectable()
 export class UpgradeAssistantService {
   private readonly logger = new Logger(UpgradeAssistantService.name);
-  private readonly tenantId = process.env.INSTANCE_ID || 'default-instance';
+  private readonly instanceId = process.env['INSTANCE_ID'] || 'default-instance';
 
   constructor(private llmService: LLMService) {}
 
   /**
-   * Get upgrade context for the tenant
+   * Get upgrade context for the instance
    */
   async getUpgradeContext(dataSource: DataSource): Promise<UpgradeContext> {
     try {
@@ -103,23 +103,23 @@ export class UpgradeAssistantService {
 
       // Count customizations
       const customResult = await dataSource.query(
-        `SELECT COUNT(*) as count FROM instance_customizations WHERE is_active = true`,
-        [this.tenantId]
+        `SELECT COUNT(*) as count FROM instance_customizations WHERE is_active = true AND instance_id = $1`,
+        [this.instanceId]
       );
       const customizationCount = parseInt(customResult[0]?.count || '0', 10);
 
       // Count pending upgrade impacts
       const impactResult = await dataSource.query(
-        `SELECT COUNT(*) as count FROM tenant_upgrade_impact
-         WHERE tenant_id = $1 AND status IN ('pending_analysis', 'analyzed')`,
-        [this.tenantId]
+        `SELECT COUNT(*) as count FROM instance_upgrade_impact
+         WHERE instance_id = $1 AND status IN ('pending_analysis', 'analyzed')`,
+        [this.instanceId]
       );
       const pendingImpacts = parseInt(impactResult[0]?.count || '0', 10);
 
       // Get last upgrade date
       const upgradeResult = await dataSource.query(
-        `SELECT MAX(completed_at) as last_upgrade FROM upgrade_history WHERE tenant_id = $1`,
-        [this.tenantId]
+        `SELECT MAX(completed_at) as last_upgrade FROM upgrade_history WHERE instance_id = $1`,
+        [this.instanceId]
       );
 
       return {
@@ -139,11 +139,11 @@ export class UpgradeAssistantService {
   }
 
   /**
-   * Get tenant customizations summary
+   * Get instance customizations summary
    */
   async getCustomizationsSummary(dataSource: DataSource): Promise<CustomizationSummary[]> {
     try {
-      const tenantId = this.tenantId;
+      const instanceId = this.instanceId;
       const rows = await dataSource.query(
         `SELECT
           config_type,
@@ -153,10 +153,10 @@ export class UpgradeAssistantService {
           updated_at,
           updated_by
         FROM instance_customizations
-        WHERE tenant_id = $1 AND is_active = true
+        WHERE instance_id = $1 AND is_active = true
         ORDER BY updated_at DESC
         LIMIT 100`,
-        [tenantId]
+        [instanceId]
       );
 
       return rows.map((r: Record<string, unknown>) => ({
@@ -180,7 +180,7 @@ export class UpgradeAssistantService {
     dataSource: DataSource,
     upgradeManifestId?: string
   ): Promise<UpgradeImpactSummary> {
-    const tenantId = this.tenantId;
+    const instanceId = this.instanceId;
     const summary: UpgradeImpactSummary = {
       totalImpacts: 0,
       bySeverity: {},
@@ -192,8 +192,8 @@ export class UpgradeAssistantService {
 
     try {
       // Build query based on whether we're looking at a specific upgrade
-      let whereClause = 'tenant_id = $1';
-      const params: unknown[] = [tenantId];
+      let whereClause = 'instance_id = $1';
+      const params: unknown[] = [instanceId];
 
       if (upgradeManifestId) {
         whereClause += ' AND upgrade_manifest_id = $2';
@@ -203,7 +203,7 @@ export class UpgradeAssistantService {
       // Get impact counts by severity
       const severityRows = await dataSource.query(
         `SELECT impact_severity, COUNT(*) as count
-         FROM tenant_upgrade_impact
+         FROM instance_upgrade_impact
          WHERE ${whereClause}
          GROUP BY impact_severity`,
         params
@@ -217,7 +217,7 @@ export class UpgradeAssistantService {
       // Get impact counts by type
       const typeRows = await dataSource.query(
         `SELECT impact_type, COUNT(*) as count
-         FROM tenant_upgrade_impact
+         FROM instance_upgrade_impact
          WHERE ${whereClause}
          GROUP BY impact_type`,
         params
@@ -231,8 +231,8 @@ export class UpgradeAssistantService {
       const conflictRows = await dataSource.query(
         `SELECT
           id, config_type, resource_key, impact_severity, description,
-          current_tenant_value, new_platform_value, suggested_resolution
-         FROM tenant_upgrade_impact
+          current_instance_value, new_platform_value, suggested_resolution
+         FROM instance_upgrade_impact
          WHERE ${whereClause}
            AND impact_type = 'conflict'
            AND impact_severity IN ('high', 'critical')
@@ -247,7 +247,7 @@ export class UpgradeAssistantService {
         resourceKey: r['resource_key'] as string,
         severity: r['impact_severity'] as 'low' | 'medium' | 'high' | 'critical',
         description: r['description'] as string || 'Conflict detected between your customization and platform update',
-        tenantValue: JSON.stringify(r['current_tenant_value']),
+        instanceValue: JSON.stringify(r['current_instance_value']),
         newPlatformValue: JSON.stringify(r['new_platform_value']),
         suggestedResolution: r['suggested_resolution'] as string || 'Review and merge changes manually',
       }));
@@ -257,12 +257,12 @@ export class UpgradeAssistantService {
         `SELECT DISTINCT
           i.config_type, i.resource_key, i.description,
           m.release_notes
-         FROM tenant_upgrade_impact i
+         FROM instance_upgrade_impact i
          JOIN upgrade_manifest m ON m.id = i.upgrade_manifest_id
-         WHERE i.tenant_id = $1
+         WHERE i.instance_id = $1
            AND i.impact_type = 'new_available'
          LIMIT 10`,
-        [tenantId]
+        [instanceId]
       );
 
       summary.newFeatures = featureRows.map((r: Record<string, unknown>) => ({
@@ -372,7 +372,7 @@ export class UpgradeAssistantService {
 
     // Build context for the LLM
     const upgradeContext = `
-Tenant Upgrade Context:
+Instance Upgrade Context:
 - Current Version: ${context.currentVersion}
 - Target Version: ${context.targetVersion || 'No upgrade pending'}
 - Customizations: ${context.customizationCount}
@@ -415,7 +415,7 @@ Provide a helpful, concise answer. If there are specific conflicts or issues, ex
     upgradeInfo += `\n- Current Platform Version: ${context.currentVersion}`;
 
     if (context.customizationCount > 0) {
-      upgradeInfo += `\n- Tenant Customizations: ${context.customizationCount}`;
+      upgradeInfo += `\n- Instance Customizations: ${context.customizationCount}`;
     }
 
     if (context.pendingImpacts > 0) {

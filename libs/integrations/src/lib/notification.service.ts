@@ -1,13 +1,23 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In, LessThan } from 'typeorm';
 import {
   NotificationTemplate,
   NotificationChannel,
   NotificationDelivery,
   InAppNotification,
+  UserNotificationPreferences,
 } from '@hubblewave/instance-db';
+import {
+  ChannelProvider,
+  EmailProvider,
+  SmsProvider,
+  PushProvider,
+  InAppProvider,
+  WebhookProvider,
+} from './notification-providers';
 
 export interface SendNotificationRequest {
   templateCode: string;
@@ -15,7 +25,7 @@ export interface SendNotificationRequest {
   data: Record<string, unknown>;
   channels?: string[];
   scheduledAt?: Date;
-  triggerType?: 'workflow' | 'approval' | 'subscription' | 'direct';
+  triggerType?: 'process_flow' | 'approval' | 'subscription' | 'direct';
   triggerReferenceId?: string;
 }
 
@@ -24,6 +34,7 @@ export interface NotificationRecipient {
   email?: string;
   phone?: string;
   name?: string;
+  deviceTokens?: Array<{ token: string; platform: 'ios' | 'android' | 'web' }>;
 }
 
 export interface NotificationResult {
@@ -32,12 +43,8 @@ export interface NotificationResult {
   errors: { recipient: NotificationRecipient; error: string }[];
 }
 
-export interface ChannelProvider {
-  send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }>;
-}
-
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleInit {
   private readonly logger = new Logger(NotificationService.name);
   private channelProviders: Map<string, ChannelProvider> = new Map();
 
@@ -50,14 +57,35 @@ export class NotificationService {
     private readonly deliveryRepo: Repository<NotificationDelivery>,
     @InjectRepository(InAppNotification)
     private readonly inAppRepo: Repository<InAppNotification>,
-    private readonly eventEmitter: EventEmitter2
+    @Optional()
+    @InjectRepository(UserNotificationPreferences)
+    private readonly userPrefsRepo: Repository<UserNotificationPreferences> | undefined,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
+    @Optional() @Inject('EMAIL_PROVIDER') emailProvider?: EmailProvider,
+    @Optional() @Inject('SMS_PROVIDER') smsProvider?: SmsProvider,
+    @Optional() @Inject('PUSH_PROVIDER') pushProvider?: PushProvider
   ) {
-    // Register built-in providers
-    this.registerProvider('email', new EmailProvider());
+    // Register injected providers or create new ones
+    this.registerProvider(
+      'email',
+      emailProvider || new EmailProvider(this.configService)
+    );
+    this.registerProvider(
+      'sms',
+      smsProvider || new SmsProvider(this.configService)
+    );
+    this.registerProvider(
+      'push',
+      pushProvider || new PushProvider(this.configService)
+    );
     this.registerProvider('in_app', new InAppProvider(this.inAppRepo));
-    this.registerProvider('sms', new SmsProvider());
-    this.registerProvider('push', new PushProvider());
     this.registerProvider('webhook', new WebhookProvider());
+  }
+
+  async onModuleInit() {
+    this.logger.log('NotificationService initialized with providers: ' +
+      Array.from(this.channelProviders.keys()).join(', '));
   }
 
   /**
@@ -65,6 +93,14 @@ export class NotificationService {
    */
   registerProvider(channelType: string, provider: ChannelProvider): void {
     this.channelProviders.set(channelType, provider);
+    this.logger.debug(`Registered notification provider: ${channelType}`);
+  }
+
+  /**
+   * Get a registered provider
+   */
+  getProvider(channelType: string): ChannelProvider | undefined {
+    return this.channelProviders.get(channelType);
   }
 
   /**
@@ -109,7 +145,12 @@ export class NotificationService {
             // Render content
             const rendered = this.renderTemplate(template, channel, request.data);
 
-            // Create delivery record
+            // Create delivery record with device tokens in context
+            const contextData = {
+              ...request.data,
+              ...(recipient.deviceTokens ? { deviceTokens: recipient.deviceTokens } : {}),
+            };
+
             const delivery = this.deliveryRepo.create({
               triggerType: request.triggerType || 'direct',
               triggerReferenceId: request.triggerReferenceId,
@@ -123,7 +164,7 @@ export class NotificationService {
               subject: rendered.subject,
               body: rendered.body,
               htmlBody: rendered.htmlBody,
-              contextData: request.data as Record<string, any>,
+              contextData: contextData as Record<string, any>,
               status: request.scheduledAt ? 'pending' : 'queued',
               scheduledAt: request.scheduledAt || new Date(),
             });
@@ -317,7 +358,7 @@ export class NotificationService {
       recipients: payload.recipients.map((r: string) => ({ userId: r })),
       data: payload.data,
       channels: payload.channels,
-      triggerType: payload.triggerType || 'workflow',
+      triggerType: payload.triggerType || 'process_flow',
       triggerReferenceId: payload.triggerReferenceId,
     });
   }
@@ -336,123 +377,277 @@ export class NotificationService {
       recipients,
       data: payload.data || {},
       channels: payload.channels,
-      triggerType: 'workflow',
+      triggerType: 'process_flow',
     });
   }
-}
 
-// ============ Channel Providers ============
+  // ============ Digest Mode ============
 
-class EmailProvider implements ChannelProvider {
-  private readonly logger = new Logger(EmailProvider.name);
-
-  async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    // In production, integrate with email service (SendGrid, SES, etc.)
-    this.logger.log(`[EMAIL] To: ${delivery.recipientEmail}, Subject: ${delivery.subject}`);
-
-    // Simulate sending
-    if (!delivery.recipientEmail) {
-      return { success: false, error: 'No recipient email' };
+  /**
+   * Check if a user has digest mode enabled
+   */
+  async isDigestModeEnabled(userId: string): Promise<boolean> {
+    if (!this.userPrefsRepo) {
+      return false;
     }
 
-    // TODO: Integrate with actual email provider
-    return { success: true, externalId: `email_${Date.now()}` };
+    const prefs = await this.userPrefsRepo.findOne({
+      where: { userId },
+    });
+
+    return prefs?.digestMode ?? false;
   }
-}
 
-class InAppProvider implements ChannelProvider {
-  constructor(private readonly inAppRepo: Repository<InAppNotification>) {}
-
-  async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    if (!delivery.recipientId) {
-      return { success: false, error: 'No recipient user ID' };
+  /**
+   * Get user's digest preferences
+   */
+  async getUserDigestPreferences(userId: string): Promise<{
+    enabled: boolean;
+    frequency: 'daily' | 'weekly';
+    time: string;
+  } | null> {
+    if (!this.userPrefsRepo) {
+      return null;
     }
 
-    try {
-      const notification = this.inAppRepo.create({
-        userId: delivery.recipientId,
-        title: delivery.subject || 'Notification',
-        message: delivery.body || '',
-        notificationType: 'system',
-        isRead: false,
-      });
+    const prefs = await this.userPrefsRepo.findOne({
+      where: { userId },
+    });
 
-      await this.inAppRepo.save(notification);
-
-      return { success: true, externalId: notification.id };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    if (!prefs) {
+      return null;
     }
+
+    return {
+      enabled: prefs.digestMode,
+      frequency: prefs.digestFrequency,
+      time: prefs.digestTime,
+    };
   }
-}
 
-class SmsProvider implements ChannelProvider {
-  private readonly logger = new Logger(SmsProvider.name);
+  /**
+   * Queue notification for digest instead of immediate send
+   */
+  async queueForDigest(
+    userId: string,
+    templateCode: string,
+    data: Record<string, unknown>
+  ): Promise<void> {
+    // Create a pending delivery marked for digest
+    const template = await this.templateRepo.findOne({
+      where: { code: templateCode, isActive: true },
+    });
 
-  async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    this.logger.log(`[SMS] To: ${delivery.recipientPhone}, Body: ${delivery.body?.substring(0, 50)}...`);
-
-    if (!delivery.recipientPhone) {
-      return { success: false, error: 'No recipient phone number' };
+    if (!template) {
+      this.logger.warn(`Template not found for digest queue: ${templateCode}`);
+      return;
     }
 
-    // TODO: Integrate with SMS provider (Twilio, etc.)
-    return { success: true, externalId: `sms_${Date.now()}` };
+    const rendered = this.renderTemplate(template, 'email', data);
+
+    const delivery = this.deliveryRepo.create({
+      triggerType: 'subscription',
+      templateId: template.id,
+      templateCode: template.code,
+      recipientId: userId,
+      channel: 'email',
+      subject: rendered.subject,
+      body: rendered.body,
+      htmlBody: rendered.htmlBody,
+      contextData: data as Record<string, any>,
+      status: 'digest_pending',
+      scheduledAt: new Date(),
+    });
+
+    await this.deliveryRepo.save(delivery);
+    this.logger.debug(`Queued notification for digest: ${userId}, ${templateCode}`);
   }
-}
 
-class PushProvider implements ChannelProvider {
-  private readonly logger = new Logger(PushProvider.name);
-
-  async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    this.logger.log(`[PUSH] To: ${delivery.recipientId}, Title: ${delivery.subject}`);
-
-    if (!delivery.recipientId) {
-      return { success: false, error: 'No recipient user ID' };
+  /**
+   * Process digest for users who have daily digest enabled
+   * Called by cron job at appropriate times
+   */
+  async processDailyDigests(): Promise<number> {
+    if (!this.userPrefsRepo) {
+      this.logger.warn('UserNotificationPreferences repository not available');
+      return 0;
     }
 
-    // TODO: Integrate with push provider (Firebase, etc.)
-    return { success: true, externalId: `push_${Date.now()}` };
-  }
-}
+    const currentHour = new Date().getHours();
+    const currentTime = `${String(currentHour).padStart(2, '0')}:00`;
 
-class WebhookProvider implements ChannelProvider {
-  private readonly logger = new Logger(WebhookProvider.name);
+    // Find users with daily digest at current hour
+    const usersWithDigest = await this.userPrefsRepo.find({
+      where: {
+        digestMode: true,
+        digestFrequency: 'daily',
+      },
+    });
 
-  async send(delivery: NotificationDelivery): Promise<{ success: boolean; externalId?: string; error?: string }> {
-    const config = delivery.channelConfig?.config;
-    const url = config?.['url'] as string | undefined;
+    // Filter by digest time (approximate hour match)
+    const usersToProcess = usersWithDigest.filter((u) => {
+      const userHour = parseInt(u.digestTime.split(':')[0], 10);
+      return userHour === currentHour;
+    });
 
-    if (!url) {
-      return { success: false, error: 'No webhook URL configured' };
-    }
-
-    this.logger.log(`[WEBHOOK] To: ${url}`);
-
-    try {
-      const configHeaders = (config?.['headers'] || {}) as Record<string, string>;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...configHeaders,
-        },
-        body: JSON.stringify({
-          subject: delivery.subject,
-          body: delivery.body,
-          data: delivery.contextData,
-          recipientId: delivery.recipientId,
-          recipientEmail: delivery.recipientEmail,
-        }),
-      });
-
-      if (!response.ok) {
-        return { success: false, error: `HTTP ${response.status}` };
+    let processed = 0;
+    for (const userPref of usersToProcess) {
+      const count = await this.sendDigestForUser(userPref.userId);
+      if (count > 0) {
+        processed++;
       }
-
-      return { success: true, externalId: `webhook_${Date.now()}` };
-    } catch (error: any) {
-      return { success: false, error: error.message };
     }
+
+    this.logger.log(`Processed daily digests for ${processed} users at ${currentTime}`);
+    return processed;
+  }
+
+  /**
+   * Process weekly digests
+   * Called by cron job on configured day
+   */
+  async processWeeklyDigests(): Promise<number> {
+    if (!this.userPrefsRepo) {
+      this.logger.warn('UserNotificationPreferences repository not available');
+      return 0;
+    }
+
+    const currentHour = new Date().getHours();
+
+    // Find users with weekly digest
+    const usersWithDigest = await this.userPrefsRepo.find({
+      where: {
+        digestMode: true,
+        digestFrequency: 'weekly',
+      },
+    });
+
+    // Filter by digest time
+    const usersToProcess = usersWithDigest.filter((u) => {
+      const userHour = parseInt(u.digestTime.split(':')[0], 10);
+      return userHour === currentHour;
+    });
+
+    let processed = 0;
+    for (const userPref of usersToProcess) {
+      const count = await this.sendDigestForUser(userPref.userId);
+      if (count > 0) {
+        processed++;
+      }
+    }
+
+    this.logger.log(`Processed weekly digests for ${processed} users`);
+    return processed;
+  }
+
+  /**
+   * Send digest email for a specific user
+   */
+  private async sendDigestForUser(userId: string): Promise<number> {
+    // Get pending digest deliveries for user
+    const pendingDeliveries = await this.deliveryRepo.find({
+      where: {
+        recipientId: userId,
+        status: 'digest_pending' as any,
+      },
+      order: { createdAt: 'ASC' },
+    });
+
+    if (pendingDeliveries.length === 0) {
+      return 0;
+    }
+
+    // Group notifications by template for the digest summary
+    const grouped = new Map<string, typeof pendingDeliveries>();
+    for (const delivery of pendingDeliveries) {
+      const key = delivery.templateCode;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(delivery);
+    }
+
+    // Build digest content
+    const digestItems: string[] = [];
+    const htmlDigestItems: string[] = [];
+
+    for (const [templateCode, deliveries] of grouped) {
+      digestItems.push(`${templateCode}: ${deliveries.length} notification(s)`);
+      htmlDigestItems.push(`<li><strong>${templateCode}</strong>: ${deliveries.length} notification(s)</li>`);
+
+      // Include summaries of first few
+      for (const delivery of deliveries.slice(0, 3)) {
+        if (delivery.subject) {
+          digestItems.push(`  - ${delivery.subject}`);
+          htmlDigestItems.push(`<li style="margin-left: 20px;">${delivery.subject}</li>`);
+        }
+      }
+      if (deliveries.length > 3) {
+        digestItems.push(`  ... and ${deliveries.length - 3} more`);
+        htmlDigestItems.push(`<li style="margin-left: 20px; font-style: italic;">... and ${deliveries.length - 3} more</li>`);
+      }
+    }
+
+    // Send the digest email
+    const digestTemplate = await this.templateRepo.findOne({
+      where: { code: 'system_digest', isActive: true },
+    });
+
+    const digestData = {
+      notificationCount: pendingDeliveries.length,
+      digestSummary: digestItems.join('\n'),
+      htmlDigestSummary: `<ul>${htmlDigestItems.join('')}</ul>`,
+      generatedAt: new Date().toISOString(),
+    };
+
+    if (digestTemplate) {
+      await this.send({
+        templateCode: 'system_digest',
+        recipients: [{ userId }],
+        data: digestData,
+        channels: ['email'],
+        triggerType: 'subscription',
+      });
+    } else {
+      // Fallback: send a basic digest email
+      const delivery = this.deliveryRepo.create({
+        triggerType: 'subscription',
+        recipientId: userId,
+        channel: 'email',
+        subject: `Your Notification Digest (${pendingDeliveries.length} notifications)`,
+        body: `You have ${pendingDeliveries.length} notifications:\n\n${digestItems.join('\n')}`,
+        htmlBody: `<h2>Your Notification Digest</h2><p>You have ${pendingDeliveries.length} notifications:</p>${digestData.htmlDigestSummary}`,
+        contextData: digestData,
+        status: 'queued',
+        scheduledAt: new Date(),
+      });
+      await this.deliveryRepo.save(delivery);
+      await this.processDelivery(delivery.id);
+    }
+
+    // Mark pending deliveries as processed
+    await this.deliveryRepo.update(
+      { id: In(pendingDeliveries.map((d) => d.id)) },
+      { status: 'digested' as any }
+    );
+
+    this.logger.debug(`Sent digest for user ${userId} with ${pendingDeliveries.length} notifications`);
+    return pendingDeliveries.length;
+  }
+
+  /**
+   * Check if notification should be queued for digest based on user preferences
+   */
+  async shouldQueueForDigest(userId: string, _templateCode: string): Promise<boolean> {
+    if (!this.userPrefsRepo) {
+      return false;
+    }
+
+    const prefs = await this.userPrefsRepo.findOne({
+      where: { userId },
+    });
+
+    // Queue for digest if user has digest mode enabled
+    return prefs?.digestMode ?? false;
   }
 }

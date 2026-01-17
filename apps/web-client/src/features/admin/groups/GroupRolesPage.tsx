@@ -58,7 +58,6 @@ export const GroupRolesPage: React.FC = () => {
   const [addingRoles, setAddingRoles] = useState(false);
   const [roleSearchQuery, setRoleSearchQuery] = useState('');
 
-  // Fetch group details
   const fetchGroup = useCallback(async () => {
     if (!id) return;
     try {
@@ -69,7 +68,6 @@ export const GroupRolesPage: React.FC = () => {
     }
   }, [id]);
 
-  // Fetch group roles
   const fetchRoles = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -89,13 +87,11 @@ export const GroupRolesPage: React.FC = () => {
     }
   }, [id]);
 
-  // Fetch available roles for adding
   const fetchAvailableRoles = useCallback(async () => {
     try {
       const response = await identityApi.get<{ data: Role[] }>('/admin/roles', {
         params: { search: roleSearchQuery || undefined },
       });
-      // Filter out roles that are already assigned
       const assignedRoleIds = new Set(directRoles.map((r) => r.roleId));
       const available = response.data.data.filter(
         (r) => !assignedRoleIds.has(r.id) && r.isSystem !== true
@@ -117,7 +113,6 @@ export const GroupRolesPage: React.FC = () => {
     }
   }, [showAddModal, fetchAvailableRoles]);
 
-  // Handle remove role
   const handleRemoveRole = async (roleId: string) => {
     if (!window.confirm('Are you sure you want to remove this role?')) return;
 
@@ -130,7 +125,6 @@ export const GroupRolesPage: React.FC = () => {
     }
   };
 
-  // Handle add roles
   const handleAddRoles = async () => {
     if (selectedRoles.length === 0) return;
 
@@ -158,30 +152,26 @@ export const GroupRolesPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-6 border-b" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="p-6 border-b border-border">
         <div className="flex items-center gap-4 mb-4">
           <button
             onClick={() => navigate('/studio/groups')}
-            className="p-2 rounded-lg transition-colors"
-            style={{ backgroundColor: 'transparent' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-2 rounded-lg transition-colors hover:bg-muted"
           >
-            <ArrowLeft className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+            <ArrowLeft className="h-5 w-5 text-muted-foreground" />
           </button>
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="text-2xl font-semibold text-foreground">
               {group?.name} - Roles
             </h1>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm text-muted-foreground">
               Manage role assignments for this group
             </p>
           </div>
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Shield className="h-4 w-4" />
               {directRoles.length} direct, {inheritedRoles.length} inherited
@@ -198,26 +188,21 @@ export const GroupRolesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Roles List */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Direct Roles */}
             <div>
-              <h3 className="font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
+              <h3 className="font-medium mb-3 text-foreground">
                 Direct Roles
               </h3>
               {directRoles.length === 0 ? (
-                <div
-                  className="p-4 rounded-lg border text-center"
-                  style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-                >
-                  <Shield className="h-6 w-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <div className="p-4 rounded-lg border text-center bg-card border-border">
+                  <Shield className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
                     No roles assigned directly
                   </p>
                 </div>
@@ -226,21 +211,20 @@ export const GroupRolesPage: React.FC = () => {
                   {directRoles.map((assignment) => (
                     <div
                       key={assignment.id}
-                      className="flex items-center justify-between p-4 rounded-lg border"
-                      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card border-border"
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{ backgroundColor: assignment.role?.color || 'var(--bg-primary)' }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary"
+                          style={assignment.role?.color ? { backgroundColor: assignment.role.color } : undefined}
                         >
                           <Shield className="h-4 w-4 text-white" />
                         </div>
                         <div>
-                          <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                          <div className="font-medium text-foreground">
                             {assignment.role?.name}
                           </div>
-                          <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                          <div className="text-xs font-mono text-muted-foreground">
                             {assignment.role?.code}
                           </div>
                         </div>
@@ -248,10 +232,7 @@ export const GroupRolesPage: React.FC = () => {
 
                       <button
                         onClick={() => handleRemoveRole(assignment.roleId)}
-                        className="p-2 rounded-lg transition-colors"
-                        style={{ color: 'var(--text-danger)' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="p-2 rounded-lg transition-colors text-destructive hover:bg-destructive/10"
                         title="Remove role"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -262,40 +243,35 @@ export const GroupRolesPage: React.FC = () => {
               )}
             </div>
 
-            {/* Inherited Roles */}
             {inheritedRoles.length > 0 && (
               <div>
-                <h3 className="font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
+                <h3 className="font-medium mb-3 text-foreground">
                   Inherited Roles
                 </h3>
                 <div className="space-y-2">
                   {inheritedRoles.map((inherited, idx) => (
                     <div
                       key={`${inherited.role.id}-${idx}`}
-                      className="flex items-center justify-between p-4 rounded-lg border opacity-75"
-                      style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
+                      className="flex items-center justify-between p-4 rounded-lg border opacity-75 bg-card border-border"
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{ backgroundColor: inherited.role.color || 'var(--bg-primary)' }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary"
+                          style={inherited.role.color ? { backgroundColor: inherited.role.color } : undefined}
                         >
                           <Shield className="h-4 w-4 text-white" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                            <span className="font-medium text-foreground">
                               {inherited.role.name}
                             </span>
-                            <span
-                              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded"
-                              style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--text-muted)' }}
-                            >
+                            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground">
                               <Link2 className="h-3 w-3" />
                               Inherited
                             </span>
                           </div>
-                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          <div className="text-xs text-muted-foreground">
                             from {inherited.fromGroupName}
                           </div>
                         </div>
@@ -309,16 +285,11 @@ export const GroupRolesPage: React.FC = () => {
         )}
       </div>
 
-      {/* Add Roles Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div
-            className="w-full max-w-lg max-h-[80vh] rounded-xl overflow-hidden flex flex-col"
-            style={{ backgroundColor: 'var(--bg-elevated)', boxShadow: 'var(--shadow-xl)' }}
-          >
-            {/* Modal Header */}
-            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-default)' }}>
-              <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-50">
+          <div className="w-full max-w-lg max-h-[80vh] rounded-xl overflow-hidden flex flex-col bg-card shadow-xl">
+            <div className="p-4 border-b flex items-center justify-between border-border">
+              <h2 className="font-semibold text-foreground">
                 Assign Roles
               </h2>
               <button
@@ -326,40 +297,35 @@ export const GroupRolesPage: React.FC = () => {
                   setShowAddModal(false);
                   setSelectedRoles([]);
                 }}
-                className="p-1 rounded transition-colors"
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                className="p-1 rounded transition-colors hover:bg-muted"
               >
-                <X className="h-5 w-5" style={{ color: 'var(--text-muted)' }} />
+                <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
 
-            {/* Search */}
-            <div className="p-4 border-b" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="p-4 border-b border-border">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search roles..."
                   value={roleSearchQuery}
                   onChange={(e) => setRoleSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary border-border bg-card text-foreground"
                 />
               </div>
               {selectedRoles.length > 0 && (
-                <div className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+                <div className="mt-2 text-sm text-muted-foreground">
                   {selectedRoles.length} role(s) selected
                 </div>
               )}
             </div>
 
-            {/* Role List */}
             <div className="flex-1 overflow-y-auto p-4">
               {availableRoles.length === 0 ? (
                 <div className="text-center py-8">
-                  <Shield className="h-8 w-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <Shield className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
                     No roles available
                   </p>
                 </div>
@@ -371,30 +337,28 @@ export const GroupRolesPage: React.FC = () => {
                       <button
                         key={role.id}
                         onClick={() => toggleRoleSelection(role.id)}
-                        className="w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors"
-                        style={{
-                          borderColor: isSelected ? 'var(--border-brand)' : 'var(--border-default)',
-                          backgroundColor: isSelected ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)',
-                        }}
-                        onMouseEnter={(e) => !isSelected && (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
-                        onMouseLeave={(e) => !isSelected && (e.currentTarget.style.backgroundColor = isSelected ? 'var(--bg-primary-subtle)' : 'var(--bg-surface)')}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-card hover:bg-muted'
+                        }`}
                       >
                         <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: role.color || 'var(--bg-primary)' }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary"
+                          style={role.color ? { backgroundColor: role.color } : undefined}
                         >
                           <Shield className="h-4 w-4 text-white" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          <div className="font-medium truncate text-foreground">
                             {role.name}
                           </div>
-                          <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                          <div className="text-xs truncate text-muted-foreground">
                             {role.code}
                           </div>
                         </div>
                         {isSelected && (
-                          <Check className="h-5 w-5 flex-shrink-0" style={{ color: 'var(--text-brand)' }} />
+                          <Check className="h-5 w-5 flex-shrink-0 text-primary" />
                         )}
                       </button>
                     );
@@ -403,8 +367,7 @@ export const GroupRolesPage: React.FC = () => {
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t flex items-center justify-end gap-3" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="p-4 border-t flex items-center justify-end gap-3 border-border">
               <button
                 onClick={() => {
                   setShowAddModal(false);

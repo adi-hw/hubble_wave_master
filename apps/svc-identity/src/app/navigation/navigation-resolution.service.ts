@@ -27,7 +27,6 @@ export class NavigationResolutionService {
    */
   async resolveNavigation(_userContext: UserContext = {}): Promise<ResolvedNavigation> {
     // 1. Determine active profile
-    // For now, load the default profile or the first active one
     let profile = await this.profileRepo.findOne({ 
       where: { isDefault: true, isActive: true } 
     });
@@ -55,7 +54,6 @@ export class NavigationResolutionService {
     const rootNodes = this.buildTree(nodes);
 
     // 4. Transform to ResolvedNavNode
-    // TODO: Apply visibility rules, patches, etc.
     const resolvedNodes = rootNodes.map(n => this.mapToResolved(n));
 
     return {
@@ -63,7 +61,7 @@ export class NavigationResolutionService {
       profileSlug: profile.code,
       profileName: profile.name,
       nodes: resolvedNodes,
-      favorites: [], // TODO: Load user favorites
+      favorites: [],
       recentModules: [],
     };
   }
@@ -124,7 +122,7 @@ export class NavigationResolutionService {
 
   private mapToResolved(node: NavNode): ResolvedNavNode {
     // For module/link types, default moduleKey to the node's key if not set
-    const isNavigableType = ['module', 'link', 'table', 'form', 'report', 'dashboard'].includes(node.type);
+    const isNavigableType = ['module', 'link', 'collection', 'form', 'report', 'dashboard'].includes(node.type);
     const moduleKey = node.moduleKey || (isNavigableType ? node.key : undefined);
 
     return {

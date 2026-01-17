@@ -62,6 +62,24 @@
       ],
       "@hubblewave/schema-engine": [
         "libs/schema-engine/src/index.ts"
+      ],
+      "@hubblewave/formula-parser": [
+        "libs/formula-parser/src/index.ts"
+      ],
+      "@hubblewave/relationship-resolver": [
+        "libs/relationship-resolver/src/index.ts"
+      ],
+      "@hubblewave/schema-validator": [
+        "libs/schema-validator/src/index.ts"
+      ],
+      "@hubblewave/storage": [
+        "libs/storage/src/index.ts"
+      ],
+      "@hubblewave/packs": [
+        "libs/packs/src/index.ts"
+      ],
+      "@hubblewave/search-typesense": [
+        "libs/search/typesense/src/index.ts"
       ]
     }
   },

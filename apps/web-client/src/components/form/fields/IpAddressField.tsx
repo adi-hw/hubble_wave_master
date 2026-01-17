@@ -33,8 +33,8 @@ export const IpAddressField: React.FC<FieldComponentProps<unknown>> = ({
       helpText={field.config?.helpText || 'Enter IPv4 (e.g., 192.168.1.1) or IPv6 address'}
     >
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-          <Wifi className="h-4 w-4" />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+          <Wifi className="h-4 w-4" aria-hidden="true" />
         </span>
         <input
           type="text"

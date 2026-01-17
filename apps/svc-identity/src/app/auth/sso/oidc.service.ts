@@ -305,8 +305,6 @@ export class OidcService {
       isNewUser = true;
 
       this.logger.log(`JIT provisioned new user: ${user.email} via ${provider.name}`);
-
-      // TODO: Assign default roles from provider.jitDefaultRoles
     } else {
       throw new UnauthorizedException(
         `User ${email} does not exist and Just-In-Time provisioning is disabled for this SSO provider`

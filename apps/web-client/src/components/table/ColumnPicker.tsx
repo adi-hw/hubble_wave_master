@@ -1,4 +1,25 @@
-import React, { useEffect, useState, useCallback } from 'react';
+/**
+ * ColumnPicker Component
+ *
+ * A theme-aware, accessible column customization drawer for table views.
+ *
+ * Theme Integration:
+ * - Uses Tailwind CSS classes for all colors
+ * - Supports light/dark mode theming via Tailwind
+ * - Consistent with platform design tokens
+ *
+ * Accessibility Features:
+ * - ARIA attributes for screen readers (role, aria-label, aria-modal, aria-labelledby)
+ * - Focus trap to keep keyboard navigation within the drawer
+ * - Keyboard navigation support (Escape to close, Enter to submit)
+ * - Touch targets meet WCAG 2.1 minimum size (44x44px)
+ * - Semantic HTML with proper button types
+ * - Screen reader announcements for state changes
+ *
+ * @component
+ */
+
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Columns3,
   GripVertical,
@@ -21,7 +42,6 @@ interface ColumnPickerProps {
   iconOnly?: boolean;
 }
 
-// Saved column configurations
 const SAVED_COLUMNS_KEY = 'eam_saved_columns';
 
 interface SavedConfig {
@@ -44,7 +64,10 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [configName, setConfigName] = useState('');
 
-  // Load saved configs
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const firstFocusableRef = useRef<HTMLButtonElement>(null);
+  const lastFocusableRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SAVED_COLUMNS_KEY);
@@ -60,7 +83,6 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     setLocalColumns(columns);
   }, [columns]);
 
-  // Prevent body scroll when drawer is open
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -72,7 +94,39 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     };
   }, [open]);
 
-  // Escape key to close
+  useEffect(() => {
+    if (!open || !drawerRef.current) return;
+
+    const drawer = drawerRef.current;
+    const focusableElements = drawer.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]'
+    );
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    firstElement?.focus();
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTabKey);
+    return () => document.removeEventListener('keydown', handleTabKey);
+  }, [open, activeTab, showSaveDialog, search]);
+
   useEffect(() => {
     if (!open) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -99,14 +153,12 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     [search]
   );
 
-  // Toggle column visibility
   const toggleVisibility = (code: string) => {
     setLocalColumns((prev) =>
       prev.map((c) => (c.code === code ? { ...c, hidden: !c.hidden } : c))
     );
   };
 
-  // Toggle pin
   const togglePin = (code: string, side: 'left' | 'right') => {
     setLocalColumns((prev) =>
       prev.map((c) => {
@@ -116,30 +168,25 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     );
   };
 
-  // Show all columns
   const showAll = () => {
     setLocalColumns((prev) => prev.map((c) => ({ ...c, hidden: false })));
   };
 
-  // Hide all columns (except first)
   const hideAll = () => {
     setLocalColumns((prev) => prev.map((c, i) => ({ ...c, hidden: i > 0 })));
   };
 
-  // Reset to original
   const reset = () => {
     setLocalColumns(columns);
     setSearch('');
   };
 
-  // Drag and drop handlers - use column code instead of index for reliability
   const [draggedCode, setDraggedCode] = useState<string | null>(null);
   const [dragOverCode, setDragOverCode] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, code: string) => {
     setDraggedCode(code);
     e.dataTransfer.effectAllowed = 'move';
-    // Required for Firefox
     e.dataTransfer.setData('text/plain', code);
   };
 
@@ -179,20 +226,17 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     setDragOverCode(null);
   };
 
-  // Apply changes
   const apply = () => {
     onChange(localColumns);
     setOpen(false);
   };
 
-  // Cancel changes
   const cancel = () => {
     setLocalColumns(columns);
     setSearch('');
     setOpen(false);
   };
 
-  // Save configuration
   const saveConfig = () => {
     if (!configName.trim()) return;
     const newConfig: SavedConfig = {
@@ -208,7 +252,6 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     setShowSaveDialog(false);
   };
 
-  // Load configuration
   const loadConfig = (config: SavedConfig) => {
     const configMap = new Map(config.columns.map((c) => [c.code, c]));
     setLocalColumns((prev) =>
@@ -222,7 +265,6 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
     );
   };
 
-  // Delete configuration
   const deleteConfig = (id: string) => {
     const updated = savedConfigs.filter((c) => c.id !== id);
     setSavedConfigs(updated);
@@ -231,94 +273,114 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
 
   return (
     <>
-      {/* Trigger Button */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         className={`
-          inline-flex items-center justify-center transition-all
+          inline-flex items-center justify-center transition-all min-h-[44px] min-w-[44px]
           ${iconOnly
-            ? 'h-8 w-8 rounded-md text-slate-500 hover:text-slate-700 hover:bg-white hover:shadow-sm'
-            : 'gap-2 h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+            ? 'h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted'
+            : 'gap-2 h-9 px-3 rounded-lg bg-card text-muted-foreground border border-border text-sm font-medium hover:bg-muted'
           }
         `}
         title="Columns"
+        aria-label={`Customize table columns. ${visibleCount} of ${totalCount} visible`}
       >
         <Columns3 className="h-4 w-4" />
         {!iconOnly && (
           <>
             <span className="hidden sm:inline">Columns</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-muted-foreground">
               {visibleCount}/{totalCount}
             </span>
           </>
         )}
       </button>
 
-      {/* Full-screen Drawer */}
       {open && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          {/* Backdrop */}
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="column-picker-title"
+        >
           <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+            className="absolute inset-0 backdrop-blur-sm animate-fade-in bg-overlay/50"
             onClick={cancel}
+            aria-hidden="true"
           />
 
-          {/* Drawer Panel */}
-          <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col animate-slide-in-right">
-            {/* Header */}
-            <div className="flex-shrink-0 px-6 py-5 border-b border-slate-200 bg-white">
+          <div
+            ref={drawerRef}
+            className="relative w-full max-w-lg flex flex-col animate-slide-in-right bg-card shadow-2xl"
+          >
+            <div className="flex-shrink-0 px-6 py-5 border-b border-border bg-card">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Customize Columns</h2>
-                  <p className="text-sm text-slate-500 mt-1">
+                  <h2
+                    id="column-picker-title"
+                    className="text-xl font-semibold text-foreground"
+                  >
+                    Customize Columns
+                  </h2>
+                  <p className="text-sm mt-1 text-muted-foreground">
                     {visibleCount} of {totalCount} columns visible
                   </p>
                 </div>
                 <button
+                  ref={firstFocusableRef}
                   type="button"
                   onClick={cancel}
-                  className="h-10 w-10 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="min-h-[44px] min-w-[44px] h-10 w-10 flex items-center justify-center rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+                  aria-label="Close column picker"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              {/* Quick Actions */}
               <div className="flex items-center gap-2 mb-4">
                 <button
                   type="button"
                   onClick={showAll}
-                  className="h-9 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                  className="min-h-[44px] h-9 px-4 text-sm font-medium rounded-lg transition-colors text-muted-foreground bg-muted hover:bg-muted/80"
+                  aria-label="Show all columns"
                 >
                   Show all
                 </button>
                 <button
                   type="button"
                   onClick={hideAll}
-                  className="h-9 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                  className="min-h-[44px] h-9 px-4 text-sm font-medium rounded-lg transition-colors text-muted-foreground bg-muted hover:bg-muted/80"
+                  aria-label="Hide all columns except first"
                 >
                   Hide all
                 </button>
                 <button
                   type="button"
                   onClick={reset}
-                  className="h-9 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-2"
+                  className="min-h-[44px] h-9 px-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 text-muted-foreground bg-muted hover:bg-muted/80"
+                  aria-label="Reset to original configuration"
                 >
                   <RotateCcw className="h-4 w-4" />
                   Reset
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+              <div
+                className="flex gap-1 p-1 rounded-xl bg-muted"
+                role="tablist"
+                aria-label="Column picker sections"
+              >
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'columns'}
+                  aria-controls="columns-panel"
                   onClick={() => setActiveTab('columns')}
-                  className={`flex-1 h-10 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${
+                  className={`flex-1 min-h-[44px] h-10 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${
                     activeTab === 'columns'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <Columns3 className="h-4 w-4" />
@@ -326,11 +388,14 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'presets'}
+                  aria-controls="presets-panel"
                   onClick={() => setActiveTab('presets')}
-                  className={`flex-1 h-10 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${
+                  className={`flex-1 min-h-[44px] h-10 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${
                     activeTab === 'presets'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <Layers className="h-4 w-4" />
@@ -339,95 +404,108 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
               </div>
             </div>
 
-            {/* Content - Scrollable */}
             <div className="flex-1 overflow-y-auto">
               {activeTab === 'columns' ? (
-                <div className="p-6">
-                  {/* Search */}
+                <div
+                  className="p-6"
+                  id="columns-panel"
+                  role="tabpanel"
+                  aria-labelledby="columns-tab"
+                >
                   <div className="relative mb-6">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                    <Search
+                      className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <input
                       type="text"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search columns..."
-                      className="w-full h-12 pl-12 pr-4 text-base border border-slate-200 rounded-xl bg-slate-50 placeholder:text-slate-400 focus:border-primary-300 focus:bg-white focus:ring-2 focus:ring-primary-100 focus:outline-none transition-all"
+                      className="w-full min-h-[44px] h-12 pl-12 pr-4 text-base rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-primary border border-border bg-muted text-foreground"
+                      aria-label="Search columns by name or code"
                     />
                     {search && (
                       <button
                         type="button"
                         onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] h-7 w-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                        aria-label="Clear search"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
 
-                  {/* Visible Columns */}
                   <div className="mb-8">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">
                         Visible Columns ({visibleColumns.filter(filterMatches).length})
                       </h3>
-                      <span className="text-xs text-slate-400">Drag to reorder</span>
+                      <span className="text-xs text-muted-foreground">
+                        Drag to reorder
+                      </span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2" role="list" aria-label="Visible columns">
                       {visibleColumns.filter(filterMatches).length === 0 ? (
-                        <div className="px-4 py-8 text-sm text-slate-500 text-center bg-slate-50 rounded-xl">
+                        <div
+                          className="px-4 py-8 text-sm text-center rounded-xl text-muted-foreground bg-muted"
+                          role="status"
+                        >
                           No visible columns match your search
                         </div>
                       ) : (
                         visibleColumns.filter(filterMatches).map((col) => (
                           <div
                             key={col.code}
+                            role="listitem"
                             draggable
                             onDragStart={(e) => handleDragStart(e, col.code)}
                             onDragOver={(e) => handleDragOver(e, col.code)}
                             onDragLeave={handleDragLeave}
                             onDrop={(e) => handleDrop(e, col.code)}
                             onDragEnd={handleDragEnd}
-                            className={`
-                              group flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-move
-                              ${
-                                dragOverCode === col.code
-                                  ? 'border-primary-400 bg-primary-50 scale-[1.02]'
-                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-                              }
-                              ${draggedCode === col.code ? 'opacity-50' : ''}
-                            `}
+                            className={`group flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-move ${
+                              dragOverCode === col.code
+                                ? 'border-primary bg-primary/10 scale-[1.02]'
+                                : `border-border bg-card ${draggedCode === col.code ? 'opacity-50' : ''}`
+                            }`}
+                            aria-label={`${col.label} column, ${col.pinned ? `pinned ${col.pinned}` : 'not pinned'}`}
                           >
-                            {/* Drag Handle */}
-                            <div className="text-slate-300 group-hover:text-slate-400 transition-colors">
+                            <div
+                              className="transition-colors text-muted-foreground group-hover:text-foreground"
+                              aria-hidden="true"
+                            >
                               <GripVertical className="h-5 w-5" />
                             </div>
 
-                            {/* Column Info */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-base font-medium text-slate-900 truncate">
+                                <span className="text-base font-medium truncate text-foreground">
                                   {col.label}
                                 </span>
                                 {col.pinned && (
-                                  <span className="flex-shrink-0 px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded-full">
+                                  <span className="flex-shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary">
                                     Pinned {col.pinned}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-sm text-slate-400 truncate">{col.code}</div>
+                              <div className="text-sm truncate text-muted-foreground">
+                                {col.code}
+                              </div>
                             </div>
 
-                            {/* Actions */}
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => togglePin(col.code, 'left')}
-                                className={`h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors ${
+                                className={`min-h-[44px] min-w-[44px] h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors ${
                                   col.pinned === 'left'
-                                    ? 'text-primary-600 bg-primary-100'
-                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                                    ? 'text-primary bg-primary/10'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                                 }`}
                                 title={col.pinned === 'left' ? 'Unpin' : 'Pin left'}
+                                aria-label={col.pinned === 'left' ? `Unpin ${col.label} from left` : `Pin ${col.label} to left`}
                               >
                                 {col.pinned === 'left' ? (
                                   <PinOff className="h-4 w-4" />
@@ -438,8 +516,9 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => toggleVisibility(col.code)}
-                                className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-danger-600 hover:bg-danger-50 transition-colors"
+                                className="min-h-[44px] min-w-[44px] h-9 w-9 inline-flex items-center justify-center rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
                                 title="Hide"
+                                aria-label={`Hide ${col.label} column`}
                               >
                                 <EyeOff className="h-4 w-4" />
                               </button>
@@ -450,28 +529,32 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                     </div>
                   </div>
 
-                  {/* Hidden Columns */}
                   {hiddenColumns.filter(filterMatches).length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide mb-3">
+                      <h3 className="text-sm font-semibold uppercase tracking-wide mb-3 text-foreground">
                         Hidden Columns ({hiddenColumns.filter(filterMatches).length})
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-2" role="list" aria-label="Hidden columns">
                         {hiddenColumns.filter(filterMatches).map((col) => (
                           <div
                             key={col.code}
-                            className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 hover:border-slate-300 transition-colors"
+                            role="listitem"
+                            className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed transition-colors border-border bg-muted"
+                            aria-label={`${col.label} column, hidden`}
                           >
                             <div className="flex-1 min-w-0">
-                              <div className="text-base font-medium text-slate-500 truncate">
+                              <div className="text-base font-medium truncate text-muted-foreground">
                                 {col.label}
                               </div>
-                              <div className="text-sm text-slate-400 truncate">{col.code}</div>
+                              <div className="text-sm truncate text-muted-foreground">
+                                {col.code}
+                              </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => toggleVisibility(col.code)}
-                              className="h-9 px-4 inline-flex items-center gap-2 text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors"
+                              className="min-h-[44px] h-9 px-4 inline-flex items-center gap-2 text-sm font-medium rounded-lg transition-colors text-primary bg-primary/10 hover:bg-primary/20"
+                              aria-label={`Show ${col.label} column`}
                             >
                               <Eye className="h-4 w-4" />
                               Show
@@ -483,37 +566,42 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                   )}
                 </div>
               ) : (
-                /* Presets Tab */
-                <div className="p-6">
-                  {/* Save Current */}
+                <div
+                  className="p-6"
+                  id="presets-panel"
+                  role="tabpanel"
+                  aria-labelledby="presets-tab"
+                >
                   {!showSaveDialog ? (
                     <button
                       type="button"
                       onClick={() => setShowSaveDialog(true)}
-                      className="w-full h-14 flex items-center justify-center gap-3 text-base font-medium text-primary-600 border-2 border-dashed border-primary-200 rounded-xl hover:bg-primary-50 hover:border-primary-300 transition-all mb-6"
+                      className="w-full min-h-[44px] h-14 flex items-center justify-center gap-3 text-base font-medium border-2 border-dashed rounded-xl transition-all mb-6 text-primary border-primary hover:bg-primary/10"
+                      aria-label="Save current column configuration as preset"
                     >
                       <Layers className="h-5 w-5" />
                       Save current view as preset
                     </button>
                   ) : (
-                    <div className="p-4 border-2 border-slate-200 rounded-xl bg-slate-50 mb-6">
+                    <div className="p-4 border-2 rounded-xl mb-6 border-border bg-muted">
                       <input
                         type="text"
                         value={configName}
                         onChange={(e) => setConfigName(e.target.value)}
                         placeholder="Preset name..."
-                        className="w-full h-12 px-4 text-base border border-slate-200 rounded-xl bg-white placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 focus:outline-none mb-3"
+                        className="w-full min-h-[44px] h-12 px-4 text-base rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-primary border border-border bg-card text-foreground"
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') saveConfig();
                           if (e.key === 'Escape') setShowSaveDialog(false);
                         }}
+                        aria-label="Enter preset name"
                       />
                       <div className="flex gap-3">
                         <button
                           type="button"
                           onClick={() => setShowSaveDialog(false)}
-                          className="flex-1 h-10 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+                          className="flex-1 min-h-[44px] h-10 text-sm font-medium rounded-lg transition-colors text-muted-foreground bg-card border border-border hover:bg-muted"
                         >
                           Cancel
                         </button>
@@ -521,7 +609,7 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                           type="button"
                           onClick={saveConfig}
                           disabled={!configName.trim()}
-                          className="flex-1 h-10 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-40 transition-colors"
+                          className="flex-1 min-h-[44px] h-10 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 bg-primary text-primary-foreground hover:bg-primary/90"
                         >
                           Save Preset
                         </button>
@@ -529,15 +617,16 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                     </div>
                   )}
 
-                  {/* Saved Presets */}
-                  <div className="space-y-3">
+                  <div className="space-y-3" role="list" aria-label="Saved presets">
                     {savedConfigs.length === 0 ? (
-                      <div className="py-16 text-center">
-                        <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                          <Layers className="h-8 w-8 text-slate-400" />
+                      <div className="py-16 text-center" role="status">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-muted">
+                          <Layers className="h-8 w-8 text-muted-foreground" />
                         </div>
-                        <p className="text-lg font-medium text-slate-700">No saved presets</p>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <p className="text-lg font-medium text-muted-foreground">
+                          No saved presets
+                        </p>
+                        <p className="text-sm mt-1 text-muted-foreground">
                           Save your column configuration for quick access later
                         </p>
                       </div>
@@ -545,31 +634,34 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
                       savedConfigs.map((config) => (
                         <div
                           key={config.id}
-                          className="flex items-center justify-between p-4 border-2 border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all"
+                          role="listitem"
+                          className="flex items-center justify-between p-4 border-2 rounded-xl transition-all border-border hover:border-primary/50"
                         >
                           <button
                             type="button"
                             onClick={() => loadConfig(config)}
-                            className="flex-1 text-left flex items-center gap-4"
+                            className="flex-1 text-left flex items-center gap-4 min-h-[44px]"
+                            aria-label={`Load preset: ${config.name}`}
                           >
-                            <div className="h-12 w-12 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
-                              <Layers className="h-6 w-6 text-primary-600" />
+                            <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary/10">
+                              <Layers className="h-6 w-6 text-primary" />
                             </div>
                             <div>
-                              <div className="text-base font-medium text-slate-900">
+                              <div className="text-base font-medium text-foreground">
                                 {config.name}
                               </div>
-                              <div className="text-sm text-slate-500">
+                              <div className="text-sm text-muted-foreground">
                                 {config.columns.filter((c) => !c.hidden).length} columns visible
                               </div>
                             </div>
-                            <ChevronRight className="h-5 w-5 text-slate-400 ml-auto" />
+                            <ChevronRight className="h-5 w-5 ml-auto text-muted-foreground" />
                           </button>
                           <button
                             type="button"
                             onClick={() => deleteConfig(config.id)}
-                            className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-danger-600 hover:bg-danger-50 transition-colors ml-3"
+                            className="min-h-[44px] min-w-[44px] h-10 w-10 inline-flex items-center justify-center rounded-lg transition-colors ml-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             title="Delete"
+                            aria-label={`Delete preset: ${config.name}`}
                           >
                             <X className="h-5 w-5" />
                           </button>
@@ -581,19 +673,21 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
               )}
             </div>
 
-            {/* Footer */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3">
+            <div className="flex-shrink-0 px-6 py-4 flex items-center justify-end gap-3 border-t border-border bg-muted">
               <button
                 type="button"
                 onClick={cancel}
-                className="h-11 px-6 text-base font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors"
+                className="min-h-[44px] h-11 px-6 text-base font-medium rounded-xl transition-colors text-muted-foreground bg-card border border-border hover:bg-muted"
+                aria-label="Cancel and close without saving changes"
               >
                 Cancel
               </button>
               <button
+                ref={lastFocusableRef}
                 type="button"
                 onClick={apply}
-                className="h-11 px-8 text-base font-medium bg-primary-600 text-white rounded-xl hover:bg-primary-700 shadow-sm transition-colors flex items-center gap-2"
+                className="min-h-[44px] h-11 px-8 text-base font-medium rounded-xl transition-colors flex items-center gap-2 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                aria-label="Apply column changes"
               >
                 <Check className="h-5 w-5" />
                 Apply Changes
@@ -603,7 +697,6 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
         </div>
       )}
 
-      {/* CSS for animations */}
       <style>{`
         @keyframes slide-in-right {
           from {
@@ -615,6 +708,17 @@ export const ColumnPicker: React.FC<ColumnPickerProps> = ({
         }
         .animate-slide-in-right {
           animation: slide-in-right 0.3s ease-out;
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
         }
       `}</style>
     </>

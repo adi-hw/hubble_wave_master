@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, TenantRequest } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, RequestContext, InstanceRequest } from '@hubblewave/auth-guard';
 import { CreateRecordDto, UpdateRecordDto, ListRecordsDto, BulkUpdateDto, BulkDeleteDto } from '@hubblewave/shared-types';
 import { DataService } from './data.service';
 
@@ -8,74 +8,74 @@ import { DataService } from './data.service';
 export class DataController {
   constructor(private readonly dataService: DataService) {}
 
-  @Get(':table')
+  @Get(':collection')
   async list(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Query() query: ListRecordsDto,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.list(ctx, tableCode, query);
+    return this.dataService.list(ctx, collectionCode, query);
   }
 
-  @Get(':table/:id')
+  @Get(':collection/:id')
   async getOne(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Param('id') id: string,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.getOne(ctx, tableCode, id);
+    return this.dataService.getOne(ctx, collectionCode, id);
   }
 
-  @Post(':table')
+  @Post(':collection')
   async create(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Body() body: CreateRecordDto,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.create(ctx, tableCode, body.data);
+    return this.dataService.create(ctx, collectionCode, body.data);
   }
 
-  @Patch(':table/bulk')
+  @Patch(':collection/bulk')
   async bulkUpdate(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Body() body: BulkUpdateDto,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.bulkUpdate(ctx, tableCode, body.ids, body.updates as Record<string, any>);
+    return this.dataService.bulkUpdate(ctx, collectionCode, body.ids, body.updates as Record<string, any>);
   }
 
-  @Patch(':table/:id')
+  @Patch(':collection/:id')
   async update(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Param('id') id: string,
     @Body() body: UpdateRecordDto,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.update(ctx, tableCode, id, body.data || {});
+    return this.dataService.update(ctx, collectionCode, id, body.data || {});
   }
 
-  @Delete(':table/bulk')
+  @Delete(':collection/bulk')
   async bulkDelete(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Body() body: BulkDeleteDto,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.bulkDelete(ctx, tableCode, body.ids);
+    return this.dataService.bulkDelete(ctx, collectionCode, body.ids);
   }
 
-  @Delete(':table/:id')
+  @Delete(':collection/:id')
   async delete(
-    @Param('table') tableCode: string,
+    @Param('collection') collectionCode: string,
     @Param('id') id: string,
-    @Req() req: TenantRequest
+    @Req() req: InstanceRequest
   ) {
     const ctx: RequestContext = req.context;
-    return this.dataService.delete(ctx, tableCode, id);
+    return this.dataService.delete(ctx, collectionCode, id);
   }
 }

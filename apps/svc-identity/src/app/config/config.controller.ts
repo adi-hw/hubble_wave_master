@@ -17,10 +17,10 @@ export class ConfigController {
   @Post(':scope')
   @AbacResource('config', 'update')
   set(
-    @Req() _req: any,
-    @Param('scope') _scope: ConfigScope,
-    @Body() _body: { key: string; value: any; category: string; type: ConfigType },
+    @Req() req: { user?: { id?: string } },
+    @Param('scope') scope: ConfigScope,
+    @Body() body: { key: string; value: unknown; category: string; type: ConfigType },
   ) {
-    return this.configService.set();
+    return this.configService.set(scope, body.key, body.value, req.user?.id);
   }
 }

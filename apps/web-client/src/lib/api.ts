@@ -67,8 +67,20 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    const errorText = await response.text();
+    let error: { message?: string; error?: string; statusCode?: number; stack?: string } = { message: 'An error occurred' };
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      error = { message: errorText || `HTTP ${response.status}` };
+    }
+    console.error('API Error Response:', {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      error,
+    });
+    throw new Error(error.message || error.error || `HTTP ${response.status}`);
   }
 
   // Handle empty responses

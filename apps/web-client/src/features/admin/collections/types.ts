@@ -13,21 +13,15 @@ export interface Collection {
   id: string;
   code: string;
 
-  // Display names - API uses 'label' but DB stores as 'name'
+  // Display names
   name: string;
   pluralName?: string;
-
-  // Legacy aliases for backward compatibility
-  label?: string;      // Alias for name
-  labelPlural?: string; // Alias for pluralName
-
   description?: string;
   icon?: string;
   color?: string;
 
   // Storage
   tableName: string;
-  storageTable?: string; // Legacy alias for tableName
 
   // Governance
   ownerType: OwnerType;
@@ -37,14 +31,12 @@ export interface Collection {
   // Features
   isAudited: boolean;
   enableVersioning: boolean;
-  isVersioned?: boolean; // Legacy alias for enableVersioning
   enableAttachments: boolean;
   enableActivityLog: boolean;
   enableSearch: boolean;
 
   // Classification
   applicationId?: string;
-  moduleId?: string; // Legacy alias for applicationId
   category?: string;
 
   // Access control
@@ -102,43 +94,37 @@ export interface CollectionFilters {
 }
 
 /**
- * Normalize collection data from API to handle field name differences
+ * Normalize collection data from API
  */
 export function normalizeCollection(data: Partial<Collection>): Collection {
   return {
     id: data.id || '',
     code: data.code || '',
 
-    // Handle name/label mapping
-    name: data.name || data.label || '',
-    pluralName: data.pluralName || data.labelPlural,
-    label: data.name || data.label,
-    labelPlural: data.pluralName || data.labelPlural,
-
+    // Display names
+    name: data.name || '',
+    pluralName: data.pluralName,
     description: data.description,
     icon: data.icon,
     color: data.color,
 
-    // Handle tableName/storageTable mapping
-    tableName: data.tableName || data.storageTable || '',
-    storageTable: data.tableName || data.storageTable,
+    // Storage
+    tableName: data.tableName || '',
 
-    // Governance - default to 'custom' if not set
+    // Governance
     ownerType: data.ownerType || 'custom',
     isSystem: data.isSystem ?? false,
     isExtensible: data.isExtensible ?? true,
 
     // Features
     isAudited: data.isAudited ?? true,
-    enableVersioning: data.enableVersioning ?? data.isVersioned ?? false,
-    isVersioned: data.enableVersioning ?? data.isVersioned ?? false,
+    enableVersioning: data.enableVersioning ?? false,
     enableAttachments: data.enableAttachments ?? true,
     enableActivityLog: data.enableActivityLog ?? true,
     enableSearch: data.enableSearch ?? true,
 
     // Classification
-    applicationId: data.applicationId || data.moduleId,
-    moduleId: data.applicationId || data.moduleId,
+    applicationId: data.applicationId,
     category: data.category,
 
     // Access

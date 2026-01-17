@@ -1,0 +1,70 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ava-deny-egress-policy
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: ava-deny-egress-policy
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/canon-reference: "Section 11-12: AVA Is Infrastructure, Trust Is Earned Incrementally"
+    hubblewave.io/policy-intent: "AVA operates as a reasoning layer over platform state and must never have direct external network access"
+spec:
+  podSelector:
+    matchLabels:
+      app: svc-ava
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution (required for internal service discovery)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow communication to HubbleWave internal services only
+    # AVA reasons over platform state via internal APIs
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: hubblewave
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+
+    # Allow communication to service mesh control plane
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15014
+
+    # Allow Envoy sidecar communication (service mesh data plane)
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 15001
+        - protocol: TCP
+          port: 15006

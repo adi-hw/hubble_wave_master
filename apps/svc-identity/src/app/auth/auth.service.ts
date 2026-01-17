@@ -205,7 +205,7 @@ export class AuthService {
     this.logger.log('Login attempt', { instanceId, username });
 
     try {
-      // 1. Single-customer deployment (no tenant lookup)
+      // 1. Single-customer deployment (no instance lookup)
 
       // 2. specific Auth Settings
       const settings = await this.authSettingsRepo.findOne({ where: {}, order: { createdAt: 'DESC' } });
@@ -387,7 +387,7 @@ export class AuthService {
     };
   }
 
-  async refreshAccessToken(refreshToken: string, _tenantSlug?: string, ipAddress?: string, userAgent?: string) {
+  async refreshAccessToken(refreshToken: string, _instanceSlug?: string, ipAddress?: string, userAgent?: string) {
     // 2. Validate Refresh Token
     const tokenEntity = await this.refreshTokenService.findByToken(refreshToken);
     if (!tokenEntity) {

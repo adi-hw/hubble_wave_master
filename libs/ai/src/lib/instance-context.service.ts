@@ -2,14 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 /**
- * Tenant Context Service
- * Builds tenant-specific context for AVA to understand the tenant's unique setup
- * This makes AVA evolve with each tenant's data, configuration, and customizations
+ * Instance Context Service
+ * Builds instance-specific context for AVA to understand the instance's unique setup
+ * This makes AVA evolve with each instance's data, configuration, and customizations
  */
 
-export interface TenantProfile {
+export interface InstanceProfile {
   // Basic info
-  tenantName: string;
+  instanceName: string;
   industry?: string;
   timezone?: string;
 
@@ -26,7 +26,7 @@ export interface TenantProfile {
   businessRules: BusinessRuleContext[];
 
   // Key metrics
-  metrics: TenantMetrics;
+  metrics: InstanceMetrics;
 
   // Last updated
   lastUpdated: Date;
@@ -58,7 +58,7 @@ export interface BusinessRuleContext {
   description: string;
 }
 
-export interface TenantMetrics {
+export interface InstanceMetrics {
   totalRecords: number;
   activeUsers: number;
   knowledgeArticles: number;
@@ -87,31 +87,38 @@ export interface UserProfile {
 }
 
 @Injectable()
-export class TenantContextService {
-  private readonly logger = new Logger(TenantContextService.name);
-  private readonly tenantId = process.env.INSTANCE_ID || 'default-instance';
+export class InstanceContextService {
+  private readonly logger = new Logger(InstanceContextService.name);
+  private readonly instanceId = process.env['INSTANCE_ID'] || 'default-instance';
 
-  // Cache tenant profiles (refresh periodically)
-  private profileCache: Map<string, { profile: TenantProfile; cachedAt: Date }> = new Map();
+  // Cache instance profiles (refresh periodically)
+  private profileCache: Map<string, { profile: InstanceProfile; cachedAt: Date }> = new Map();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   /**
-   * Get tenant profile for AVA context
+   * Get instance profile for AVA context
    */
-  async getTenantProfile(dataSource: DataSource): Promise<TenantProfile> {
+  async getInstanceProfile(dataSource: DataSource): Promise<InstanceProfile> {
     // Check cache
-    const cached = this.profileCache.get(this.tenantId);
+    const cached = this.profileCache.get(this.instanceId);
     if (cached && Date.now() - cached.cachedAt.getTime() < this.CACHE_TTL_MS) {
       return cached.profile;
     }
 
     // Build fresh profile
-    const profile = await this.buildTenantProfile(dataSource);
+    const profile = await this.buildInstanceProfile(dataSource);
 
     // Cache it
-    this.profileCache.set(this.tenantId, { profile, cachedAt: new Date() });
+    this.profileCache.set(this.instanceId, { profile, cachedAt: new Date() });
 
     return profile;
+  }
+
+  /**
+   * @deprecated Use getInstanceProfile instead
+   */
+  async getTenantProfile(dataSource: DataSource): Promise<InstanceProfile> {
+    return this.getInstanceProfile(dataSource);
   }
 
   /**
@@ -122,10 +129,18 @@ export class TenantContextService {
     userId: string
   ): Promise<UserProfile | null> {
     try {
-      // Get basic user info
+      // Get basic user info with primary role from user_roles junction
       const userRows = await dataSource.query(
-        `SELECT id, email, first_name, last_name, role, department, location, preferences
-         FROM users WHERE id = $1`,
+        `SELECT u.id, u.email, u.first_name, u.last_name, u.department, u.location,
+                COALESCE(r.code, 'user') as role,
+                up.language, up.timezone, up.date_format, up.ava_enabled
+         FROM users u
+         LEFT JOIN user_roles ur ON ur.user_id = u.id
+         LEFT JOIN roles r ON r.id = ur.role_id
+         LEFT JOIN user_preferences up ON up.user_id = u.id
+         WHERE u.id = $1
+         ORDER BY r.hierarchy_level ASC NULLS LAST
+         LIMIT 1`,
         [userId]
       );
 
@@ -152,7 +167,12 @@ export class TenantContextService {
         accessibleCollections,
         recentCollections: recentActivity.collections,
         frequentActions: recentActivity.actions,
-        preferences: user.preferences || {},
+        preferences: {
+          language: user.language,
+          timezone: user.timezone,
+          dateFormat: user.date_format,
+          avaEnabled: user.ava_enabled,
+        },
       };
     } catch (error) {
       this.logger.debug(`Error getting user profile: ${error}`);
@@ -161,11 +181,11 @@ export class TenantContextService {
   }
 
   /**
-   * Build system prompt context from tenant profile
+   * Build system prompt context from instance profile
    */
-  buildContextPrompt(profile: TenantProfile, userProfile?: UserProfile): string {
-    let context = `\n## Tenant Environment`;
-    context += `\nOrganization: ${profile.tenantName}`;
+  buildContextPrompt(profile: InstanceProfile, userProfile?: UserProfile): string {
+    let context = `\n## Instance Environment`;
+    context += `\nOrganization: ${profile.instanceName}`;
     if (profile.industry) context += `\nIndustry: ${profile.industry}`;
 
     // Collections
@@ -258,13 +278,13 @@ export class TenantContextService {
   }
 
   /**
-   * Build full tenant profile from database
+   * Build full instance profile from database
    */
-  private async buildTenantProfile(
+  private async buildInstanceProfile(
     dataSource: DataSource
-  ): Promise<TenantProfile> {
-    const profile: TenantProfile = {
-      tenantName: 'Organization', // Default
+  ): Promise<InstanceProfile> {
+    const profile: InstanceProfile = {
+      instanceName: 'Organization', // Default
       collections: [],
       modules: [],
       terminology: {},
@@ -294,7 +314,7 @@ export class TenantContextService {
       // Get metrics
       profile.metrics = await this.getMetrics(dataSource);
     } catch (error) {
-      this.logger.warn(`Error building tenant profile: ${error}`);
+      this.logger.warn(`Error building instance profile: ${error}`);
     }
 
     return profile;
@@ -390,8 +410,8 @@ export class TenantContextService {
     }
   }
 
-  private async getMetrics(dataSource: DataSource): Promise<TenantMetrics> {
-    const metrics: TenantMetrics = {
+  private async getMetrics(dataSource: DataSource): Promise<InstanceMetrics> {
+    const metrics: InstanceMetrics = {
       totalRecords: 0,
       activeUsers: 0,
       knowledgeArticles: 0,
@@ -470,9 +490,14 @@ export class TenantContextService {
   }
 
   /**
-   * Clear cached profile for a tenant
+   * Clear cached profile for the instance
    */
   invalidateCache(): void {
-    this.profileCache.delete(this.tenantId);
+    this.profileCache.delete(this.instanceId);
   }
 }
+
+// Re-export with deprecated alias for backward compatibility
+export { InstanceContextService as TenantContextService };
+export { InstanceProfile as TenantProfile };
+export { InstanceMetrics as TenantMetrics };

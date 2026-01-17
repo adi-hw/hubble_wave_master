@@ -5,7 +5,7 @@ interface ReferenceSelectorProps {
   value?: string;
   onChange: (value: string) => void;
   required?: boolean;
-  referenceTable: string; // The table to search in
+  referenceCollection: string;
   disabled?: boolean;
   error?: boolean;
 }
@@ -14,7 +14,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   value,
   onChange,
   required,
-  referenceTable,
+  referenceCollection,
   disabled = false,
 }) => {
   const { token } = useAuth();
@@ -26,9 +26,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
     if (!query) return;
     setLoading(true);
     try {
-      // Assuming we can search by a generic 'q' param or we filter by specific fields
-      // For now, let's assume the backend supports a generic 'q' param we added
-      const response = await fetch(`/api/data/${referenceTable}?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`/api/data/${referenceCollection}?q=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -47,46 +45,30 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
       if (search) searchRecords(search);
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [search, token, referenceTable]);
+  }, [search, token, referenceCollection]);
 
   return (
     <div className="relative">
       <input
         type="text"
         className="input w-full"
-        placeholder={`Search ${referenceTable}...`}
+        placeholder={`Search ${referenceCollection}...`}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         required={required}
         disabled={disabled}
       />
       {loading && (
-        <div
-          className="absolute right-2 top-2 text-sm"
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <div className="absolute right-2 top-2 text-sm text-muted-foreground">
           Loading...
         </div>
       )}
       {records.length > 0 && search && (
-        <ul
-          className="absolute z-10 w-full mt-1 rounded-lg shadow-lg max-h-60 overflow-auto"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-          }}
-        >
+        <ul className="absolute z-10 w-full mt-1 rounded-lg shadow-lg max-h-60 overflow-auto bg-card border border-border">
           {records.map((record) => (
             <li
               key={record.id}
-              className="p-2 cursor-pointer transition-colors"
-              style={{ color: 'var(--text-primary)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
+              className="p-2 cursor-pointer transition-colors text-foreground hover:bg-accent"
               onClick={() => {
                 onChange(record.id);
                 setSearch(record.attributes?.name || record.id);
@@ -101,7 +83,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         </ul>
       )}
       {value && !search && (
-        <div className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+        <div className="mt-1 text-sm text-muted-foreground">
           Selected ID: {value}
         </div>
       )}

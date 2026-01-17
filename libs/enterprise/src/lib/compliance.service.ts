@@ -103,8 +103,8 @@ export class ComplianceService {
   async classifyData(
     dataSource: DataSource,
     context: {
-      collectionName?: string;
-      fieldName?: string;
+      collectionCode?: string;
+      propertyName?: string;
       value?: string;
       dataType?: string;
       tags?: string[];
@@ -126,9 +126,9 @@ export class ComplianceService {
         let reason = '';
 
         // Check collection patterns
-        if (rule.conditions.collectionPatterns?.length && context.collectionName) {
+        if (rule.conditions.collectionPatterns?.length && context.collectionCode) {
           for (const pattern of rule.conditions.collectionPatterns) {
-            if (new RegExp(pattern, 'i').test(context.collectionName)) {
+            if (new RegExp(pattern, 'i').test(context.collectionCode)) {
               matches = true;
               reason = `Collection matches pattern: ${pattern}`;
               break;
@@ -136,12 +136,12 @@ export class ComplianceService {
           }
         }
 
-        // Check field patterns
-        if (rule.conditions.fieldPatterns?.length && context.fieldName) {
+        // Check property patterns
+        if (rule.conditions.fieldPatterns?.length && context.propertyName) {
           for (const pattern of rule.conditions.fieldPatterns) {
-            if (new RegExp(pattern, 'i').test(context.fieldName)) {
+            if (new RegExp(pattern, 'i').test(context.propertyName)) {
               matches = true;
-              reason = `Field matches pattern: ${pattern}`;
+              reason = `Property matches pattern: ${pattern}`;
               break;
             }
           }

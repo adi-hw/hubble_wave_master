@@ -4,7 +4,7 @@ import { BreadcrumbItem } from '../components/navigation/Breadcrumbs';
 
 // Context for breadcrumb generation
 interface BreadcrumbContext {
-  tableLabel?: string;
+  collectionLabel?: string;
   recordLabel?: string;
 }
 
@@ -17,8 +17,8 @@ interface RouteConfig {
   ) => BreadcrumbItem[];
 }
 
-// Format table code to a readable label (e.g., "asset_types" -> "Asset Types")
-const formatTableCode = (code: string): string => {
+// Format collection code to a readable label (e.g., "asset_types" -> "Asset Types")
+const formatCollectionCode = (code: string): string => {
   return code
     .replace(/[._-]/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -35,6 +35,25 @@ const routeConfigs: RouteConfig[] = [
     pattern: /^\/home$/,
     getBreadcrumbs: () => [],
   },
+  // Collections List View (ServiceNow-style URL: /collections.list)
+  {
+    pattern: /^\/collections\.list$/,
+    getBreadcrumbs: () => [
+      { label: 'Studio', href: '/studio' },
+      { label: 'Collections' },
+    ],
+  },
+  // Generic List View for other collections (e.g., /work_orders.list)
+  {
+    pattern: /^\/([^/.]+)\.list$/,
+    getBreadcrumbs: (params, context) => {
+      // Extract collection code from the URL (remove .list suffix)
+      const collectionCode = params['*']?.replace(/\.list$/, '') || params.collectionCode || '';
+      return [
+        { label: context?.collectionLabel || formatCollectionCode(collectionCode) },
+      ];
+    },
+  },
   // Studio - Collections
   {
     pattern: /^\/studio\/collections$/,
@@ -43,26 +62,34 @@ const routeConfigs: RouteConfig[] = [
       { label: 'Collections' },
     ],
   },
+  // Studio - Collection Editor/Details
   {
     pattern: /^\/studio\/collections\/[^/]+/,
     getBreadcrumbs: (params, context) => [
-      { label: 'Studio' },
-      { label: 'Collections', href: '/studio/collections' },
-      { label: context?.tableLabel || formatTableCode(params.collectionCode || params.id || 'Collection') },
+      { label: 'Studio', href: '/studio' },
+      { label: 'Collections', href: '/collections.list' },
+      { label: context?.collectionLabel || formatCollectionCode(params.collectionCode || params.id || 'Collection') },
+    ],
+  },
+  {
+    pattern: /^\/studio\/localization$/,
+    getBreadcrumbs: () => [
+      { label: 'Studio', href: '/studio' },
+      { label: 'Localization' },
     ],
   },
   // Data Engine - Collection Data Pages
   {
     pattern: /^\/data\/[^/]+$/,
     getBreadcrumbs: (params, context) => [
-      { label: context?.tableLabel || formatTableCode(params.collectionCode || 'Records') },
+      { label: context?.collectionLabel || formatCollectionCode(params.collectionCode || 'Records') },
     ],
   },
   {
     pattern: /^\/data\/[^/]+\/[^/]+$/,
     getBreadcrumbs: (params, context) => {
       const collectionCode = params.collectionCode || '';
-      const collectionLabel = context?.tableLabel || formatTableCode(collectionCode);
+      const collectionLabel = context?.collectionLabel || formatCollectionCode(collectionCode);
       const recordLabel = context?.recordLabel || `Record ${params.recordId}`;
       return [
         { label: collectionLabel, href: `/data/${collectionCode}` },
@@ -73,7 +100,7 @@ const routeConfigs: RouteConfig[] = [
 ];
 
 interface UseBreadcrumbsOptions {
-  tableLabel?: string;
+  collectionLabel?: string;
   recordLabel?: string;
 }
 
@@ -88,7 +115,7 @@ export const useBreadcrumbs = (options: UseBreadcrumbsOptions = {}): BreadcrumbI
     for (const config of routeConfigs) {
       if (config.pattern.test(path)) {
         return config.getBreadcrumbs(params, {
-          tableLabel: options.tableLabel,
+          collectionLabel: options.collectionLabel,
           recordLabel: options.recordLabel,
         });
       }
@@ -100,12 +127,12 @@ export const useBreadcrumbs = (options: UseBreadcrumbsOptions = {}): BreadcrumbI
       const href = '/' + segments.slice(0, index + 1).join('/');
       const isLast = index === segments.length - 1;
       return {
-        label: formatTableCode(segment),
+        label: formatCollectionCode(segment),
         href: isLast ? undefined : href,
       };
     });
-  }, [location.pathname, params, options.tableLabel, options.recordLabel]);
+  }, [location.pathname, params, options.collectionLabel, options.recordLabel]);
 };
 
 // Export utility function for manual breadcrumb creation
-export { formatTableCode };
+export { formatCollectionCode };

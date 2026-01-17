@@ -1,29 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Box,
-  Typography,
-  Card,
-  TextField,
-  InputAdornment,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TablePagination,
-  IconButton,
-  Button,
-  Collapse,
-  Tooltip,
-  Grid,
-} from '@mui/material';
-import {
   Search,
   Filter,
   Download,
@@ -40,6 +16,9 @@ import {
   Info,
   Calendar,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, AuditLog } from '../services/api';
@@ -59,7 +38,7 @@ const severityConfig: Record<string, { icon: any; color: string; bg: string }> =
   warning: { icon: AlertTriangle, color: colors.warning.base, bg: colors.warning.glow },
   error: { icon: XCircle, color: colors.danger.base, bg: colors.danger.glow },
   critical: { icon: XCircle, color: colors.danger.base, bg: colors.danger.glow },
-  success: { icon: CheckCircle, color: colors.success.base, bg: colors.success.glow }, // Mapped from 'info' if needed
+  success: { icon: CheckCircle, color: colors.success.base, bg: colors.success.glow },
 };
 
 function formatDate(dateStr: string): string {
@@ -103,12 +82,11 @@ export function AuditPage() {
       setLoading(true);
       const data = await controlPlaneApi.getAuditLogs();
       setLogs(data.data);
-      
-      // Calculate simple stats client-side
+
       const newStats = { info: 0, success: 0, warning: 0, error: 0 };
-      data.data.forEach(l => {
-         const k = l.severity === 'critical' ? 'error' : l.severity;
-         if (k in newStats) newStats[k as keyof typeof newStats]++;
+      data.data.forEach((l) => {
+        const k = l.severity === 'critical' ? 'error' : l.severity;
+        if (k in newStats) newStats[k as keyof typeof newStats]++;
       });
       setStats(newStats);
 
@@ -127,7 +105,6 @@ export function AuditPage() {
 
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      // Search filter
       if (search) {
         const searchLower = search.toLowerCase();
         if (
@@ -139,12 +116,10 @@ export function AuditPage() {
         }
       }
 
-      // Category filter (using targetType as category)
       if (categoryFilter !== 'all' && log.targetType !== categoryFilter) {
         return false;
       }
 
-      // Severity filter
       if (severityFilter !== 'all' && log.severity !== severityFilter) {
         return false;
       }
@@ -154,6 +129,7 @@ export function AuditPage() {
   }, [logs, search, categoryFilter, severityFilter]);
 
   const paginatedLogs = filteredLogs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const totalPages = Math.ceil(filteredLogs.length / rowsPerPage);
 
   const handleExport = () => {
     const csv = [
@@ -179,354 +155,426 @@ export function AuditPage() {
     a.click();
   };
 
+  const clearFilters = () => {
+    setCategoryFilter('all');
+    setSeverityFilter('all');
+    setDateRange('7d');
+    setSearch('');
+  };
+
   return (
-    <Box>
+    <div>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold" style={{ color: colors.text.primary }}>
           Audit Logs
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={fetchLogs} disabled={loading}>
+        </h1>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={fetchLogs}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50"
+            style={{ borderColor: colors.glass.border, color: colors.text.secondary }}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
-          </Button>
-          <Button variant="outlined" startIcon={<Download size={16} />} onClick={handleExport} disabled={logs.length === 0}>
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={logs.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50"
+            style={{ borderColor: colors.glass.border, color: colors.text.secondary }}
+          >
+            <Download size={16} />
             Export CSV
-          </Button>
-        </Box>
-      </Box>
+          </button>
+        </div>
+      </div>
 
       {/* Search and Filters */}
-      <Card sx={{ mb: 3 }}>
-        <Box sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <TextField
-              fullWidth
-              placeholder="Search by action, actor, or resource..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={18} color={colors.text.muted} />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                flex: 1,
-                '& .MuiOutlinedInput-root': { bgcolor: colors.glass.medium },
-              }}
-            />
-            <Button
-              variant={showFilters ? 'contained' : 'outlined'}
-              startIcon={<Filter size={16} />}
+      <div
+        className="rounded-2xl border mb-6"
+        style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+      >
+        <div className="p-4">
+          <div className="flex gap-3 items-center">
+            <div className="relative flex-1">
+              <Search
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: colors.text.muted }}
+              />
+              <input
+                type="text"
+                placeholder="Search by action, actor, or resource..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+              />
+            </div>
+            <button
+              type="button"
               onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: showFilters ? colors.brand.primary : 'transparent',
+                borderColor: showFilters ? colors.brand.primary : colors.glass.border,
+                border: '1px solid',
+                color: showFilters ? '#fff' : colors.text.secondary,
+              }}
             >
+              <Filter size={16} />
               Filters
-            </Button>
-          </Box>
+            </button>
+          </div>
 
-          <Collapse in={showFilters}>
-            <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${colors.glass.border}` }}>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 3 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Category</InputLabel>
-                    <Select
-                      value={categoryFilter}
-                      label="Category"
-                      onChange={(e) => setCategoryFilter(e.target.value)}
-                    >
-                      <MenuItem value="all">All Categories</MenuItem>
-                      <MenuItem value="auth">Authentication</MenuItem>
-                      <MenuItem value="customer">Customer</MenuItem>
-                      <MenuItem value="instance">Instance</MenuItem>
-                      <MenuItem value="system">System</MenuItem>
-                      <MenuItem value="settings">Settings</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 3 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Severity</InputLabel>
-                    <Select
-                      value={severityFilter}
-                      label="Severity"
-                      onChange={(e) => setSeverityFilter(e.target.value)}
-                    >
-                      <MenuItem value="all">All Severities</MenuItem>
-                      <MenuItem value="info">Info</MenuItem>
-                      <MenuItem value="warning">Warning</MenuItem>
-                      <MenuItem value="error">Error</MenuItem>
-                      <MenuItem value="critical">Critical</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 3 }}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Date Range</InputLabel>
-                    <Select
-                      value={dateRange}
-                      label="Date Range"
-                      onChange={(e) => setDateRange(e.target.value)}
-                    >
-                      <MenuItem value="1h">Last Hour</MenuItem>
-                      <MenuItem value="24h">Last 24 Hours</MenuItem>
-                      <MenuItem value="7d">Last 7 Days</MenuItem>
-                      <MenuItem value="30d">Last 30 Days</MenuItem>
-                      <MenuItem value="custom">Custom Range</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 3 }}>
-                  <Button
-                    fullWidth
-                    variant="text"
-                    onClick={() => {
-                      setCategoryFilter('all');
-                      setSeverityFilter('all');
-                      setDateRange('7d');
-                      setSearch('');
-                    }}
-                    sx={{ height: '100%' }}
-                  >
-                    Clear Filters
-                  </Button>
-                </Grid>
-              </Grid>
-            </Box>
-          </Collapse>
-        </Box>
-      </Card>
+          {/* Collapsible Filters */}
+          <div
+            className="overflow-hidden transition-all duration-200"
+            style={{ maxHeight: showFilters ? '200px' : '0' }}
+          >
+            <div
+              className="mt-4 pt-4 grid grid-cols-4 gap-4"
+              style={{ borderTop: `1px solid ${colors.glass.border}` }}
+            >
+              <div>
+                <label className="block text-xs mb-1.5" style={{ color: colors.text.muted }}>
+                  Category
+                </label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="all">All Categories</option>
+                  <option value="auth">Authentication</option>
+                  <option value="customer">Customer</option>
+                  <option value="instance">Instance</option>
+                  <option value="system">System</option>
+                  <option value="settings">Settings</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs mb-1.5" style={{ color: colors.text.muted }}>
+                  Severity
+                </label>
+                <select
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="all">All Severities</option>
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs mb-1.5" style={{ color: colors.text.muted }}>
+                  Date Range
+                </label>
+                <select
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="1h">Last Hour</option>
+                  <option value="24h">Last 24 Hours</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ color: colors.text.secondary }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Stats */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 3 }}>
-          <Card>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: colors.info.glow }}>
-                <Info size={20} color={colors.info.base} />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                  {stats.info}
-                </Typography>
-                <Typography variant="caption" sx={{ color: colors.text.tertiary }}>Info Events</Typography>
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 3 }}>
-          <Card>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: colors.success.glow }}>
-                <CheckCircle size={20} color={colors.success.base} />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                  {stats.success}
-                </Typography>
-                <Typography variant="caption" sx={{ color: colors.text.tertiary }}>Success Events</Typography>
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 3 }}>
-          <Card>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: colors.warning.glow }}>
-                <AlertTriangle size={20} color={colors.warning.base} />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                   {stats.warning}
-                </Typography>
-                <Typography variant="caption" sx={{ color: colors.text.tertiary }}>Warnings</Typography>
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 3 }}>
-          <Card>
-            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: colors.danger.glow }}>
-                <XCircle size={20} color={colors.danger.base} />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
-                   {stats.error}
-                </Typography>
-                <Typography variant="caption" sx={{ color: colors.text.tertiary }}>Errors</Typography>
-              </Box>
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          { icon: Info, label: 'Info Events', value: stats.info, color: colors.info.base, bg: colors.info.glow },
+          { icon: CheckCircle, label: 'Success Events', value: stats.success, color: colors.success.base, bg: colors.success.glow },
+          { icon: AlertTriangle, label: 'Warnings', value: stats.warning, color: colors.warning.base, bg: colors.warning.glow },
+          { icon: XCircle, label: 'Errors', value: stats.error, color: colors.danger.base, bg: colors.danger.glow },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="p-4 rounded-2xl border"
+            style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg" style={{ backgroundColor: stat.bg }}>
+                <stat.icon size={20} style={{ color: stat.color }} />
+              </div>
+              <div>
+                <div className="text-xl font-bold" style={{ color: colors.text.primary }}>
+                  {stat.value}
+                </div>
+                <div className="text-xs" style={{ color: colors.text.tertiary }}>
+                  {stat.label}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Logs Table */}
-      <Card>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell width={40}></TableCell>
-                <TableCell>Timestamp</TableCell>
-                <TableCell>Event</TableCell>
-                <TableCell>Target Type</TableCell>
-                <TableCell>Severity</TableCell>
-                <TableCell>Actor</TableCell>
-                <TableCell>Target</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+      <div
+        className="rounded-2xl border overflow-hidden"
+        style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr style={{ backgroundColor: colors.glass.subtle }}>
+                {['', 'Timestamp', 'Event', 'Target Type', 'Severity', 'Actor', 'Target'].map((h, i) => (
+                  <th
+                    key={h || i}
+                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: colors.text.tertiary, width: i === 0 ? '40px' : 'auto' }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
               {loading ? (
-                  <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                          Loading logs...
-                      </TableCell>
-                  </TableRow>
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: colors.brand.primary }} />
+                      <span style={{ color: colors.text.secondary }}>Loading logs...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center" style={{ color: colors.danger.base }}>
+                    {error}
+                  </td>
+                </tr>
               ) : filteredLogs.length === 0 ? (
-                  <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                          <Typography color="text.secondary">No logs found</Typography>
-                      </TableCell>
-                  </TableRow>
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center" style={{ color: colors.text.secondary }}>
+                    No logs found
+                  </td>
+                </tr>
               ) : (
                 paginatedLogs.map((log) => {
-                const category = categoryConfig[log.targetType] || { icon: Info, color: colors.text.secondary, label: log.targetType };
-                const severity = severityConfig[log.severity] || { icon: Info, color: colors.text.secondary, bg: colors.glass.medium };
-                const CategoryIcon = category.icon;
-                const SeverityIcon = severity.icon;
-                const isExpanded = expandedRow === log.id;
+                  const category = categoryConfig[log.targetType] || {
+                    icon: Info,
+                    color: colors.text.secondary,
+                    label: log.targetType,
+                  };
+                  const severity = severityConfig[log.severity] || {
+                    icon: Info,
+                    color: colors.text.secondary,
+                    bg: colors.glass.medium,
+                  };
+                  const CategoryIcon = category.icon;
+                  const SeverityIcon = severity.icon;
+                  const isExpanded = expandedRow === log.id;
 
-                return (
-                  <>
-                    <TableRow
-                      key={log.id}
-                      hover
-                      onClick={() => setExpandedRow(isExpanded ? null : log.id)}
-                      sx={{ cursor: 'pointer' }}
-                    >
-                      <TableCell>
-                        <IconButton size="small" sx={{ color: colors.text.muted }}>
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </IconButton>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Calendar size={14} color={colors.text.muted} />
-                          <Typography variant="body2" sx={{ color: colors.text.secondary, fontFamily: 'monospace' }}>
-                            {formatDate(log.createdAt)}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ color: colors.text.primary, fontWeight: 500 }}>
-                          {formatAction(log.eventType)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          icon={<CategoryIcon size={12} />}
-                          label={category.label}
-                          sx={{
-                            bgcolor: colors.glass.medium,
-                            color: category.color,
-                            '& .MuiChip-icon': { color: category.color },
-                            fontWeight: 500,
-                            fontSize: 11,
-                            textTransform: 'capitalize'
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          icon={<SeverityIcon size={12} />}
-                          label={log.severity}
-                          sx={{
-                            bgcolor: severity.bg,
-                            color: severity.color,
-                            '& .MuiChip-icon': { color: severity.color },
-                            fontWeight: 500,
-                            fontSize: 11,
-                            textTransform: 'capitalize',
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={log.actorType}>
-                          <Typography variant="body2" sx={{ color: colors.text.secondary }}>
-                            {log.actor}
-                          </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ color: colors.text.secondary }}>
-                          {log.target}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell colSpan={7} sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}>
-                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box sx={{ py: 2, px: 3, bgcolor: colors.glass.subtle, borderRadius: 1, my: 1 }}>
-                            <Grid container spacing={3}>
-                              <Grid size={{ xs: 12 }}>
-                                <Typography variant="caption" sx={{ color: colors.text.muted, display: 'block', mb: 0.5 }}>
+                  return (
+                    <tr key={log.id}>
+                      <td colSpan={7} className="p-0">
+                        {/* Main Row */}
+                        <div
+                          className="flex items-center cursor-pointer transition-colors px-4 py-3"
+                          style={{ borderBottom: `1px solid ${colors.glass.border}` }}
+                          onClick={() => setExpandedRow(isExpanded ? null : log.id)}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.glass.subtle)}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        >
+                          <div style={{ width: '40px' }}>
+                            <button type="button" className="p-1" style={{ color: colors.text.muted }}>
+                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
+                          </div>
+                          <div className="flex-1 grid grid-cols-6 gap-4 items-center">
+                            <div className="flex items-center gap-2">
+                              <Calendar size={14} style={{ color: colors.text.muted }} />
+                              <span
+                                className="text-sm font-mono"
+                                style={{ color: colors.text.secondary }}
+                              >
+                                {formatDate(log.createdAt)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium" style={{ color: colors.text.primary }}>
+                                {formatAction(log.eventType)}
+                              </span>
+                            </div>
+                            <div>
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium capitalize"
+                                style={{ backgroundColor: colors.glass.medium, color: category.color }}
+                              >
+                                <CategoryIcon size={12} />
+                                {category.label}
+                              </span>
+                            </div>
+                            <div>
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium capitalize"
+                                style={{ backgroundColor: severity.bg, color: severity.color }}
+                              >
+                                <SeverityIcon size={12} />
+                                {log.severity}
+                              </span>
+                            </div>
+                            <div title={log.actorType}>
+                              <span className="text-sm" style={{ color: colors.text.secondary }}>
+                                {log.actor}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-sm" style={{ color: colors.text.secondary }}>
+                                {log.target}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Details */}
+                        <div
+                          className="overflow-hidden transition-all duration-200"
+                          style={{ maxHeight: isExpanded ? '500px' : '0' }}
+                        >
+                          <div
+                            className="p-4 mx-4 my-2 rounded-lg"
+                            style={{ backgroundColor: colors.glass.subtle }}
+                          >
+                            <div className="grid grid-cols-1 gap-4">
+                              <div>
+                                <span className="text-xs block mb-1" style={{ color: colors.text.muted }}>
                                   Description
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: colors.text.secondary }}>
+                                </span>
+                                <span className="text-sm" style={{ color: colors.text.secondary }}>
                                   {log.description}
-                                </Typography>
-                              </Grid>
-                              <Grid size={{ xs: 12 }}>
-                                <Typography variant="caption" sx={{ color: colors.text.muted, display: 'block', mb: 0.5 }}>
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-xs block mb-1" style={{ color: colors.text.muted }}>
                                   Metadata
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  component="pre"
-                                  sx={{
+                                </span>
+                                <pre
+                                  className="text-xs p-2 rounded overflow-auto font-mono"
+                                  style={{
+                                    backgroundColor: colors.glass.medium,
                                     color: colors.text.secondary,
-                                    fontFamily: 'monospace',
-                                    fontSize: 11,
-                                    m: 0,
-                                    p: 1,
-                                    bgcolor: colors.glass.medium,
-                                    borderRadius: 1,
-                                    overflow: 'auto',
                                   }}
                                 >
                                   {JSON.stringify(log.metadata, null, 2)}
-                                </Typography>
-                              </Grid>
-                            </Grid>
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  </>
-                );
-              }))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination
-          component="div"
-          count={filteredLogs.length}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => {
-            setRowsPerPage(parseInt(e.target.value, 10));
-            setPage(0);
-          }}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-        />
-      </Card>
-    </Box>
+                                </pre>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderTop: `1px solid ${colors.glass.border}` }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-sm" style={{ color: colors.text.secondary }}>
+              Rows per page:
+            </span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              className="px-2 py-1 rounded border text-sm"
+              style={{
+                backgroundColor: colors.glass.medium,
+                borderColor: colors.glass.border,
+                color: colors.text.primary,
+              }}
+            >
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm" style={{ color: colors.text.secondary }}>
+              {page * rowsPerPage + 1}-{Math.min((page + 1) * rowsPerPage, filteredLogs.length)} of{' '}
+              {filteredLogs.length}
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setPage(page - 1)}
+                disabled={page === 0}
+                className="p-1.5 rounded transition-colors disabled:opacity-50"
+                style={{ color: colors.text.secondary }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages - 1}
+                className="p-1.5 rounded transition-colors disabled:opacity-50"
+                style={{ color: colors.text.secondary }}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

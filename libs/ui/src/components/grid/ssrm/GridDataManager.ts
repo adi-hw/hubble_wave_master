@@ -48,6 +48,7 @@ export type BlockFetcher<TData> = (request: SSRMRequest) => Promise<SSRMResponse
 export class GridDataManager<TData extends GridRowData> {
   private blockCache: LRUCache<string, BlockCacheEntry<TData>>;
   private pendingRequests: Map<string, Promise<BlockCacheEntry<TData>>>;
+  private inFlightBlocks: Set<number>; // Prevents duplicate fetches for same block
   private requestQueue: Set<number>;
   private flushTimeout: ReturnType<typeof setTimeout> | null = null;
   private cacheVersion: string;
@@ -56,6 +57,10 @@ export class GridDataManager<TData extends GridRowData> {
   private lastScrollPosition: number = 0;
   private config: GridDataManagerConfig;
   private fetcher: BlockFetcher<TData>;
+
+  // Total row count tracking from server responses
+  private _lastKnownTotalRows: number = -1;
+  private _isEndOfData: boolean = false;
 
   constructor(config: GridDataManagerConfig, fetcher: BlockFetcher<TData>) {
     this.config = config;
@@ -66,8 +71,24 @@ export class GridDataManager<TData extends GridRowData> {
       updateAgeOnGet: true,
     });
     this.pendingRequests = new Map();
+    this.inFlightBlocks = new Set();
     this.requestQueue = new Set();
     this.cacheVersion = this.generateCacheVersion();
+  }
+
+  /**
+   * Get the last known total row count from server responses
+   * Returns -1 if unknown (more data may exist)
+   */
+  get lastKnownTotalRows(): number {
+    return this._lastKnownTotalRows;
+  }
+
+  /**
+   * Check if we've reached the end of the dataset
+   */
+  get isEndOfData(): boolean {
+    return this._isEndOfData;
   }
 
   /**
@@ -77,7 +98,8 @@ export class GridDataManager<TData extends GridRowData> {
     const startBlock = Math.floor(startRow / this.config.blockSize);
     const endBlock = Math.floor(endRow / this.config.blockSize);
 
-    const rows: TData[] = [];
+    // Use a Map to collect rows keyed by block index to preserve ordering
+    const blockRowsMap = new Map<number, TData[]>();
     const blocksToFetch: number[] = [];
 
     // Check cache and identify missing blocks
@@ -86,8 +108,11 @@ export class GridDataManager<TData extends GridRowData> {
       const cached = this.blockCache.get(cacheKey);
 
       if (cached && cached.version === this.cacheVersion) {
-        // Block is cached and valid
-        rows.push(...this.extractRowsFromBlock(cached, startRow, endRow, blockIndex));
+        // Block is cached and valid - store in map
+        blockRowsMap.set(
+          blockIndex,
+          this.extractRowsFromBlock(cached, startRow, endRow, blockIndex)
+        );
       } else {
         blocksToFetch.push(blockIndex);
       }
@@ -98,7 +123,19 @@ export class GridDataManager<TData extends GridRowData> {
       const fetchedBlocks = await this.fetchBlocks(blocksToFetch);
 
       for (const block of fetchedBlocks) {
-        rows.push(...this.extractRowsFromBlock(block, startRow, endRow, block.blockIndex));
+        blockRowsMap.set(
+          block.blockIndex,
+          this.extractRowsFromBlock(block, startRow, endRow, block.blockIndex)
+        );
+      }
+    }
+
+    // Flatten rows in sorted block order to maintain correct row ordering
+    const rows: TData[] = [];
+    for (let blockIndex = startBlock; blockIndex <= endBlock; blockIndex++) {
+      const blockRows = blockRowsMap.get(blockIndex);
+      if (blockRows) {
+        rows.push(...blockRows);
       }
     }
 
@@ -177,10 +214,10 @@ export class GridDataManager<TData extends GridRowData> {
    * Fetch multiple blocks in a single batch request
    */
   private async fetchBlocks(blockIndices: number[]): Promise<BlockCacheEntry<TData>[]> {
-    // Deduplicate with pending requests
+    // Deduplicate with pending requests AND in-flight blocks
     const uniqueBlocks = blockIndices.filter((idx) => {
       const cacheKey = this.getCacheKey(idx);
-      return !this.pendingRequests.has(cacheKey);
+      return !this.pendingRequests.has(cacheKey) && !this.inFlightBlocks.has(idx);
     });
 
     if (uniqueBlocks.length === 0) {
@@ -190,6 +227,14 @@ export class GridDataManager<TData extends GridRowData> {
         .filter((p): p is Promise<BlockCacheEntry<TData>> => p !== undefined);
       return Promise.all(promises);
     }
+
+    // Mark blocks as in-flight to prevent duplicate requests
+    for (const idx of uniqueBlocks) {
+      this.inFlightBlocks.add(idx);
+    }
+
+    // Capture version at request time to detect stale responses
+    const requestVersion = this.cacheVersion;
 
     // Create single batch request for the contiguous range of requested blocks
     const startRow = Math.min(...uniqueBlocks) * this.config.blockSize;
@@ -207,6 +252,34 @@ export class GridDataManager<TData extends GridRowData> {
 
     // Single fetch for the full requested span
     const batchPromise = this.fetcher(request).then((response) => {
+      // Check if cache was invalidated while request was in flight
+      if (requestVersion !== this.cacheVersion) {
+        // Stale response - discard it and return empty entries
+        for (const idx of uniqueBlocks) {
+          this.inFlightBlocks.delete(idx);
+          this.pendingRequests.delete(this.getCacheKey(idx));
+        }
+        return uniqueBlocks.map((blockIndex) => ({
+          blockIndex,
+          rows: [] as TData[],
+          loadedAt: new Date(),
+          version: requestVersion, // Mark with old version so it won't be used
+        }));
+      }
+
+      // Update total row count from server response
+      if (response.lastRow !== undefined && response.lastRow >= 0) {
+        this._lastKnownTotalRows = response.lastRow;
+        this._isEndOfData = true;
+      } else if (response.lastRow === -1) {
+        // More data available - update estimate based on what we've seen
+        const fetchedEndRow = startRow + response.rows.length;
+        if (fetchedEndRow > this._lastKnownTotalRows) {
+          this._lastKnownTotalRows = fetchedEndRow;
+        }
+        this._isEndOfData = false;
+      }
+
       const blocksMap = new Map<number, TData[]>();
 
       response.rows.forEach((row, idx) => {
@@ -229,9 +302,17 @@ export class GridDataManager<TData extends GridRowData> {
 
         this.blockCache.set(cacheKey, entry);
         this.pendingRequests.delete(cacheKey);
+        this.inFlightBlocks.delete(blockIndex);
 
         return entry;
       });
+    }).catch((error) => {
+      // Clean up in-flight tracking on error
+      for (const idx of uniqueBlocks) {
+        this.inFlightBlocks.delete(idx);
+        this.pendingRequests.delete(this.getCacheKey(idx));
+      }
+      throw error;
     });
 
     // Create per-block promises that resolve from the batch response
@@ -294,7 +375,11 @@ export class GridDataManager<TData extends GridRowData> {
     this.cacheVersion = this.generateCacheVersion();
     this.blockCache.clear();
     this.pendingRequests.clear();
+    this.inFlightBlocks.clear();
     this.requestQueue.clear();
+    // Reset total row tracking - will be updated from next server response
+    this._lastKnownTotalRows = -1;
+    this._isEndOfData = false;
   }
 
   /**
@@ -351,14 +436,18 @@ export class GridDataManager<TData extends GridRowData> {
   /**
    * Get cache statistics for debugging
    */
-  getStats(): GridDataManagerStats {
+  getStats(): GridDataManagerStats & { currentSorting?: unknown } {
     return {
       cachedBlocks: this.blockCache.size,
       maxBlocks: this.config.maxCacheBlocks,
       pendingRequests: this.pendingRequests.size,
       queuedRequests: this.requestQueue.size,
+      inFlightBlocks: this.inFlightBlocks.size,
       cacheVersion: this.cacheVersion,
       scrollVelocity: this.scrollVelocity,
+      lastKnownTotalRows: this._lastKnownTotalRows,
+      isEndOfData: this._isEndOfData,
+      currentSorting: this.config.sorting,
     };
   }
 
@@ -384,6 +473,7 @@ export class GridDataManager<TData extends GridRowData> {
     }
     this.blockCache.clear();
     this.pendingRequests.clear();
+    this.inFlightBlocks.clear();
     this.requestQueue.clear();
   }
 }

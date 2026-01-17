@@ -1,22 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
-  Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  CircularProgress,
-  IconButton
-} from '@mui/material';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi } from '../services/api';
 
@@ -24,12 +8,12 @@ export function CustomerCreatePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    contactEmail: '',
-    contactName: '',
+    primaryContactEmail: '',
+    primaryContactName: '',
     tier: 'starter',
   });
 
@@ -42,8 +26,8 @@ export function CustomerCreatePage() {
       await controlPlaneApi.createCustomer({
         name: formData.name,
         code: formData.code,
-        contactEmail: formData.contactEmail,
-        contactName: formData.contactName,
+        primaryContactEmail: formData.primaryContactEmail,
+        primaryContactName: formData.primaryContactName,
         tier: formData.tier as any,
       });
       navigate('/customers');
@@ -55,105 +39,173 @@ export function CustomerCreatePage() {
     }
   };
 
-  const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | { target: { value: string } }) => {
-    setFormData({ ...formData, [field]: e.target.value });
-  };
-
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <IconButton onClick={() => navigate('/customers')} sx={{ color: colors.text.secondary }}>
+    <div>
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          type="button"
+          onClick={() => navigate('/customers')}
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: colors.text.secondary }}
+        >
           <ArrowLeft size={20} />
-        </IconButton>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text.primary }}>
+        </button>
+        <h1 className="text-xl font-bold" style={{ color: colors.text.primary }}>
           New Customer
-        </Typography>
-      </Box>
+        </h1>
+      </div>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
+        <div
+          className="flex items-start gap-3 p-4 rounded-xl mb-6"
+          style={{
+            backgroundColor: colors.danger.glow,
+            border: `1px solid ${colors.danger.base}`,
+          }}
+        >
+          <AlertCircle size={18} style={{ color: colors.danger.base, flexShrink: 0, marginTop: 2 }} />
+          <p className="text-sm" style={{ color: colors.danger.base }}>
+            {error}
+          </p>
+        </div>
       )}
 
-      <Card>
-        <CardContent sx={{ p: 3 }}>
-          <Box component="form" onSubmit={handleSubmit}>
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Customer Name"
-                  value={formData.name}
-                  onChange={handleChange('name')}
-                  required
-                  placeholder="e.g. Acme Corp"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Customer Code"
-                  value={formData.code}
-                  onChange={handleChange('code')}
-                  required
-                  placeholder="e.g. acme"
-                  helperText="Unique identifier for URL and internal use"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Contact Name"
-                  value={formData.contactName}
-                  onChange={handleChange('contactName')}
-                  required
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Contact Email"
-                  type="email"
-                  value={formData.contactEmail}
-                  onChange={handleChange('contactEmail')}
-                  required
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Tier</InputLabel>
-                  <Select
-                    value={formData.tier}
-                    label="Tier"
-                    onChange={(e) => setFormData({ ...formData, tier: e.target.value })}
-                  >
-                    <MenuItem value="starter">Starter</MenuItem>
-                    <MenuItem value="professional">Professional</MenuItem>
-                    <MenuItem value="enterprise">Enterprise</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-                  <Button variant="outlined" onClick={() => navigate('/customers')}>
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Save size={20} />}
-                    disabled={loading}
-                  >
-                    Create Customer
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </Box>
-        </CardContent>
-      </Card>
-    </Box>
+      <div
+        className="p-6 rounded-2xl border"
+        style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+      >
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Customer Name *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+                placeholder="e.g. Acme Corp"
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Customer Code *
+              </label>
+              <input
+                type="text"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                required
+                placeholder="e.g. acme"
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
+              />
+              <p className="text-xs mt-1" style={{ color: colors.text.muted }}>
+                Unique identifier for URL and internal use
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Primary Contact Name *
+              </label>
+              <input
+                type="text"
+                value={formData.primaryContactName}
+                onChange={(e) => setFormData({ ...formData, primaryContactName: e.target.value })}
+                required
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Primary Contact Email *
+              </label>
+              <input
+                type="email"
+                value={formData.primaryContactEmail}
+                onChange={(e) => setFormData({ ...formData, primaryContactEmail: e.target.value })}
+                required
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = colors.brand.primary)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = colors.glass.border)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                Tier
+              </label>
+              <select
+                value={formData.tier}
+                onChange={(e) => setFormData({ ...formData, tier: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: colors.glass.medium,
+                  borderColor: colors.glass.border,
+                  color: colors.text.primary,
+                }}
+              >
+                <option value="starter">Starter</option>
+                <option value="professional">Professional</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-8">
+            <button
+              type="button"
+              onClick={() => navigate('/customers')}
+              className="px-4 py-2 rounded-lg border text-sm font-medium transition-colors"
+              style={{
+                borderColor: colors.glass.border,
+                color: colors.text.secondary,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-opacity disabled:opacity-50"
+              style={{
+                background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
+              }}
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
+              Create Customer
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
+
+export default CustomerCreatePage;

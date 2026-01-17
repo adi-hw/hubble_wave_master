@@ -1,3 +1,24 @@
+/**
+ * QueryBuilderBar Component
+ *
+ * A theme-aware, accessible query builder interface for constructing complex filter conditions.
+ * This component supports nested filter groups with AND/OR logic, various field types, and operators.
+ *
+ * Theme Integration:
+ * - Uses Tailwind CSS classes for all colors and shadows
+ * - Supports light/dark mode through Tailwind theme switching
+ * - Maintains consistent visual hierarchy across theme changes
+ *
+ * Accessibility Features:
+ * - ARIA labels for screen reader support
+ * - Keyboard navigation (Enter to confirm, Escape to cancel)
+ * - Minimum 44px touch targets for mobile accessibility
+ * - Semantic HTML structure with proper roles
+ * - Focus management for dropdowns and modals
+ *
+ * @component
+ */
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Plus,
@@ -280,16 +301,16 @@ const formatFilterValue = (operator: string, value: any, value2?: any): string =
 // Build query string for display
 const buildQueryString = (
   node: FilterNode,
-  getFieldLabel: (code: string) => string
+  getPropertyLabel: (code: string) => string
 ): string => {
   if (isFilterGroup(node)) {
     if (node.children.length === 0) return '';
-    const parts = node.children.map(child => buildQueryString(child, getFieldLabel)).filter(Boolean);
+    const parts = node.children.map(child => buildQueryString(child, getPropertyLabel)).filter(Boolean);
     if (parts.length === 0) return '';
     if (parts.length === 1) return parts[0];
     return `(${parts.join(` ${node.logic} `)})`;
   } else {
-    const fieldLabel = getFieldLabel(node.field);
+    const fieldLabel = getPropertyLabel(node.field);
     const op = getOperatorLabel(node.operator);
     const val = formatFilterValue(node.operator, node.value, node.value2);
     return `${fieldLabel} ${op} ${val}`.trim();
@@ -347,9 +368,9 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onCancel]);
 
-  const handleFieldSelect = (fieldCode: string) => {
-    setField(fieldCode);
-    const fieldType = fields.find(f => f.code === fieldCode)?.type;
+  const handlePropertySelect = (propertyCode: string) => {
+    setField(propertyCode);
+    const fieldType = fields.find(f => f.code === propertyCode)?.type;
     const ops = getOperatorsForType(fieldType);
     setOperator(ops[0].value);
     setValue(''); // Reset value when field changes
@@ -436,41 +457,50 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
   return (
     <div
       ref={dropdownRef}
-      className="bg-white border border-slate-200 rounded-lg shadow-xl min-w-[320px] overflow-hidden"
+      role="dialog"
+      aria-label="Filter builder dialog"
+      className="rounded-lg min-w-[320px] overflow-hidden bg-card border border-border shadow-xl"
       onClick={(e) => e.stopPropagation()}
     >
       {step === 'field' && (
         <div className="p-3">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Select Field</div>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">
+            Select Field
+          </div>
           <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text"
               value={fieldSearch}
               onChange={(e) => setFieldSearch(e.target.value)}
               placeholder="Search fields..."
-              className="w-full h-8 pl-8 pr-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+              aria-label="Search fields"
+              className="w-full h-8 pl-8 pr-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
               autoFocus
             />
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-48 overflow-y-auto" role="listbox" aria-label="Available fields">
             {filteredFields.map(f => {
               const Icon = getFieldIcon(f.type);
               return (
                 <button
                   key={f.code}
                   type="button"
-                  onClick={() => handleFieldSelect(f.code)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50 rounded-md transition-colors"
+                  role="option"
+                  aria-label={`Select ${f.label} field`}
+                  onClick={() => handlePropertySelect(f.code)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 min-h-[44px] text-sm rounded-md transition-colors text-muted-foreground hover:bg-muted"
                 >
-                  <Icon className="h-4 w-4 text-slate-400" />
+                  <Icon className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate flex-1 text-left">{f.label}</span>
-                  <span className="text-[10px] text-slate-400 uppercase">{f.type || 'text'}</span>
+                  <span className="text-[10px] uppercase text-muted-foreground">
+                    {f.type || 'text'}
+                  </span>
                 </button>
               );
             })}
             {filteredFields.length === 0 && (
-              <div className="px-2 py-4 text-sm text-slate-400 text-center">
+              <div className="px-2 py-4 text-sm text-center text-muted-foreground">
                 No fields found
               </div>
             )}
@@ -481,39 +511,51 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
       {step === 'operator' && (
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Select Operator</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Select Operator
+            </div>
             <button
               type="button"
               onClick={() => setStep('field')}
-              className="text-xs text-primary-600 hover:underline"
+              aria-label="Go back to field selection"
+              className="text-xs hover:underline text-primary"
             >
               ← Back
             </button>
           </div>
-          <div className="flex items-center gap-2 px-2 py-1.5 mb-3 bg-slate-50 rounded-md">
+          <div className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-md bg-muted">
             {(() => {
               const Icon = getFieldIcon(selectedField?.type);
-              return <Icon className="h-4 w-4 text-slate-400" />;
+              return <Icon className="h-4 w-4 text-muted-foreground" />;
             })()}
-            <span className="text-sm font-medium text-slate-700">{selectedField?.label}</span>
-            <span className="text-[10px] text-slate-400 uppercase ml-auto">{selectedField?.type || 'text'}</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {selectedField?.label}
+            </span>
+            <span className="text-[10px] uppercase ml-auto text-muted-foreground">
+              {selectedField?.type || 'text'}
+            </span>
           </div>
-          <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="space-y-1 max-h-64 overflow-y-auto" role="listbox" aria-label="Available operators">
             {operators.map(op => (
               <button
                 key={op.value}
                 type="button"
+                role="option"
+                aria-label={`Select ${op.label} operator${op.description ? `: ${op.description}` : ''}`}
+                aria-selected={operator === op.value}
                 onClick={() => handleOperatorSelect(op.value)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 min-h-[44px] text-sm rounded-md transition-colors ${
                   operator === op.value
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
                 }`}
                 title={op.description}
               >
                 <span className="font-medium">{op.label}</span>
                 {op.description && (
-                  <span className="text-xs text-slate-400">{op.description}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {op.description}
+                  </span>
                 )}
               </button>
             ))}
@@ -524,53 +566,65 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
       {step === 'value' && (
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {needsSecondValue ? 'Enter Date Range' : isRelativeDate ? 'Enter Time Period' : 'Enter Value'}
             </div>
             <button
               type="button"
               onClick={() => setStep('operator')}
-              className="text-xs text-primary-600 hover:underline"
+              aria-label="Go back to operator selection"
+              className="text-xs hover:underline text-primary"
             >
               ← Back
             </button>
           </div>
-          <div className="flex items-center gap-2 px-2 py-1.5 mb-3 bg-slate-50 rounded-md">
-            <span className="text-sm font-medium text-slate-700">{selectedField?.label}</span>
-            <span className="px-1.5 py-0.5 text-xs bg-slate-200 text-slate-600 rounded">{getOperatorLabel(operator)}</span>
+          <div className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-md bg-muted">
+            <span className="text-sm font-medium text-muted-foreground">
+              {selectedField?.label}
+            </span>
+            <span className="px-1.5 py-0.5 text-xs rounded bg-accent text-muted-foreground">
+              {getOperatorLabel(operator)}
+            </span>
           </div>
 
           {/* Between operator - two date inputs */}
           {needsSecondValue && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 w-12">From:</span>
+                <span className="text-xs w-12 text-muted-foreground">From:</span>
                 <input
                   type={inputType}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Start date"
-                  className="flex-1 h-9 px-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                  aria-label="Start date"
+                  className="flex-1 h-9 px-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
                   autoFocus
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 w-12">To:</span>
+                <span className="text-xs w-12 text-muted-foreground">To:</span>
                 <input
                   type={inputType}
                   value={value2}
                   onChange={(e) => setValue2(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="End date"
-                  className="flex-1 h-9 px-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                  aria-label="End date"
+                  className="flex-1 h-9 px-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={!canSave()}
-                className="w-full h-9 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 rounded-md transition-colors"
+                aria-label={rule ? 'Update filter' : 'Add filter'}
+                className={`w-full h-9 min-h-[44px] text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  canSave()
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-muted text-muted-foreground'
+                }`}
               >
                 {rule ? 'Update' : 'Add'}
               </button>
@@ -588,20 +642,22 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
                   onChange={(e) => setValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Enter number"
-                  className="w-24 h-9 px-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                  aria-label="Number of time units"
+                  className="w-24 h-9 px-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
                   autoFocus
                 />
                 <select
                   value={relativeUnit}
                   onChange={(e) => setRelativeUnit(e.target.value as 'days' | 'weeks' | 'months')}
-                  className="flex-1 h-9 px-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none bg-white"
+                  aria-label="Time unit"
+                  className="flex-1 h-9 px-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
                 >
                   <option value="days">days</option>
                   <option value="weeks">weeks</option>
                   <option value="months">months</option>
                 </select>
               </div>
-              <div className="text-xs text-slate-500 px-1">
+              <div className="text-xs px-1 text-muted-foreground">
                 {operator === 'relative_past'
                   ? `Filter items from the last ${value || 'N'} ${relativeUnit}`
                   : `Filter items in the next ${value || 'N'} ${relativeUnit}`}
@@ -610,7 +666,12 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
                 type="button"
                 onClick={handleSave}
                 disabled={!canSave()}
-                className="w-full h-9 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 rounded-md transition-colors"
+                aria-label={rule ? 'Update filter' : 'Add filter'}
+                className={`w-full h-9 min-h-[44px] text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  canSave()
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-muted text-muted-foreground'
+                }`}
               >
                 {rule ? 'Update' : 'Add'}
               </button>
@@ -626,15 +687,21 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({ fields, rule, onSave, o
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={getPlaceholder()}
+                aria-label="Filter value"
                 step={inputType === 'number' ? 'any' : undefined}
-                className="flex-1 h-9 px-3 text-sm border border-slate-200 rounded-md focus:border-primary-300 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                className="flex-1 h-9 px-3 text-sm rounded-md focus:ring-1 focus:outline-none border border-border bg-card text-foreground focus:border-primary focus:ring-primary/20"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={!canSave()}
-                className="h-9 px-4 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 rounded-md transition-colors"
+                aria-label={rule ? 'Update filter' : 'Add filter'}
+                className={`h-9 min-h-[44px] px-4 text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  canSave()
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-muted text-muted-foreground'
+                }`}
               >
                 {rule ? 'Update' : 'Add'}
               </button>
@@ -664,7 +731,7 @@ const FilterPill: React.FC<FilterPillProps> = ({ rule, fieldLabel, onRemove, onE
     // Between operator - show "From X to Y"
     if (rule.operator === 'between' && rule.value && rule.value2) {
       return (
-        <span className="font-medium text-primary-800">
+        <span className="font-medium text-primary">
           "{rule.value}" to "{rule.value2}"
         </span>
       );
@@ -674,7 +741,7 @@ const FilterPill: React.FC<FilterPillProps> = ({ rule, fieldLabel, onRemove, onE
     if (isRelativeDateOperator(rule.operator) && rule.value) {
       const [num, unit] = String(rule.value).split(':');
       return (
-        <span className="font-medium text-primary-800">
+        <span className="font-medium text-primary">
           {num} {unit || 'days'}
         </span>
       );
@@ -682,19 +749,32 @@ const FilterPill: React.FC<FilterPillProps> = ({ rule, fieldLabel, onRemove, onE
 
     // Standard value display
     if (rule.value) {
-      return <span className="font-medium text-primary-800">"{rule.value}"</span>;
+      return <span className="font-medium text-primary">"{rule.value}"</span>;
     }
 
-    return <span className="font-medium text-primary-400">?</span>;
+    return <span className="font-medium text-muted-foreground">?</span>;
   };
 
   return (
     <div
       onClick={onEdit}
-      className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 border border-primary-200 rounded-md text-xs cursor-pointer hover:bg-primary-100 hover:border-primary-300 transition-all group"
+      role="button"
+      aria-label={`Edit filter: ${fieldLabel} ${getOperatorLabel(rule.operator)} ${rule.value || ''}`}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
+      className="inline-flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-md text-xs cursor-pointer transition-all group bg-primary/10 border border-primary hover:bg-accent"
     >
-      <span className="font-semibold text-primary-700">{fieldLabel}</span>
-      <span className="text-primary-500">{getOperatorLabel(rule.operator)}</span>
+      <span className="font-semibold text-primary">
+        {fieldLabel}
+      </span>
+      <span className="text-primary">
+        {getOperatorLabel(rule.operator)}
+      </span>
       {getDisplayValue()}
       <button
         type="button"
@@ -702,7 +782,8 @@ const FilterPill: React.FC<FilterPillProps> = ({ rule, fieldLabel, onRemove, onE
           e.stopPropagation();
           onRemove();
         }}
-        className="ml-0.5 p-0.5 text-primary-400 hover:text-danger-600 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity"
+        aria-label={`Remove filter: ${fieldLabel}`}
+        className="ml-0.5 p-0.5 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity text-primary hover:text-destructive"
       >
         <X className="h-3 w-3" />
       </button>
@@ -724,14 +805,16 @@ const LogicToggle: React.FC<LogicToggleProps> = ({ logic, onChange, size = 'sm' 
       e.stopPropagation();
       onChange(logic === 'AND' ? 'OR' : 'AND');
     }}
-    className={`
-      font-bold uppercase tracking-wide rounded transition-colors
-      ${size === 'sm' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]'}
-      ${logic === 'AND'
-        ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-        : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-      }
-    `}
+    role="switch"
+    aria-checked={logic === 'OR'}
+    aria-label={`Toggle between AND and OR logic. Currently set to ${logic}`}
+    className={`font-bold uppercase tracking-wide rounded transition-colors min-h-[44px] hover:opacity-80 ${
+      size === 'sm' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]'
+    } ${
+      logic === 'AND'
+        ? 'bg-accent text-muted-foreground'
+        : 'bg-warning-subtle text-warning-text'
+    }`}
     title={`Click to switch to ${logic === 'AND' ? 'OR' : 'AND'}`}
   >
     {logic}
@@ -741,40 +824,49 @@ const LogicToggle: React.FC<LogicToggleProps> = ({ logic, onChange, size = 'sm' 
 // Group Pill Component - displays a nested group
 interface GroupPillProps {
   group: FilterGroup;
-  getFieldLabel: (code: string) => string;
+  getPropertyLabel: (code: string) => string;
   onRemove: () => void;
   onEdit: () => void;
   onLogicChange: (logic: 'AND' | 'OR') => void;
 }
 
-const GroupPill: React.FC<GroupPillProps> = ({ group, getFieldLabel, onRemove, onEdit, onLogicChange }) => {
+const GroupPill: React.FC<GroupPillProps> = ({ group, getPropertyLabel, onRemove, onEdit, onLogicChange }) => {
   const conditionCount = group.children.length;
 
   return (
     <div
       onClick={onEdit}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-md text-xs cursor-pointer hover:bg-amber-100 hover:border-amber-300 transition-all group"
+      role="button"
+      aria-label={`Edit group with ${conditionCount} conditions using ${group.logic} logic`}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 min-h-[44px] rounded-md text-xs cursor-pointer transition-all group bg-warning-subtle border border-warning-border hover:opacity-80"
     >
-      <Parentheses className="h-3 w-3 text-amber-500" />
+      <Parentheses className="h-3 w-3 text-warning-text" />
       <div className="flex items-center gap-1">
         {group.children.slice(0, 2).map((child, idx) => {
           if (isFilterGroup(child)) {
             return (
-              <span key={child.id} className="text-amber-600">
+              <span key={child.id} className="text-warning-text">
                 {idx > 0 && <span className="mx-0.5">{group.logic}</span>}
                 (group)
               </span>
             );
           }
           return (
-            <span key={child.id} className="text-amber-700">
-              {idx > 0 && <span className="text-amber-500 mx-0.5">{group.logic}</span>}
-              <span className="font-medium">{getFieldLabel(child.field)}</span>
+            <span key={child.id} className="text-warning-text">
+              {idx > 0 && <span className="mx-0.5 text-warning-text">{group.logic}</span>}
+              <span className="font-medium">{getPropertyLabel(child.field)}</span>
             </span>
           );
         })}
         {conditionCount > 2 && (
-          <span className="text-amber-500">+{conditionCount - 2}</span>
+          <span className="text-warning-text">+{conditionCount - 2}</span>
         )}
       </div>
       <LogicToggle logic={group.logic} onChange={onLogicChange} size="sm" />
@@ -784,7 +876,8 @@ const GroupPill: React.FC<GroupPillProps> = ({ group, getFieldLabel, onRemove, o
           e.stopPropagation();
           onRemove();
         }}
-        className="ml-0.5 p-0.5 text-amber-400 hover:text-danger-600 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity"
+        aria-label="Remove group"
+        className="ml-0.5 p-0.5 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity text-warning-text hover:text-destructive"
       >
         <X className="h-3 w-3" />
       </button>
@@ -798,7 +891,7 @@ interface NodeRendererProps {
   index: number;
   parentLogic: 'AND' | 'OR';
   isFirst: boolean;
-  getFieldLabel: (code: string) => string;
+  getPropertyLabel: (code: string) => string;
   onRemove: () => void;
   onEdit: () => void;
   onLogicChange: (logic: 'AND' | 'OR') => void;
@@ -809,7 +902,7 @@ const NodeRenderer: React.FC<NodeRendererProps> = ({
   node,
   isFirst,
   parentLogic,
-  getFieldLabel,
+  getPropertyLabel,
   onRemove,
   onEdit,
   onLogicChange,
@@ -823,7 +916,7 @@ const NodeRenderer: React.FC<NodeRendererProps> = ({
       {isFilterGroup(node) ? (
         <GroupPill
           group={node}
-          getFieldLabel={getFieldLabel}
+          getPropertyLabel={getPropertyLabel}
           onRemove={onRemove}
           onEdit={onEdit}
           onLogicChange={onLogicChange}
@@ -831,7 +924,7 @@ const NodeRenderer: React.FC<NodeRendererProps> = ({
       ) : (
         <FilterPill
           rule={node}
-          fieldLabel={getFieldLabel(node.field)}
+          fieldLabel={getPropertyLabel(node.field)}
           onRemove={onRemove}
           onEdit={onEdit}
         />
@@ -844,12 +937,12 @@ const NodeRenderer: React.FC<NodeRendererProps> = ({
 interface GroupEditorProps {
   fields: { code: string; label: string; type?: string }[];
   group: FilterGroup;
-  getFieldLabel: (code: string) => string;
+  getPropertyLabel: (code: string) => string;
   onSave: (group: FilterGroup) => void;
   onCancel: () => void;
 }
 
-const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel, onSave, onCancel }) => {
+const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getPropertyLabel, onSave, onCancel }) => {
   const [localGroup, setLocalGroup] = useState<FilterGroup>({ ...group });
   const [showAddDropdown, setShowAddDropdown] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -896,35 +989,45 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30">
       <div
         ref={modalRef}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+        role="dialog"
+        aria-labelledby="group-editor-title"
+        aria-modal="true"
+        className="rounded-xl w-full max-w-lg mx-4 overflow-hidden bg-card shadow-xl"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted">
           <div className="flex items-center gap-2">
-            <Parentheses className="h-4 w-4 text-amber-500" />
-            <h3 className="text-sm font-semibold text-slate-900">Edit Group</h3>
+            <Parentheses className="h-4 w-4 text-warning-text" />
+            <h3 id="group-editor-title" className="text-sm font-semibold text-foreground">
+              Edit Group
+            </h3>
           </div>
-          <button type="button" onClick={onCancel} className="p-1 text-slate-400 hover:text-slate-600">
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Close group editor"
+            className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Logic Toggle */}
-        <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100">
+        <div className="px-4 py-3 bg-muted border-b border-border">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Match</span>
+            <span className="text-xs text-muted-foreground">Match</span>
             <LogicToggle logic={localGroup.logic} onChange={toggleLogic} size="md" />
-            <span className="text-xs text-slate-500">of the following conditions:</span>
+            <span className="text-xs text-muted-foreground">of the following conditions:</span>
           </div>
         </div>
 
         {/* Conditions */}
         <div className="p-4 max-h-64 overflow-y-auto">
           {localGroup.children.length === 0 ? (
-            <div className="text-center py-6 text-sm text-slate-400">
+            <div className="text-center py-6 text-sm text-muted-foreground">
               No conditions in this group
             </div>
           ) : (
@@ -932,13 +1035,19 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
               {localGroup.children.map((child, index) => {
                 if (isFilterGroup(child)) {
                   return (
-                    <div key={child.id} className="flex items-center gap-2 p-2 bg-amber-50 rounded-lg">
-                      <Parentheses className="h-4 w-4 text-amber-500" />
-                      <span className="text-sm text-amber-700">Nested group ({child.children.length} conditions)</span>
+                    <div
+                      key={child.id}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-warning-subtle"
+                    >
+                      <Parentheses className="h-4 w-4 text-warning-text" />
+                      <span className="text-sm text-warning-text">
+                        Nested group ({child.children.length} conditions)
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeCondition(index)}
-                        className="ml-auto p-1 text-amber-400 hover:text-danger-600"
+                        aria-label="Remove nested group"
+                        className="ml-auto p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-warning-text hover:text-destructive"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -949,7 +1058,7 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
                 return (
                   <div key={child.id} className="flex items-center gap-2">
                     {index > 0 && (
-                      <span className="text-[10px] font-bold text-slate-400 uppercase w-8">
+                      <span className="text-[10px] font-bold uppercase w-8 text-muted-foreground">
                         {localGroup.logic}
                       </span>
                     )}
@@ -966,16 +1075,29 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
                     ) : (
                       <div
                         onClick={() => setEditingIndex(index)}
-                        className="flex-1 flex items-center gap-2 p-2 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors group"
+                        role="button"
+                        aria-label={`Edit condition: ${getPropertyLabel(child.field)} ${getOperatorLabel(child.operator)}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setEditingIndex(index);
+                          }
+                        }}
+                        className="flex-1 flex items-center gap-2 p-2 min-h-[44px] rounded-lg cursor-pointer transition-colors group bg-muted hover:bg-accent"
                       >
-                        <span className="font-medium text-sm text-slate-700">{getFieldLabel(child.field)}</span>
-                        <span className="text-xs text-slate-500">{getOperatorLabel(child.operator)}</span>
+                        <span className="font-medium text-sm text-muted-foreground">
+                          {getPropertyLabel(child.field)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {getOperatorLabel(child.operator)}
+                        </span>
                         {operatorNeedsValue(child.operator) && (
                           child.operator === 'between' && child.value2
-                            ? <span className="text-sm text-slate-800">"{child.value}" to "{child.value2}"</span>
+                            ? <span className="text-sm text-foreground">"{child.value}" to "{child.value2}"</span>
                             : isRelativeDateOperator(child.operator)
-                              ? <span className="text-sm text-slate-800">{formatFilterValue(child.operator, child.value)}</span>
-                              : <span className="text-sm text-slate-800">"{child.value}"</span>
+                              ? <span className="text-sm text-foreground">{formatFilterValue(child.operator, child.value)}</span>
+                              : <span className="text-sm text-foreground">"{child.value}"</span>
                         )}
                         <button
                           type="button"
@@ -983,7 +1105,8 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
                             e.stopPropagation();
                             removeCondition(index);
                           }}
-                          className="ml-auto p-1 text-slate-300 hover:text-danger-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label={`Remove condition: ${getPropertyLabel(child.field)}`}
+                          className="ml-auto p-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1009,7 +1132,8 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
             <button
               type="button"
               onClick={() => setShowAddDropdown(true)}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-500 border border-dashed border-slate-300 rounded-lg hover:text-primary-600 hover:border-primary-300 hover:bg-primary-50 transition-colors"
+              aria-label="Add condition to group"
+              className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] text-sm font-medium rounded-lg border border-dashed transition-colors text-muted-foreground border-border hover:text-primary hover:border-primary hover:bg-primary/10"
             >
               <Plus className="h-4 w-4" />
               Add condition to group
@@ -1018,11 +1142,12 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-muted">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+            aria-label="Cancel and close"
+            className="px-4 py-2 min-h-[44px] text-sm font-medium rounded-lg border transition-colors text-muted-foreground bg-card border-border hover:bg-muted"
           >
             Cancel
           </button>
@@ -1030,7 +1155,12 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ fields, group, getFieldLabel,
             type="button"
             onClick={() => onSave(localGroup)}
             disabled={localGroup.children.length === 0}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 rounded-lg transition-colors"
+            aria-label="Save group"
+            className={`px-4 py-2 min-h-[44px] text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              localGroup.children.length > 0
+                ? 'bg-primary text-primary-foreground hover:opacity-90'
+                : 'bg-muted text-muted-foreground'
+            }`}
           >
             Save Group
           </button>
@@ -1049,8 +1179,8 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ index: number; group: FilterGroup } | null>(null);
 
-  const getFieldLabel = useCallback(
-    (fieldCode: string) => fields.find(f => f.code === fieldCode)?.label || fieldCode,
+  const getPropertyLabel = useCallback(
+    (propertyCode: string) => fields.find(f => f.code === propertyCode)?.label || propertyCode,
     [fields]
   );
 
@@ -1131,26 +1261,24 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
   };
 
   const hasFilters = filterGroup.children.length > 0;
-  const queryString = buildQueryString(filterGroup, getFieldLabel);
+  const queryString = buildQueryString(filterGroup, getPropertyLabel);
 
   return (
     <div
-      className="relative"
-      style={{
-        backgroundColor: 'var(--bg-elevated)',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}
+      className="relative bg-card border-b border-border"
+      role="region"
+      aria-label="Query builder filters"
     >
       {/* Main bar */}
       <div className="flex items-center gap-2 px-4 py-2 flex-wrap">
         {/* Label */}
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Filter
         </span>
 
         {/* Filter Nodes */}
         {hasFilters && (
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap" role="list" aria-label="Active filters">
             {filterGroup.children.map((node, index) => (
               <NodeRenderer
                 key={isFilterGroup(node) ? node.id : node.id}
@@ -1158,7 +1286,7 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
                 index={index}
                 parentLogic={filterGroup.logic}
                 isFirst={index === 0}
-                getFieldLabel={getFieldLabel}
+                getPropertyLabel={getPropertyLabel}
                 onRemove={() => removeCondition(index)}
                 onEdit={() => {
                   if (isFilterGroup(node)) {
@@ -1183,7 +1311,8 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
               setEditingIndex(null);
               setShowDropdown(true);
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-500 border border-dashed border-slate-300 rounded-md hover:text-primary-600 hover:border-primary-400 hover:bg-primary-50 transition-colors"
+            aria-label="Add filter condition"
+            className="inline-flex items-center gap-1 px-2 py-1 min-h-[44px] text-xs font-medium rounded-md border border-dashed transition-colors text-muted-foreground border-border hover:text-primary hover:border-primary hover:bg-primary/10"
             title="Add condition"
           >
             <Plus className="h-3 w-3" />
@@ -1192,7 +1321,8 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
           <button
             type="button"
             onClick={addGroup}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-600 border border-dashed border-amber-300 rounded-md hover:border-amber-400 hover:bg-amber-50 transition-colors"
+            aria-label="Add filter group"
+            className="inline-flex items-center gap-1 px-2 py-1 min-h-[44px] text-xs font-medium rounded-md border border-dashed transition-colors text-warning-text border-warning-border hover:bg-warning-subtle"
             title="Add group (for nested conditions)"
           >
             <Parentheses className="h-3 w-3" />
@@ -1205,10 +1335,8 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
           <button
             type="button"
             onClick={clearAll}
-            className="ml-auto text-[11px] transition-colors"
-            style={{ color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-danger)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            aria-label="Clear all filters"
+            className="ml-auto text-[11px] min-h-[44px] transition-colors text-muted-foreground hover:text-destructive"
           >
             Clear all
           </button>
@@ -1217,14 +1345,8 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
 
       {/* Query Preview */}
       {hasFilters && queryString && (
-        <div
-          className="px-4 py-1.5"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderTop: '1px solid var(--border-subtle)',
-          }}
-        >
-          <code className="text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+        <div className="px-4 py-1.5 bg-muted border-t border-border">
+          <code className="text-[11px] font-mono text-muted-foreground">
             {queryString}
           </code>
         </div>
@@ -1256,7 +1378,7 @@ export const QueryBuilderBar: React.FC<QueryBuilderBarProps> = ({
         <GroupEditor
           fields={fields}
           group={editingGroup.group}
-          getFieldLabel={getFieldLabel}
+          getPropertyLabel={getPropertyLabel}
           onSave={saveGroup}
           onCancel={() => setEditingGroup(null)}
         />

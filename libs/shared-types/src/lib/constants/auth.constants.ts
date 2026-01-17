@@ -87,23 +87,23 @@ export const RATE_LIMIT_CONSTANTS = {
  * Validation constants
  */
 export const VALIDATION_CONSTANTS = {
-  /** Maximum string field length */
+  /** Maximum string property length */
   MAX_STRING_LENGTH: 255,
 
-  /** Maximum text field length */
+  /** Maximum text property length */
   MAX_TEXT_LENGTH: 65535,
 
-  /** Maximum table name length */
-  MAX_TABLE_NAME_LENGTH: 100,
+  /** Maximum collection name length */
+  MAX_COLLECTION_NAME_LENGTH: 100,
 
-  /** Maximum field name length */
-  MAX_FIELD_NAME_LENGTH: 100,
+  /** Maximum property name length */
+  MAX_PROPERTY_NAME_LENGTH: 100,
 
-  /** Reserved field names that cannot be used */
-  RESERVED_FIELD_NAMES: ['id', 'created_at', 'updated_at', 'deleted_at'],
+  /** Reserved property names that cannot be used */
+  RESERVED_PROPERTY_NAMES: ['id', 'created_at', 'updated_at', 'deleted_at'],
 
-  /** Reserved table names */
-  RESERVED_TABLE_NAMES: ['user', 'users', 'role', 'roles', 'permission', 'permissions'],
+  /** Reserved collection names */
+  RESERVED_COLLECTION_NAMES: ['user', 'users', 'role', 'roles', 'permission', 'permissions'],
 } as const;
 
 /**

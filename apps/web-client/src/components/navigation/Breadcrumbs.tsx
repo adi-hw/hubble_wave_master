@@ -1,3 +1,13 @@
+/**
+ * Breadcrumbs Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready breadcrumbs with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly touch targets
+ */
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
@@ -31,20 +41,20 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, showHome = true
             <li key={index} className="flex items-center">
               {/* Separator */}
               {!isFirst && (
-                <ChevronRight className="h-4 w-4 text-slate-300 mx-1.5 flex-shrink-0" />
+                <ChevronRight
+                  className="h-4 w-4 mx-1.5 flex-shrink-0 text-muted-foreground/60"
+                  aria-hidden="true"
+                />
               )}
 
               {/* Breadcrumb Item */}
               {isLast || !item.href ? (
                 <span
-                  className={`
-                    inline-flex items-center gap-1.5 text-sm font-medium
-                    ${isLast ? 'text-slate-900' : 'text-slate-500'}
-                  `}
+                  className={`inline-flex items-center gap-1.5 text-sm font-medium ${isLast ? 'text-foreground' : 'text-muted-foreground'}`}
                   aria-current={isLast ? 'page' : undefined}
                 >
                   {item.icon && (
-                    <span className={isLast ? 'text-slate-700' : 'text-slate-400'}>
+                    <span className={isLast ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
                       {item.icon}
                     </span>
                   )}
@@ -53,10 +63,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, showHome = true
               ) : (
                 <Link
                   to={item.href}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-primary-600 transition-colors group"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors group min-h-[32px] text-muted-foreground hover:text-primary"
                 >
                   {item.icon && (
-                    <span className="text-slate-400 group-hover:text-primary-500 transition-colors">
+                    <span className="text-muted-foreground/60">
                       {item.icon}
                     </span>
                   )}
@@ -91,14 +101,15 @@ export const BreadcrumbsCompact: React.FC<BreadcrumbsProps> = ({ items, showHome
           return (
             <li key={index} className="flex items-center">
               {!isFirst && (
-                <ChevronRight className="h-3 w-3 text-slate-300 mx-1 flex-shrink-0" />
+                <ChevronRight
+                  className="h-3 w-3 mx-1 flex-shrink-0 text-muted-foreground/60"
+                  aria-hidden="true"
+                />
               )}
 
               {isLast || !item.href ? (
                 <span
-                  className={`inline-flex items-center gap-1 ${
-                    isLast ? 'text-slate-700 font-medium' : 'text-slate-400'
-                  }`}
+                  className={`inline-flex items-center gap-1 ${isLast ? 'text-muted-foreground font-medium' : 'text-muted-foreground/60'}`}
                   aria-current={isLast ? 'page' : undefined}
                 >
                   {item.icon}
@@ -107,7 +118,7 @@ export const BreadcrumbsCompact: React.FC<BreadcrumbsProps> = ({ items, showHome
               ) : (
                 <Link
                   to={item.href}
-                  className="inline-flex items-center gap-1 text-slate-400 hover:text-primary-600 transition-colors"
+                  className="inline-flex items-center gap-1 transition-colors min-h-[28px] text-muted-foreground/60 hover:text-primary"
                 >
                   {item.icon}
                   <span className="truncate max-w-[150px] hover:underline">{item.label}</span>

@@ -72,10 +72,10 @@ const eventTypeIcons: Record<AuditEventType, React.ElementType> = {
   permission_change: AlertTriangle,
 };
 
-const severityStyles: Record<AuditSeverity, { bg: string; color: string }> = {
-  info: { bg: 'rgba(59, 130, 246, 0.15)', color: 'rgb(59, 130, 246)' },
-  warning: { bg: 'rgba(245, 158, 11, 0.15)', color: 'rgb(245, 158, 11)' },
-  critical: { bg: 'rgba(239, 68, 68, 0.15)', color: 'rgb(239, 68, 68)' },
+const severityStyles: Record<AuditSeverity, { bg: string; text: string }> = {
+  info: { bg: 'bg-info-subtle', text: 'text-info-text' },
+  warning: { bg: 'bg-warning-subtle', text: 'text-warning-text' },
+  critical: { bg: 'bg-danger-subtle', text: 'text-danger-text' },
 };
 
 export const AuditLogViewer: React.FC = () => {
@@ -105,7 +105,7 @@ export const AuditLogViewer: React.FC = () => {
       params.set('page', pagination.page.toString());
       params.set('pageSize', pagination.pageSize.toString());
 
-      const response = await identityApi.get<AuditLogsResponse>(`/audit-logs?${params.toString()}`);
+      const response = await identityApi.get<AuditLogsResponse>(`/audit/events?${params.toString()}`);
       setApiAvailable(true);
       setLogs(response.data.data || []);
       setPagination(prev => ({
@@ -114,7 +114,6 @@ export const AuditLogViewer: React.FC = () => {
         totalPages: response.data.totalPages,
       }));
 
-      // Calculate stats from response
       const logData = response.data.data || [];
       setStats({
         total: response.data.total,
@@ -124,7 +123,6 @@ export const AuditLogViewer: React.FC = () => {
       });
     } catch (err: unknown) {
       console.error('Failed to fetch audit logs:', err);
-      // Check if it's a 404 error indicating the API doesn't exist
       const axiosError = err as { response?: { status?: number } };
       if (axiosError?.response?.status === 404) {
         setApiAvailable(false);
@@ -153,14 +151,14 @@ export const AuditLogViewer: React.FC = () => {
       if (dateRange.end) params.set('endDate', dateRange.end);
       params.set('format', 'csv');
 
-      const response = await identityApi.get(`/audit-logs/export?${params.toString()}`, {
+      const response = await identityApi.get(`/audit/events/export?${params.toString()}`, {
         responseType: 'blob',
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `audit-logs-${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `audit-events-${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -187,47 +185,37 @@ export const AuditLogViewer: React.FC = () => {
   if (loading && logs.length === 0 && apiAvailable === null) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--bg-primary, #6366f1)' }} />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // Show API not available state
   if (apiAvailable === false) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+            <h1 className="text-2xl font-semibold text-foreground">
               Audit Log
             </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted, #52525b)' }}>
+            <p className="text-sm mt-1 text-muted-foreground">
               View and analyze system activity and security events
             </p>
           </div>
         </div>
 
-        <div
-          className="rounded-xl p-12 text-center"
-          style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}
-        >
-          <div
-            className="h-16 w-16 rounded-full mx-auto mb-4 flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)' }}
-          >
-            <Activity className="h-8 w-8" style={{ color: 'rgb(59, 130, 246)' }} />
+        <div className="rounded-xl p-12 text-center bg-card border border-border">
+          <div className="h-16 w-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-info-subtle">
+            <Activity className="h-8 w-8 text-info-text" />
           </div>
-          <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary, #fafafa)' }}>
+          <h3 className="text-lg font-medium mb-2 text-foreground">
             Audit Logging Coming Soon
           </h3>
-          <p className="max-w-md mx-auto mb-4" style={{ color: 'var(--text-muted, #52525b)' }}>
+          <p className="max-w-md mx-auto mb-4 text-muted-foreground">
             The audit logging feature is not yet configured for this instance.
             Once enabled, you'll be able to track all system activity and security events.
           </p>
-          <div
-            className="inline-block rounded-lg px-4 py-2 text-sm"
-            style={{ backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', color: 'var(--text-secondary, #a1a1aa)' }}
-          >
+          <div className="inline-block rounded-lg px-4 py-2 text-sm bg-muted text-muted-foreground">
             Contact your system administrator to enable this feature
           </div>
         </div>
@@ -237,29 +225,26 @@ export const AuditLogViewer: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+          <h1 className="text-2xl font-semibold text-foreground">
             Audit Log
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted, #52525b)' }}>
+          <p className="text-sm mt-1 text-muted-foreground">
             View and analyze system activity and security events
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => fetchLogs()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors hover:opacity-80"
-            style={{ border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-secondary, #a1a1aa)' }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors hover:bg-muted border border-border text-muted-foreground"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors"
-            style={{ backgroundColor: 'var(--bg-primary, #6366f1)' }}
+            className="flex items-center gap-2 px-4 py-2 text-primary-foreground rounded-lg hover:opacity-90 transition-colors bg-primary"
           >
             <Download className="h-4 w-4" />
             Export
@@ -267,73 +252,71 @@ export const AuditLogViewer: React.FC = () => {
         </div>
       </div>
 
-      {/* Error Banner */}
       {error && (
-        <div className="mb-6 rounded-xl p-4 flex items-start gap-3" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-          <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <div className="mb-6 rounded-xl p-4 flex items-start gap-3 bg-danger-subtle">
+          <XCircle className="h-5 w-5 text-danger-text flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-medium text-red-600">{error}</p>
+            <p className="font-medium text-danger-text">{error}</p>
           </div>
         </div>
       )}
 
-      {/* Stats Bar */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+        <div className="rounded-xl p-3 bg-card border border-border">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)' }}>
-              <Activity className="h-4 w-4" style={{ color: 'rgb(59, 130, 246)' }} />
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-info-subtle">
+              <Activity className="h-4 w-4 text-info-text" />
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+              <p className="text-lg font-semibold text-foreground">
                 {stats.total}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <p className="text-xs text-muted-foreground">
                 Total Events
               </p>
             </div>
           </div>
         </div>
-        <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+        <div className="rounded-xl p-3 bg-card border border-border">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)' }}>
-              <AlertTriangle className="h-4 w-4" style={{ color: 'rgb(239, 68, 68)' }} />
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-danger-subtle">
+              <AlertTriangle className="h-4 w-4 text-danger-text" />
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+              <p className="text-lg font-semibold text-foreground">
                 {stats.critical}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <p className="text-xs text-muted-foreground">
                 Critical Events
               </p>
             </div>
           </div>
         </div>
-        <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+        <div className="rounded-xl p-3 bg-card border border-border">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)' }}>
-              <XCircle className="h-4 w-4" style={{ color: 'rgb(245, 158, 11)' }} />
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-warning-subtle">
+              <XCircle className="h-4 w-4 text-warning-text" />
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+              <p className="text-lg font-semibold text-foreground">
                 {stats.failed}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <p className="text-xs text-muted-foreground">
                 Failed Actions
               </p>
             </div>
           </div>
         </div>
-        <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+        <div className="rounded-xl p-3 bg-card border border-border">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(147, 51, 234, 0.15)' }}>
-              <FileText className="h-4 w-4" style={{ color: 'rgb(147, 51, 234)' }} />
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-purple-500/15">
+              <FileText className="h-4 w-4 text-purple-500" />
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary, #fafafa)' }}>
+              <p className="text-lg font-semibold text-foreground">
                 {stats.compliance}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted, #52525b)' }}>
+              <p className="text-xs text-muted-foreground">
                 Compliance Events
               </p>
             </div>
@@ -341,37 +324,26 @@ export const AuditLogViewer: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl p-4 mb-6" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+      <div className="rounded-xl p-4 mb-6 bg-card border border-border">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted, #52525b)' }} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search events..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2"
-                style={{
-                  border: '1px solid var(--border-default, #2a2a3c)',
-                  backgroundColor: 'var(--bg-surface-secondary, #1c1c26)',
-                  color: 'var(--text-primary, #fafafa)',
-                }}
+                className="w-full pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2 border border-border bg-muted text-foreground"
               />
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4" style={{ color: 'var(--text-muted, #52525b)' }} />
+            <Filter className="h-4 w-4 text-muted-foreground" />
             <select
               value={selectedSeverity}
               onChange={(e) => setSelectedSeverity(e.target.value)}
-              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
-              style={{
-                border: '1px solid var(--border-default, #2a2a3c)',
-                backgroundColor: 'var(--bg-surface-secondary, #1c1c26)',
-                color: 'var(--text-primary, #fafafa)',
-              }}
+              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2 border border-border bg-muted text-foreground"
             >
               <option value="all">All Severities</option>
               <option value="info">Info</option>
@@ -381,12 +353,7 @@ export const AuditLogViewer: React.FC = () => {
             <select
               value={selectedEventType}
               onChange={(e) => setSelectedEventType(e.target.value)}
-              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
-              style={{
-                border: '1px solid var(--border-default, #2a2a3c)',
-                backgroundColor: 'var(--bg-surface-secondary, #1c1c26)',
-                color: 'var(--text-primary, #fafafa)',
-              }}
+              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2 border border-border bg-muted text-foreground"
             >
               <option value="all">All Event Types</option>
               <option value="login">Login</option>
@@ -399,93 +366,78 @@ export const AuditLogViewer: React.FC = () => {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" style={{ color: 'var(--text-muted, #52525b)' }} />
+            <Calendar className="h-4 w-4 text-muted-foreground" />
             <input
               type="date"
               value={dateRange.start}
               onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
-              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
-              style={{
-                border: '1px solid var(--border-default, #2a2a3c)',
-                backgroundColor: 'var(--bg-surface-secondary, #1c1c26)',
-                color: 'var(--text-primary, #fafafa)',
-              }}
+              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2 border border-border bg-muted text-foreground"
             />
-            <span style={{ color: 'var(--text-muted, #52525b)' }}>to</span>
+            <span className="text-muted-foreground">to</span>
             <input
               type="date"
               value={dateRange.end}
               onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
-              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
-              style={{
-                border: '1px solid var(--border-default, #2a2a3c)',
-                backgroundColor: 'var(--bg-surface-secondary, #1c1c26)',
-                color: 'var(--text-primary, #fafafa)',
-              }}
+              className="px-3 py-2 rounded-lg focus:outline-none focus:ring-2 border border-border bg-muted text-foreground"
             />
           </div>
         </div>
       </div>
 
-      {/* Logs List */}
-      <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--bg-surface, #16161d)', border: '1px solid var(--border-default, #2a2a3c)' }}>
+      <div className="rounded-xl overflow-hidden bg-card border border-border">
         <div>
           {filteredLogs.map((log) => {
-            const Icon = eventTypeIcons[log.eventType];
+            const Icon = eventTypeIcons[log.eventType] || Activity;
             const isExpanded = expandedLog === log.id;
-            const severityStyle = severityStyles[log.severity];
+            const severityStyle = severityStyles[log.severity] || severityStyles.info;
 
             return (
               <div
                 key={log.id}
-                style={{ borderBottom: '1px solid var(--border-default, #2a2a3c)' }}
+                className="border-b border-border"
               >
                 <button
                   onClick={() => setExpandedLog(isExpanded ? null : log.id)}
-                  className="w-full px-6 py-4 text-left hover:opacity-90 transition-opacity"
+                  className="w-full px-6 py-4 text-left hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-start gap-4">
                     <div
-                      className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{
-                        backgroundColor: log.success ? 'var(--bg-surface-secondary, #1c1c26)' : 'rgba(239, 68, 68, 0.15)',
-                      }}
+                      className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        log.success ? 'bg-muted' : 'bg-danger-subtle'
+                      }`}
                     >
                       <Icon
-                        className="h-5 w-5"
-                        style={{
-                          color: log.success ? 'var(--text-secondary, #a1a1aa)' : 'rgb(239, 68, 68)',
-                        }}
+                        className={`h-5 w-5 ${
+                          log.success ? 'text-muted-foreground' : 'text-danger-text'
+                        }`}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <p className="font-medium" style={{ color: 'var(--text-primary, #fafafa)' }}>
+                        <p className="font-medium text-foreground">
                           {log.action}
                         </p>
                         <span
-                          className="px-2 py-0.5 rounded text-xs font-medium"
-                          style={{ backgroundColor: severityStyle.bg, color: severityStyle.color }}
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${severityStyle.bg} ${severityStyle.text}`}
                         >
                           {log.severity}
                         </span>
                         {log.complianceFlags?.map((flag) => (
                           <span
                             key={flag}
-                            className="px-2 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: 'rgba(147, 51, 234, 0.15)', color: 'rgb(147, 51, 234)' }}
+                            className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/15 text-purple-500"
                           >
                             {flag}
                           </span>
                         ))}
                         {!log.success && (
-                          <span className="flex items-center gap-1 text-xs text-red-600">
+                          <span className="flex items-center gap-1 text-xs text-danger-text">
                             <XCircle className="h-3 w-3" />
                             Failed
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-4 mt-2 text-sm" style={{ color: 'var(--text-muted, #52525b)' }}>
+                      <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <User className="h-4 w-4" />
                           {log.actor.name} ({log.actor.email})
@@ -499,7 +451,7 @@ export const AuditLogViewer: React.FC = () => {
                         <span>IP: {log.ipAddress}</span>
                       </div>
                     </div>
-                    <div className="flex-shrink-0" style={{ color: 'var(--text-muted, #52525b)' }}>
+                    <div className="flex-shrink-0 text-muted-foreground">
                       {isExpanded ? (
                         <ChevronDown className="h-5 w-5" />
                       ) : (
@@ -509,53 +461,43 @@ export const AuditLogViewer: React.FC = () => {
                   </div>
                 </button>
 
-                {/* Expanded Details */}
                 {isExpanded && (
                   <div className="px-6 pb-4 pt-0">
-                    <div
-                      className="ml-14 rounded-lg p-4 space-y-4"
-                      style={{ backgroundColor: 'var(--bg-surface-secondary, #1c1c26)', border: '1px solid var(--border-default, #2a2a3c)' }}
-                    >
+                    <div className="ml-14 rounded-lg p-4 space-y-4 bg-muted border border-border">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <h4
-                            className="text-xs font-medium uppercase tracking-wide mb-2"
-                            style={{ color: 'var(--text-muted, #52525b)' }}
-                          >
+                          <h4 className="text-xs font-medium uppercase tracking-wide mb-2 text-muted-foreground">
                             Actor Details
                           </h4>
                           <dl className="space-y-1 text-sm">
                             <div className="flex justify-between">
-                              <dt style={{ color: 'var(--text-muted, #52525b)' }}>Type:</dt>
-                              <dd className="capitalize" style={{ color: 'var(--text-primary, #fafafa)' }}>
+                              <dt className="text-muted-foreground">Type:</dt>
+                              <dd className="capitalize text-foreground">
                                 {log.actor.type}
                               </dd>
                             </div>
                             <div className="flex justify-between">
-                              <dt style={{ color: 'var(--text-muted, #52525b)' }}>ID:</dt>
-                              <dd className="font-mono text-xs" style={{ color: 'var(--text-primary, #fafafa)' }}>
+                              <dt className="text-muted-foreground">ID:</dt>
+                              <dd className="font-mono text-xs text-foreground">
                                 {log.actor.id}
                               </dd>
                             </div>
                           </dl>
                         </div>
                         <div>
-                          <h4
-                            className="text-xs font-medium uppercase tracking-wide mb-2"
-                            style={{ color: 'var(--text-muted, #52525b)' }}
-                          >
+                          <h4 className="text-xs font-medium uppercase tracking-wide mb-2 text-muted-foreground">
                             Resource
                           </h4>
                           <dl className="space-y-1 text-sm">
                             <div className="flex justify-between">
-                              <dt style={{ color: 'var(--text-muted, #52525b)' }}>Type:</dt>
-                              <dd className="capitalize" style={{ color: 'var(--text-primary, #fafafa)' }}>
+                              <dt className="text-muted-foreground">Type:</dt>
+                              <dd className="capitalize text-foreground">
                                 {log.resource.type}
                               </dd>
                             </div>
                             <div className="flex justify-between">
-                              <dt style={{ color: 'var(--text-muted, #52525b)' }}>Name:</dt>
-                              <dd style={{ color: 'var(--text-primary, #fafafa)' }}>
+                              <dt className="text-muted-foreground">Name:</dt>
+                              <dd className="text-foreground">
                                 {log.resource.name}
                               </dd>
                             </div>
@@ -564,42 +506,27 @@ export const AuditLogViewer: React.FC = () => {
                       </div>
 
                       <div>
-                        <h4
-                          className="text-xs font-medium uppercase tracking-wide mb-2"
-                          style={{ color: 'var(--text-muted, #52525b)' }}
-                        >
+                        <h4 className="text-xs font-medium uppercase tracking-wide mb-2 text-muted-foreground">
                           Event Details
                         </h4>
-                        <pre
-                          className="text-xs rounded p-3 overflow-x-auto"
-                          style={{ backgroundColor: 'var(--bg-surface, #16161d)', color: 'var(--text-secondary, #a1a1aa)' }}
-                        >
+                        <pre className="text-xs rounded p-3 overflow-x-auto bg-card text-muted-foreground">
                           {JSON.stringify(log.details, null, 2)}
                         </pre>
                       </div>
 
                       {log.userAgent && (
                         <div>
-                          <h4
-                            className="text-xs font-medium uppercase tracking-wide mb-2"
-                            style={{ color: 'var(--text-muted, #52525b)' }}
-                          >
+                          <h4 className="text-xs font-medium uppercase tracking-wide mb-2 text-muted-foreground">
                             User Agent
                           </h4>
-                          <p className="text-xs font-mono" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
+                          <p className="text-xs font-mono text-muted-foreground">
                             {log.userAgent}
                           </p>
                         </div>
                       )}
 
-                      <div
-                        className="flex items-center gap-2 pt-2"
-                        style={{ borderTop: '1px solid var(--border-default, #2a2a3c)' }}
-                      >
-                        <button
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:opacity-80"
-                          style={{ color: 'var(--bg-primary, #6366f1)' }}
-                        >
+                      <div className="flex items-center gap-2 pt-2 border-t border-border">
+                        <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-card text-primary">
                           <ExternalLink className="h-4 w-4" />
                           View Full Record
                         </button>
@@ -614,11 +541,11 @@ export const AuditLogViewer: React.FC = () => {
 
         {filteredLogs.length === 0 && !loading && (
           <div className="p-12 text-center">
-            <Activity className="h-12 w-12 mx-auto mb-4" style={{ color: 'var(--text-muted, #52525b)' }} />
-            <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary, #fafafa)' }}>
+            <Activity className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2 text-foreground">
               No Events Found
             </h3>
-            <p style={{ color: 'var(--text-muted, #52525b)' }}>
+            <p className="text-muted-foreground">
               {logs.length === 0
                 ? 'No audit events have been recorded yet.'
                 : 'No audit events match your current filters.'}
@@ -626,13 +553,9 @@ export const AuditLogViewer: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div
-            className="flex items-center justify-between px-6 py-4"
-            style={{ borderTop: '1px solid var(--border-default, #2a2a3c)' }}
-          >
-            <div className="text-sm" style={{ color: 'var(--text-muted, #52525b)' }}>
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+            <div className="text-sm text-muted-foreground">
               Showing {((pagination.page - 1) * pagination.pageSize) + 1} to{' '}
               {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} events
             </div>
@@ -640,16 +563,14 @@ export const AuditLogViewer: React.FC = () => {
               <button
                 onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
                 disabled={pagination.page === 1}
-                className="px-3 py-1.5 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-80"
-                style={{ border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-secondary, #a1a1aa)' }}
+                className="px-3 py-1.5 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted border border-border text-muted-foreground"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                 disabled={pagination.page >= pagination.totalPages}
-                className="px-3 py-1.5 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-80"
-                style={{ border: '1px solid var(--border-default, #2a2a3c)', color: 'var(--text-secondary, #a1a1aa)' }}
+                className="px-3 py-1.5 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted border border-border text-muted-foreground"
               >
                 Next
               </button>

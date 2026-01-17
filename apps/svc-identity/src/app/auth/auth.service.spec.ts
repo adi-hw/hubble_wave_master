@@ -505,9 +505,9 @@ describe('GeolocationService', () => {
     // For real testing, use Test.createTestingModule with HttpModule
   });
 
-  // These tests would need proper HttpModule setup
+  // Skipped: requires HttpModule setup
   it.skip('should lookup IP address', async () => {
-    // TODO: Implement with proper HttpModule mocking
+    // Requires proper HttpModule mocking
   });
 
   it('should identify private IPs', () => {

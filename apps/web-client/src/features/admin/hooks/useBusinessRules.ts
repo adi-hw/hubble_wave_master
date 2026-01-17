@@ -269,14 +269,17 @@ export function useBusinessRulesGroupedByType(
 }
 
 /**
- * Hook to get rules for a specific table
+ * Hook to get rules for a specific collection
  */
-export function useTableBusinessRules(
-  tableCode: string,
+export function useCollectionBusinessRules(
+  collectionCode: string,
   options: Omit<UseBusinessRulesListOptions, 'targetTable'> = {}
 ): UseBusinessRulesListReturn {
   return useBusinessRulesList({
     ...options,
-    targetTable: tableCode,
+    targetTable: collectionCode,
   });
 }
+
+/** @deprecated Use useCollectionBusinessRules instead */
+export const useTableBusinessRules = useCollectionBusinessRules;

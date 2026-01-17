@@ -70,78 +70,84 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   return (
-    <div className="border rounded-md overflow-hidden bg-white">
-      {/* Toolbar */}
-      <div className="flex items-center gap-1 p-2 border-b bg-gray-50">
+    <div className="rounded-md overflow-hidden bg-card border border-border">
+      <div
+        className="flex items-center gap-1 p-2 bg-muted border-b border-border"
+        role="toolbar"
+        aria-label="Text formatting toolbar"
+      >
         <button
           type="button"
           onClick={() => execCommand('bold')}
-          className="p-1.5 rounded hover:bg-gray-200 text-gray-700"
+          className="p-1.5 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-foreground hover:bg-accent"
           disabled={readOnly}
           title="Bold"
+          aria-label="Bold"
         >
           <Bold size={16} />
         </button>
         <button
           type="button"
           onClick={() => execCommand('italic')}
-          className="p-1.5 rounded hover:bg-gray-200 text-gray-700"
+          className="p-1.5 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-foreground hover:bg-accent"
           disabled={readOnly}
           title="Italic"
+          aria-label="Italic"
         >
           <Italic size={16} />
         </button>
         <button
           type="button"
           onClick={() => execCommand('underline')}
-          className="p-1.5 rounded hover:bg-gray-200 text-gray-700"
+          className="p-1.5 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-foreground hover:bg-accent"
           disabled={readOnly}
           title="Underline"
+          aria-label="Underline"
         >
           <Underline size={16} />
         </button>
-        <div className="w-px h-4 bg-gray-300 mx-1" />
+        <div className="w-px h-4 mx-1 bg-border" />
         <button
           type="button"
           onClick={() => execCommand('insertUnorderedList')}
-          className="p-1.5 rounded hover:bg-gray-200 text-gray-700"
+          className="p-1.5 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-foreground hover:bg-accent"
           disabled={readOnly}
           title="Bullet List"
+          aria-label="Bullet List"
         >
           <List size={16} />
         </button>
         <button
           type="button"
           onClick={() => execCommand('insertOrderedList')}
-          className="p-1.5 rounded hover:bg-gray-200 text-gray-700"
+          className="p-1.5 rounded min-h-[44px] min-w-[44px] flex items-center justify-center text-foreground hover:bg-accent"
           disabled={readOnly}
           title="Numbered List"
+          aria-label="Numbered List"
         >
           <ListOrdered size={16} />
         </button>
       </div>
 
-      {/* Editor Area */}
       <div
         ref={editorRef}
         contentEditable={!readOnly}
         onInput={handleInput}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
-        className="p-3 min-h-[150px] outline-none prose prose-sm max-w-none"
+        className="p-3 min-h-[150px] outline-none prose prose-sm max-w-none empty-cells-show"
+        role="textbox"
+        aria-label="Rich text editor"
+        aria-multiline="true"
         data-placeholder={placeholder}
-        style={{
-          emptyCells: 'show',
-        }}
       />
       
-      {/* Placeholder styling hack */}
       <style>{`
         [contenteditable]:empty:before {
           content: attr(data-placeholder);
-          color: #9ca3af;
+          color: hsl(var(--muted-foreground));
           pointer-events: none;
-          display: block; /* For Firefox */
+          display: block;
         }
       `}</style>
     </div>

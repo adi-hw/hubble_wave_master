@@ -1,20 +1,12 @@
+/**
+ * CommitmentPanel
+ * HubbleWave Platform - Phase 3
+ *
+ * Panel displaying commitment trackers for a specific record.
+ */
 
-import React, { useEffect, useState } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardContent, 
-  Typography, 
-  IconButton, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemSecondaryAction,
-  Menu,
-  MenuItem,
-  CircularProgress
-} from '@mui/material';
-import { MoreVert as MoreIcon, PlayArrow, Pause, Cancel } from '@mui/icons-material';
+import React, { useEffect, useState, useRef } from 'react';
+import { MoreVertical, Play, Pause, XCircle, Loader2 } from 'lucide-react';
 import { commitmentApi, CommitmentTracker } from '../../../services/commitmentApi';
 import { CommitmentBadge } from './CommitmentBadge';
 
@@ -26,12 +18,22 @@ interface CommitmentPanelProps {
 export const CommitmentPanel: React.FC<CommitmentPanelProps> = ({ collectionCode, recordId }) => {
   const [trackers, setTrackers] = useState<CommitmentTracker[]>([]);
   const [loading, setLoading] = useState(true);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedTracker, setSelectedTracker] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadTrackers();
   }, [collectionCode, recordId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadTrackers = async () => {
     try {
@@ -40,70 +42,97 @@ export const CommitmentPanel: React.FC<CommitmentPanelProps> = ({ collectionCode
     } catch (error) {
       console.error('Failed to load commitments', error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>, trackerId: string) => {
-    setAnchorEl(event.currentTarget);
-    setSelectedTracker(trackerId);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-    setSelectedTracker(null);
-  };
-
-  const handleAction = async (action: 'pause' | 'resume' | 'cancel') => {
-    if (!selectedTracker) return;
+  const handleAction = async (trackerId: string, action: 'pause' | 'resume' | 'cancel') => {
     try {
-      if (action === 'pause') await commitmentApi.pauseTracker(selectedTracker, 'User paused');
-      if (action === 'resume') await commitmentApi.resumeTracker(selectedTracker);
-      if (action === 'cancel') await commitmentApi.cancelTracker(selectedTracker, 'User cancelled');
-      
+      if (action === 'pause') await commitmentApi.pauseTracker(trackerId, 'User paused');
+      if (action === 'resume') await commitmentApi.resumeTracker(trackerId);
+      if (action === 'cancel') await commitmentApi.cancelTracker(trackerId, 'User cancelled');
       await loadTrackers();
     } catch (error) {
       console.error(`Failed to ${action} tracker`, error);
     }
-    handleClose();
+    setMenuOpen(null);
   };
 
-  if (loading) return <CircularProgress size={20} />;
+  if (loading) {
+    return <Loader2 className="w-5 h-5 animate-spin text-primary" />;
+  }
+
   if (trackers.length === 0) return null;
 
   return (
-    <Card sx={{ mb: 2 }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>Service Commitments</Typography>
-        <List>
-          {trackers.map((tracker) => (
-            <ListItem key={tracker.id} divider>
-              <ListItemText
-                primary={tracker.commitmentDefinition?.name || tracker.tracker_type}
-                secondary={`Target: ${new Date(tracker.target_at).toLocaleString()}`}
-              />
-              <Box mr={2}>
-                 <CommitmentBadge tracker={tracker} />
-              </Box>
-              <ListItemSecondaryAction>
-                <IconButton edge="end" onClick={(e) => handleMenuClick(e, tracker.id)}>
-                  <MoreIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-      </CardContent>
+    <div className="rounded-lg border mb-4 bg-card border-border">
+      <div className="p-4">
+        <h3 className="text-lg font-semibold mb-3 text-foreground">
+          Service Commitments
+        </h3>
 
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleClose}
-      >
-        <MenuItem onClick={() => handleAction('pause')}><Pause fontSize="small" sx={{ mr: 1 }}/> Pause</MenuItem>
-        <MenuItem onClick={() => handleAction('resume')}><PlayArrow fontSize="small" sx={{ mr: 1 }}/> Resume</MenuItem>
-        <MenuItem onClick={() => handleAction('cancel')}><Cancel fontSize="small" sx={{ mr: 1 }}/> Cancel</MenuItem>
-      </Menu>
-    </Card>
+        <div className="space-y-2">
+          {trackers.map((tracker) => (
+            <div
+              key={tracker.id}
+              className="flex items-center justify-between py-2 border-b border-border"
+            >
+              <div className="flex-1">
+                <div className="text-sm font-medium text-foreground">
+                  {tracker.commitmentDefinition?.name || tracker.tracker_type}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Target: {new Date(tracker.target_at).toLocaleString()}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <CommitmentBadge tracker={tracker} />
+
+                <div className="relative" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(menuOpen === tracker.id ? null : tracker.id)}
+                    className="p-1.5 rounded transition-colors hover:bg-hover"
+                    aria-label="More actions"
+                  >
+                    <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                  </button>
+
+                  {menuOpen === tracker.id && (
+                    <div className="absolute right-0 z-10 mt-1 w-36 rounded border shadow-lg bg-card border-border">
+                      <button
+                        type="button"
+                        onClick={() => handleAction(tracker.id, 'pause')}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-hover text-foreground"
+                      >
+                        <Pause className="w-4 h-4" />
+                        Pause
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAction(tracker.id, 'resume')}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-hover text-foreground"
+                      >
+                        <Play className="w-4 h-4" />
+                        Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAction(tracker.id, 'cancel')}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-hover text-foreground"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };

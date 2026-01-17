@@ -1,5 +1,5 @@
 /**
- * Navigation Components (V2)
+ * Navigation Components
  *
  * Re-export all navigation components for easy imports.
  */

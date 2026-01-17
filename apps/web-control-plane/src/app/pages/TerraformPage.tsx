@@ -1,52 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Button,
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Tabs,
-  Tab,
-  Grid,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  Container
-} from '@mui/material';
-import {
-  Loader,
+  Loader2,
   RefreshCw,
   Plus,
   Clock,
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Eye,
   Download,
   Square,
   ChevronUp,
+  X,
 } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, TerraformJob, Customer } from '../services/api';
 
 const statusConfig = {
   pending: { color: colors.text.muted, bg: colors.glass.medium, icon: Clock, label: 'Pending' },
-  running: { color: colors.info.base, bg: colors.info.glow, icon: Loader, label: 'Running' },
+  running: { color: colors.info.base, bg: colors.info.glow, icon: Loader2, label: 'Running' },
   completed: { color: colors.success.base, bg: colors.success.glow, icon: CheckCircle, label: 'Completed' },
   failed: { color: colors.danger.base, bg: colors.danger.glow, icon: XCircle, label: 'Failed' },
   cancelled: { color: colors.warning.base, bg: colors.warning.glow, icon: AlertTriangle, label: 'Cancelled' },
@@ -62,7 +34,7 @@ const typeConfig = {
 const envConfig: Record<string, { color: string; bg: string }> = {
   production: { color: colors.success.base, bg: colors.success.glow },
   staging: { color: colors.warning.base, bg: colors.warning.glow },
-  development: { color: colors.info.base, bg: colors.info.glow },
+  dev: { color: colors.info.base, bg: colors.info.glow },
 };
 
 function formatDuration(seconds: number | undefined): string {
@@ -82,55 +54,41 @@ function formatDate(dateStr: string): string {
   });
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <Box role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && children}
-    </Box>
-  );
-}
-
 export function TerraformPage() {
+  const [searchParams] = useSearchParams();
+  const instanceId = searchParams.get('instanceId') || undefined;
   const [tabValue, setTabValue] = useState(0);
   const [jobs, setJobs] = useState<TerraformJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<TerraformJob | null>(null);
   const [showNewJobDialog, setShowNewJobDialog] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll, _setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // New Job State
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJobData, setNewJobData] = useState({
     customerId: '',
-    environment: 'development',
+    environment: 'dev',
     operation: 'plan',
-    version: '1.5.0',
+    version: '',
   });
   const [creatingJob, setCreatingJob] = useState(false);
 
-  // Fetch initial data
   const fetchData = async () => {
     try {
       setLoading(true);
       const [jobsData, customersData] = await Promise.all([
-        controlPlaneApi.getTerraformJobs(),
-        controlPlaneApi.getCustomers({ limit: 100 }), // Get all customers for dropdown
+        controlPlaneApi.getTerraformJobs(instanceId ? { instanceId } : undefined),
+        controlPlaneApi.getCustomers({ limit: 100 }),
       ]);
       setJobs(jobsData.data);
+      if (selectedJob) {
+        const updated = jobsData.data.find((job) => job.id === selectedJob.id) || null;
+        setSelectedJob(updated);
+      }
       setCustomers(customersData.data);
-      setError(null);
     } catch (err: any) {
       console.error('Failed to fetch data:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -138,26 +96,22 @@ export function TerraformPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [instanceId]);
 
-  // Poll for updates on active jobs
   useEffect(() => {
     const interval = setInterval(async () => {
-      if (jobs.some(j => j.status === 'running' || j.status === 'pending')) {
-        const data = await controlPlaneApi.getTerraformJobs();
+      if (jobs.some((j) => j.status === 'running' || j.status === 'pending')) {
+        const data = await controlPlaneApi.getTerraformJobs(instanceId ? { instanceId } : undefined);
         setJobs(data.data);
-        
-        // Update selected job if it's still visible
         if (selectedJob) {
-          const updated = data.data.find(j => j.id === selectedJob.id);
+          const updated = data.data.find((j) => j.id === selectedJob.id);
           if (updated) setSelectedJob(updated);
         }
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [jobs, selectedJob]);
+  }, [jobs, selectedJob, instanceId]);
 
-  // Auto-scroll logs
   useEffect(() => {
     if (selectedJob?.status === 'running' && autoScroll) {
       logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -174,13 +128,11 @@ export function TerraformPage() {
         version: newJobData.version,
       });
       setShowNewJobDialog(false);
-      // Refresh jobs immediately
       const data = await controlPlaneApi.getTerraformJobs();
       setJobs(data.data);
-      setNewJobData({ ...newJobData, customerId: '' }); // Reset only customer
+      setNewJobData({ ...newJobData, customerId: '' });
     } catch (err: any) {
       console.error('Failed to create job:', err);
-      // In a real app, show a toast or alert. For now, we'll just log it.
     } finally {
       setCreatingJob(false);
     }
@@ -188,84 +140,113 @@ export function TerraformPage() {
 
   const activeJobs = jobs.filter((j) => j.status === 'running' || j.status === 'pending');
   const recentJobs = jobs.filter((j) => j.status === 'completed' || j.status === 'failed' || j.status === 'cancelled');
+  const handleDownloadLogs = () => {
+    if (!selectedJob) return;
+    const lines = (selectedJob.output || []).map((log) => {
+      const time = log.time ? `[${log.time}]` : '';
+      return `${time} ${log.level.toUpperCase()} ${log.message}`.trim();
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `terraform-${selectedJob.id}.log`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCancelJob = async () => {
+    if (!selectedJob) return;
+    const confirmed = window.confirm('Stop this Terraform operation?');
+    if (!confirmed) return;
+    try {
+      await controlPlaneApi.cancelTerraformJob(selectedJob.id);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to cancel job:', err);
+    }
+  };
 
   const renderJobRow = (job: TerraformJob) => {
-    const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'completed': return colors.success.base;
-    case 'failed': return colors.danger.base;
-    case 'running': return colors.info.base;
-    default: return colors.text.secondary;
-  }
-};
-    const status = statusConfig[job.status] || { icon: Clock, color: colors.text.muted, bg: colors.glass.medium, label: job.status };
-    const type = typeConfig[job.operation] || { color: colors.text.secondary, label: job.operation };
+    const status = statusConfig[job.status as keyof typeof statusConfig] || { icon: Clock, color: colors.text.muted, bg: colors.glass.medium, label: job.status };
+    const type = typeConfig[job.operation as keyof typeof typeConfig] || { color: colors.text.secondary, label: job.operation };
     const env = envConfig[job.environment] || { color: colors.text.secondary, bg: colors.glass.medium };
     const StatusIcon = status.icon;
 
     return (
-      <TableRow
+      <tr
         key={job.id}
-        hover
         onClick={() => setSelectedJob(job)}
-        sx={{ cursor: 'pointer', bgcolor: selectedJob?.id === job.id ? colors.glass.subtle : 'transparent' }}
+        className="cursor-pointer transition-colors"
+        style={{
+          borderTop: `1px solid ${colors.glass.border}`,
+          backgroundColor: selectedJob?.id === job.id ? colors.glass.subtle : 'transparent',
+        }}
+        onMouseEnter={(e) => {
+          if (selectedJob?.id !== job.id) e.currentTarget.style.backgroundColor = colors.glass.subtle;
+        }}
+        onMouseLeave={(e) => {
+          if (selectedJob?.id !== job.id) e.currentTarget.style.backgroundColor = 'transparent';
+        }}
       >
-        <TableCell>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
             <StatusIcon
               size={16}
-              color={status.color}
-              style={job.status === 'running' ? { animation: 'spin 1s linear infinite' } : undefined}
+              style={{ color: status.color }}
+              className={job.status === 'running' ? 'animate-spin' : ''}
             />
-            <Chip
-              size="small"
-              label={status.label}
-              sx={{ bgcolor: status.bg, color: status.color, fontWeight: 600, fontSize: 11 }}
-            />
-          </Box>
-        </TableCell>
-        <TableCell>
-          <Chip
-            size="small"
-            label={type.label}
-            sx={{ bgcolor: colors.glass.medium, color: type.color, fontWeight: 600, fontSize: 11 }}
-          />
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" sx={{ color: colors.text.primary, fontWeight: 500 }}>
+            <span
+              className="px-2 py-0.5 rounded text-xs font-semibold"
+              style={{ backgroundColor: status.bg, color: status.color }}
+            >
+              {status.label}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <span
+            className="px-2 py-0.5 rounded text-xs font-semibold"
+            style={{ backgroundColor: colors.glass.medium, color: type.color }}
+          >
+            {type.label}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="text-sm font-medium" style={{ color: colors.text.primary }}>
             {job.customerCode}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          <Chip
-            size="small"
-            label={job.environment}
-            sx={{ bgcolor: env.bg, color: env.color, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }}
-          />
-        </TableCell>
-        <TableCell>
-          <Typography variant="caption" sx={{ color: colors.text.muted }}>{job.region || '-'}</Typography>
-        </TableCell>
-        <TableCell>
-           <Typography variant="caption" sx={{ color: colors.text.muted }}>{job.version || 'latest'}</Typography>
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" sx={{ color: colors.text.secondary }}>
-            {formatDate(job.createdAt)}
-          </Typography>
-        </TableCell>
-         <TableCell>
-            <Typography variant="body2" sx={{ color: colors.text.secondary, fontFamily: 'monospace' }}>
-                {formatDuration(job.duration)}
-            </Typography>
-         </TableCell>
-      </TableRow>
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <span
+            className="px-2 py-0.5 rounded text-xs font-semibold capitalize"
+            style={{ backgroundColor: env.bg, color: env.color }}
+          >
+            {job.environment}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="text-sm" style={{ color: colors.text.muted }}>{job.region || '-'}</span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="text-sm" style={{ color: colors.text.muted }}>{job.version || 'latest'}</span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="text-sm" style={{ color: colors.text.secondary }}>{formatDate(job.createdAt)}</span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="text-sm font-mono" style={{ color: colors.text.secondary }}>
+            {formatDuration(job.duration)}
+          </span>
+        </td>
+      </tr>
     );
   };
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-    <Box>
+    <div>
       <style>
         {`
           @keyframes spin {
@@ -276,309 +257,391 @@ export function TerraformPage() {
       </style>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: colors.text.primary }}>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: colors.text.primary }}>
             Terraform Console
-          </Typography>
-          <Typography variant="body2" sx={{ color: colors.text.tertiary, mt: 0.5 }}>
+          </h1>
+          <p className="text-sm mt-1" style={{ color: colors.text.tertiary }}>
             Manage infrastructure provisioning and deployments
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button variant="outlined" startIcon={<RefreshCw size={16} />} onClick={fetchData} disabled={loading}>
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50"
+            style={{ borderColor: colors.glass.border, color: colors.text.secondary }}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<Plus size={16} />}
+          </button>
+          <button
+            type="button"
             onClick={() => setShowNewJobDialog(true)}
-            sx={{
-              bgcolor: colors.brand.primary,
-              '&:hover': { bgcolor: colors.brand.secondary },
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-opacity hover:opacity-90"
+            style={{
+              background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
             }}
           >
+            <Plus size={18} />
             New Job
-          </Button>
-        </Box>
-      </Box>
+          </button>
+        </div>
+      </div>
 
-      {/* Stats Summary */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* ... (Existing stats cards logic kept same for brevity, can be copy-pasted if needed, but assuming user wants fixes foremost) ... */}
-        {/* Re-implementing simplified stats to ensure file completeness */}
-        <Grid item xs={3}>
-            <Card sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Loader size={24} color={colors.info.base} />
-                    <Box>
-                        <Typography variant="h5" fontWeight="bold">
-                            {jobs.filter((j) => j.status === 'running').length}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">Running</Typography>
-                    </Box>
-                </Box>
-            </Card>
-        </Grid>
-        <Grid item xs={3}>
-            <Card sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Clock size={24} color={colors.text.muted} />
-                    <Box>
-                        <Typography variant="h5" fontWeight="bold">
-                            {jobs.filter((j) => j.status === 'pending').length}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">Pending</Typography>
-                    </Box>
-                </Box>
-            </Card>
-        </Grid>
-        <Grid item xs={3}>
-             <Card sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <CheckCircle size={24} color={colors.success.base} />
-                    <Box>
-                        <Typography variant="h5" fontWeight="bold">
-                            {jobs.filter((j) => j.status === 'completed').length}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">Completed</Typography>
-                    </Box>
-                </Box>
-            </Card>
-        </Grid>
-        <Grid item xs={3}>
-             <Card sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <XCircle size={24} color={colors.danger.base} />
-                    <Box>
-                        <Typography variant="h5" fontWeight="bold">
-                            {jobs.filter((j) => j.status === 'failed').length}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">Failed</Typography>
-                    </Box>
-                </Box>
-            </Card>
-        </Grid>
-      </Grid>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          { icon: Loader2, count: jobs.filter((j) => j.status === 'running').length, label: 'Running', color: colors.info.base },
+          { icon: Clock, count: jobs.filter((j) => j.status === 'pending').length, label: 'Pending', color: colors.text.muted },
+          { icon: CheckCircle, count: jobs.filter((j) => j.status === 'completed').length, label: 'Completed', color: colors.success.base },
+          { icon: XCircle, count: jobs.filter((j) => j.status === 'failed').length, label: 'Failed', color: colors.danger.base },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="p-4 rounded-2xl border"
+            style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+          >
+            <div className="flex items-center gap-3">
+              <stat.icon size={24} style={{ color: stat.color }} />
+              <div>
+                <div className="text-xl font-bold" style={{ color: colors.text.primary }}>
+                  {stat.count}
+                </div>
+                <div className="text-sm" style={{ color: colors.text.secondary }}>
+                  {stat.label}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Main content */}
-      <Grid container spacing={3}>
+      {/* Main Content */}
+      <div className="grid grid-cols-2 gap-6">
         {/* Jobs List */}
-        <Grid item xs={selectedJob ? 6 : 12}>
-          <Card>
-            <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: `1px solid ${colors.glass.border}`, px: 2 }}>
-              <Tab label={`Active (${activeJobs.length})`} icon={<Loader size={14} />} iconPosition="start" />
-              <Tab label={`History (${recentJobs.length})`} icon={<Clock size={14} />} iconPosition="start" />
-            </Tabs>
-
-            <TabPanel value={tabValue} index={0}>
-              {activeJobs.length > 0 ? (
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell>Customer</TableCell>
-                        <TableCell>Env</TableCell>
-                        <TableCell>Region</TableCell>
-                        <TableCell>Version</TableCell>
-                        <TableCell>Started</TableCell>
-                         <TableCell>Duration</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {activeJobs.map(renderJobRow)}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
-                  <CheckCircle size={48} color={colors.text.muted} style={{ marginBottom: 16 }} />
-                  <Typography variant="h6" sx={{ color: colors.text.secondary, mb: 1 }}>
-                    No Active Jobs
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: colors.text.tertiary }}>
-                    All infrastructure jobs are complete
-                  </Typography>
-                </Box>
-              )}
-            </TabPanel>
-
-            <TabPanel value={tabValue} index={1}>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell>Customer</TableCell>
-                        <TableCell>Env</TableCell>
-                        <TableCell>Region</TableCell>
-                        <TableCell>Version</TableCell>
-                        <TableCell>Started</TableCell>
-                         <TableCell>Duration</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {recentJobs.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                          <Typography color="text.secondary">No operation history</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      recentJobs.map(renderJobRow)
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </TabPanel>
-          </Card>
-        </Grid>
-
-        {/* Job Details & Logs */}
-        {selectedJob && (
-          <Grid item xs={6}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              {/* Job Header */}
-              <Box sx={{ p: 2, borderBottom: `1px solid ${colors.glass.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: colors.glass.subtle }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: colors.text.primary }}>
-                    Operation Details
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: colors.text.tertiary, fontFamily: 'monospace' }}>
-                    ID: {selectedJob.id}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Tooltip title="View State">
-                    <IconButton size="small"><Eye size={16} /></IconButton>
-                  </Tooltip>
-                  <Tooltip title="Download Logs">
-                    <IconButton size="small"><Download size={16} /></IconButton>
-                  </Tooltip>
-                  {selectedJob.status === 'running' && (
-                    <Button variant="contained" color="error" size="small" startIcon={<Square size={14} />}>
-                      Stop
-                    </Button>
-                  )}
-                  <IconButton size="small" onClick={() => setSelectedJob(null)} sx={{ color: colors.text.muted }}>
-                    <ChevronUp size={16} />
-                  </IconButton>
-                </Box>
-              </Box>
-
-              <Box sx={{ p: 2, borderBottom: `1px solid ${colors.glass.border}` }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Box sx={{ mb: 1 }}>
-                      <Typography variant="caption" sx={{ color: colors.text.muted }}>Resources</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                        <Chip size="small" label={`+${selectedJob.plan?.add || 0}`} sx={{ bgcolor: 'rgba(76, 175, 80, 0.1)', color: '#4caf50', fontSize: 10, height: 20 }} />
-                        <Chip size="small" label={`~${selectedJob.plan?.change || 0}`} sx={{ bgcolor: 'rgba(255, 152, 0, 0.1)', color: '#ff9800', fontSize: 10, height: 20 }} />
-                        <Chip size="small" label={`-${selectedJob.plan?.destroy || 0}`} sx={{ bgcolor: 'rgba(244, 67, 54, 0.1)', color: '#f44336', fontSize: 10, height: 20 }} />
-                      </Box>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Box>
-
-              <Box sx={{ flex: 1, bgcolor: '#0d1117', p: 2, overflow: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
-                {selectedJob.output?.map((log, index) => (
-                  <Box key={index} sx={{ mb: 0.5, display: 'flex', gap: 2 }}>
-                    <Typography component="span" sx={{ color: colors.text.muted, opacity: 0.5, minWidth: 140 }}>
-                         {log.time}
-                    </Typography>
-                    <Typography component="span" sx={{
-                        color: log.level === 'error' ? colors.danger.base :
-                               log.level === 'success' ? colors.success.base :
-                               log.level === 'add' ? colors.success.light :
-                               log.level === 'destroy' ? colors.danger.light :
-                               log.level === 'change' ? colors.warning.light :
-                               colors.text.secondary
-                    }}>
-                      {log.message}
-                    </Typography>
-                  </Box>
-                ))}
-                 {(!selectedJob.output || selectedJob.output.length === 0) && (
-                     <Typography sx={{ color: colors.text.muted, fontStyle: 'italic' }}>No logs available.</Typography>
-                 )}
-                <div ref={logsEndRef} />
-              </Box>
-            </Card>
-           </Grid>
-        )}
-      </Grid>
-      </Box>
-
-       {/* Create Job Dialog */}
-      <Dialog open={showNewJobDialog} onClose={() => setShowNewJobDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>New Terraform Operation</DialogTitle>
-        <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
-                <FormControl fullWidth>
-                    <InputLabel>Customer</InputLabel>
-                    <Select
-                        label="Customer"
-                        value={newJobData.customerId}
-                        onChange={(e) => setNewJobData({ ...newJobData, customerId: e.target.value })}
-                    >
-                        {customers.map((c) => (
-                            <MenuItem key={c.id} value={c.id}>{c.name} ({c.code})</MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-
-                <FormControl fullWidth>
-                    <InputLabel>Environment</InputLabel>
-                    <Select
-                        label="Environment"
-                        value={newJobData.environment}
-                        onChange={(e) => setNewJobData({ ...newJobData, environment: e.target.value })}
-                    >
-                        <MenuItem value="production">Production</MenuItem>
-                        <MenuItem value="staging">Staging</MenuItem>
-                        <MenuItem value="development">Development</MenuItem>
-                    </Select>
-                </FormControl>
-
-                <FormControl fullWidth>
-                    <InputLabel>Operation Type</InputLabel>
-                    <Select
-                        label="Operation Type"
-                        value={newJobData.operation}
-                        onChange={(e: any) => setNewJobData({ ...newJobData, operation: e.target.value })}
-                    >
-                        <MenuItem value="plan">Plan</MenuItem>
-                        <MenuItem value="apply">Apply</MenuItem>
-                        <MenuItem value="refresh">Refresh</MenuItem>
-                        <MenuItem value="destroy">Destroy</MenuItem>
-                    </Select>
-                </FormControl>
-
-                 <TextField
-                    label="Version"
-                    value={newJobData.version}
-                    onChange={(e) => setNewJobData({ ...newJobData, version: e.target.value })}
-                    fullWidth
-                    helperText="Terraform module version tag"
-                 />
-            </Box>
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => setShowNewJobDialog(false)}>Cancel</Button>
-            <Button 
-                variant="contained" 
-                onClick={handleCreateJob} 
-                disabled={creatingJob || !newJobData.customerId}
+        <div
+          className={`rounded-2xl border overflow-hidden ${selectedJob ? '' : 'col-span-2'}`}
+          style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+        >
+          {/* Tabs */}
+          <div className="flex border-b" style={{ borderColor: colors.glass.border }}>
+            <button
+              type="button"
+              onClick={() => setTabValue(0)}
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors"
+              style={{
+                color: tabValue === 0 ? colors.text.primary : colors.text.secondary,
+                borderBottom: tabValue === 0 ? `2px solid ${colors.brand.primary}` : '2px solid transparent',
+              }}
             >
+              <Loader2 size={14} />
+              Active ({activeJobs.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTabValue(1)}
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors"
+              style={{
+                color: tabValue === 1 ? colors.text.primary : colors.text.secondary,
+                borderBottom: tabValue === 1 ? `2px solid ${colors.brand.primary}` : '2px solid transparent',
+              }}
+            >
+              <Clock size={14} />
+              History ({recentJobs.length})
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ backgroundColor: colors.glass.subtle }}>
+                  {['Status', 'Type', 'Customer', 'Env', 'Region', 'Release ID', 'Started', 'Duration'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tabValue === 0
+                  ? activeJobs.length === 0
+                    ? (
+                      <tr>
+                        <td colSpan={8} className="text-center py-8" style={{ color: colors.text.secondary }}>
+                          <CheckCircle size={32} style={{ margin: '0 auto 8px', color: colors.text.muted }} />
+                          No active jobs
+                        </td>
+                      </tr>
+                    )
+                    : activeJobs.map(renderJobRow)
+                  : recentJobs.length === 0
+                  ? (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8" style={{ color: colors.text.secondary }}>
+                        No operation history
+                      </td>
+                    </tr>
+                  )
+                  : recentJobs.map(renderJobRow)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Job Details */}
+        {selectedJob && (
+          <div
+            className="rounded-2xl border overflow-hidden flex flex-col"
+            style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border, maxHeight: 600 }}
+          >
+            <div
+              className="p-4 flex items-center justify-between"
+              style={{ borderBottom: `1px solid ${colors.glass.border}`, backgroundColor: colors.glass.subtle }}
+            >
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: colors.text.primary }}>
+                  Operation Details
+                </h3>
+                <p className="text-xs font-mono" style={{ color: colors.text.tertiary }}>
+                  ID: {selectedJob.id}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="p-1.5 rounded transition-colors"
+                  title="Download Logs"
+                  style={{ color: colors.text.muted }}
+                  onClick={handleDownloadLogs}
+                >
+                  <Download size={16} />
+                </button>
+                {selectedJob.status === 'running' && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white"
+                    style={{ backgroundColor: colors.danger.base }}
+                    onClick={handleCancelJob}
+                  >
+                    <Square size={12} />
+                    Stop
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedJob(null)}
+                  className="p-1.5 rounded transition-colors"
+                  style={{ color: colors.text.muted }}
+                >
+                  <ChevronUp size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Resources */}
+            <div className="p-4" style={{ borderBottom: `1px solid ${colors.glass.border}` }}>
+              <span className="text-xs font-semibold" style={{ color: colors.text.muted }}>Resources</span>
+              <div className="flex gap-2 mt-2">
+                <span
+                  className="px-2 py-0.5 rounded text-xs font-semibold"
+                  style={{ backgroundColor: 'rgba(76, 175, 80, 0.1)', color: '#4caf50' }}
+                >
+                  +{selectedJob.plan?.add || 0}
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded text-xs font-semibold"
+                  style={{ backgroundColor: 'rgba(255, 152, 0, 0.1)', color: '#ff9800' }}
+                >
+                  ~{selectedJob.plan?.change || 0}
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded text-xs font-semibold"
+                  style={{ backgroundColor: 'rgba(244, 67, 54, 0.1)', color: '#f44336' }}
+                >
+                  -{selectedJob.plan?.destroy || 0}
+                </span>
+              </div>
+            </div>
+
+            {/* Logs */}
+            <div
+              className="flex-1 p-4 overflow-auto font-mono text-xs"
+              style={{ backgroundColor: '#0d1117' }}
+            >
+              {selectedJob.output?.map((log, index) => (
+                <div key={index} className="mb-1 flex gap-4">
+                  <span style={{ color: colors.text.muted, opacity: 0.5, minWidth: 120 }}>{log.time}</span>
+                  <span
+                    style={{
+                      color:
+                        log.level === 'error'
+                          ? colors.danger.base
+                          : log.level === 'success'
+                          ? colors.success.base
+                          : log.level === 'add'
+                          ? colors.success.light
+                          : log.level === 'destroy'
+                          ? colors.danger.light
+                          : log.level === 'change'
+                          ? colors.warning.light
+                          : colors.text.secondary,
+                    }}
+                  >
+                    {log.message}
+                  </span>
+                </div>
+              ))}
+              {(!selectedJob.output || selectedJob.output.length === 0) && (
+                <p style={{ color: colors.text.muted, fontStyle: 'italic' }}>No logs available.</p>
+              )}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* New Job Dialog */}
+      {showNewJobDialog && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60">
+          <div
+            className="w-full max-w-md p-6 rounded-2xl border"
+            style={{ backgroundColor: colors.void.base, borderColor: colors.glass.border }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold" style={{ color: colors.text.primary }}>
+                New Terraform Operation
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowNewJobDialog(false)}
+                className="p-1.5 rounded transition-colors"
+                style={{ color: colors.text.muted }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                  Customer
+                </label>
+                <select
+                  value={newJobData.customerId}
+                  onChange={(e) => setNewJobData({ ...newJobData, customerId: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="">Select customer...</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                  Environment
+                </label>
+                <select
+                  value={newJobData.environment}
+                  onChange={(e) => setNewJobData({ ...newJobData, environment: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="production">Production</option>
+                  <option value="staging">Staging</option>
+                  <option value="dev">Dev</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                  Operation Type
+                </label>
+                <select
+                  value={newJobData.operation}
+                  onChange={(e) => setNewJobData({ ...newJobData, operation: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                >
+                  <option value="plan">Plan</option>
+                  <option value="apply">Apply</option>
+                  <option value="refresh">Refresh</option>
+                  <option value="destroy">Destroy</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                  Platform Release ID
+                </label>
+                <input
+                  type="text"
+                  value={newJobData.version}
+                  onChange={(e) => setNewJobData({ ...newJobData, version: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                  style={{
+                    backgroundColor: colors.glass.medium,
+                    borderColor: colors.glass.border,
+                    color: colors.text.primary,
+                  }}
+                  placeholder="YYYYMMDD-<git-sha>"
+                />
+                <p className="text-xs mt-1" style={{ color: colors.text.muted }}>
+                  Use the immutable platform release id for this operation.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowNewJobDialog(false)}
+                className="px-4 py-2 rounded-lg border text-sm font-medium"
+                style={{ borderColor: colors.glass.border, color: colors.text.secondary }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateJob}
+                disabled={creatingJob || !newJobData.customerId || !newJobData.version.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-opacity disabled:opacity-50"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.secondary})`,
+                }}
+              >
+                {creatingJob ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {creatingJob ? 'Starting...' : 'Start Job'}
-            </Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

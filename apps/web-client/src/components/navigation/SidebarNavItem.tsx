@@ -1,8 +1,20 @@
-import React, { useState } from 'react';
+/**
+ * SidebarNavItem Component
+ * HubbleWave Platform - Phase 1
+ *
+ * Production-ready sidebar navigation item with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Keyboard navigation support
+ */
+
+import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import { Icon } from '../Icon';
-import { ResolvedNavNode } from '../../types/navigation-v2';
+import { ResolvedNavNode } from '../../types/navigation';
 
 export interface SidebarNavItemProps {
   node: ResolvedNavNode;
@@ -23,8 +35,7 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isExpanded, setIsExpanded] = useState(node.isExpanded ?? depth < 2);
-  const [isHovered, setIsHovered] = useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(node.isExpanded ?? depth < 2);
 
   const hasChildren = node.children && node.children.length > 0;
   const isGroup = node.type === 'group' || node.type === 'smart_group';
@@ -43,7 +54,7 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
     }
   }, [hasActiveChild]);
 
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     if (hasChildren) {
       setIsExpanded(!isExpanded);
     } else if (node.route) {
@@ -52,17 +63,29 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
         onNavigate(node.moduleKey);
       }
     }
-  };
+  }, [hasChildren, isExpanded, node.route, node.moduleKey, navigate, onNavigate]);
 
-  const handleFavoriteClick = (e: React.MouseEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  }, [handleClick]);
+
+  const handleFavoriteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (onToggleFavorite && node.moduleKey) {
       onToggleFavorite(node.moduleKey);
     }
-  };
+  }, [onToggleFavorite, node.moduleKey]);
 
   if (isSeparator) {
-    return <div className="my-2 mx-4 border-t border-slate-200/60" />;
+    return (
+      <div
+        className="my-2 mx-4 border-t border-border"
+        role="separator"
+      />
+    );
   }
 
   // Group header (Top Level)
@@ -72,10 +95,12 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
         {!collapsed && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 transition-colors"
+            className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider transition-colors min-h-[36px] text-muted-foreground hover:text-foreground"
+            aria-expanded={isExpanded}
+            aria-label={`${node.label} section, ${isExpanded ? 'expanded' : 'collapsed'}`}
           >
             {node.icon && (
-              <span className="text-slate-400">
+              <span className="text-muted-foreground/70">
                 <Icon name={node.icon} className="h-3.5 w-3.5" />
               </span>
             )}
@@ -84,12 +109,13 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
               className={`h-3 w-3 transition-transform duration-200 ${
                 isExpanded ? '' : '-rotate-90'
               }`}
+              aria-hidden="true"
             />
           </button>
         )}
 
         {(isExpanded || collapsed) && hasChildren && (
-          <div className="mt-1 space-y-0.5">
+          <div className="mt-1 space-y-0.5" role="group" aria-label={node.label}>
             {node.children!.map((child) => (
               <SidebarNavItem
                 key={child.key}
@@ -109,23 +135,30 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
 
   // Nested group (subgroup)
   if (isGroup && depth > 0) {
+    const nestedPaddingClass = depth === 1 ? 'pl-7' : depth === 2 ? 'pl-10' : 'pl-[52px]';
     return (
       <div className="mt-1">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-md mx-2 transition-colors"
-          style={{ paddingLeft: `${16 + depth * 12}px` }}
+          className={cn(
+            'w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium rounded-md mx-2 transition-colors min-h-[36px]',
+            'text-muted-foreground hover:bg-muted hover:text-foreground',
+            nestedPaddingClass
+          )}
+          aria-expanded={isExpanded}
         >
           <ChevronRight
-            className={`h-3 w-3 text-slate-400 transition-transform duration-200 ${
-              isExpanded ? 'rotate-90' : ''
-            }`}
+            className={cn(
+              'h-3 w-3 transition-transform duration-200 text-muted-foreground/70',
+              isExpanded && 'rotate-90'
+            )}
+            aria-hidden="true"
           />
           <span className="flex-1 text-left">{node.label}</span>
         </button>
 
         {isExpanded && hasChildren && (
-          <div className="mt-0.5 space-y-0.5">
+          <div className="mt-0.5 space-y-0.5" role="group" aria-label={node.label}>
             {node.children!.map((child) => (
               <SidebarNavItem
                 key={child.key}
@@ -144,61 +177,57 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
   }
 
   // Regular nav item (module/link)
-  const paddingLeft = collapsed ? 12 : 16 + depth * 12;
+  const itemPaddingClass = collapsed ? '' : depth === 0 ? 'pl-4' : depth === 1 ? 'pl-7' : depth === 2 ? 'pl-10' : 'pl-[52px]';
 
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleClick();
-        }
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onKeyDown={handleKeyDown}
       title={collapsed ? node.label : undefined}
-      className={`
-        group relative flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg text-sm cursor-pointer
-        transition-all duration-150
-        ${isActive
-          ? 'bg-gradient-to-r from-sky-500/10 to-indigo-500/10 text-sky-700 font-medium shadow-sm ring-1 ring-sky-500/20'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-        }
-        ${collapsed ? 'justify-center mx-1' : ''}
-      `}
-      style={{ paddingLeft: collapsed ? undefined : paddingLeft }}
+      className={cn(
+        'group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 min-h-[44px]',
+        collapsed ? 'mx-1 justify-center' : 'mx-2 justify-start',
+        itemPaddingClass,
+        isActive
+          ? 'bg-primary/10 text-primary font-medium shadow-sm ring-1 ring-inset ring-primary/10'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      )}
+      aria-current={isActive ? 'page' : undefined}
     >
-      {/* Icon */}
       {node.icon && (
-        <span className={`flex-shrink-0 ${isActive ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+        <span
+          className={cn(
+            'flex-shrink-0',
+            isActive ? 'text-primary' : 'text-muted-foreground/70'
+          )}
+        >
           <Icon name={node.icon} className="h-4 w-4" />
         </span>
       )}
 
-      {/* Label */}
       {!collapsed && (
         <>
           <span className="flex-1 truncate">{node.label}</span>
 
-          {/* Favorite star */}
-          {onToggleFavorite && node.moduleKey && (isHovered || isFavorite) && (
+          {onToggleFavorite && node.moduleKey && (
             <button
               onClick={handleFavoriteClick}
-              className={`
-                flex-shrink-0 p-0.5 rounded transition-all duration-150
-                ${isFavorite
-                  ? 'text-amber-500 hover:text-amber-600'
-                  : 'text-slate-300 hover:text-amber-400 opacity-0 group-hover:opacity-100'
-                }
-              `}
+              className={cn(
+                'flex-shrink-0 p-0.5 rounded transition-all duration-150 min-h-[28px] min-w-[28px] flex items-center justify-center',
+                isFavorite
+                  ? 'text-warning-text hover:text-warning-text'
+                  : 'text-muted-foreground/70 opacity-0 group-hover:opacity-100 hover:text-warning-text'
+              )}
               title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              aria-pressed={isFavorite}
             >
               <Star
                 className="h-3.5 w-3.5"
                 fill={isFavorite ? 'currentColor' : 'none'}
+                aria-hidden="true"
               />
             </button>
           )}

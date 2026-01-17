@@ -1,18 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { DataSource, Repository } from 'typeorm';
+import { AVAConversation, AVAMessage as AVAMessageEntity } from '@hubblewave/instance-db';
 import { AVAMessage, AVAContext } from './ava.service';
 
 /**
  * Conversation Memory Service
- * Manages conversation history and context for AVA
+ * Manages conversation history and context for AVA using normalized TypeORM entities
  */
 
 export interface Conversation {
   id: string;
   userId: string;
   title?: string;
+  status: 'active' | 'completed' | 'abandoned' | 'escalated';
   messages: AVAMessage[];
   context: Partial<AVAContext>;
+  messageCount: number;
   createdAt: Date;
   updatedAt: Date;
   metadata?: Record<string, unknown>;
@@ -23,14 +26,13 @@ export interface ConversationSummary {
   title: string;
   messageCount: number;
   lastMessage: string;
+  status: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 @Injectable()
 export class ConversationMemoryService {
-  private readonly logger = new Logger(ConversationMemoryService.name);
-
   // In-memory cache for active conversations
   private conversations: Map<string, Conversation> = new Map();
 
@@ -41,44 +43,17 @@ export class ConversationMemoryService {
   private readonly MAX_CONVERSATIONS_PER_USER = 10;
 
   /**
-   * Initialize conversation tables for a tenant
+   * Get repository for AVAConversation entity
    */
-  async initializeTenantConversations(dataSource: DataSource): Promise<void> {
-    const queryRunner = dataSource.createQueryRunner();
+  private getConversationRepo(dataSource: DataSource): Repository<AVAConversation> {
+    return dataSource.getRepository(AVAConversation);
+  }
 
-    try {
-      await queryRunner.connect();
-
-      await queryRunner.query(`
-        CREATE TABLE IF NOT EXISTS ava_conversations (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id VARCHAR(255) NOT NULL,
-          title VARCHAR(500),
-          messages JSONB DEFAULT '[]',
-          context JSONB DEFAULT '{}',
-          metadata JSONB DEFAULT '{}',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-      `);
-
-      await queryRunner.query(`
-        CREATE INDEX IF NOT EXISTS idx_ava_conversations_user_id
-        ON ava_conversations (user_id)
-      `);
-
-      await queryRunner.query(`
-        CREATE INDEX IF NOT EXISTS idx_ava_conversations_updated_at
-        ON ava_conversations (updated_at DESC)
-      `);
-
-      this.logger.log('Conversation tables initialized');
-    } catch (error) {
-      this.logger.error('Failed to initialize conversation tables', error);
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+  /**
+   * Get repository for AVAMessage entity
+   */
+  private getMessageRepo(dataSource: DataSource): Repository<AVAMessageEntity> {
+    return dataSource.getRepository(AVAMessageEntity);
   }
 
   /**
@@ -89,34 +64,40 @@ export class ConversationMemoryService {
     userId: string,
     context?: Partial<AVAContext>
   ): Promise<Conversation> {
-    const id = crypto.randomUUID();
+    const conversationRepo = this.getConversationRepo(dataSource);
     const now = new Date();
 
-    const conversation: Conversation = {
-      id,
+    const conversationEntity = conversationRepo.create({
       userId,
+      status: 'active',
+      messageCount: 0,
+      lastActivityAt: now,
+      sessionMetadata: context ? { initialContext: context } : undefined,
+    });
+
+    const saved = await conversationRepo.save(conversationEntity);
+
+    const conversation: Conversation = {
+      id: saved.id,
+      userId: saved.userId,
+      title: saved.title,
+      status: saved.status,
       messages: [],
       context: context || {},
-      createdAt: now,
-      updatedAt: now,
+      messageCount: 0,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
     };
 
-    // Save to database
-    await dataSource.query(
-      `INSERT INTO ava_conversations (id, user_id, context, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [id, userId, JSON.stringify(context || {}), now, now]
-    );
-
     // Cache in memory
-    this.conversations.set(id, conversation);
+    this.conversations.set(saved.id, conversation);
     this.pruneUserConversations(userId);
 
     return conversation;
   }
 
   /**
-   * Get a conversation by ID
+   * Get a conversation by ID with its messages
    */
   async getConversation(
     dataSource: DataSource,
@@ -127,26 +108,42 @@ export class ConversationMemoryService {
       return this.conversations.get(conversationId)!;
     }
 
-    // Load from database
-    const rows = await dataSource.query(
-      `SELECT * FROM ava_conversations WHERE id = $1`,
-      [conversationId]
-    );
+    const conversationRepo = this.getConversationRepo(dataSource);
+    const messageRepo = this.getMessageRepo(dataSource);
 
-    if (rows.length === 0) {
+    const conversationEntity = await conversationRepo.findOne({
+      where: { id: conversationId },
+    });
+
+    if (!conversationEntity) {
       return null;
     }
 
-    const row = rows[0];
+    // Load messages
+    const messageEntities = await messageRepo.find({
+      where: { conversationId },
+      order: { createdAt: 'ASC' },
+    });
+
+    const messages: AVAMessage[] = messageEntities
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        timestamp: m.createdAt,
+      }));
+
     const conversation: Conversation = {
-      id: row.id,
-      userId: row.user_id,
-      title: row.title,
-      messages: row.messages || [],
-      context: row.context || {},
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-      metadata: row.metadata,
+      id: conversationEntity.id,
+      userId: conversationEntity.userId,
+      title: conversationEntity.title,
+      status: conversationEntity.status,
+      messages,
+      context: (conversationEntity.sessionMetadata?.['initialContext'] as Partial<AVAContext>) || {},
+      messageCount: conversationEntity.messageCount,
+      createdAt: conversationEntity.createdAt,
+      updatedAt: conversationEntity.updatedAt,
+      metadata: conversationEntity.sessionMetadata,
     };
 
     // Cache for future use
@@ -163,41 +160,58 @@ export class ConversationMemoryService {
     conversationId: string,
     message: AVAMessage
   ): Promise<void> {
-    let conversation = await this.getConversation(dataSource, conversationId);
+    const conversationRepo = this.getConversationRepo(dataSource);
+    const messageRepo = this.getMessageRepo(dataSource);
 
-    if (!conversation) {
+    // Create message entity
+    const messageEntity = messageRepo.create({
+      conversationId,
+      role: message.role,
+      content: message.content,
+    });
+
+    await messageRepo.save(messageEntity);
+
+    // Update conversation
+    const conversationEntity = await conversationRepo.findOne({
+      where: { id: conversationId },
+    });
+
+    if (!conversationEntity) {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
-    // Add message
-    conversation.messages.push(message);
-    conversation.updatedAt = new Date();
-
-    // Prune old messages if necessary
-    if (conversation.messages.length > this.MAX_MESSAGES_IN_MEMORY) {
-      conversation.messages = conversation.messages.slice(-this.MAX_MESSAGES_IN_MEMORY);
-    }
-
     // Generate title from first user message if not set
-    if (!conversation.title && message.role === 'user') {
-      conversation.title = this.generateTitle(message.content);
+    let newTitle = conversationEntity.title;
+    if (!newTitle && message.role === 'user') {
+      newTitle = this.generateTitle(message.content);
     }
+
+    conversationEntity.messageCount = (conversationEntity.messageCount || 0) + 1;
+    conversationEntity.lastActivityAt = new Date();
+    if (newTitle) {
+      conversationEntity.title = newTitle;
+    }
+
+    await conversationRepo.save(conversationEntity);
 
     // Update cache
-    this.conversations.set(conversationId, conversation);
+    let cachedConversation = this.conversations.get(conversationId);
+    if (cachedConversation) {
+      cachedConversation.messages.push(message);
+      cachedConversation.updatedAt = new Date();
+      cachedConversation.messageCount = conversationEntity.messageCount;
+      if (newTitle) {
+        cachedConversation.title = newTitle;
+      }
 
-    // Save to database
-    await dataSource.query(
-      `UPDATE ava_conversations
-       SET messages = $1, title = $2, updated_at = $3
-       WHERE id = $4`,
-      [
-        JSON.stringify(conversation.messages),
-        conversation.title,
-        conversation.updatedAt,
-        conversationId,
-      ]
-    );
+      // Prune old messages if necessary
+      if (cachedConversation.messages.length > this.MAX_MESSAGES_IN_MEMORY) {
+        cachedConversation.messages = cachedConversation.messages.slice(-this.MAX_MESSAGES_IN_MEMORY);
+      }
+
+      this.conversations.set(conversationId, cachedConversation);
+    }
   }
 
   /**
@@ -208,30 +222,36 @@ export class ConversationMemoryService {
     userId: string,
     limit = 20
   ): Promise<ConversationSummary[]> {
-    const rows = await dataSource.query(
-      `SELECT id, title, messages, created_at, updated_at
-       FROM ava_conversations
-       WHERE user_id = $1
-       ORDER BY updated_at DESC
-       LIMIT $2`,
-      [userId, limit]
-    );
+    const conversationRepo = this.getConversationRepo(dataSource);
+    const messageRepo = this.getMessageRepo(dataSource);
 
-    return rows.map((row: { id: string; title?: string; messages: AVAMessage[]; created_at: string; updated_at: string }) => {
-      const messages = row.messages || [];
-      const lastMessage = messages.length > 0
-        ? messages[messages.length - 1].content.substring(0, 100)
-        : '';
-
-      return {
-        id: row.id,
-        title: row.title || 'New conversation',
-        messageCount: messages.length,
-        lastMessage,
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at),
-      };
+    const conversations = await conversationRepo.find({
+      where: { userId },
+      order: { updatedAt: 'DESC' },
+      take: limit,
     });
+
+    const summaries: ConversationSummary[] = [];
+
+    for (const conv of conversations) {
+      // Get last message
+      const lastMessageEntity = await messageRepo.findOne({
+        where: { conversationId: conv.id },
+        order: { createdAt: 'DESC' },
+      });
+
+      summaries.push({
+        id: conv.id,
+        title: conv.title || 'New conversation',
+        messageCount: conv.messageCount || 0,
+        lastMessage: lastMessageEntity?.content?.substring(0, 100) || '',
+        status: conv.status,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      });
+    }
+
+    return summaries;
   }
 
   /**
@@ -256,32 +276,51 @@ export class ConversationMemoryService {
     conversationId: string,
     context: Partial<AVAContext>
   ): Promise<void> {
-    const conversation = await this.getConversation(dataSource, conversationId);
-    if (!conversation) return;
+    const conversationRepo = this.getConversationRepo(dataSource);
 
-    conversation.context = { ...conversation.context, ...context };
-    conversation.updatedAt = new Date();
+    const conversationEntity = await conversationRepo.findOne({
+      where: { id: conversationId },
+    });
 
-    this.conversations.set(conversationId, conversation);
+    if (!conversationEntity) return;
 
-    await dataSource.query(
-      `UPDATE ava_conversations SET context = $1, updated_at = $2 WHERE id = $3`,
-      [JSON.stringify(conversation.context), conversation.updatedAt, conversationId]
-    );
+    const existingMetadata = conversationEntity.sessionMetadata || {};
+    const existingContext = (existingMetadata['initialContext'] as Partial<AVAContext>) || {};
+
+    conversationEntity.sessionMetadata = {
+      ...existingMetadata,
+      initialContext: { ...existingContext, ...context },
+    };
+
+    await conversationRepo.save(conversationEntity);
+
+    // Update cache
+    const cachedConversation = this.conversations.get(conversationId);
+    if (cachedConversation) {
+      cachedConversation.context = { ...cachedConversation.context, ...context };
+      cachedConversation.updatedAt = new Date();
+      this.conversations.set(conversationId, cachedConversation);
+    }
   }
 
   /**
-   * Delete a conversation
+   * Delete a conversation and its messages
    */
   async deleteConversation(
     dataSource: DataSource,
     conversationId: string
   ): Promise<void> {
+    const conversationRepo = this.getConversationRepo(dataSource);
+    const messageRepo = this.getMessageRepo(dataSource);
+
+    // Remove from cache
     this.conversations.delete(conversationId);
-    await dataSource.query(
-      `DELETE FROM ava_conversations WHERE id = $1`,
-      [conversationId]
-    );
+
+    // Delete messages first (cascade should handle this, but explicit for safety)
+    await messageRepo.delete({ conversationId });
+
+    // Delete conversation
+    await conversationRepo.delete({ id: conversationId });
   }
 
   /**
@@ -291,20 +330,35 @@ export class ConversationMemoryService {
     dataSource: DataSource,
     userId: string
   ): Promise<number> {
+    const conversationRepo = this.getConversationRepo(dataSource);
+    const messageRepo = this.getMessageRepo(dataSource);
+
+    // Get user's conversations
+    const conversations = await conversationRepo.find({
+      where: { userId },
+      select: ['id'],
+    });
+
+    const conversationIds = conversations.map((c) => c.id);
+
     // Remove from cache
-    for (const [id, conv] of this.conversations) {
-      if (conv.userId === userId) {
-        this.conversations.delete(id);
-      }
+    for (const id of conversationIds) {
+      this.conversations.delete(id);
     }
 
-    // Delete from database
-    const result = await dataSource.query(
-      `DELETE FROM ava_conversations WHERE user_id = $1`,
-      [userId]
-    );
+    // Delete messages for all conversations
+    if (conversationIds.length > 0) {
+      await messageRepo
+        .createQueryBuilder()
+        .delete()
+        .where('conversation_id IN (:...ids)', { ids: conversationIds })
+        .execute();
+    }
 
-    return result[1] || 0;
+    // Delete conversations
+    const result = await conversationRepo.delete({ userId });
+
+    return result.affected || 0;
   }
 
   /**
@@ -316,24 +370,78 @@ export class ConversationMemoryService {
     query: string,
     limit = 10
   ): Promise<ConversationSummary[]> {
-    const rows = await dataSource.query(
-      `SELECT id, title, messages, created_at, updated_at
-       FROM ava_conversations
-       WHERE user_id = $1
-         AND (title ILIKE $2 OR messages::text ILIKE $2)
-       ORDER BY updated_at DESC
-       LIMIT $3`,
-      [userId, `%${query}%`, limit]
+    const conversationRepo = this.getConversationRepo(dataSource);
+
+    // Search in conversation titles
+    const conversations = await conversationRepo
+      .createQueryBuilder('c')
+      .where('c.user_id = :userId', { userId })
+      .andWhere('(c.title ILIKE :query OR c.context_summary ILIKE :query)', {
+        query: `%${query}%`
+      })
+      .orderBy('c.updated_at', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return conversations.map((conv) => ({
+      id: conv.id,
+      title: conv.title || 'New conversation',
+      messageCount: conv.messageCount || 0,
+      lastMessage: '',
+      status: conv.status,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+    }));
+  }
+
+  /**
+   * Mark conversation as completed
+   */
+  async completeConversation(
+    dataSource: DataSource,
+    conversationId: string
+  ): Promise<void> {
+    const conversationRepo = this.getConversationRepo(dataSource);
+
+    await conversationRepo.update(
+      { id: conversationId },
+      { status: 'completed' }
     );
 
-    return rows.map((row: { id: string; title?: string; messages: AVAMessage[]; created_at: string; updated_at: string }) => ({
-      id: row.id,
-      title: row.title || 'New conversation',
-      messageCount: (row.messages || []).length,
-      lastMessage: '',
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-    }));
+    // Update cache
+    const cachedConversation = this.conversations.get(conversationId);
+    if (cachedConversation) {
+      cachedConversation.status = 'completed';
+      this.conversations.set(conversationId, cachedConversation);
+    }
+  }
+
+  /**
+   * Escalate conversation to a user
+   */
+  async escalateConversation(
+    dataSource: DataSource,
+    conversationId: string,
+    escalateTo: string,
+    reason: string
+  ): Promise<void> {
+    const conversationRepo = this.getConversationRepo(dataSource);
+
+    await conversationRepo.update(
+      { id: conversationId },
+      {
+        status: 'escalated',
+        escalatedTo: escalateTo,
+        escalationReason: reason,
+      }
+    );
+
+    // Update cache
+    const cachedConversation = this.conversations.get(conversationId);
+    if (cachedConversation) {
+      cachedConversation.status = 'escalated';
+      this.conversations.set(conversationId, cachedConversation);
+    }
   }
 
   /**

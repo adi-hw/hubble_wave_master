@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import identityApi from '../../../services/identityApi';
 
-// Group types from backend
 type GroupType = 'organization' | 'department' | 'team' | 'location' | 'dynamic' | 'standard';
 
 interface Group {
@@ -43,7 +42,6 @@ interface Group {
   createdAt: string;
   updatedAt?: string;
   children?: Group[];
-  // Computed counts
   directMemberCount?: number;
   totalMemberCount?: number;
   childGroupCount?: number;
@@ -60,17 +58,15 @@ interface GroupStats {
   total: number;
 }
 
-// Theme-aware group type styles using CSS variables
-const groupTypeConfig: Record<GroupType, { label: string; icon: React.FC<{ className?: string; style?: React.CSSProperties }>; bgColor: string; iconColor: string }> = {
-  organization: { label: 'Organization', icon: Building, bgColor: 'var(--bg-info-subtle)', iconColor: 'var(--text-info)' },
-  department: { label: 'Department', icon: Layers, bgColor: 'var(--bg-primary-subtle)', iconColor: 'var(--text-brand)' },
-  team: { label: 'Team', icon: Users, bgColor: 'var(--bg-success-subtle)', iconColor: 'var(--text-success)' },
-  location: { label: 'Location', icon: MapPin, bgColor: 'var(--bg-warning-subtle)', iconColor: 'var(--text-warning)' },
-  dynamic: { label: 'Dynamic', icon: Zap, bgColor: 'var(--bg-accent-subtle)', iconColor: 'var(--text-accent)' },
-  standard: { label: 'Standard', icon: Settings, bgColor: 'var(--bg-surface-secondary)', iconColor: 'var(--text-tertiary)' },
+const groupTypeConfig: Record<GroupType, { label: string; icon: React.FC<{ className?: string }>; bgClass: string; iconClass: string }> = {
+  organization: { label: 'Organization', icon: Building, bgClass: 'bg-info-subtle', iconClass: 'text-info-text' },
+  department: { label: 'Department', icon: Layers, bgClass: 'bg-primary/10', iconClass: 'text-primary' },
+  team: { label: 'Team', icon: Users, bgClass: 'bg-success-subtle', iconClass: 'text-success-text' },
+  location: { label: 'Location', icon: MapPin, bgClass: 'bg-warning-subtle', iconClass: 'text-warning-text' },
+  dynamic: { label: 'Dynamic', icon: Zap, bgClass: 'bg-purple-50 dark:bg-purple-900/20', iconClass: 'text-purple-500' },
+  standard: { label: 'Standard', icon: Settings, bgClass: 'bg-muted', iconClass: 'text-muted-foreground' },
 };
 
-// Tree node component for hierarchical display
 const GroupTreeNode: React.FC<{
   group: Group;
   level: number;
@@ -88,15 +84,11 @@ const GroupTreeNode: React.FC<{
   return (
     <div>
       <div
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors rounded-lg mx-2 my-0.5"
-        style={{
-          paddingLeft: `${level * 20 + 12}px`,
-          backgroundColor: isSelected ? 'var(--bg-selected)' : 'transparent',
-          color: isSelected ? 'var(--text-brand)' : 'inherit',
-        }}
+        className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors rounded-lg mx-2 my-0.5 ${
+          isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+        }`}
+        style={{ paddingLeft: `${level * 20 + 12}px` }}
         onClick={() => onSelect(group)}
-        onMouseEnter={(e) => !isSelected && (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
-        onMouseLeave={(e) => !isSelected && (e.currentTarget.style.backgroundColor = 'transparent')}
       >
         {hasChildren ? (
           <button
@@ -104,50 +96,39 @@ const GroupTreeNode: React.FC<{
               e.stopPropagation();
               onToggleExpand(group.id);
             }}
-            className="p-0.5 rounded transition-colors"
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-active)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-0.5 rounded transition-colors hover:bg-muted"
           >
             {isExpanded ? (
-              <ChevronDown className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             ) : (
-              <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )}
           </button>
         ) : (
           <span className="w-5" />
         )}
 
-        <div
-          className="p-1.5 rounded"
-          style={{ backgroundColor: config.bgColor }}
-        >
-          <Icon className="h-4 w-4" style={{ color: config.iconColor }} />
+        <div className={`p-1.5 rounded ${config.bgClass}`}>
+          <Icon className={`h-4 w-4 ${config.iconClass}`} />
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+          <div className="font-medium truncate text-foreground">
             {group.name}
             {!group.isActive && (
-              <span
-                className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--text-tertiary)' }}
-              >
+              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                 Inactive
               </span>
             )}
             {group.isSystem && (
-              <span
-                className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: 'var(--bg-info-subtle)', color: 'var(--text-info)' }}
-              >
+              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-info-subtle text-info-text">
                 System
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {group.directMemberCount !== undefined && (
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
@@ -193,7 +174,6 @@ export const GroupsPage: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<GroupType | 'all'>('all');
   const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
 
-  // Fetch groups hierarchy
   const fetchGroups = useCallback(async () => {
     setLoading(true);
     try {
@@ -204,7 +184,6 @@ export const GroupsPage: React.FC = () => {
       setGroups(treeResponse.data.data);
       setStats(statsResponse.data.data);
 
-      // Auto-expand first level
       const rootIds = treeResponse.data.data.map((g) => g.id);
       setExpandedIds(new Set(rootIds));
     } catch (error) {
@@ -218,7 +197,6 @@ export const GroupsPage: React.FC = () => {
     fetchGroups();
   }, [fetchGroups]);
 
-  // Filter groups for search
   const filterGroups = (groupList: Group[]): Group[] => {
     if (!searchQuery && typeFilter === 'all') return groupList;
 
@@ -241,7 +219,6 @@ export const GroupsPage: React.FC = () => {
 
   const filteredGroups = filterGroups(groups);
 
-  // Toggle expand
   const handleToggleExpand = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -254,7 +231,6 @@ export const GroupsPage: React.FC = () => {
     });
   };
 
-  // Expand all
   const expandAll = () => {
     const allIds: string[] = [];
     const collectIds = (list: Group[]) => {
@@ -269,12 +245,10 @@ export const GroupsPage: React.FC = () => {
     setExpandedIds(new Set(allIds));
   };
 
-  // Collapse all
   const collapseAll = () => {
     setExpandedIds(new Set());
   };
 
-  // Handle group actions
   const handleAction = async (groupId: string, action: string) => {
     setActionMenuOpen(null);
     try {
@@ -300,15 +274,10 @@ export const GroupsPage: React.FC = () => {
 
   return (
     <div className="flex h-full">
-      {/* Left Panel - Group Tree */}
-      <div
-        className="w-80 border-r flex flex-col"
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-      >
-        {/* Header */}
-        <div className="p-4 border-b" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="w-80 border-r border-border flex flex-col bg-card">
+        <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h2 className="font-semibold text-foreground">
               Groups
             </h2>
             <button
@@ -320,25 +289,21 @@ export const GroupsPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Search */}
           <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search groups..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-card text-foreground"
             />
           </div>
 
-          {/* Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as GroupType | 'all')}
-            className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            style={{ borderColor: 'var(--border-default)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-card text-foreground"
           >
             <option value="all">All Types</option>
             {Object.entries(groupTypeConfig).map(([value, config]) => (
@@ -348,48 +313,38 @@ export const GroupsPage: React.FC = () => {
             ))}
           </select>
 
-          {/* Expand/Collapse */}
           <div className="flex items-center gap-2 mt-3">
             <button
               onClick={expandAll}
-              className="text-xs px-2 py-1 rounded transition-colors"
-              style={{ color: 'var(--text-muted)' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              className="text-xs px-2 py-1 rounded transition-colors text-muted-foreground hover:bg-muted"
             >
               Expand All
             </button>
             <button
               onClick={collapseAll}
-              className="text-xs px-2 py-1 rounded transition-colors"
-              style={{ color: 'var(--text-muted)' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              className="text-xs px-2 py-1 rounded transition-colors text-muted-foreground hover:bg-muted"
             >
               Collapse All
             </button>
             <button
               onClick={() => fetchGroups()}
-              className="ml-auto p-1 rounded transition-colors"
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              className="ml-auto p-1 rounded transition-colors hover:bg-muted"
               aria-label="Refresh groups"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+              <RefreshCw className={`h-4 w-4 text-muted-foreground ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        {/* Tree */}
         <div className="flex-1 overflow-y-auto py-2">
           {loading ? (
             <div className="flex items-center justify-center h-32">
-              <RefreshCw className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filteredGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center px-4">
-              <FolderTree className="h-8 w-8 mb-2" style={{ color: 'var(--text-muted)' }} />
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              <FolderTree className="h-8 w-8 mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
                 {searchQuery || typeFilter !== 'all' ? 'No matching groups' : 'No groups yet'}
               </p>
             </div>
@@ -408,66 +363,53 @@ export const GroupsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Stats */}
-        <div className="p-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
+        <div className="p-4 border-t border-border">
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             {stats &&
               Object.entries(groupTypeConfig)
                 .slice(0, 3)
                 .map(([type, config]) => (
-                  <div key={type} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-base)' }}>
-                    <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <div key={type} className="p-2 rounded-lg bg-background">
+                    <div className="font-semibold text-foreground">
                       {stats[type as GroupType] || 0}
                     </div>
-                    <div style={{ color: 'var(--text-muted)' }}>{config.label}s</div>
+                    <div className="text-muted-foreground">{config.label}s</div>
                   </div>
                 ))}
           </div>
         </div>
       </div>
 
-      {/* Right Panel - Group Details */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedGroup ? (
           <>
-            {/* Group Header */}
-            <div className="p-6 border-b" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="p-6 border-b border-border">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
-                  <div
-                    className="p-3 rounded-xl"
-                    style={{ backgroundColor: (groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).bgColor }}
-                  >
+                  <div className={`p-3 rounded-xl ${(groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).bgClass}`}>
                     {React.createElement((groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).icon, {
-                      className: 'h-6 w-6',
-                      style: { color: (groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).iconColor },
+                      className: `h-6 w-6 ${(groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).iconClass}`,
                     })}
                   </div>
                   <div>
-                    <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    <h1 className="text-2xl font-semibold text-foreground">
                       {selectedGroup.name}
                     </h1>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      <span className="text-sm text-muted-foreground">
                         {(groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).label}
                       </span>
-                      <span style={{ color: 'var(--text-muted)' }}>|</span>
-                      <span className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+                      <span className="text-muted-foreground">|</span>
+                      <span className="text-sm font-mono text-muted-foreground">
                         {selectedGroup.code}
                       </span>
                       {!selectedGroup.isActive && (
-                        <span
-                          className="px-2 py-0.5 text-xs rounded"
-                          style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--text-tertiary)' }}
-                        >
+                        <span className="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground">
                           Inactive
                         </span>
                       )}
                       {selectedGroup.isSystem && (
-                        <span
-                          className="px-2 py-0.5 text-xs rounded"
-                          style={{ backgroundColor: 'var(--bg-info-subtle)', color: 'var(--text-info)' }}
-                        >
+                        <span className="px-2 py-0.5 text-xs rounded bg-info-subtle text-info-text">
                           System
                         </span>
                       )}
@@ -505,12 +447,11 @@ export const GroupsPage: React.FC = () => {
                       aria-expanded={actionMenuOpen === selectedGroup.id}
                       aria-haspopup="menu"
                     >
-                      <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </button>
                     {actionMenuOpen === selectedGroup.id && (
                       <div
-                        className="absolute right-0 mt-1 w-48 rounded-lg border z-10"
-                        style={{ backgroundColor: 'var(--bg-elevated)', borderColor: 'var(--border-default)', boxShadow: 'var(--shadow-lg)' }}
+                        className="absolute right-0 mt-1 w-48 rounded-lg border border-border z-10 bg-popover shadow-lg"
                         role="menu"
                         aria-label={`Actions for ${selectedGroup.name}`}
                       >
@@ -518,10 +459,7 @@ export const GroupsPage: React.FC = () => {
                           {selectedGroup.isActive ? (
                             <button
                               onClick={() => handleAction(selectedGroup.id, 'delete')}
-                              className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors"
-                              style={{ color: 'var(--text-danger)' }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-danger-subtle)'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors text-destructive hover:bg-destructive/10"
                               disabled={selectedGroup.isSystem}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -530,10 +468,7 @@ export const GroupsPage: React.FC = () => {
                           ) : (
                             <button
                               onClick={() => handleAction(selectedGroup.id, 'restore')}
-                              className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors"
-                              style={{ color: 'var(--text-primary)' }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors text-foreground hover:bg-muted"
                             >
                               <RefreshCw className="h-4 w-4" />
                               Restore Group
@@ -547,84 +482,71 @@ export const GroupsPage: React.FC = () => {
               </div>
 
               {selectedGroup.description && (
-                <p className="mt-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <p className="mt-4 text-sm text-muted-foreground">
                   {selectedGroup.description}
                 </p>
               )}
             </div>
 
-            {/* Stats Cards */}
             <div className="grid grid-cols-4 gap-4 p-6">
-              <div
-                className="p-3 rounded-xl border"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-              >
+              <div className="p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-info-subtle)' }}>
-                    <Users className="h-4 w-4" style={{ color: 'var(--text-info)' }} />
+                  <div className="p-2 rounded-lg bg-info-subtle">
+                    <Users className="h-4 w-4 text-info-text" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    <div className="text-lg font-semibold text-foreground">
                       {selectedGroup.directMemberCount || 0}
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-xs text-muted-foreground">
                       Direct Members
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div
-                className="p-3 rounded-xl border"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-              >
+              <div className="p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-primary-subtle)' }}>
-                    <Users className="h-4 w-4" style={{ color: 'var(--text-brand)' }} />
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Users className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    <div className="text-lg font-semibold text-foreground">
                       {selectedGroup.totalMemberCount || 0}
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-xs text-muted-foreground">
                       Total Members
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div
-                className="p-3 rounded-xl border"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-              >
+              <div className="p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-success-subtle)' }}>
-                    <GitBranch className="h-4 w-4" style={{ color: 'var(--text-success)' }} />
+                  <div className="p-2 rounded-lg bg-success-subtle">
+                    <GitBranch className="h-4 w-4 text-success-text" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    <div className="text-lg font-semibold text-foreground">
                       {selectedGroup.childGroupCount || 0}
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-xs text-muted-foreground">
                       Child Groups
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div
-                className="p-3 rounded-xl border"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-              >
+              <div className="p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-warning-subtle)' }}>
-                    <Shield className="h-4 w-4" style={{ color: 'var(--text-warning)' }} />
+                  <div className="p-2 rounded-lg bg-warning-subtle">
+                    <Shield className="h-4 w-4 text-warning-text" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    <div className="text-lg font-semibold text-foreground">
                       {selectedGroup.roleCount || 0}
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <div className="text-xs text-muted-foreground">
                       Assigned Roles
                     </div>
                   </div>
@@ -632,52 +554,48 @@ export const GroupsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Info */}
             <div className="flex-1 overflow-y-auto p-6 pt-0">
-              <div
-                className="rounded-xl border p-4"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}
-              >
-                <h3 className="font-medium mb-4" style={{ color: 'var(--text-primary)' }}>
+              <div className="rounded-xl border border-border p-4 bg-card">
+                <h3 className="font-medium mb-4 text-foreground">
                   Details
                 </h3>
                 <dl className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <dt style={{ color: 'var(--text-muted)' }}>Code</dt>
-                    <dd className="font-mono" style={{ color: 'var(--text-primary)' }}>
+                    <dt className="text-muted-foreground">Code</dt>
+                    <dd className="font-mono text-foreground">
                       {selectedGroup.code}
                     </dd>
                   </div>
                   <div>
-                    <dt style={{ color: 'var(--text-muted)' }}>Type</dt>
-                    <dd style={{ color: 'var(--text-primary)' }}>
+                    <dt className="text-muted-foreground">Type</dt>
+                    <dd className="text-foreground">
                       {(groupTypeConfig[selectedGroup.type] || groupTypeConfig.standard).label}
                     </dd>
                   </div>
                   <div>
-                    <dt style={{ color: 'var(--text-muted)' }}>Hierarchy Level</dt>
-                    <dd style={{ color: 'var(--text-primary)' }}>
+                    <dt className="text-muted-foreground">Hierarchy Level</dt>
+                    <dd className="text-foreground">
                       {selectedGroup.hierarchyLevel}
                     </dd>
                   </div>
                   <div>
-                    <dt style={{ color: 'var(--text-muted)' }}>Created</dt>
-                    <dd style={{ color: 'var(--text-primary)' }}>
+                    <dt className="text-muted-foreground">Created</dt>
+                    <dd className="text-foreground">
                       {new Date(selectedGroup.createdAt).toLocaleDateString()}
                     </dd>
                   </div>
                   {selectedGroup.updatedAt && (
                     <div>
-                      <dt style={{ color: 'var(--text-muted)' }}>Last Updated</dt>
-                      <dd style={{ color: 'var(--text-primary)' }}>
+                      <dt className="text-muted-foreground">Last Updated</dt>
+                      <dd className="text-foreground">
                         {new Date(selectedGroup.updatedAt).toLocaleDateString()}
                       </dd>
                     </div>
                   )}
                   {selectedGroup.hierarchyPath && (
                     <div className="col-span-2">
-                      <dt style={{ color: 'var(--text-muted)' }}>Hierarchy Path</dt>
-                      <dd className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                      <dt className="text-muted-foreground">Hierarchy Path</dt>
+                      <dd className="font-mono text-xs text-foreground">
                         {selectedGroup.hierarchyPath}
                       </dd>
                     </div>
@@ -687,23 +605,15 @@ export const GroupsPage: React.FC = () => {
             </div>
           </>
         ) : (
-          // Empty state
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <FolderTree className="h-16 w-16 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
-              <h2 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+              <FolderTree className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+              <h2 className="text-lg font-medium mb-2 text-foreground">
                 Select a Group
               </h2>
-              <p className="text-sm max-w-sm" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-sm max-w-sm text-muted-foreground">
                 Choose a group from the tree on the left to view its details, members, and role assignments.
               </p>
-              <button
-                onClick={() => navigate('/studio/groups/new')}
-                className="btn-primary mt-4 flex items-center gap-2 px-4 py-2 mx-auto rounded-lg"
-              >
-                <Plus className="h-4 w-4" />
-                Create Group
-              </button>
             </div>
           </div>
         )}

@@ -121,17 +121,17 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
     }
   };
 
-  // Get color for layout type
-  const getLayoutColor = (type: LayoutOption['type']) => {
+  // Get Tailwind classes for layout type badge
+  const getLayoutBadgeClasses = (type: LayoutOption['type']) => {
     switch (type) {
       case 'personal':
-        return 'text-purple-600 bg-purple-50';
+        return 'bg-primary/10 text-primary';
       case 'role':
-        return 'text-blue-600 bg-blue-50';
+        return 'bg-info-subtle text-info-text';
       case 'admin':
-        return 'text-amber-600 bg-amber-50';
+        return 'bg-warning-subtle text-warning-text';
       case 'system':
-        return 'text-slate-600 bg-slate-100';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -165,17 +165,23 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
       <button
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label="Layout switcher"
         className={`
-          inline-flex items-center gap-2 rounded-lg border transition-all
+          inline-flex items-center gap-2 rounded-lg border transition-all min-h-[44px]
           ${compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'}
-          ${disabled
-            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
+          ${
+            disabled
+              ? 'bg-muted border-border text-muted-foreground cursor-not-allowed'
+              : 'bg-card border-border text-foreground hover:border-primary/50'
           }
-          ${isOpen ? 'border-primary-300 ring-2 ring-primary-100' : ''}
+          ${isOpen && !disabled ? 'border-primary ring-2 ring-primary/20' : ''}
         `}
       >
-        <div className={`flex items-center justify-center rounded ${getLayoutColor(activeLayout?.type || 'system')} ${compact ? 'w-5 h-5' : 'w-6 h-6'}`}>
+        <div
+          className={`flex items-center justify-center rounded ${compact ? 'w-5 h-5' : 'w-6 h-6'} ${getLayoutBadgeClasses(activeLayout?.type || 'system')}`}
+        >
           {getLayoutIcon(activeLayout?.type || 'system')}
         </div>
 
@@ -186,19 +192,32 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
         )}
 
         {hasUnsavedChanges && (
-          <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Unsaved changes" />
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0 bg-warning"
+            title="Unsaved changes"
+            aria-label="Unsaved changes"
+          />
         )}
 
         {activeLayout?.hasConflict && (
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+          <AlertTriangle
+            className="h-3.5 w-3.5 flex-shrink-0 text-warning-text"
+            aria-label="Layout conflict"
+          />
         )}
 
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 transition-transform text-muted-foreground ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50 animate-fade-in">
+        <div
+          role="listbox"
+          aria-label="Layout options"
+          className="absolute right-0 mt-1 w-64 rounded-xl shadow-lg py-2 z-50 animate-fade-in bg-card border border-border"
+        >
           {/* Layout Groups */}
           {(['personal', 'role', 'admin', 'system'] as const).map((type) => {
             const group = groupedLayouts[type];
@@ -206,22 +225,27 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
 
             return (
               <div key={type} className="py-1">
-                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {getGroupLabel(type)}
                 </div>
                 {group.map((layout) => (
                   <button
                     key={layout.id}
+                    role="option"
+                    aria-selected={layout.id === activeLayoutId}
                     onClick={() => handleSelectLayout(layout.id)}
                     className={`
-                      w-full flex items-center gap-3 px-3 py-2 text-left transition-colors
-                      ${layout.id === activeLayoutId
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'hover:bg-slate-50 text-slate-700'
+                      w-full flex items-center gap-3 px-3 py-2 text-left transition-colors min-h-[44px]
+                      ${
+                        layout.id === activeLayoutId
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-foreground hover:bg-muted'
                       }
                     `}
                   >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${getLayoutColor(layout.type)}`}>
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center ${getLayoutBadgeClasses(layout.type)}`}
+                    >
                       {getLayoutIcon(layout.type)}
                     </div>
 
@@ -229,19 +253,25 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium truncate">{layout.name}</span>
                         {layout.isDefault && (
-                          <Star className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />
+                          <Star
+                            className="h-3 w-3 flex-shrink-0 text-warning-text fill-warning-text"
+                            aria-label="Default layout"
+                          />
                         )}
                         {layout.hasConflict && (
-                          <AlertTriangle className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                          <AlertTriangle
+                            className="h-3 w-3 flex-shrink-0 text-warning-text"
+                            aria-label="Layout conflict"
+                          />
                         )}
                       </div>
                       {layout.version && (
-                        <span className="text-[10px] text-slate-400">v{layout.version}</span>
+                        <span className="text-[10px] text-muted-foreground">v{layout.version}</span>
                       )}
                     </div>
 
                     {layout.id === activeLayoutId && (
-                      <Check className="h-4 w-4 text-primary-600 flex-shrink-0" />
+                      <Check className="h-4 w-4 flex-shrink-0 text-primary" aria-label="Selected" />
                     )}
                   </button>
                 ))}
@@ -250,7 +280,7 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
           })}
 
           {/* Divider */}
-          <div className="my-2 border-t border-slate-100" />
+          <div className="my-2 border-t border-border" />
 
           {/* Actions */}
           <div className="px-2 space-y-1">
@@ -260,9 +290,10 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
                   onCustomize();
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-foreground hover:bg-muted min-h-[44px]"
+                aria-label="Customize layout"
               >
-                <Settings className="h-4 w-4 text-slate-400" />
+                <Settings className="h-4 w-4 text-muted-foreground" />
                 Customize Layout...
               </button>
             )}
@@ -273,9 +304,10 @@ export const LayoutSwitcher: React.FC<LayoutSwitcherProps> = ({
                   onResetToDefault();
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-foreground hover:bg-muted min-h-[44px]"
+                aria-label="Reset to default layout"
               >
-                <RotateCcw className="h-4 w-4 text-slate-400" />
+                <RotateCcw className="h-4 w-4 text-muted-foreground" />
                 Reset to Default
               </button>
             )}

@@ -1,6 +1,6 @@
 import metadataApi from './metadataApi';
 
-// Simplified PropertyDefinition interface for frontend
+// Frontend PropertyDefinition interface
 export interface PropertyDefinition {
   id: string;
   collectionId: string;
@@ -10,40 +10,70 @@ export interface PropertyDefinition {
   isSystem: boolean;
   isRequired: boolean;
   isUnique: boolean;
+  isReadonly: boolean;
   displayOrder: number;
   choiceList?: { value: string; label: string; color?: string }[];
   [key: string]: any;
+}
+
+// API response format (matches backend entity)
+interface PropertyApiResponse {
+  id: string;
+  collectionId: string;
+  code: string;
+  name: string;  // Backend uses 'name', frontend uses 'label'
+  propertyTypeId?: string;
+  position: number;  // Backend uses 'position', frontend uses 'displayOrder'
+  isSystem: boolean;
+  isRequired: boolean;
+  isUnique: boolean;
+  isReadonly: boolean;
+  config?: Record<string, unknown>;
+  propertyType?: { code: string; name: string };
+  [key: string]: any;
+}
+
+// Map API response to frontend format
+function mapPropertyResponse(apiProp: PropertyApiResponse): PropertyDefinition {
+  return {
+    ...apiProp,
+    label: apiProp.name,  // API 'name' → 'label'
+    displayOrder: apiProp.position ?? 0,  // API 'position' → 'displayOrder'
+    dataType: apiProp.propertyType?.code || apiProp.config?.type as string || 'text',
+    isReadonly: apiProp.isReadonly ?? false,
+  };
 }
 
 export interface CreatePropertyDto {
   code: string;
   label: string;
   dataType: string;
-  // ... other fields matching backend DTO
   [key: string]: any;
 }
 
 export interface UpdatePropertyDto {
   label?: string;
-  // ... other fields matching backend DTO
   [key: string]: any;
 }
 
 export const propertyApi = {
   // List properties for a collection
   list: async (collectionId: string) => {
-    const response = await metadataApi.get<{ data: PropertyDefinition[]; total: number }>(
+    const response = await metadataApi.get<PropertyApiResponse[]>(
       `/collections/${collectionId}/properties`
     );
-    return response.data;
+    // API returns array directly, map and wrap for consistency
+    const apiProperties = Array.isArray(response.data) ? response.data : [];
+    const properties = apiProperties.map(mapPropertyResponse);
+    return { data: properties, total: properties.length };
   },
 
   // Get a single property
   get: async (collectionId: string, propertyId: string) => {
-    const response = await metadataApi.get<PropertyDefinition>(
+    const response = await metadataApi.get<PropertyApiResponse>(
       `/collections/${collectionId}/properties/${propertyId}`
     );
-    return response.data;
+    return mapPropertyResponse(response.data);
   },
 
   // Check code availability

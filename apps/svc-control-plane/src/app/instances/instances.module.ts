@@ -1,6 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TenantInstance } from '@hubblewave/control-plane-db';
+import { Customer, Instance } from '@hubblewave/control-plane-db';
 import { InstancesController } from './instances.controller';
 import { InstancesService } from './instances.service';
 
@@ -10,7 +10,7 @@ import { LicensesModule } from '../licenses/licenses.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TenantInstance]),
+    TypeOrmModule.forFeature([Instance, Customer]),
     AuditModule,
     forwardRef(() => TerraformModule),
     LicensesModule,

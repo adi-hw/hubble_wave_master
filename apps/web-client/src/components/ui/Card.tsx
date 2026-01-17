@@ -77,23 +77,20 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
       <div className="flex items-start gap-3">
         {icon && (
           <div
-            className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'var(--bg-primary-subtle)', color: 'var(--text-brand)' }}
+            className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10 text-primary"
           >
             {icon}
           </div>
         )}
         <div>
           <h3
-            className="text-base font-semibold"
-            style={{ color: 'var(--text-primary)' }}
+            className="text-base font-semibold text-foreground"
           >
             {title}
           </h3>
           {description && (
             <p
-              className="mt-1 text-sm"
-              style={{ color: 'var(--text-secondary)' }}
+              className="mt-1 text-sm text-muted-foreground"
             >
               {description}
             </p>
@@ -140,11 +137,10 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 pt-4 mt-4',
+        'flex items-center gap-3 pt-4 mt-4 border-t border-border',
         alignClasses[align],
         className
       )}
-      style={{ borderTop: '1px solid var(--border-subtle)' }}
       {...props}
     >
       {children}

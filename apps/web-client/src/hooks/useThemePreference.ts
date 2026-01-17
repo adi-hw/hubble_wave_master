@@ -1,9 +1,7 @@
 /**
  * useThemePreference - Theme Preference Hook
  *
- * Re-exports useThemePreferenceContext for backwards compatibility.
- * Components should prefer using useThemePreferenceContext directly
- * for new code.
+ * Provides access to the theme preference context for managing user theme settings.
  */
 
 export { useThemePreferenceContext as useThemePreference } from '../contexts/ThemePreferenceContext';

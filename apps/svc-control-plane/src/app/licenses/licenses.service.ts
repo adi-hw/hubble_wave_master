@@ -23,6 +23,7 @@ export class LicensesService {
         customerId: customerId || undefined,
         revokedAt: IsNull(),
       },
+      relations: ['customer'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -119,7 +120,7 @@ export class LicensesService {
     if (license.status !== 'active') {
       return { valid: false, reason: `STATUS_${license.status.toUpperCase()}` };
     }
-    if (license.expiresAt < new Date()) {
+    if (license.expiresAt && license.expiresAt < new Date()) {
       return { valid: false, reason: 'EXPIRED' };
     }
     const payload = {
@@ -144,7 +145,7 @@ export class LicensesService {
     if (!license) {
       throw new NotFoundException('No active license for customer');
     }
-    if (license.expiresAt < new Date()) {
+    if (license.expiresAt && license.expiresAt < new Date()) {
       throw new NotFoundException('License expired for customer');
     }
     const payload = {
@@ -157,6 +158,17 @@ export class LicensesService {
     const validSignature = license.signature ? this.verifyLicense(payload, license.signature) : false;
     if (!validSignature) {
       throw new NotFoundException('Invalid license signature for customer');
+    }
+    return license;
+  }
+
+  async getLatestLicenseForCustomer(customerId: string) {
+    const license = await this.licenseRepo.findOne({
+      where: { customerId },
+      order: { expiresAt: 'DESC', createdAt: 'DESC' },
+    });
+    if (!license) {
+      throw new NotFoundException('No license found for customer');
     }
     return license;
   }

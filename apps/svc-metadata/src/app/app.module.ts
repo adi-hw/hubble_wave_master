@@ -1,67 +1,89 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthGuardModule } from '@hubblewave/auth-guard';
-import { AuthorizationModule } from '@hubblewave/authorization';
-import { InstanceDbModule } from '@hubblewave/instance-db';
+import {
+  AuthorizationModule,
+  COLLECTION_ACL_REPOSITORY,
+  PROPERTY_ACL_REPOSITORY,
+} from '@hubblewave/authorization';
+import {
+  InstanceDbModule,
+  CollectionAccessRule,
+  PropertyAccessRule,
+} from '@hubblewave/instance-db';
 import { ModuleController } from './module.controller';
 import { ModuleService } from './module.service';
-import { FormController } from './form.controller';
-import { FormService } from './form.service';
 import { ModelRegistryService } from './model-registry.service';
 import { ModelController } from './model.controller';
 import { MetadataController } from './metadata.controller';
+import { HealthController } from './health.controller';
 
 import { PropertyModule } from './property/property.module';
 import { AccessModule } from './access/access.module';
-// import { FlowsModule } from './flows/flows.module'; // TODO: Fix type errors
 import { CollectionController } from './collection/collection.controller';
 import { CollectionService } from './collection/collection.service';
 import { CollectionStorageService } from './collection/collection-storage.service';
 import { CollectionAvaService } from './collection/collection-ava.service';
-
-// import { CommitmentController } from './commitment.controller';
-// import { CommitmentService } from './commitment.service';
-
-// import { CommitmentModule } from './commitment/commitment.module'; // TODO: Fix type errors
+import { SchemaDiffService } from './schema/schema-diff.service';
 import { ThemeModule } from './theme/theme.module';
 import { PreferencesModule } from './preferences/preferences.module';
-
-// NOTE: Data CRUD operations have been consolidated to svc-data service.
-// Use svc-data endpoints for all record create/read/update/delete operations.
-// svc-metadata focuses on configuration, workflows, and business rules.
-// Table schema is now discovered from information_schema (database-first approach).
+import { ViewModule } from './view/view.module';
+import { NavigationMetadataModule } from './navigation/navigation.module';
+import { ScriptModule } from './script/script.module';
+import { PacksModule } from './packs/packs.module';
+import { SchemaController } from './schema/schema.controller';
+import { SchemaDeployService } from './schema/schema-deploy.service';
+import { SearchModule } from './search/search.module';
+import { LocalizationModule } from './localization/localization.module';
 
 @Module({
   imports: [
     InstanceDbModule,
-
     AuthGuardModule,
-    AuthorizationModule,
+    EventEmitterModule.forRoot(),
+    TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
+    AuthorizationModule.forRoot({
+      enableCaching: true,
+    }),
     PropertyModule,
     AccessModule,
     ThemeModule,
     PreferencesModule,
-    // FlowsModule,
-    // CommitmentModule,
+    ViewModule,
+    NavigationMetadataModule,
+    ScriptModule,
+    PacksModule,
+    SearchModule,
+    LocalizationModule,
   ],
   controllers: [
+    HealthController,
     ModuleController,
     ModelController,
-    FormController,
     MetadataController,
-
     CollectionController,
-    // CommitmentController,
-
+    SchemaController,
   ],
   providers: [
     ModuleService,
-    FormService,
     ModelRegistryService,
     CollectionService,
     CollectionStorageService,
     CollectionAvaService,
-    // CommitmentService,
-
+    SchemaDiffService,
+    SchemaDeployService,
+    {
+      provide: COLLECTION_ACL_REPOSITORY,
+      useFactory: (repo: Repository<CollectionAccessRule>) => repo,
+      inject: [getRepositoryToken(CollectionAccessRule)],
+    },
+    {
+      provide: PROPERTY_ACL_REPOSITORY,
+      useFactory: (repo: Repository<PropertyAccessRule>) => repo,
+      inject: [getRepositoryToken(PropertyAccessRule)],
+    },
   ],
 })
 export class AppModule {}

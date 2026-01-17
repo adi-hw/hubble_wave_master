@@ -1,0 +1,24 @@
+manifest: hubblewave.pack
+manifest_revision: 1
+pack:
+  code: work_foundation
+  name: Work Foundation
+  release_id: "20260111.001"
+  publisher: HubbleWave
+  description: Core offerings and work item collections for request and fulfillment.
+  license: Proprietary
+  installable_by_client: true
+compatibility:
+  platform_min_release_id: "20260108.001"
+  platform_max_release_id: "20261231.999"
+assets:
+  - type: metadata
+    path: metadata/work-foundation.yaml
+    sha256: fb3275a1a1cb0d58b21615cec9f9ccf04af03043e9c4f26109d33310985ed47f
+install:
+  lock_key: work_foundation
+  apply_order:
+    - metadata
+signing:
+  algorithm: ed25519
+  public_key_id: hw-pack-signing-primary

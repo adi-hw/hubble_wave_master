@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ControlPlaneEntities } from '@hubblewave/control-plane-db';
+import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { controlPlaneEntities } from '@hubblewave/control-plane-db';
 import { ThrottlerGuard, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -13,6 +15,10 @@ import { TerraformModule } from './terraform';
 import { MetricsModule } from './metrics';
 import { LicensesModule } from './licenses/licenses.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { HealthAggregatorModule } from './health-aggregator';
+import { PacksModule } from './packs';
+import { RecoveryModule } from './recovery/recovery.module';
+import { SettingsModule } from './settings';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditInterceptor } from './audit/audit.interceptor';
 
@@ -22,6 +28,8 @@ import { AuditInterceptor } from './audit/audit.interceptor';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+    ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -39,17 +47,29 @@ import { AuditInterceptor } from './audit/audit.interceptor';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const nodeEnv = configService.get('NODE_ENV') || 'development';
+        const dbPassword = configService.get('CONTROL_PLANE_DB_PASSWORD');
+
+        if (!dbPassword && nodeEnv === 'production') {
+          throw new Error('CONTROL_PLANE_DB_PASSWORD must be set in production');
+        }
+
+        if (!dbPassword || dbPassword === 'password') {
+          console.warn('\x1b[31m[SECURITY] WARNING: CONTROL_PLANE_DB_PASSWORD uses a development default. This is acceptable for development but MUST be changed for production.\x1b[0m');
+        }
 
         return {
           type: 'postgres',
-          host: configService.get('CONTROL_PLANE_DB_HOST', 'localhost'),
+          host: configService.get('CONTROL_PLANE_DB_HOST', '127.0.0.1'),
           port: configService.get<number>('CONTROL_PLANE_DB_PORT', 5432),
           username: configService.get('CONTROL_PLANE_DB_USER', 'admin'),
-          password: configService.get('CONTROL_PLANE_DB_PASSWORD', 'password'),
-          database: configService.get('CONTROL_PLANE_DB_NAME', 'eam_control'),
-          entities: ControlPlaneEntities,
+          password: dbPassword || 'password',
+          database: configService.get('CONTROL_PLANE_DB_NAME', 'hubblewave_control_plane'),
+          entities: controlPlaneEntities,
           // Never allow auto-sync in production; rely on migrations instead.
           synchronize: nodeEnv !== 'production',
+          ssl: configService.get('DB_SSL', 'false') === 'true'
+            ? { rejectUnauthorized: false }
+            : false,
           logging: nodeEnv === 'development',
         };
       },
@@ -62,6 +82,10 @@ import { AuditInterceptor } from './audit/audit.interceptor';
     MetricsModule,
     LicensesModule,
     SubscriptionsModule,
+    HealthAggregatorModule,
+    PacksModule,
+    RecoveryModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

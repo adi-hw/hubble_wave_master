@@ -110,28 +110,25 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div 
-        className="flex items-center justify-between pb-4 border-b"
-        style={{ borderColor: 'var(--border-default)' }}
-      >
+      <div className="flex items-center justify-between pb-4 border-b border-border">
         <div className="flex items-center gap-2">
           {node.icon && (
-            <span style={{ color: 'var(--text-muted)' }}>
+            <span className="text-muted-foreground">
               <Icon name={node.icon} className="h-5 w-5" />
             </span>
           )}
-          <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h3 className="text-lg font-semibold text-foreground">
             {isNew ? 'New Node' : node.label || 'Edit Node'}
           </h3>
         </div>
         <div className="flex items-center gap-2">
           {node.isVisible === false ? (
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-600">
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-warning-subtle text-warning-text">
               <EyeOff className="h-3 w-3" />
               Hidden
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600">
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-success-subtle text-success-text">
               <Eye className="h-3 w-3" />
               Visible
             </span>
@@ -143,38 +140,36 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       <div className="grid gap-4 sm:grid-cols-2">
         {/* Key */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Key</label>
+          <label htmlFor="node-key" className="text-xs font-semibold uppercase text-muted-foreground">Key</label>
           <input
+            id="node-key"
             type="text"
             value={node.key}
             onChange={(e) => updateField('key', e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
             disabled={disabled || !isNew}
             placeholder="unique-key"
-            className="w-full px-3 py-2 rounded-lg border text-sm font-mono"
-            style={{ 
-              backgroundColor: disabled || !isNew ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled || !isNew ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="Node unique identifier key"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm font-mono ${
+              disabled || !isNew ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           />
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Unique identifier for patch targeting</p>
+          <p className="text-xs text-muted-foreground">Unique identifier for patch targeting</p>
         </div>
 
 
 
         {/* Parent Group */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Parent Group</label>
+          <label htmlFor="node-parent" className="text-xs font-semibold uppercase text-muted-foreground">Parent Group</label>
           <select
+             id="node-parent"
              value={node.parentKey || ''}
              onChange={(e) => updateField('parentKey', e.target.value || undefined)}
              disabled={disabled}
-             className="w-full px-3 py-2 rounded-lg border text-sm"
-             style={{ 
-               backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-               borderColor: 'var(--border-default)',
-               color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-             }}
+             aria-label="Parent group selection"
+             className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+               disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+             }`}
           >
             <option value="">(Root Level)</option>
             {parentOptions.map((opt) => (
@@ -187,17 +182,16 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
 
         {/* Type */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Type</label>
+          <label htmlFor="node-type" className="text-xs font-semibold uppercase text-muted-foreground">Type</label>
           <select
+            id="node-type"
             value={node.type}
             onChange={(e) => updateField('type', e.target.value as NavNodeType)}
             disabled={disabled || !isNew}
-            className="w-full px-3 py-2 rounded-lg border text-sm"
-            style={{ 
-              backgroundColor: disabled || !isNew ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled || !isNew ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="Node type"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+              disabled || !isNew ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           >
             {NODE_TYPE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -211,19 +205,18 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* Label (not for separator) */}
       {!isSeparator && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Label</label>
+          <label htmlFor="node-label" className="text-xs font-semibold uppercase text-muted-foreground">Label</label>
           <input
+            id="node-label"
             type="text"
             value={node.label}
             onChange={(e) => updateField('label', e.target.value)}
             disabled={disabled}
             placeholder="Display Label"
-            className="w-full px-3 py-2 rounded-lg border text-sm"
-            style={{ 
-              backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="Node display label"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+              disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           />
         </div>
       )}
@@ -231,18 +224,17 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* Icon (not for separator) */}
       {!isSeparator && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Icon</label>
+          <label htmlFor="node-icon" className="text-xs font-semibold uppercase text-muted-foreground">Icon</label>
           <div className="flex items-center gap-2">
             <select
+              id="node-icon"
               value={node.icon || ''}
               onChange={(e) => updateField('icon', e.target.value || undefined)}
               disabled={disabled}
-              className="flex-1 px-3 py-2 rounded-lg border text-sm"
-              style={{ 
-                backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-                borderColor: 'var(--border-default)',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-              }}
+              aria-label="Node icon"
+              className={`flex-1 px-3 py-2 rounded-lg border border-border text-sm ${
+                disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+              }`}
             >
               <option value="">No icon</option>
               {ICON_OPTIONS.map((icon) => (
@@ -252,11 +244,11 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
               ))}
             </select>
             {node.icon && (
-              <div 
-                className="p-2 rounded-lg"
-                style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+              <div
+                className="p-2 rounded-lg bg-muted"
+                aria-label="Icon preview"
               >
-                <span style={{ color: 'var(--text-primary)' }}>
+                <span className="text-foreground">
                   <Icon name={node.icon} className="h-5 w-5" />
                 </span>
               </div>
@@ -268,7 +260,7 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* Module Picker (for module/group types) */}
       {(isModule || node.type === 'group') && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Module</label>
+          <label className="text-xs font-semibold uppercase text-muted-foreground">Module</label>
           <ModulePicker
             value={node.moduleKey}
             onChange={(val) => updateField('moduleKey', val)}
@@ -282,19 +274,18 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* URL (for link type) */}
       {isLink && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>URL</label>
+          <label htmlFor="node-url" className="text-xs font-semibold uppercase text-muted-foreground">URL</label>
           <input
+            id="node-url"
             type="text"
             value={node.url || ''}
             onChange={(e) => updateField('url', e.target.value)}
             disabled={disabled}
             placeholder="https://example.com"
-            className="w-full px-3 py-2 rounded-lg border text-sm"
-            style={{ 
-              backgroundColor: disabled || !isNew ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled || !isNew ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="External link URL"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+              disabled || !isNew ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           />
         </div>
       )}
@@ -302,17 +293,16 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* Smart Group Type (for smart_group) */}
       {isSmartGroup && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Smart Group Type</label>
+          <label htmlFor="node-smart-group-type" className="text-xs font-semibold uppercase text-muted-foreground">Smart Group Type</label>
           <select
+            id="node-smart-group-type"
             value={node.smartGroupType || 'recent'}
             onChange={(e) => updateField('smartGroupType', e.target.value as any)}
             disabled={disabled}
-            className="w-full px-3 py-2 rounded-lg border text-sm"
-            style={{ 
-              backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="Smart group type"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+              disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           >
             {SMART_GROUP_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -326,18 +316,17 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       {/* Sort Order */}
       {!isSeparator && (
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>Sort Order</label>
+          <label htmlFor="node-order" className="text-xs font-semibold uppercase text-muted-foreground">Sort Order</label>
           <input
+            id="node-order"
             type="number"
             value={node.order}
             onChange={(e) => updateField('order', parseInt(e.target.value) || 0)}
             disabled={disabled}
-            className="w-full px-3 py-2 rounded-lg border text-sm"
-            style={{ 
-              backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-              borderColor: 'var(--border-default)',
-              color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-            }}
+            aria-label="Sort order"
+            className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+              disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+            }`}
           />
         </div>
       )}
@@ -350,21 +339,23 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
           checked={node.isVisible ?? true}
           onChange={(e) => updateField('isVisible', e.target.checked)}
           disabled={disabled}
-          className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+          aria-label="Visible in navigation"
+          className="h-4 w-4 rounded border-border text-primary accent-primary"
         />
         <label htmlFor="isVisible" className="text-sm font-medium cursor-pointer">
-          <span className="text-sm" style={{ color: 'var(--text-primary)' }}>Visible in navigation</span>
+          <span className="text-sm text-foreground">Visible in navigation</span>
         </label>
       </div>
 
       {/* Visibility Rules Section */}
       {!isSeparator && (
-        <div className="border-t pt-4" style={{ borderColor: 'var(--border-default)' }}>
+        <div className="border-t border-border pt-4">
           <button
             type="button"
             onClick={() => setShowVisibility(!showVisibility)}
-            className="flex items-center gap-2 text-sm font-medium hover:opacity-80"
-            style={{ color: 'var(--text-primary)' }}
+            aria-expanded={showVisibility}
+            aria-controls="visibility-rules-content"
+            className="flex items-center gap-2 text-sm font-medium text-foreground hover:opacity-80 min-h-[44px]"
           >
             {showVisibility ? (
               <ChevronDown className="h-4 w-4" />
@@ -375,7 +366,7 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
           </button>
 
           {showVisibility && (
-            <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-surface)' }}>
+            <div id="visibility-rules-content" className="mt-4 p-4 rounded-lg bg-card">
               <VisibilityRuleEditor
                 value={node.visibility || {}}
                 onChange={(v) => updateField('visibility', Object.keys(v).length > 0 ? v : undefined)}
@@ -391,12 +382,13 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
 
       {/* Context Tags Section */}
       {!isSeparator && (
-        <div className="border-t pt-4" style={{ borderColor: 'var(--border-default)' }}>
+        <div className="border-t border-border pt-4">
           <button
             type="button"
             onClick={() => setShowContextTags(!showContextTags)}
-            className="flex items-center gap-2 text-sm font-medium hover:opacity-80"
-            style={{ color: 'var(--text-primary)' }}
+            aria-expanded={showContextTags}
+            aria-controls="context-tags-content"
+            className="flex items-center gap-2 text-sm font-medium text-foreground hover:opacity-80 min-h-[44px]"
           >
             {showContextTags ? (
               <ChevronDown className="h-4 w-4" />
@@ -407,11 +399,12 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
           </button>
 
           {showContextTags && (
-            <div className="mt-4 space-y-2">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div id="context-tags-content" className="mt-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
                 Tags for device/context filtering (e.g., mobile, desktop, beta)
               </p>
               <input
+                id="node-context-tags"
                 type="text"
                 value={node.contextTags?.join(', ') || ''}
                 onChange={(e) => {
@@ -423,12 +416,10 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
                 }}
                 disabled={disabled}
                 placeholder="mobile, desktop, beta"
-                className="w-full px-3 py-2 rounded-lg border text-sm"
-                style={{ 
-                  backgroundColor: disabled ? 'var(--bg-surface-secondary)' : 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: disabled ? 'var(--text-muted)' : 'var(--text-primary)'
-                }}
+                aria-label="Context tags"
+                className={`w-full px-3 py-2 rounded-lg border border-border text-sm ${
+                  disabled ? 'bg-muted text-muted-foreground' : 'bg-card text-foreground'
+                }`}
               />
             </div>
           )}
@@ -436,16 +427,14 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
       )}
 
       {/* Actions */}
-      <div 
-        className="flex items-center justify-between pt-4 border-t"
-        style={{ borderColor: 'var(--border-default)' }}
-      >
+      <div className="flex items-center justify-between pt-4 border-t border-border">
         {onDelete && !isNew && (
           <button
             type="button"
             onClick={onDelete}
             disabled={disabled}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
+            aria-label="Delete node"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors text-destructive bg-transparent hover:bg-destructive/10 min-h-[44px]"
           >
             <Trash2 className="h-4 w-4" />
             Delete
@@ -457,7 +446,8 @@ export const NavNodeEditor: React.FC<NavNodeEditorProps> = ({
             type="button"
             onClick={onSave}
             disabled={disabled || !node.key}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label={isNew ? 'Create node' : 'Save node'}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-primary-foreground bg-primary hover:bg-primary/90 min-h-[44px]"
           >
             <Save className="h-4 w-4" />
             {isNew ? 'Create' : 'Save'}

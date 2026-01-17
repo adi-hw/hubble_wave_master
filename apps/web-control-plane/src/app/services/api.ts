@@ -42,11 +42,11 @@ export interface Customer {
   id: string;
   code: string;
   name: string;
-  status: 'active' | 'trial' | 'suspended' | 'churned';
+  status: 'active' | 'trial' | 'suspended' | 'churned' | 'pending' | 'terminated';
   tier: 'starter' | 'professional' | 'enterprise';
-  contactName?: string;
-  contactEmail?: string;
-  contactPhone?: string;
+  primaryContactName?: string;
+  primaryContactEmail?: string;
+  primaryContactPhone?: string;
   mrr: number;
   contractStart?: string;
   contractEnd?: string;
@@ -97,7 +97,7 @@ export interface CustomerSettings {
 export interface TenantInstance {
   id: string;
   customerId: string;
-  environment: 'production' | 'staging' | 'development';
+  environment: 'production' | 'staging' | 'dev';
   status: 'provisioning' | 'active' | 'suspended' | 'terminated' | 'failed';
   health: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
   domain?: string;
@@ -110,9 +110,89 @@ export interface TenantInstance {
     memory_usage?: number;
     disk_usage?: number;
     network_io?: number;
+    db_connections?: number;
+    active_users?: number;
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PackRegistry {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  publisher: string;
+  license?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PackRelease {
+  id: string;
+  packId: string;
+  releaseId: string;
+  manifestRevision: number;
+  manifest: Record<string, unknown>;
+  dependencies?: Record<string, unknown> | null;
+  compatibility?: Record<string, unknown> | null;
+  assets: Array<{ type: string; path: string; sha256: string }> | Record<string, unknown>;
+  artifactBucket: string;
+  artifactKey: string;
+  artifactSha256: string;
+  signature: string;
+  signatureKeyId: string;
+  isActive: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+export type PackInstallStatus = 'applying' | 'applied' | 'failed' | 'rolled_back' | 'skipped';
+
+export interface PackInstallStatusRecord {
+  id: string;
+  packCode: string;
+  packReleaseId: string;
+  status: PackInstallStatus;
+  manifest: Record<string, unknown>;
+  artifactSha256?: string | null;
+  installSummary: Record<string, unknown>;
+  warnings: Array<Record<string, unknown>>;
+  appliedBy?: string | null;
+  appliedByType: 'user' | 'system';
+  startedAt: string;
+  completedAt?: string | null;
+  rollbackOfReleaseId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PackWithReleases extends PackRegistry {
+  releases: PackRelease[];
+}
+
+export interface PackInstallRequest {
+  instanceId: string;
+  packCode: string;
+  releaseId: string;
+}
+
+export interface PackRollbackRequest {
+  instanceId: string;
+  packCode: string;
+  releaseId: string;
+}
+
+export interface InstanceBackupRequest {
+  instanceId: string;
+}
+
+export interface InstanceRestoreRequest {
+  instanceId: string;
+  backupId: string;
 }
 
 export interface AuditLog {
@@ -152,17 +232,54 @@ export interface TerraformJob {
   createdAt: string;
 }
 
+export type LicenseStatus = 'active' | 'pending' | 'expired' | 'revoked';
+export type LicenseType = 'starter' | 'professional' | 'enterprise' | 'trial';
+
+export interface License {
+  id: string;
+  customerId: string;
+  customer?: Customer;
+  instanceId?: string | null;
+  licenseKey: string;
+  licenseType: LicenseType;
+  status: LicenseStatus;
+  maxUsers?: number | null;
+  maxAssets?: number | null;
+  features: string[];
+  issuedAt: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  revokeReason?: string | null;
+  createdAt: string;
+}
+
+export interface GlobalSettings {
+  id: string;
+  platformName: string;
+  maintenanceMode: boolean;
+  publicSignup: boolean;
+  defaultTrialDays: number;
+  supportEmail: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PlatformMetrics {
   customers: {
     total: number;
     active: number;
     trial: number;
     byTier: Record<string, number>;
+    totalUsers: number;
+    totalAssets: number;
   };
   instances: {
     total: number;
     healthy: number;
     degraded: number;
+    unhealthy: number;
+    unknown: number;
     provisioning: number;
     byEnvironment: Record<string, number>;
     byRegion: Record<string, number>;
@@ -177,6 +294,7 @@ export interface PlatformMetrics {
     avgDisk: number;
     avgNetwork: number;
   };
+  recentActivity?: AuditLog[];
 }
 
 export interface PaginatedResponse<T> {
@@ -190,7 +308,7 @@ export interface PaginatedResponse<T> {
 // API functions
 export const controlPlaneApi = {
   // Customers
-  getCustomers: (params?: { search?: string; status?: string; tier?: string; page?: number }) =>
+  getCustomers: (params?: { search?: string; status?: string; tier?: string; page?: number; limit?: number }) =>
     api.get<PaginatedResponse<Customer>>('/customers', { params }).then((r) => r.data),
 
   getCustomer: (id: string) =>
@@ -227,6 +345,9 @@ export const controlPlaneApi = {
   createInstance: (data: { customerId: string; environment: string; region: string; version: string; resourceTier?: string }) =>
     api.post<TenantInstance>('/instances', data).then((r) => r.data),
 
+  provisionInstance: (id: string) =>
+    api.post<{ instance: TenantInstance; jobId: string }>(`/instances/${id}/provision`).then((r) => r.data),
+
   updateInstance: (id: string, data: Partial<TenantInstance>) =>
     api.put<TenantInstance>(`/instances/${id}`, data).then((r) => r.data),
 
@@ -235,6 +356,45 @@ export const controlPlaneApi = {
 
   getInstanceStats: () =>
     api.get('/instances/stats').then((r) => r.data),
+
+  // Packs
+  getPacks: () =>
+    api.get<PackWithReleases[]>('/packs').then((r) => r.data),
+
+  getPack: (code: string) =>
+    api.get<PackWithReleases>(`/packs/${code}`).then((r) => r.data),
+
+  getPackRelease: (code: string, releaseId: string) =>
+    api.get<PackRelease>(`/packs/${code}/releases/${releaseId}`).then((r) => r.data),
+
+  getPackDownloadUrl: (code: string, releaseId: string, expiresInSeconds?: number) =>
+    api
+      .get<{ url: string; expiresInSeconds: number }>(`/packs/${code}/releases/${releaseId}/download-url`, {
+        params: { expiresInSeconds },
+      })
+      .then((r) => r.data),
+
+  createPackUploadUrl: (data: { code: string; releaseId: string; filename?: string }) =>
+    api.post<{ bucket: string; key: string; url: string; expiresInSeconds: number }>('/packs/upload-url', data)
+      .then((r) => r.data),
+
+  registerPack: (data: { artifactKey: string; artifactBucket?: string }) =>
+    api.post<PackRelease>('/packs/register', data).then((r) => r.data),
+
+  triggerPackInstall: (data: PackInstallRequest) =>
+    api.post<{ triggered: boolean }>('/packs/install', data).then((r) => r.data),
+
+  triggerPackRollback: (data: PackRollbackRequest) =>
+    api.post<{ triggered: boolean }>('/packs/rollback', data).then((r) => r.data),
+
+  getPackInstallStatus: (params: {
+    instanceId: string;
+    packCode?: string;
+    releaseId?: string;
+    status?: string;
+    limit?: number;
+  }) =>
+    api.get<PackInstallStatusRecord[]>('/packs/install-status', { params }).then((r) => r.data),
 
   // Audit Logs
   getAuditLogs: (params?: { customerId?: string; eventType?: string; severity?: string; page?: number }) =>
@@ -267,6 +427,13 @@ export const controlPlaneApi = {
   getTerraformStats: () =>
     api.get('/terraform/jobs/stats').then((r) => r.data),
 
+  // Recovery
+  triggerInstanceBackup: (data: InstanceBackupRequest) =>
+    api.post<{ triggered: boolean }>('/recovery/backup', data).then((r) => r.data),
+
+  triggerInstanceRestore: (data: InstanceRestoreRequest) =>
+    api.post<{ triggered: boolean }>('/recovery/restore', data).then((r) => r.data),
+
   // Metrics
   getMetrics: () =>
     api.get<PlatformMetrics>('/metrics').then((r) => r.data),
@@ -275,21 +442,28 @@ export const controlPlaneApi = {
     api.get<TenantInstance[]>('/metrics/top-instances', { params: { limit } }).then((r) => r.data),
 
   // Licenses
-  getLicenses: (params?: { customerId?: string; status?: string }) =>
-    api.get<PaginatedResponse<any>>('/licenses', { params }).then((r) => r.data), // Define License type properly later
+  getLicenses: (params?: { customerId?: string }) =>
+    api.get<License[]>('/licenses', { params }).then((r) => r.data),
 
-  createLicense: (data: any) =>
-    api.post('/licenses', data).then((r) => r.data),
+  createLicense: (data: {
+    customerId: string;
+    licenseType: LicenseType;
+    maxUsers: number;
+    maxAssets: number;
+    expiresAt: string;
+    features?: string[];
+  }) =>
+    api.post<License>('/licenses', data).then((r) => r.data),
 
-  revokeLicense: (id: string) =>
-    api.delete(`/licenses/${id}`).then((r) => r.data),
+  updateLicenseStatus: (id: string, data: { status: LicenseStatus; revokeReason?: string }) =>
+    api.post<License>(`/licenses/${id}/status`, data).then((r) => r.data),
 
   // Global Settings
   getGlobalSettings: () =>
-    api.get('/settings/global').then((r) => r.data),
-    
-  updateGlobalSettings: (data: any) =>
-    api.put('/settings/global', data).then((r) => r.data),
+    api.get<GlobalSettings>('/settings/global').then((r) => r.data),
+
+  updateGlobalSettings: (data: Partial<GlobalSettings>) =>
+    api.put<GlobalSettings>('/settings/global', data).then((r) => r.data),
 };
 
 export default api;

@@ -81,7 +81,7 @@ export const PermissionCategories = {
   ROLES: 'roles',
   REPORTS: 'reports',
   ADMIN: 'admin',
-  WORKFLOWS: 'workflows',
+  PROCESS_FLOWS: 'process-flows',
   COLLECTIONS: 'collections',
   SCRIPTS: 'scripts',
   AUDIT: 'audit',

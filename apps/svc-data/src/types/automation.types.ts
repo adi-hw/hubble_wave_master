@@ -5,7 +5,6 @@
 export type TriggerTiming = 'before' | 'after' | 'async';
 
 export interface ExecutionContext {
-  tenantId: string;
   user: {
     id: string;
     email?: string;
@@ -62,24 +61,50 @@ export interface AutomationAction {
   id: string;
   type: string;
   config: Record<string, unknown>;
-  condition?: ConditionGroup;
+  condition?: Condition;
   continueOnError?: boolean;
 }
 
-export interface ConditionGroup {
-  operator: 'AND' | 'OR';
-  conditions: (Condition | ConditionGroup)[];
-}
+// ============================================================================
+// CANONICAL CONDITION FORMAT
+// ============================================================================
+//
+// HubbleWave uses ONE condition format everywhere:
+// - Automation rules
+// - View filters
+// - Access rule conditions
+// - Process flow transitions
+//
+// Format:
+// - Logical groups: { and: [...] } or { or: [...] }
+// - Single condition: { property, operator, value }
+// - Nestable to any depth
+//
+// Examples:
+//   Simple:     { property: "status", operator: "equals", value: "active" }
+//   AND group:  { and: [{ property: "status", operator: "equals", value: "active" },
+//                       { property: "priority", operator: "greater_than", value: 3 }] }
+//   Nested:     { or: [{ property: "urgent", operator: "equals", value: true },
+//                      { and: [{ property: "priority", operator: "equals", value: 1 },
+//                              { property: "sla_breach", operator: "equals", value: true }] }] }
+// ============================================================================
 
-export interface Condition {
-  field?: string;
-  property?: string;
-  operator: ConditionOperator;
-  value: unknown;
+/**
+ * A condition can be either a logical group (and/or) or a single property comparison
+ */
+export type Condition = ConditionGroup | SingleCondition;
+
+/**
+ * Logical grouping of conditions
+ */
+export interface ConditionGroup {
   and?: Condition[];
   or?: Condition[];
 }
 
+/**
+ * Single property comparison
+ */
 export interface SingleCondition {
   property: string;
   operator: ConditionOperator;

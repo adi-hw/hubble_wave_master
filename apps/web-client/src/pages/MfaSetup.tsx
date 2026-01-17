@@ -14,72 +14,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
-// Design tokens - using CSS variables for theme consistency
-const tokens = {
-  colors: {
-    voidPure: '#000000',
-    voidDeep: '#030308',
-    voidSpace: '#08080f',
-    voidSurface: '#0f0f18',
-    voidElevated: '#161622',
-    voidOverlay: '#1e1e2e',
-    // CSS variable references for theme-aware colors
-    primary400: 'var(--color-primary-400)',
-    primary500: 'var(--color-primary-500)',
-    primary600: 'var(--color-primary-600)',
-    accent400: 'var(--color-accent-400)',
-    accent500: 'var(--color-accent-500)',
-    success: 'var(--color-success-500)',
-    warning: 'var(--color-warning-500)',
-    danger: 'var(--color-danger-500)',
-    gray100: 'var(--color-neutral-100)',
-    gray200: 'var(--color-neutral-200)',
-    gray300: 'var(--color-neutral-300)',
-    gray400: 'var(--color-neutral-400)',
-    gray500: 'var(--color-neutral-500)',
-    gray600: 'var(--color-neutral-600)',
-    gray700: 'var(--color-neutral-700)',
-  },
-  glass: {
-    bg: 'rgba(255, 255, 255, 0.03)',
-    bgHover: 'rgba(255, 255, 255, 0.06)',
-    border: 'rgba(255, 255, 255, 0.08)',
-    borderHover: 'rgba(255, 255, 255, 0.15)',
-  },
-};
-
 // Animated Background
 const AnimatedBackground = () => (
-  <div
-    className="fixed inset-0 overflow-hidden"
-    style={{
-      background: `radial-gradient(ellipse at 50% 0%, ${tokens.colors.voidOverlay} 0%, ${tokens.colors.voidDeep} 50%, ${tokens.colors.voidPure} 100%)`,
-      zIndex: 0,
-    }}
-  >
-    {[...Array(5)].map((_, i) => (
-      <div
-        key={i}
-        className="absolute rounded-full blur-3xl"
-        style={{
-          width: `${150 + i * 50}px`,
-          height: `${150 + i * 50}px`,
-          background: `radial-gradient(circle, ${
-            i % 2 === 0 ? tokens.colors.primary500 : tokens.colors.accent500
-          }15 0%, transparent 70%)`,
-          left: `${10 + i * 20}%`,
-          top: `${20 + (i % 3) * 25}%`,
-          animation: `float-${i} ${15 + i * 2}s ease-in-out infinite`,
-        }}
-      />
-    ))}
-    <style>{`
-      @keyframes float-0 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(30px, -20px); } }
-      @keyframes float-1 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-20px, 30px); } }
-      @keyframes float-2 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(25px, 25px); } }
-      @keyframes float-3 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-30px, -15px); } }
-      @keyframes float-4 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(15px, -30px); } }
-    `}</style>
+  <div className="fixed inset-0 overflow-hidden z-0 bg-gradient-to-b from-muted via-background to-background">
+    <div className="absolute w-36 h-36 rounded-full blur-3xl bg-primary/10 animate-pulse left-[10%] top-[20%]" />
+    <div className="absolute w-48 h-48 rounded-full blur-3xl bg-accent/10 animate-pulse left-[30%] top-[45%] [animation-delay:0.5s]" />
+    <div className="absolute w-64 h-64 rounded-full blur-3xl bg-primary/10 animate-pulse left-[50%] top-[70%] [animation-delay:1s]" />
+    <div className="absolute w-72 h-72 rounded-full blur-3xl bg-accent/10 animate-pulse left-[70%] top-[20%] [animation-delay:1.5s]" />
+    <div className="absolute w-80 h-80 rounded-full blur-3xl bg-primary/10 animate-pulse left-[90%] top-[45%] [animation-delay:2s]" />
   </div>
 );
 
@@ -89,14 +31,7 @@ const GlassCard: React.FC<{ children: React.ReactNode; className?: string }> = (
   className = '',
 }) => (
   <div
-    className={`rounded-3xl ${className}`}
-    style={{
-      background: tokens.glass.bg,
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      border: `1px solid ${tokens.glass.border}`,
-      boxShadow: '0 25px 80px rgba(0, 0, 0, 0.5)',
-    }}
+    className={`rounded-3xl bg-card/50 backdrop-blur-xl border border-border shadow-2xl ${className}`}
   >
     {children}
   </div>
@@ -158,18 +93,13 @@ const OTPInput: React.FC<{
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          className="text-center font-semibold font-mono outline-none transition-all"
-          style={{
-            width: '48px',
-            height: '56px',
-            fontSize: '22px',
-            background: tokens.glass.bg,
-            border: `2px solid ${
-              error ? tokens.colors.danger : digit ? tokens.colors.primary500 : tokens.glass.border
-            }`,
-            borderRadius: '12px',
-            color: tokens.colors.gray100,
-          }}
+          className={`w-12 h-14 text-[22px] text-center font-semibold font-mono outline-none transition-all bg-card/50 rounded-xl text-foreground ${
+            error
+              ? 'border-2 border-destructive'
+              : digit
+              ? 'border-2 border-primary'
+              : 'border-2 border-border'
+          }`}
         />
       ))}
     </div>
@@ -185,13 +115,9 @@ const StepIndicator: React.FC<{ currentStep: number; totalSteps: number }> = ({
     {Array.from({ length: totalSteps }).map((_, i) => (
       <div
         key={i}
-        className="transition-all duration-300"
-        style={{
-          width: i === currentStep ? '24px' : '8px',
-          height: '8px',
-          borderRadius: '4px',
-          background: i <= currentStep ? tokens.colors.primary500 : tokens.glass.border,
-        }}
+        className={`h-2 rounded transition-all duration-300 ${
+          i === currentStep ? 'w-6' : 'w-2'
+        } ${i <= currentStep ? 'bg-primary' : 'bg-border'}`}
       />
     ))}
   </div>
@@ -326,41 +252,38 @@ If you lose access to your authenticator app, you can use one of these codes to 
   // Render step content
   const renderStep0 = () => (
     <div className="p-8 text-center">
-      <div
-        className="w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center"
-        style={{ background: `${tokens.colors.primary500}20` }}
-      >
-        <Shield size={32} style={{ color: tokens.colors.primary400 }} />
+      <div className="w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center bg-primary/20">
+        <Shield size={32} className="text-primary" />
       </div>
 
-      <h1 className="text-2xl font-bold mb-3" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-2xl font-bold mb-3 text-foreground">
         Secure Your Account
       </h1>
-      <p className="text-sm mb-8" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-8 text-muted-foreground">
         Two-factor authentication adds an extra layer of security to your account.
         You'll need your phone to sign in.
       </p>
 
       <div className="space-y-4 mb-8 text-left">
-        <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: tokens.glass.bgHover }}>
-          <Smartphone size={20} style={{ color: tokens.colors.accent400, flexShrink: 0, marginTop: 2 }} />
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/50">
+          <Smartphone size={20} className="text-accent-foreground flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium" style={{ color: tokens.colors.gray200 }}>
+            <p className="text-sm font-medium text-foreground">
               Download an authenticator app
             </p>
-            <p className="text-xs mt-1" style={{ color: tokens.colors.gray500 }}>
+            <p className="text-xs mt-1 text-muted-foreground">
               Google Authenticator, Microsoft Authenticator, or Authy
             </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: tokens.glass.bgHover }}>
-          <Key size={20} style={{ color: tokens.colors.accent400, flexShrink: 0, marginTop: 2 }} />
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/50">
+          <Key size={20} className="text-accent-foreground flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium" style={{ color: tokens.colors.gray200 }}>
+            <p className="text-sm font-medium text-foreground">
               Scan QR code or enter secret key
             </p>
-            <p className="text-xs mt-1" style={{ color: tokens.colors.gray500 }}>
+            <p className="text-xs mt-1 text-muted-foreground">
               Link your authenticator app to your HubbleWave account
             </p>
           </div>
@@ -369,11 +292,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
 
       <button
         onClick={() => setStep(1)}
-        className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all"
-        style={{
-          background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-          boxShadow: `0 4px 20px ${tokens.colors.primary500}30`,
-        }}
+        className="w-full py-3.5 rounded-xl font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40"
       >
         Get Started
         <ArrowRight size={18} />
@@ -381,8 +300,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
 
       <button
         onClick={() => navigate(-1)}
-        className="mt-4 text-sm font-medium"
-        style={{ color: tokens.colors.gray500 }}
+        className="mt-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         I'll do this later
       </button>
@@ -393,22 +311,22 @@ If you lose access to your authenticator app, you can use one of these codes to 
     <div className="p-8">
       <StepIndicator currentStep={1} totalSteps={3} />
 
-      <h1 className="text-xl font-bold mb-2 text-center" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-xl font-bold mb-2 text-center text-foreground">
         Scan QR Code
       </h1>
-      <p className="text-sm mb-6 text-center" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-6 text-center text-muted-foreground">
         Open your authenticator app and scan this code
       </p>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 size={32} className="animate-spin" style={{ color: tokens.colors.primary400 }} />
+          <Loader2 size={32} className="animate-spin text-primary" />
         </div>
       ) : (
         <>
           {/* QR Code */}
           <div className="flex justify-center mb-6">
-            <div className="p-4 rounded-2xl bg-white">
+            <div className="p-4 rounded-2xl bg-card">
               {qrCode && (
                 <img src={qrCode} alt="MFA QR Code" className="w-48 h-48" />
               )}
@@ -417,25 +335,23 @@ If you lose access to your authenticator app, you can use one of these codes to 
 
           {/* Manual entry option */}
           <div className="mb-6">
-            <p className="text-xs text-center mb-2" style={{ color: tokens.colors.gray500 }}>
+            <p className="text-xs text-center mb-2 text-muted-foreground">
               Can't scan? Enter this code manually:
             </p>
-            <div
-              className="flex items-center justify-between p-3 rounded-xl"
-              style={{ background: tokens.glass.bgHover }}
-            >
-              <code className="text-sm font-mono" style={{ color: tokens.colors.gray200 }}>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
+              <code className="text-sm font-mono text-foreground">
                 {secret}
               </code>
               <button
                 onClick={() => copyToClipboard(secret, 'secret')}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{ background: copiedSecret ? `${tokens.colors.success}20` : 'transparent' }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  copiedSecret ? 'bg-success-subtle' : 'hover:bg-muted'
+                }`}
               >
                 {copiedSecret ? (
-                  <CheckCircle size={16} style={{ color: tokens.colors.success }} />
+                  <CheckCircle size={16} className="text-success-text" />
                 ) : (
-                  <Copy size={16} style={{ color: tokens.colors.gray400 }} />
+                  <Copy size={16} className="text-muted-foreground" />
                 )}
               </button>
             </div>
@@ -443,7 +359,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
 
           {/* Verification code input */}
           <div className="mb-6">
-            <p className="text-sm font-medium mb-3 text-center" style={{ color: tokens.colors.gray300 }}>
+            <p className="text-sm font-medium mb-3 text-center text-foreground">
               Enter the 6-digit code from your app
             </p>
             <OTPInput
@@ -452,7 +368,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
               error={!!error}
             />
             {error && (
-              <p className="text-sm text-center mt-3 flex items-center justify-center gap-1" style={{ color: tokens.colors.danger }}>
+              <p className="text-sm text-center mt-3 flex items-center justify-center gap-1 text-destructive">
                 <AlertCircle size={14} />
                 {error}
               </p>
@@ -462,12 +378,11 @@ If you lose access to your authenticator app, you can use one of these codes to 
           <button
             onClick={handleVerify}
             disabled={isLoading || verificationCode.length !== 6}
-            className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-              boxShadow: `0 4px 20px ${tokens.colors.primary500}30`,
-              opacity: isLoading || verificationCode.length !== 6 ? 0.6 : 1,
-            }}
+            className={`w-full py-3.5 rounded-xl font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 ${
+              isLoading || verificationCode.length !== 6
+                ? 'opacity-60 cursor-not-allowed'
+                : 'hover:shadow-xl hover:shadow-primary/40'
+            }`}
           >
             {isLoading ? (
               <>
@@ -484,8 +399,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
 
           <button
             onClick={() => setStep(0)}
-            className="mt-4 w-full flex items-center justify-center gap-2 text-sm"
-            style={{ color: tokens.colors.gray500 }}
+            className="mt-4 w-full flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft size={16} />
             Back
@@ -499,30 +413,23 @@ If you lose access to your authenticator app, you can use one of these codes to 
     <div className="p-8">
       <StepIndicator currentStep={2} totalSteps={3} />
 
-      <div
-        className="w-14 h-14 mx-auto mb-4 rounded-xl flex items-center justify-center"
-        style={{ background: `${tokens.colors.success}20` }}
-      >
-        <CheckCircle size={28} style={{ color: tokens.colors.success }} />
+      <div className="w-14 h-14 mx-auto mb-4 rounded-xl flex items-center justify-center bg-success-subtle">
+        <CheckCircle size={28} className="text-success-text" />
       </div>
 
-      <h1 className="text-xl font-bold mb-2 text-center" style={{ color: tokens.colors.gray100 }}>
+      <h1 className="text-xl font-bold mb-2 text-center text-foreground">
         Save Backup Codes
       </h1>
-      <p className="text-sm mb-6 text-center" style={{ color: tokens.colors.gray400 }}>
+      <p className="text-sm mb-6 text-center text-muted-foreground">
         Store these codes in a safe place. You can use them to sign in if you lose access to your authenticator app.
       </p>
 
       {/* Backup codes grid */}
-      <div
-        className="grid grid-cols-2 gap-2 p-4 rounded-xl mb-4"
-        style={{ background: tokens.glass.bgHover }}
-      >
+      <div className="grid grid-cols-2 gap-2 p-4 rounded-xl mb-4 bg-muted/50">
         {backupCodes.map((code, i) => (
           <div
             key={i}
-            className="py-2 px-3 rounded-lg text-center font-mono text-sm"
-            style={{ background: tokens.glass.bg, color: tokens.colors.gray200 }}
+            className="py-2 px-3 rounded-lg text-center font-mono text-sm bg-card/50 text-foreground"
           >
             {code}
           </div>
@@ -533,16 +440,11 @@ If you lose access to your authenticator app, you can use one of these codes to 
       <div className="flex gap-3 mb-6">
         <button
           onClick={() => copyToClipboard(backupCodes.join('\n'), 'backup')}
-          className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all"
-          style={{
-            background: tokens.glass.bg,
-            border: `1px solid ${tokens.glass.border}`,
-            color: tokens.colors.gray200,
-          }}
+          className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all bg-card/50 border border-border text-foreground hover:bg-muted"
         >
           {copiedBackupCodes ? (
             <>
-              <CheckCircle size={16} style={{ color: tokens.colors.success }} />
+              <CheckCircle size={16} className="text-success-text" />
               Copied!
             </>
           ) : (
@@ -554,37 +456,21 @@ If you lose access to your authenticator app, you can use one of these codes to 
         </button>
         <button
           onClick={downloadBackupCodes}
-          className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all"
-          style={{
-            background: tokens.glass.bg,
-            border: `1px solid ${tokens.glass.border}`,
-            color: tokens.colors.gray200,
-          }}
+          className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all bg-card/50 border border-border text-foreground hover:bg-muted"
         >
           <Download size={16} />
           Download
         </button>
       </div>
 
-      <div
-        className="flex items-start gap-2 p-3 rounded-xl mb-6 text-xs"
-        style={{
-          background: `${tokens.colors.warning}10`,
-          border: `1px solid ${tokens.colors.warning}30`,
-          color: tokens.colors.warning,
-        }}
-      >
+      <div className="flex items-start gap-2 p-3 rounded-xl mb-6 text-xs bg-warning-subtle border border-warning-border text-warning-text">
         <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
         <span>Each backup code can only be used once. Keep them secure and don't share them.</span>
       </div>
 
       <button
         onClick={handleComplete}
-        className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all"
-        style={{
-          background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-500) 100%)',
-          boxShadow: `0 4px 20px ${tokens.colors.primary500}30`,
-        }}
+        className="w-full py-3.5 rounded-xl font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40"
       >
         Complete Setup
         <CheckCircle size={18} />
@@ -593,10 +479,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
   );
 
   return (
-    <div
-      className="min-h-screen font-sans flex items-center justify-center p-5"
-      style={{ color: tokens.colors.gray100 }}
-    >
+    <div className="min-h-screen font-sans flex items-center justify-center p-5 text-foreground">
       <AnimatedBackground />
 
       <div className="relative z-10 w-full max-w-md">
@@ -606,7 +489,7 @@ If you lose access to your authenticator app, you can use one of these codes to 
           {step === 2 && renderStep2()}
         </GlassCard>
 
-        <p className="text-center text-xs mt-6" style={{ color: tokens.colors.gray500 }}>
+        <p className="text-center text-xs mt-6 text-muted-foreground">
           &copy; {new Date().getFullYear()} HubbleWave. All rights reserved.
         </p>
       </div>

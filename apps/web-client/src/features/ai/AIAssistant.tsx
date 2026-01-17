@@ -71,7 +71,7 @@ function AVAAvatar({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
         'shadow-lg shadow-indigo-500/25'
       )}
     >
-      <span className="text-white font-bold text-xs">
+      <span className="text-primary-foreground font-bold text-xs">
         {size === 'lg' ? 'AVA' : 'A'}
       </span>
     </div>
@@ -227,8 +227,8 @@ export function AIAssistant({
     <div
       className={cn(
         'fixed z-50 flex flex-col',
-        'bg-white dark:bg-slate-900 rounded-2xl shadow-2xl',
-        'border border-slate-200 dark:border-slate-700',
+        'bg-card rounded-2xl shadow-2xl',
+        'border border-border',
         isExpanded
           ? 'inset-4 md:inset-8'
           : 'bottom-4 right-4 w-[420px] h-[600px] md:bottom-6 md:right-6',
@@ -236,19 +236,19 @@ export function AIAssistant({
       )}
     >
       {/* Header with AVA Branding */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-500/5 via-violet-500/5 to-pink-500/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-indigo-500/5 via-violet-500/5 to-pink-500/5">
         <div className="flex items-center gap-3">
           <AVAAvatar size="md" />
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 dark:text-white">
+              <h3 className="font-bold text-foreground">
                 {AVA_BRANDING.name}
               </h3>
-              <span className="text-[10px] px-1.5 py-0.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-white rounded-full font-medium">
+              <span className="text-[10px] px-1.5 py-0.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-primary-foreground rounded-full font-medium">
                 AI
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-muted-foreground">
               {AVA_BRANDING.tagline}
             </p>
           </div>
@@ -256,7 +256,7 @@ export function AIAssistant({
         <div className="flex items-center gap-1">
           <button
             onClick={clearChat}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+            className="p-2 rounded-lg hover:bg-hover text-muted-foreground transition-colors"
             title="New conversation"
           >
             <RefreshCw className="w-4 h-4" />
@@ -264,7 +264,7 @@ export function AIAssistant({
           {onToggleSize && (
             <button
               onClick={onToggleSize}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+              className="p-2 rounded-lg hover:bg-hover text-muted-foreground transition-colors"
             >
               {isExpanded ? (
                 <Minimize2 className="w-4 h-4" />
@@ -275,7 +275,7 @@ export function AIAssistant({
           )}
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+            className="p-2 rounded-lg hover:bg-hover text-muted-foreground transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -287,28 +287,28 @@ export function AIAssistant({
         {messages.length === 0 && !streamingContent && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <AVAAvatar size="lg" />
-            <h4 className="font-semibold text-slate-900 dark:text-white mt-4">
+            <h4 className="font-semibold text-foreground mt-4">
               Hi! I'm {AVA_BRANDING.name}
             </h4>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
               {AVA_BRANDING.fullName} - here to help you navigate HubbleWave.
             </p>
             <div className="mt-6 space-y-2 w-full max-w-xs">
               <button
                 onClick={() => setInput('Show me my open incidents')}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left rounded-xl bg-muted hover:bg-hover text-foreground transition-colors"
               >
                 <MessageCircle className="w-4 h-4 text-indigo-500" />
                 Show me my open incidents
-                <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
+                <ChevronRight className="w-4 h-4 ml-auto text-muted-foreground" />
               </button>
               <button
                 onClick={() => setInput('How do I submit a service request?')}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left rounded-xl bg-muted hover:bg-hover text-foreground transition-colors"
               >
                 <Zap className="w-4 h-4 text-violet-500" />
                 How do I submit a service request?
-                <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
+                <ChevronRight className="w-4 h-4 ml-auto text-muted-foreground" />
               </button>
             </div>
           </div>
@@ -327,16 +327,16 @@ export function AIAssistant({
               className={cn(
                 'max-w-[80%] rounded-2xl px-4 py-2.5',
                 message.role === 'user'
-                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-primary-foreground'
+                  : 'bg-muted text-foreground'
               )}
             >
               <p className="whitespace-pre-wrap text-sm">{message.content}</p>
 
               {/* Sources */}
               {message.sources && message.sources.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
                     Sources:
                   </p>
                   <div className="space-y-1">
@@ -357,8 +357,8 @@ export function AIAssistant({
 
               {/* Suggested Actions */}
               {message.actions && message.actions.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
                     Quick Actions:
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -383,7 +383,7 @@ export function AIAssistant({
         {streamingContent && (
           <div className="flex gap-3 justify-start">
             <AVAAvatar size="sm" />
-            <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white">
+            <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-muted text-foreground">
               <p className="whitespace-pre-wrap text-sm">{streamingContent}</p>
               <span className="inline-block w-2 h-4 bg-gradient-to-r from-indigo-500 to-violet-500 animate-pulse rounded-sm ml-1" />
             </div>
@@ -394,11 +394,11 @@ export function AIAssistant({
         {isLoading && !streamingContent && (
           <div className="flex gap-3 justify-start">
             <AVAAvatar size="sm" />
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3">
+            <div className="bg-muted rounded-2xl px-4 py-3">
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 rounded-full bg-pink-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" />
+                <div className="w-2 h-2 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
+                <div className="w-2 h-2 rounded-full bg-pink-500 animate-bounce [animation-delay:300ms]" />
               </div>
             </div>
           </div>
@@ -408,7 +408,7 @@ export function AIAssistant({
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-slate-200 dark:border-slate-700">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-border">
         <div className="flex gap-2">
           <textarea
             ref={inputRef}
@@ -418,9 +418,9 @@ export function AIAssistant({
             placeholder="Ask AVA anything..."
             className={cn(
               'flex-1 resize-none rounded-xl px-4 py-2.5',
-              'bg-slate-100 dark:bg-slate-800',
+              'bg-muted',
               'border border-transparent focus:border-indigo-500',
-              'text-slate-900 dark:text-white placeholder:text-slate-500',
+              'text-foreground placeholder:text-muted-foreground',
               'focus:outline-none focus:ring-2 focus:ring-indigo-500/20',
               'min-h-[44px] max-h-[120px] text-sm'
             )}
@@ -432,7 +432,7 @@ export function AIAssistant({
             disabled={!input.trim() || isLoading}
             className={cn(
               'flex-shrink-0 w-11 h-11 rounded-xl',
-              'bg-gradient-to-r from-indigo-600 to-violet-600 text-white',
+              'bg-gradient-to-r from-indigo-600 to-violet-600 text-primary-foreground',
               'flex items-center justify-center',
               'hover:from-indigo-700 hover:to-violet-700',
               'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -446,7 +446,7 @@ export function AIAssistant({
             )}
           </button>
         </div>
-        <p className="text-[10px] text-center text-slate-400 mt-2">
+        <p className="text-[10px] text-center text-muted-foreground mt-2">
           Powered by {AVA_BRANDING.fullName}
         </p>
       </form>

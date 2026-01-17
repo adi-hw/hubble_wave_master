@@ -1,14 +1,20 @@
 /**
  * NavSearch Component
+ * HubbleWave Platform - Phase 1
  *
- * Inline search for navigation items.
+ * Production-ready navigation search with:
+ * - Theme-aware styling using CSS variables
+ * - WCAG 2.1 AA accessibility compliance
+ * - Mobile-friendly 44px touch targets
+ * - Keyboard navigation with arrow keys
+ * - ARIA combobox pattern
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X, ChevronRight } from 'lucide-react';
+import { Search, X, ChevronRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../Icon';
-import { NavSearchResult } from '../../types/navigation-v2';
+import { NavSearchResult } from '../../types/navigation';
 
 interface NavSearchProps {
   onSearch: (query: string) => NavSearchResult[];
@@ -31,7 +37,9 @@ export const NavSearch: React.FC<NavSearchProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listId = 'nav-search-results';
 
   // Debounced search
   const performSearch = useCallback(
@@ -93,8 +101,18 @@ export const NavSearch: React.FC<NavSearchProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  // Scroll selected item into view
+  useEffect(() => {
+    if (isOpen && listRef.current && results.length > 0) {
+      const selectedElement = listRef.current.querySelector(`[data-index="${selectedIndex}"]`);
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [selectedIndex, isOpen, results.length]);
+
   // Keyboard navigation
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -117,9 +135,9 @@ export const NavSearch: React.FC<NavSearchProps> = ({
         inputRef.current?.blur();
         break;
     }
-  };
+  }, [results, selectedIndex]);
 
-  const handleSelect = (result: NavSearchResult) => {
+  const handleSelect = useCallback((result: NavSearchResult) => {
     if (result.route) {
       navigate(result.route);
       if (onNavigate && result.key) {
@@ -128,22 +146,22 @@ export const NavSearch: React.FC<NavSearchProps> = ({
     }
     setQuery('');
     setIsOpen(false);
-  };
+  }, [navigate, onNavigate]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setQuery('');
     setResults([]);
     setIsOpen(false);
     inputRef.current?.focus();
-  };
+  }, []);
 
   // Collapsed view - just show search icon
   if (collapsed) {
     return (
       <button
         onClick={() => inputRef.current?.focus()}
-        className="w-full flex justify-center py-2 text-slate-400 hover:text-slate-600 transition-colors"
-        title="Search navigation"
+        className="w-full flex justify-center py-2 transition-colors min-h-[44px] min-w-[44px] text-muted-foreground hover:text-foreground"
+        aria-label="Search navigation"
       >
         <Search className="h-5 w-5" />
       </button>
@@ -154,13 +172,12 @@ export const NavSearch: React.FC<NavSearchProps> = ({
     <div ref={containerRef} className="relative px-2 mb-3">
       {/* Search Input */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors"
-        style={{
-          backgroundColor: 'var(--bg-surface-secondary)',
-          borderColor: isOpen ? 'var(--border-primary)' : 'var(--border-default)',
-        }}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors min-h-[44px] bg-muted border ${isOpen ? 'border-primary' : 'border-border'}`}
       >
-        <Search className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+        <Search
+          className="h-4 w-4 flex-shrink-0 text-muted-foreground"
+          aria-hidden="true"
+        />
         <input
           ref={inputRef}
           type="text"
@@ -169,17 +186,28 @@ export const NavSearch: React.FC<NavSearchProps> = ({
           onKeyDown={handleKeyDown}
           onFocus={() => query.trim() && setIsOpen(true)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent outline-none text-sm"
-          style={{ color: 'var(--text-primary)' }}
+          className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls={listId}
+          aria-activedescendant={results[selectedIndex] ? `search-result-${selectedIndex}` : undefined}
+          aria-autocomplete="list"
+          aria-label="Search navigation"
         />
-        {query && (
+        {loading && (
+          <Loader2
+            className="h-4 w-4 animate-spin flex-shrink-0 text-muted-foreground"
+            aria-hidden="true"
+          />
+        )}
+        {query && !loading && (
           <button
             onClick={handleClear}
-            className="transition-colors"
-            style={{ color: 'var(--text-muted)' }}
+            className="transition-colors p-1 rounded min-h-[32px] min-w-[32px] flex items-center justify-center text-muted-foreground hover:bg-muted"
+            aria-label="Clear search"
           >
             <X className="h-4 w-4" />
           </button>
@@ -189,18 +217,18 @@ export const NavSearch: React.FC<NavSearchProps> = ({
       {/* Results Dropdown */}
       {isOpen && (
         <div
-          className="absolute left-2 right-2 top-full mt-1 z-50 rounded-lg shadow-lg border overflow-hidden"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-default)',
-          }}
+          id={listId}
+          ref={listRef}
+          className="absolute left-2 right-2 top-full mt-1 z-50 rounded-lg overflow-hidden bg-card border border-border shadow-lg"
+          role="listbox"
+          aria-label="Search results"
         >
           {loading ? (
-            <div className="px-4 py-3 text-sm text-slate-500 text-center">
+            <div className="px-4 py-3 text-sm text-center text-muted-foreground">
               Searching...
             </div>
           ) : results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-500 text-center">
+            <div className="px-4 py-3 text-sm text-center text-muted-foreground">
               {query.trim() ? 'No results found' : 'Start typing to search'}
             </div>
           ) : (
@@ -211,30 +239,34 @@ export const NavSearch: React.FC<NavSearchProps> = ({
                 return (
                   <button
                     key={result.key}
+                    id={`search-result-${index}`}
+                    data-index={index}
                     onClick={() => handleSelect(result)}
                     onMouseEnter={() => setSelectedIndex(index)}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors
-                      ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'}
-                    `}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors min-h-[44px] ${isSelected ? 'bg-muted' : 'bg-transparent'}`}
+                    role="option"
+                    aria-selected={isSelected}
                   >
                     {/* Icon */}
                     {result.icon && (
-                      <span className="flex-shrink-0 text-slate-400">
+                      <span
+                        className="flex-shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      >
                         <Icon name={result.icon} className="h-4 w-4" />
                       </span>
                     )}
 
                     {/* Content */}
                     <div className="flex-1 text-left min-w-0">
-                      <div className="font-medium text-slate-900 truncate">
+                      <div className="font-medium truncate text-foreground">
                         {result.label}
                       </div>
                       {result.path.length > 0 && (
-                        <div className="text-xs text-slate-500 truncate flex items-center gap-1">
+                        <div className="text-xs truncate flex items-center gap-1 text-muted-foreground">
                           {result.path.map((crumb, i) => (
                             <React.Fragment key={i}>
-                              {i > 0 && <ChevronRight className="h-3 w-3" />}
+                              {i > 0 && <ChevronRight className="h-3 w-3" aria-hidden="true" />}
                               <span>{crumb}</span>
                             </React.Fragment>
                           ))}
@@ -242,9 +274,12 @@ export const NavSearch: React.FC<NavSearchProps> = ({
                       )}
                     </div>
 
-                    {/* Arrow */}
+                    {/* Arrow indicator */}
                     {isSelected && (
-                      <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      <ChevronRight
+                        className="h-4 w-4 flex-shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                     )}
                   </button>
                 );

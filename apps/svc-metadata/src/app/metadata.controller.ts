@@ -3,26 +3,26 @@ import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 
 /**
- * Provides table and field metadata for runtime data access.
+ * Provides Collection and Property metadata for runtime data access.
  * Uses database-first approach via information_schema.
  */
-@Controller('metadata/tables')
+@Controller('metadata/collections')
 @UseGuards(JwtAuthGuard)
 export class MetadataController {
   constructor(private readonly modelRegistry: ModelRegistryService) {}
 
-  @Get(':tableName')
-  async getTable(@Param('tableName') tableName: string) {
-    const table = await this.modelRegistry.getTable(tableName);
-    const fields = await this.modelRegistry.getFields(tableName);
+  @Get(':collectionCode')
+  async getCollectionMetadata(@Param('collectionCode') collectionCode: string) {
+    const collection = await this.modelRegistry.getCollection(collectionCode);
+    const properties = await this.modelRegistry.getProperties(collectionCode);
 
     return {
-      table: {
-        code: table.tableName,
-        dbTableName: table.storageTable,
-        label: table.label,
+      collection: {
+        code: collection.collectionCode,
+        storageTable: collection.storageTable,
+        label: collection.label,
       },
-      fields,
+      properties,
     };
   }
 }

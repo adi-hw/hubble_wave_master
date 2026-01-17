@@ -1,112 +1,288 @@
 import { Injectable } from '@nestjs/common';
 import {
   Condition,
-  ConditionGroup,
   SingleCondition,
   ConditionOperator,
   ExecutionContext,
 } from '../../types/automation.types';
 
-interface EvaluationResult {
+// ============================================================================
+// EVALUATION RESULT WITH FULL TRACE
+// ============================================================================
+// Unlike ServiceNow where conditions are opaque black boxes, HubbleWave
+// provides complete transparency into why a condition matched or failed.
+// ============================================================================
+
+export interface EvaluationResult {
+  /** Final result of the condition */
   result: boolean;
-  trace: Record<string, unknown>;
+  /** Human-readable explanation */
+  summary: string;
+  /** Full evaluation trace for debugging */
+  trace: ConditionTrace;
+  /** Execution time in milliseconds */
+  durationMs: number;
+}
+
+export interface ConditionTrace {
+  /** Type of node: 'and', 'or', or 'single' */
+  type: 'and' | 'or' | 'single';
+  /** Result of this node */
+  result: boolean;
+  /** For single conditions: the property being checked */
+  property?: string;
+  /** For single conditions: the operator used */
+  operator?: ConditionOperator;
+  /** For single conditions: the expected value */
+  expectedValue?: unknown;
+  /** For single conditions: the actual value from record */
+  actualValue?: unknown;
+  /** For single conditions: human-readable explanation */
+  explanation?: string;
+  /** For groups: child traces */
+  children?: ConditionTrace[];
+  /** For groups: was evaluation short-circuited? */
+  shortCircuited?: boolean;
 }
 
 @Injectable()
 export class ConditionEvaluatorService {
   /**
    * Evaluate a condition against the execution context
+   * Returns detailed trace for debugging
    */
   evaluate(condition: Condition, context: ExecutionContext): EvaluationResult {
-    return this.evaluateNode(condition, context);
+    const startTime = performance.now();
+    const trace = this.evaluateNode(condition, context);
+    const durationMs = performance.now() - startTime;
+
+    return {
+      result: trace.result,
+      summary: this.buildSummary(trace),
+      trace,
+      durationMs,
+    };
+  }
+
+  /**
+   * Quick evaluation without trace (for performance-critical paths)
+   */
+  evaluateQuick(condition: Condition, context: ExecutionContext): boolean {
+    return this.evaluateNodeQuick(condition, context);
   }
 
   private evaluateNode(
-    condition: Condition | ConditionGroup,
+    condition: Condition,
     context: ExecutionContext,
-  ): EvaluationResult {
+  ): ConditionTrace {
     // Check for AND group
     if ('and' in condition && Array.isArray(condition.and)) {
-      const results: EvaluationResult[] = [];
-      for (const subCondition of condition.and) {
-        const result = this.evaluateNode(subCondition, context);
-        results.push(result);
-        if (!result.result) {
-          return {
-            result: false,
-            trace: {
-              type: 'AND',
-              conditions: results.map((r) => r.trace),
-              shortCircuited: true,
-            },
-          };
-        }
-      }
-      return {
-        result: true,
-        trace: {
-          type: 'AND',
-          conditions: results.map((r) => r.trace),
-        },
-      };
+      return this.evaluateAndGroup(condition.and, context);
     }
 
     // Check for OR group
     if ('or' in condition && Array.isArray(condition.or)) {
-      const results: EvaluationResult[] = [];
-      for (const subCondition of condition.or) {
-        const result = this.evaluateNode(subCondition, context);
-        results.push(result);
-        if (result.result) {
-          return {
-            result: true,
-            trace: {
-              type: 'OR',
-              conditions: results.map((r) => r.trace),
-              shortCircuited: true,
-            },
-          };
-        }
-      }
-      return {
-        result: false,
-        trace: {
-          type: 'OR',
-          conditions: results.map((r) => r.trace),
-        },
-      };
+      return this.evaluateOrGroup(condition.or, context);
     }
 
     // Single condition
-    const singleCondition = condition as SingleCondition;
-    return this.evaluateSingle(singleCondition, context);
+    if ('property' in condition && 'operator' in condition) {
+      return this.evaluateSingle(condition as SingleCondition, context);
+    }
+
+    // Empty or invalid condition - treat as true
+    return {
+      type: 'single',
+      result: true,
+      explanation: 'Empty condition (always true)',
+    };
+  }
+
+  private evaluateAndGroup(
+    conditions: Condition[],
+    context: ExecutionContext,
+  ): ConditionTrace {
+    const children: ConditionTrace[] = [];
+    let shortCircuited = false;
+
+    for (const subCondition of conditions) {
+      const childTrace = this.evaluateNode(subCondition, context);
+      children.push(childTrace);
+
+      if (!childTrace.result) {
+        // AND fails on first false - short circuit
+        shortCircuited = true;
+        break;
+      }
+    }
+
+    const result = children.every((c) => c.result);
+
+    return {
+      type: 'and',
+      result,
+      children,
+      shortCircuited,
+    };
+  }
+
+  private evaluateOrGroup(
+    conditions: Condition[],
+    context: ExecutionContext,
+  ): ConditionTrace {
+    const children: ConditionTrace[] = [];
+    let shortCircuited = false;
+
+    for (const subCondition of conditions) {
+      const childTrace = this.evaluateNode(subCondition, context);
+      children.push(childTrace);
+
+      if (childTrace.result) {
+        // OR succeeds on first true - short circuit
+        shortCircuited = true;
+        break;
+      }
+    }
+
+    const result = children.some((c) => c.result);
+
+    return {
+      type: 'or',
+      result,
+      children,
+      shortCircuited,
+    };
   }
 
   private evaluateSingle(
     condition: SingleCondition,
     context: ExecutionContext,
-  ): EvaluationResult {
+  ): ConditionTrace {
     const { property, operator, value } = condition;
 
     // Get actual value from record
     const actualValue = this.getPropertyValue(property, context);
-    
-    // Resolve expected value (handle special values)
+
+    // Resolve expected value (handle special values like @currentUser.id)
     const expectedValue = this.resolveValue(value, context);
 
     // Evaluate operator
     const result = this.evaluateOperator(operator, actualValue, expectedValue, context);
 
-    return {
+    // Build human-readable explanation
+    const explanation = this.buildExplanation(
+      property,
+      operator,
+      expectedValue,
+      actualValue,
       result,
-      trace: {
-        property,
-        operator,
-        expectedValue,
-        actualValue,
-        result,
-      },
+    );
+
+    return {
+      type: 'single',
+      result,
+      property,
+      operator,
+      expectedValue,
+      actualValue,
+      explanation,
     };
+  }
+
+  private buildExplanation(
+    property: string,
+    operator: ConditionOperator,
+    expected: unknown,
+    actual: unknown,
+    result: boolean,
+  ): string {
+    const actualStr = this.formatValue(actual);
+    const expectedStr = this.formatValue(expected);
+    const opStr = this.formatOperator(operator);
+
+    if (result) {
+      return `✓ "${property}" ${opStr} ${expectedStr} (actual: ${actualStr})`;
+    } else {
+      return `✗ "${property}" ${opStr} ${expectedStr} failed (actual: ${actualStr})`;
+    }
+  }
+
+  private formatValue(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (typeof value === 'string') return `"${value}"`;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) return `[${value.map((v) => this.formatValue(v)).join(', ')}]`;
+    return String(value);
+  }
+
+  private formatOperator(op: ConditionOperator): string {
+    const opMap: Record<ConditionOperator, string> = {
+      equals: 'equals',
+      not_equals: 'does not equal',
+      contains: 'contains',
+      not_contains: 'does not contain',
+      starts_with: 'starts with',
+      ends_with: 'ends with',
+      greater_than: '>',
+      greater_than_or_equals: '>=',
+      greater_equal: '>=',
+      less_than: '<',
+      less_than_or_equals: '<=',
+      less_equal: '<=',
+      in: 'is in',
+      not_in: 'is not in',
+      is_null: 'is null',
+      is_not_null: 'is not null',
+      is_today: 'is today',
+      is_past: 'is in the past',
+      is_future: 'is in the future',
+      between: 'is between',
+      changed: 'changed',
+      changed_to: 'changed to',
+      changed_from: 'changed from',
+    };
+    return opMap[op] || op;
+  }
+
+  private buildSummary(trace: ConditionTrace): string {
+    if (trace.type === 'single') {
+      return trace.explanation || (trace.result ? 'Condition met' : 'Condition not met');
+    }
+
+    const childCount = trace.children?.length || 0;
+    const passedCount = trace.children?.filter((c) => c.result).length || 0;
+
+    if (trace.result) {
+      if (trace.type === 'and') {
+        return `All ${childCount} conditions passed`;
+      } else {
+        return `${passedCount} of ${childCount} conditions passed (OR)`;
+      }
+    } else {
+      if (trace.type === 'and') {
+        return `${childCount - passedCount} of ${childCount} conditions failed (AND requires all)`;
+      } else {
+        return `None of ${childCount} conditions passed (OR requires at least one)`;
+      }
+    }
+  }
+
+  // Quick evaluation without trace building
+  private evaluateNodeQuick(condition: Condition, context: ExecutionContext): boolean {
+    if ('and' in condition && Array.isArray(condition.and)) {
+      return condition.and.every((c) => this.evaluateNodeQuick(c, context));
+    }
+    if ('or' in condition && Array.isArray(condition.or)) {
+      return condition.or.some((c) => this.evaluateNodeQuick(c, context));
+    }
+    if ('property' in condition && 'operator' in condition) {
+      const single = condition as SingleCondition;
+      const actual = this.getPropertyValue(single.property, context);
+      const expected = this.resolveValue(single.value, context);
+      return this.evaluateOperator(single.operator, actual, expected, context);
+    }
+    return true;
   }
 
   private getPropertyValue(property: string, context: ExecutionContext): unknown {
@@ -139,7 +315,7 @@ export class ConditionEvaluatorService {
     // Current user values
     if (value.startsWith('@currentUser.')) {
       const prop = value.substring(13);
-      return (context.user as any)[prop];
+      return (context.user as Record<string, unknown>)[prop];
     }
 
     // Time values
@@ -169,11 +345,6 @@ export class ConditionEvaluatorService {
       }
     }
 
-    // Tenant
-    if (value === '@tenant.id') {
-      return context.tenantId;
-    }
-
     return value;
   }
 
@@ -191,10 +362,12 @@ export class ConditionEvaluatorService {
       case 'greater_than':
         return this.compare(actual, expected) > 0;
       case 'greater_than_or_equals':
+      case 'greater_equal':
         return this.compare(actual, expected) >= 0;
       case 'less_than':
         return this.compare(actual, expected) < 0;
       case 'less_than_or_equals':
+      case 'less_equal':
         return this.compare(actual, expected) <= 0;
       case 'contains':
         return String(actual).toLowerCase().includes(String(expected).toLowerCase());
@@ -245,7 +418,7 @@ export class ConditionEvaluatorService {
     if (a === b) return true;
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
-    
+
     // Date comparison
     if (a instanceof Date && b instanceof Date) {
       return a.getTime() === b.getTime();
@@ -256,12 +429,12 @@ export class ConditionEvaluatorService {
     if (typeof a === 'string' && b instanceof Date) {
       return new Date(a).getTime() === b.getTime();
     }
-    
+
     // String comparison (case insensitive for strings)
     if (typeof a === 'string' && typeof b === 'string') {
       return a.toLowerCase() === b.toLowerCase();
     }
-    
+
     return JSON.stringify(a) === JSON.stringify(b);
   }
 

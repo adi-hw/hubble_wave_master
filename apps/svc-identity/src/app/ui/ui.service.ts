@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NavProfile, NavProfileItem } from '@hubblewave/instance-db';
@@ -51,6 +51,8 @@ const FALLBACK_THEME: ThemeResponse = {
 
 @Injectable()
 export class UiService {
+  private readonly logger = new Logger(UiService.name);
+
   constructor(
     @InjectRepository(NavProfile)
     private readonly navProfileRepo: Repository<NavProfile>,
@@ -117,11 +119,11 @@ export class UiService {
         where: { isDefault: true },
       });
 
-      console.log('[UiService] getNavigation - profile:', profile?.id, profile?.name);
+      this.logger.debug(`getNavigation - profile: ${profile?.id} ${profile?.name}`);
 
       if (!profile) {
         // No profile configured - return empty navigation
-        console.log('[UiService] getNavigation - no default profile found');
+        this.logger.debug('getNavigation - no default profile found');
         return { sections: [], bottomNav: [] };
       }
 
@@ -131,11 +133,11 @@ export class UiService {
         order: { position: 'ASC' },
       });
 
-      console.log('[UiService] getNavigation - found', items.length, 'items');
+      this.logger.debug(`getNavigation - found ${items.length} items`);
 
       return this.buildNavigationFromItems(items);
     } catch (error) {
-      console.error('[UiService] getNavigation - error:', error);
+      this.logger.error('getNavigation - error:', error);
       throw error;
     }
   }

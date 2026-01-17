@@ -27,9 +27,12 @@ export const AccessRulesPage: React.FC = () => {
     try {
       setLoading(true);
       const data = await accessApi.getCollectionRules(collectionId);
-      setRules(data);
+      // Handle both array response and object with data property
+      const rulesArray = Array.isArray(data) ? data : (data as any)?.data || [];
+      setRules(rulesArray);
     } catch (err) {
       console.error('Failed to load rules', err);
+      setRules([]);
     } finally {
       setLoading(false);
     }
@@ -63,31 +66,22 @@ export const AccessRulesPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-4" style={{ color: 'var(--text-secondary)' }}>Loading rules...</div>;
+  if (loading) return <div className="p-4 text-muted-foreground">Loading rules...</div>;
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Access Rules</h1>
+        <h1 className="text-2xl font-bold text-foreground">Access Rules</h1>
         <div className="space-x-2">
             <button
                 onClick={() => navigate(`/studio/collections/${collectionId}`)}
-                className="px-4 py-2 border rounded transition-colors"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-secondary)'
-                }}
+                className="px-4 py-2 border rounded transition-colors bg-card border-border text-muted-foreground hover:bg-muted"
             >
                 Back to Collection
             </button>
             <button
                 onClick={() => setShowEditor(true)}
-                className="px-4 py-2 rounded transition-colors"
-                style={{
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-on-primary)'
-                }}
+                className="px-4 py-2 rounded transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
             >
                 Add Rule
             </button>
@@ -95,24 +89,13 @@ export const AccessRulesPage: React.FC = () => {
       </div>
 
       {showEditor && (
-        <div
-          className="mb-6 p-4 border rounded"
-          style={{
-            backgroundColor: 'var(--bg-surface-secondary)',
-            borderColor: 'var(--border-default)'
-          }}
-        >
-          <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>New Rule</h2>
+        <div className="mb-6 p-4 border rounded bg-muted border-border">
+          <h2 className="text-lg font-semibold mb-4 text-foreground">New Rule</h2>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Principal Type</label>
+              <label className="block text-sm font-medium mb-1 text-muted-foreground">Principal Type</label>
               <select
-                className="w-full border rounded p-2"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)'
-                }}
+                className="w-full border rounded p-2 bg-card border-border text-foreground"
                 value={editingRule.principalType}
                 onChange={e => setEditingRule({...editingRule, principalType: e.target.value as any})}
               >
@@ -122,30 +105,20 @@ export const AccessRulesPage: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Principal ID (Role Name or User ID)</label>
+              <label className="block text-sm font-medium mb-1 text-muted-foreground">Principal ID (Role Name or User ID)</label>
               <input
                 type="text"
-                className="w-full border rounded p-2"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)'
-                }}
+                className="w-full border rounded p-2 bg-card border-border text-foreground"
                 value={editingRule.principalId || ''}
                 onChange={e => setEditingRule({...editingRule, principalId: e.target.value})}
                 placeholder="e.g. admin, user, or UUID"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Priority</label>
+              <label className="block text-sm font-medium mb-1 text-muted-foreground">Priority</label>
               <input
                 type="number"
-                className="w-full border rounded p-2"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)'
-                }}
+                className="w-full border rounded p-2 bg-card border-border text-foreground"
                 value={editingRule.priority}
                 onChange={e => setEditingRule({...editingRule, priority: parseInt(e.target.value)})}
               />
@@ -153,8 +126,8 @@ export const AccessRulesPage: React.FC = () => {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Permissions</label>
-            <div className="flex space-x-4" style={{ color: 'var(--text-primary)' }}>
+            <label className="block text-sm font-medium mb-2 text-muted-foreground">Permissions</label>
+            <div className="flex space-x-4 text-foreground">
               <label className="flex items-center">
                 <input
                     type="checkbox"
@@ -200,22 +173,13 @@ export const AccessRulesPage: React.FC = () => {
           <div className="flex justify-end space-x-2">
             <button
                 onClick={() => setShowEditor(false)}
-                className="px-4 py-2 border rounded transition-colors"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-secondary)'
-                }}
+                className="px-4 py-2 border rounded transition-colors bg-card border-border text-muted-foreground hover:bg-muted"
             >
                 Cancel
             </button>
             <button
                 onClick={handleSave}
-                className="px-4 py-2 rounded transition-colors"
-                style={{
-                  backgroundColor: 'var(--bg-success)',
-                  color: 'var(--text-on-primary)'
-                }}
+                className="btn-primary px-4 py-2 rounded"
             >
                 Save Rule
             </button>
@@ -223,60 +187,43 @@ export const AccessRulesPage: React.FC = () => {
         </div>
       )}
 
-      <div
-        className="rounded shadow overflow-hidden"
-        style={{ backgroundColor: 'var(--bg-surface)' }}
-      >
+      <div className="rounded shadow overflow-hidden bg-card">
         <table className="min-w-full">
-          <thead
-            className="border-b"
-            style={{
-              backgroundColor: 'var(--bg-surface-secondary)',
-              borderColor: 'var(--border-default)'
-            }}
-          >
+          <thead className="border-b bg-muted border-border">
             <tr>
-              <th className="text-left py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}>Priority</th>
-              <th className="text-left py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}>Principal</th>
-              <th className="text-left py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}>Permissions</th>
-              <th className="text-left py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}>Conditions</th>
-              <th className="text-right py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}>Actions</th>
+              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Priority</th>
+              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Principal</th>
+              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Permissions</th>
+              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Conditions</th>
+              <th className="text-right py-3 px-4 font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
             {rules.map(rule => (
               <tr
                 key={rule.id}
-                className="border-b"
-                style={{ borderColor: 'var(--border-default)' }}
+                className="border-b border-border"
               >
-                <td className="py-3 px-4" style={{ color: 'var(--text-primary)' }}>{rule.priority}</td>
-                <td className="py-3 px-4" style={{ color: 'var(--text-primary)' }}>
-                    <span
-                      className="capitalize px-2 py-1 rounded text-xs mr-2"
-                      style={{
-                        backgroundColor: 'var(--bg-surface-secondary)',
-                        color: 'var(--text-secondary)'
-                      }}
-                    >{rule.principalType}</span>
+                <td className="py-3 px-4 text-foreground">{rule.priority}</td>
+                <td className="py-3 px-4 text-foreground">
+                    <span className="capitalize px-2 py-1 rounded text-xs mr-2 bg-muted text-muted-foreground">{rule.principalType}</span>
                     {rule.principalId || 'Everyone'}
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex space-x-2 text-xs">
-                    {rule.canRead && <span className="px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-success-subtle)', color: 'var(--text-success)' }}>Read</span>}
-                    {rule.canCreate && <span className="px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-info-subtle)', color: 'var(--text-info)' }}>Create</span>}
-                    {rule.canUpdate && <span className="px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-warning-subtle)', color: 'var(--text-warning)' }}>Update</span>}
-                    {rule.canDelete && <span className="px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-danger-subtle)', color: 'var(--text-danger)' }}>Delete</span>}
+                    {rule.canRead && <span className="px-2 py-0.5 rounded bg-success-subtle text-success-text">Read</span>}
+                    {rule.canCreate && <span className="px-2 py-0.5 rounded bg-info-subtle text-info-text">Create</span>}
+                    {rule.canUpdate && <span className="px-2 py-0.5 rounded bg-warning-subtle text-warning-text">Update</span>}
+                    {rule.canDelete && <span className="px-2 py-0.5 rounded bg-danger-subtle text-danger-text">Delete</span>}
                   </div>
                 </td>
-                <td className="py-3 px-4 text-xs font-mono truncate max-w-xs" style={{ color: 'var(--text-muted)' }}>
+                <td className="py-3 px-4 text-xs font-mono truncate max-w-xs text-muted-foreground">
                     {rule.condition ? JSON.stringify(rule.condition) : '-'}
                 </td>
                 <td className="py-3 px-4 text-right">
                   <button
                     onClick={() => handleDelete(rule.id)}
-                    className="text-sm transition-colors"
-                    style={{ color: 'var(--text-danger)' }}
+                    className="text-sm transition-colors text-destructive hover:text-destructive/80"
                   >
                     Delete
                   </button>
@@ -285,7 +232,7 @@ export const AccessRulesPage: React.FC = () => {
             ))}
             {rules.length === 0 && (
                 <tr>
-                    <td colSpan={5} className="py-8 text-center" style={{ color: 'var(--text-muted)' }}>No access rules defined. Collection allows default access (typically Deny All if no rules match).</td>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground">No access rules defined. Collection allows default access (typically Deny All if no rules match).</td>
                 </tr>
             )}
           </tbody>

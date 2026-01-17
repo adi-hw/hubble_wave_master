@@ -13,8 +13,77 @@
  * @module CollectionStorageService
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { QueryRunner } from 'typeorm';
+
+// ============================================================================
+// SQL Identifier Validation
+// ============================================================================
+
+/**
+ * Validates and sanitizes a SQL identifier (table name, column name, schema name).
+ * Prevents SQL injection by ensuring identifiers match expected patterns.
+ *
+ * Valid identifiers:
+ * - Start with a letter or underscore
+ * - Contain only letters, numbers, and underscores
+ * - Maximum 63 characters (PostgreSQL limit)
+ * - Not a reserved SQL keyword
+ */
+function validateSqlIdentifier(identifier: string, type: 'schema' | 'table' | 'column'): string {
+  if (!identifier || typeof identifier !== 'string') {
+    throw new BadRequestException(`Invalid ${type} name: must be a non-empty string`);
+  }
+
+  // Check length (PostgreSQL limit is 63 characters)
+  if (identifier.length > 63) {
+    throw new BadRequestException(`Invalid ${type} name: exceeds 63 character limit`);
+  }
+
+  // Check pattern: must start with letter or underscore, followed by letters, numbers, underscores
+  const validPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  if (!validPattern.test(identifier)) {
+    throw new BadRequestException(
+      `Invalid ${type} name "${identifier}": must start with a letter or underscore ` +
+      'and contain only letters, numbers, and underscores'
+    );
+  }
+
+  if (type === 'schema' && identifier.toLowerCase() === 'public') {
+    return identifier;
+  }
+
+  // List of reserved SQL keywords that should not be used as identifiers
+  const reservedKeywords = new Set([
+    'select', 'insert', 'update', 'delete', 'drop', 'create', 'alter', 'table',
+    'index', 'view', 'database', 'schema', 'from', 'where', 'and', 'or', 'not',
+    'null', 'true', 'false', 'in', 'between', 'like', 'is', 'as', 'on', 'join',
+    'left', 'right', 'inner', 'outer', 'full', 'cross', 'natural', 'using',
+    'order', 'by', 'asc', 'desc', 'limit', 'offset', 'group', 'having', 'union',
+    'intersect', 'except', 'all', 'distinct', 'case', 'when', 'then', 'else', 'end',
+    'if', 'exists', 'primary', 'key', 'foreign', 'references', 'constraint', 'unique',
+    'check', 'default', 'not', 'cascade', 'restrict', 'set', 'trigger', 'function',
+    'procedure', 'return', 'returns', 'begin', 'commit', 'rollback', 'transaction',
+    'user', 'role', 'grant', 'revoke', 'public', 'with', 'recursive', 'values',
+  ]);
+
+  if (reservedKeywords.has(identifier.toLowerCase())) {
+    throw new BadRequestException(
+      `Invalid ${type} name "${identifier}": cannot use reserved SQL keyword`
+    );
+  }
+
+  return identifier;
+}
+
+/**
+ * Escapes a PostgreSQL identifier by wrapping in double quotes.
+ * The identifier must be validated first using validateSqlIdentifier.
+ */
+function escapeIdentifier(identifier: string): string {
+  // Double any existing double quotes (PostgreSQL escape rule)
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
 
 // ============================================================================
 // Types & Interfaces
@@ -143,7 +212,10 @@ export class CollectionStorageService {
     schema: string,
     tableName: string
   ): Promise<void> {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const fullTableName = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}`;
 
     this.logger.debug(`Creating storage table ${fullTableName}`);
 
@@ -155,7 +227,8 @@ export class CollectionStorageService {
 
     // Build CREATE TABLE statement
     const columnDefs = this.STANDARD_COLUMNS.map((col) => {
-      let def = `"${col.name}" ${col.type}`;
+      const safeColName = validateSqlIdentifier(col.name, 'column');
+      let def = `${escapeIdentifier(safeColName)} ${col.type}`;
 
       if (!col.nullable) {
         def += ' NOT NULL';
@@ -198,31 +271,39 @@ export class CollectionStorageService {
     schema: string,
     tableName: string
   ): Promise<void> {
-    const prefix = tableName.replace(/^u_/, '');
+    // Validate identifiers (already validated by caller, but defense in depth)
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const prefix = safeTableName.replace(/^u_/, '');
+    const safePrefix = validateSqlIdentifier(prefix.substring(0, 50), 'column'); // Ensure index name fits
+
+    const escapedSchema = escapeIdentifier(safeSchema);
+    const escapedTableName = escapeIdentifier(safeTableName);
+    const fullTableName = `${escapedSchema}.${escapedTableName}`;
 
     // Index for soft delete filtering (most queries filter by deleted_at IS NULL)
     await queryRunner.query(`
-      CREATE INDEX "idx_${prefix}_deleted"
-      ON "${schema}"."${tableName}" (deleted_at)
+      CREATE INDEX ${escapeIdentifier(`idx_${safePrefix}_deleted`)}
+      ON ${fullTableName} (deleted_at)
       WHERE deleted_at IS NULL
     `);
 
     // Index for created_at (common sorting)
     await queryRunner.query(`
-      CREATE INDEX "idx_${prefix}_created"
-      ON "${schema}"."${tableName}" (created_at DESC)
+      CREATE INDEX ${escapeIdentifier(`idx_${safePrefix}_created`)}
+      ON ${fullTableName} (created_at DESC)
     `);
 
     // Index for updated_at (common sorting, recent changes)
     await queryRunner.query(`
-      CREATE INDEX "idx_${prefix}_updated"
-      ON "${schema}"."${tableName}" (updated_at DESC)
+      CREATE INDEX ${escapeIdentifier(`idx_${safePrefix}_updated`)}
+      ON ${fullTableName} (updated_at DESC)
     `);
 
     // Index for created_by (filter by user)
     await queryRunner.query(`
-      CREATE INDEX "idx_${prefix}_created_by"
-      ON "${schema}"."${tableName}" (created_by)
+      CREATE INDEX ${escapeIdentifier(`idx_${safePrefix}_created_by`)}
+      ON ${fullTableName} (created_by)
       WHERE created_by IS NOT NULL
     `);
   }
@@ -235,12 +316,19 @@ export class CollectionStorageService {
     schema: string,
     tableName: string
   ): Promise<void> {
-    const triggerName = `trg_${tableName}_updated_at`;
-    const functionName = `fn_${tableName}_set_updated_at`;
+    // Validate identifiers (already validated by caller, but defense in depth)
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+
+    const triggerName = `trg_${safeTableName}_updated_at`.substring(0, 63);
+    const functionName = `fn_${safeTableName}_set_updated_at`.substring(0, 63);
+
+    const escapedSchema = escapeIdentifier(safeSchema);
+    const escapedTableName = escapeIdentifier(safeTableName);
 
     // Create or replace the trigger function
     await queryRunner.query(`
-      CREATE OR REPLACE FUNCTION "${schema}"."${functionName}"()
+      CREATE OR REPLACE FUNCTION ${escapedSchema}.${escapeIdentifier(functionName)}()
       RETURNS TRIGGER AS $$
       BEGIN
         NEW.updated_at = NOW();
@@ -251,10 +339,10 @@ export class CollectionStorageService {
 
     // Create the trigger
     await queryRunner.query(`
-      CREATE TRIGGER "${triggerName}"
-      BEFORE UPDATE ON "${schema}"."${tableName}"
+      CREATE TRIGGER ${escapeIdentifier(triggerName)}
+      BEFORE UPDATE ON ${escapedSchema}.${escapedTableName}
       FOR EACH ROW
-      EXECUTE FUNCTION "${schema}"."${functionName}"()
+      EXECUTE FUNCTION ${escapedSchema}.${escapeIdentifier(functionName)}()
     `);
   }
 
@@ -279,10 +367,14 @@ export class CollectionStorageService {
     schema: string,
     tableName: string
   ): Promise<void> {
-    const historyTableName = `${tableName}_history`;
-    const fullHistoryTable = `"${schema}"."${historyTableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const historyTableName = `${safeTableName}_history`.substring(0, 63);
+    const safeHistoryTableName = validateSqlIdentifier(historyTableName, 'table');
+    const fullHistoryTable = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeHistoryTableName)}`;
 
-    this.logger.debug(`Enabling versioning for ${tableName} (creating ${historyTableName})`);
+    this.logger.debug(`Enabling versioning for ${safeTableName} (creating ${safeHistoryTableName})`);
 
     // Check if history table already exists
     const exists = await this.tableExists(queryRunner, schema, historyTableName);
@@ -297,8 +389,9 @@ export class CollectionStorageService {
     // Build history table with additional versioning columns
     const columnDefs = columns.map((col) => {
       // Remove primary key constraint from history (allows duplicates)
+      const safeColName = validateSqlIdentifier(col.name, 'column');
       const type = col.type;
-      return `"${col.name}" ${type}`;
+      return `${escapeIdentifier(safeColName)} ${type}`;
     });
 
     // Add versioning metadata columns
@@ -316,13 +409,16 @@ export class CollectionStorageService {
     `);
 
     // Create index for efficient history queries
+    const idxRecordName = `idx_${safeHistoryTableName}_record`.substring(0, 63);
+    const idxChangedName = `idx_${safeHistoryTableName}_changed`.substring(0, 63);
+
     await queryRunner.query(`
-      CREATE INDEX "idx_${historyTableName}_record"
+      CREATE INDEX ${escapeIdentifier(idxRecordName)}
       ON ${fullHistoryTable} (id, _version DESC)
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "idx_${historyTableName}_changed"
+      CREATE INDEX ${escapeIdentifier(idxChangedName)}
       ON ${fullHistoryTable} (_changed_at DESC)
     `);
 
@@ -333,12 +429,12 @@ export class CollectionStorageService {
     const hasVersionColumn = columns.some((c) => c.name === '_version');
     if (!hasVersionColumn) {
       await queryRunner.query(`
-        ALTER TABLE "${schema}"."${tableName}"
+        ALTER TABLE ${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}
         ADD COLUMN "_version" INTEGER NOT NULL DEFAULT 1
       `);
     }
 
-    this.logger.log(`Versioning enabled for ${tableName}`);
+    this.logger.log(`Versioning enabled for ${safeTableName}`);
   }
 
   /**
@@ -351,16 +447,32 @@ export class CollectionStorageService {
     historyTableName: string,
     columns: Array<{ name: string; type: string }>
   ): Promise<void> {
-    const functionName = `fn_${tableName}_history`;
-    const triggerName = `trg_${tableName}_history`;
+    // Validate identifiers (already validated by caller, but defense in depth)
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const safeHistoryTableName = validateSqlIdentifier(historyTableName, 'table');
 
-    // Column names for the INSERT statement
-    const columnNames = columns.map((c) => `"${c.name}"`).join(', ');
-    const oldValues = columns.map((c) => `OLD."${c.name}"`).join(', ');
+    const functionName = `fn_${safeTableName}_history`.substring(0, 63);
+    const triggerName = `trg_${safeTableName}_history`.substring(0, 63);
+
+    const escapedSchema = escapeIdentifier(safeSchema);
+    const escapedTableName = escapeIdentifier(safeTableName);
+    const escapedHistoryTableName = escapeIdentifier(safeHistoryTableName);
+
+    // Column names for the INSERT statement - validate each column name
+    const columnNames = columns.map((c) => {
+      const safeColName = validateSqlIdentifier(c.name, 'column');
+      return escapeIdentifier(safeColName);
+    }).join(', ');
+
+    const oldValues = columns.map((c) => {
+      const safeColName = validateSqlIdentifier(c.name, 'column');
+      return `OLD.${escapeIdentifier(safeColName)}`;
+    }).join(', ');
 
     // Create the history capture function
     await queryRunner.query(`
-      CREATE OR REPLACE FUNCTION "${schema}"."${functionName}"()
+      CREATE OR REPLACE FUNCTION ${escapedSchema}.${escapeIdentifier(functionName)}()
       RETURNS TRIGGER AS $$
       DECLARE
         v_operation VARCHAR(10);
@@ -370,7 +482,7 @@ export class CollectionStorageService {
           v_operation := 'DELETE';
           v_version := OLD._version;
 
-          INSERT INTO "${schema}"."${historyTableName}"
+          INSERT INTO ${escapedSchema}.${escapedHistoryTableName}
             (${columnNames}, _version, _operation, _changed_by)
           VALUES
             (${oldValues}, v_version, v_operation, OLD.updated_by);
@@ -382,7 +494,7 @@ export class CollectionStorageService {
           v_version := OLD._version;
 
           -- Capture the OLD state before the update
-          INSERT INTO "${schema}"."${historyTableName}"
+          INSERT INTO ${escapedSchema}.${escapedHistoryTableName}
             (${columnNames}, _version, _operation, _changed_by)
           VALUES
             (${oldValues}, v_version, v_operation, NEW.updated_by);
@@ -405,10 +517,10 @@ export class CollectionStorageService {
 
     // Create triggers for INSERT, UPDATE, DELETE
     await queryRunner.query(`
-      CREATE TRIGGER "${triggerName}"
-      BEFORE INSERT OR UPDATE OR DELETE ON "${schema}"."${tableName}"
+      CREATE TRIGGER ${escapeIdentifier(triggerName)}
+      BEFORE INSERT OR UPDATE OR DELETE ON ${escapedSchema}.${escapedTableName}
       FOR EACH ROW
-      EXECUTE FUNCTION "${schema}"."${functionName}"()
+      EXECUTE FUNCTION ${escapedSchema}.${escapeIdentifier(functionName)}()
     `);
   }
 
@@ -469,9 +581,14 @@ export class CollectionStorageService {
     schema: string,
     tableName: string
   ): Promise<TableAnalysisResult> {
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const fullTableName = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}`;
+
     // Get row count
     const countResult = await queryRunner.query(
-      `SELECT COUNT(*) as count FROM "${schema}"."${tableName}"`
+      `SELECT COUNT(*) as count FROM ${fullTableName}`
     );
     const rowCount = parseInt(countResult[0]?.count || '0', 10);
 
@@ -644,10 +761,17 @@ export class CollectionStorageService {
    * Useful when automatic creation fails and user needs to create manually.
    */
   generateCreateTableDdl(schema: string, tableName: string): string {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+
+    const escapedSchema = escapeIdentifier(safeSchema);
+    const escapedTableName = escapeIdentifier(safeTableName);
+    const fullTableName = `${escapedSchema}.${escapedTableName}`;
 
     const columnDefs = this.STANDARD_COLUMNS.map((col) => {
-      let def = `  "${col.name}" ${col.type}`;
+      const safeColName = validateSqlIdentifier(col.name, 'column');
+      let def = `  ${escapeIdentifier(safeColName)} ${col.type}`;
 
       if (!col.nullable) {
         def += ' NOT NULL';
@@ -664,7 +788,15 @@ export class CollectionStorageService {
       return def;
     }).join(',\n');
 
-    const prefix = tableName.replace(/^u_/, '');
+    const prefix = safeTableName.replace(/^u_/, '');
+    const safePrefix = prefix.substring(0, 50);
+
+    const idxDeleted = escapeIdentifier(`idx_${safePrefix}_deleted`);
+    const idxCreated = escapeIdentifier(`idx_${safePrefix}_created`);
+    const idxUpdated = escapeIdentifier(`idx_${safePrefix}_updated`);
+    const idxCreatedBy = escapeIdentifier(`idx_${safePrefix}_created_by`);
+    const fnSetUpdatedAt = escapeIdentifier(`fn_${safeTableName}_set_updated_at`.substring(0, 63));
+    const trgUpdatedAt = escapeIdentifier(`trg_${safeTableName}_updated_at`.substring(0, 63));
 
     return `
 -- Create storage table for collection
@@ -673,22 +805,22 @@ ${columnDefs}
 );
 
 -- Create indexes for common query patterns
-CREATE INDEX "idx_${prefix}_deleted"
+CREATE INDEX ${idxDeleted}
   ON ${fullTableName} (deleted_at)
   WHERE deleted_at IS NULL;
 
-CREATE INDEX "idx_${prefix}_created"
+CREATE INDEX ${idxCreated}
   ON ${fullTableName} (created_at DESC);
 
-CREATE INDEX "idx_${prefix}_updated"
+CREATE INDEX ${idxUpdated}
   ON ${fullTableName} (updated_at DESC);
 
-CREATE INDEX "idx_${prefix}_created_by"
+CREATE INDEX ${idxCreatedBy}
   ON ${fullTableName} (created_by)
   WHERE created_by IS NOT NULL;
 
 -- Create trigger for automatic updated_at
-CREATE OR REPLACE FUNCTION "${schema}"."fn_${tableName}_set_updated_at"()
+CREATE OR REPLACE FUNCTION ${escapedSchema}.${fnSetUpdatedAt}()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -696,10 +828,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER "trg_${tableName}_updated_at"
+CREATE TRIGGER ${trgUpdatedAt}
   BEFORE UPDATE ON ${fullTableName}
   FOR EACH ROW
-  EXECUTE FUNCTION "${schema}"."fn_${tableName}_set_updated_at"();
+  EXECUTE FUNCTION ${escapedSchema}.${fnSetUpdatedAt}();
 `.trim();
   }
 
@@ -716,33 +848,45 @@ CREATE TRIGGER "trg_${tableName}_updated_at"
     schema: string,
     tableName: string
   ): Promise<void> {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+
+    const escapedSchema = escapeIdentifier(safeSchema);
+    const escapedTableName = escapeIdentifier(safeTableName);
+    const fullTableName = `${escapedSchema}.${escapedTableName}`;
 
     this.logger.warn(`Dropping storage table ${fullTableName}`);
 
     // Drop triggers first
+    const triggerUpdatedAt = `trg_${safeTableName}_updated_at`.substring(0, 63);
+    const triggerHistory = `trg_${safeTableName}_history`.substring(0, 63);
+
     await queryRunner.query(`
-      DROP TRIGGER IF EXISTS "trg_${tableName}_updated_at" ON ${fullTableName}
+      DROP TRIGGER IF EXISTS ${escapeIdentifier(triggerUpdatedAt)} ON ${fullTableName}
     `);
 
     await queryRunner.query(`
-      DROP TRIGGER IF EXISTS "trg_${tableName}_history" ON ${fullTableName}
+      DROP TRIGGER IF EXISTS ${escapeIdentifier(triggerHistory)} ON ${fullTableName}
     `);
 
     // Drop functions
+    const fnUpdatedAt = `fn_${safeTableName}_set_updated_at`.substring(0, 63);
+    const fnHistory = `fn_${safeTableName}_history`.substring(0, 63);
+
     await queryRunner.query(`
-      DROP FUNCTION IF EXISTS "${schema}"."fn_${tableName}_set_updated_at"()
+      DROP FUNCTION IF EXISTS ${escapedSchema}.${escapeIdentifier(fnUpdatedAt)}()
     `);
 
     await queryRunner.query(`
-      DROP FUNCTION IF EXISTS "${schema}"."fn_${tableName}_history"()
+      DROP FUNCTION IF EXISTS ${escapedSchema}.${escapeIdentifier(fnHistory)}()
     `);
 
     // Drop history table if exists
-    const historyTableName = `${tableName}_history`;
+    const historyTableName = `${safeTableName}_history`.substring(0, 63);
     const historyExists = await this.tableExists(queryRunner, schema, historyTableName);
     if (historyExists) {
-      await queryRunner.query(`DROP TABLE "${schema}"."${historyTableName}"`);
+      await queryRunner.query(`DROP TABLE ${escapedSchema}.${escapeIdentifier(historyTableName)}`);
     }
 
     // Drop main table
@@ -785,9 +929,14 @@ CREATE TRIGGER "trg_${tableName}_updated_at"
     tableName: string,
     column: ColumnDefinition
   ): Promise<void> {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const safeColumnName = validateSqlIdentifier(column.name, 'column');
 
-    let sql = `ALTER TABLE ${fullTableName} ADD COLUMN "${column.name}" ${column.type}`;
+    const fullTableName = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}`;
+
+    let sql = `ALTER TABLE ${fullTableName} ADD COLUMN ${escapeIdentifier(safeColumnName)} ${column.type}`;
 
     if (!column.nullable) {
       sql += ' NOT NULL';
@@ -803,7 +952,7 @@ CREATE TRIGGER "trg_${tableName}_updated_at"
 
     await queryRunner.query(sql);
 
-    this.logger.debug(`Added column ${column.name} to ${fullTableName}`);
+    this.logger.debug(`Added column ${safeColumnName} to ${fullTableName}`);
   }
 
   /**
@@ -816,19 +965,24 @@ CREATE TRIGGER "trg_${tableName}_updated_at"
     tableName: string,
     columnName: string
   ): Promise<void> {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const safeColumnName = validateSqlIdentifier(columnName, 'column');
+
+    const fullTableName = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}`;
 
     // Don't allow dropping standard columns
     const isStandard = this.STANDARD_COLUMNS.some((c) => c.name === columnName);
     if (isStandard) {
-      throw new Error(`Cannot drop standard column: ${columnName}`);
+      throw new BadRequestException(`Cannot drop standard column: ${columnName}`);
     }
 
     await queryRunner.query(
-      `ALTER TABLE ${fullTableName} DROP COLUMN IF EXISTS "${columnName}"`
+      `ALTER TABLE ${fullTableName} DROP COLUMN IF EXISTS ${escapeIdentifier(safeColumnName)}`
     );
 
-    this.logger.debug(`Dropped column ${columnName} from ${fullTableName}`);
+    this.logger.debug(`Dropped column ${safeColumnName} from ${fullTableName}`);
   }
 
   /**
@@ -841,18 +995,24 @@ CREATE TRIGGER "trg_${tableName}_updated_at"
     oldName: string,
     newName: string
   ): Promise<void> {
-    const fullTableName = `"${schema}"."${tableName}"`;
+    // Validate identifiers to prevent SQL injection
+    const safeSchema = validateSqlIdentifier(schema, 'schema');
+    const safeTableName = validateSqlIdentifier(tableName, 'table');
+    const safeOldName = validateSqlIdentifier(oldName, 'column');
+    const safeNewName = validateSqlIdentifier(newName, 'column');
+
+    const fullTableName = `${escapeIdentifier(safeSchema)}.${escapeIdentifier(safeTableName)}`;
 
     // Don't allow renaming standard columns
     const isStandard = this.STANDARD_COLUMNS.some((c) => c.name === oldName);
     if (isStandard) {
-      throw new Error(`Cannot rename standard column: ${oldName}`);
+      throw new BadRequestException(`Cannot rename standard column: ${oldName}`);
     }
 
     await queryRunner.query(
-      `ALTER TABLE ${fullTableName} RENAME COLUMN "${oldName}" TO "${newName}"`
+      `ALTER TABLE ${fullTableName} RENAME COLUMN ${escapeIdentifier(safeOldName)} TO ${escapeIdentifier(safeNewName)}`
     );
 
-    this.logger.debug(`Renamed column ${oldName} to ${newName} in ${fullTableName}`);
+    this.logger.debug(`Renamed column ${safeOldName} to ${safeNewName} in ${fullTableName}`);
   }
 }

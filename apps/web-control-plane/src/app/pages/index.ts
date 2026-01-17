@@ -9,4 +9,6 @@ export { AuditPage } from './AuditPage';
 export { TerraformPage } from './TerraformPage';
 export { MetricsPage } from './MetricsPage';
 export { LicensesPage } from './LicensesPage';
+export { PacksPage } from './PacksPage';
+export { RecoveryPage } from './RecoveryPage';
 export { SettingsPage } from './SettingsPage';

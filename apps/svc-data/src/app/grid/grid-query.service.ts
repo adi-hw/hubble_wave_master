@@ -16,12 +16,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { DataSource, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
-import { AuthorizationService, AuthorizedFieldMeta } from '@hubblewave/authorization';
+import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from '../model-registry.service';
 
-// Instance ID for this single-instance deployment
-const INSTANCE_ID = process.env['INSTANCE_ID'] || 'default';
 
 // =============================================================================
 // TYPES
@@ -100,6 +98,18 @@ export interface GridCountRequest {
   globalFilter?: string;
 }
 
+/**
+ * Extended property info for reference handling
+ */
+interface ReferencePropertyInfo {
+  code: string;
+  storagePath: string;
+  config?: {
+    referenceCollection?: string | null;
+    referenceDisplayProperty?: string | null;
+  };
+}
+
 // =============================================================================
 // SERVICE
 // =============================================================================
@@ -132,15 +142,15 @@ export class GridQueryService {
     const skip = startRow;
 
     // Get table metadata
-    const model = await this.modelRegistry.getTable(collection, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collection);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
     // Get readable fields
-    const allFields = await this.modelRegistry.getFields(collection, INSTANCE_ID, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
 
     if (!readableFields.length) {
-      throw new ForbiddenException('No readable fields on this table');
+      throw new ForbiddenException('No readable properties on this collection');
     }
 
     // Build select columns
@@ -151,6 +161,9 @@ export class GridQueryService {
       .createQueryBuilder()
       .select(selectParts)
       .from(this.buildPhysicalTableForQb(model), 't');
+
+    // Add LEFT JOINs for reference fields to fetch display values
+    this.buildReferenceJoins(qb, readableFields);
 
     // Apply RLS
     const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
@@ -182,7 +195,7 @@ export class GridQueryService {
     // Mask sensitive data
     const maskedRows = await Promise.all(
       rows.map((row) =>
-        this.authz.maskRecord(ctx, model.storageTable, row, readableFields as AuthorizedFieldMeta[]),
+        this.authz.maskRecord(ctx, model.storageTable, row, readableFields as AuthorizedPropertyMeta[]),
       ),
     );
 
@@ -204,11 +217,11 @@ export class GridQueryService {
     const { collection, filters, globalFilter } = request;
 
     // Get table metadata
-    const model = await this.modelRegistry.getTable(collection, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collection);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
     // Get readable fields for filtering
-    const allFields = await this.modelRegistry.getFields(collection, INSTANCE_ID, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
 
     // Build count query
@@ -254,33 +267,80 @@ export class GridQueryService {
     }
 
     // Get table metadata
-    const model = await this.modelRegistry.getTable(collection, INSTANCE_ID);
+    const model = await this.modelRegistry.getCollection(collection);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getFields(collection, INSTANCE_ID, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
 
-    // Build group query
-    const groupColumns = grouping.columns.map((col) => {
-      const field = allFields.find((f) => f.code === col);
-      if (!field) return null;
+    // Track reference properties that need LEFT JOINs for display values
+    const referenceJoins: Array<{
+      propertyCode: string;
+      refTable: string;
+      displayProperty: string;
+      alias: string;
+      columnName: string;
+    }> = [];
+
+    // Build group query - for reference fields, we'll group by ID but select display value
+    const groupColumns: string[] = [];
+    const groupDisplayColumns: string[] = [];
+
+    for (const col of grouping.columns) {
+      const field = (allFields as Array<ReferencePropertyInfo>).find((f) => f.code === col);
+      if (!field) continue;
+
       const parsed = this.parseStoragePath(field.storagePath);
       if (parsed.type === 'column') {
-        return `t."${parsed.column}"`;
+        // Always group by the actual column (ID for references)
+        groupColumns.push(`t."${parsed.column}"`);
+
+        // Check if this is a reference field - if so, select display value
+        if (field.config?.referenceCollection && field.config?.referenceDisplayProperty) {
+          const refTable = field.config.referenceCollection;
+          const displayField = field.config.referenceDisplayProperty;
+          const alias = `ref_grp_${field.code}`;
+
+          try {
+            this.ensureSafeIdentifier(refTable, 'reference table');
+            this.ensureSafeIdentifier(displayField, 'display field');
+
+            referenceJoins.push({
+              propertyCode: field.code,
+              refTable,
+              displayProperty: displayField,
+              alias,
+              columnName: parsed.column,
+            });
+
+            // For display, use the reference display value
+            groupDisplayColumns.push(`${alias}."${displayField}"`);
+          } catch {
+            // Invalid reference config, just use the raw column
+            groupDisplayColumns.push(`t."${parsed.column}"`);
+          }
+        } else {
+          // Not a reference field, use raw column
+          groupDisplayColumns.push(`t."${parsed.column}"`);
+        }
       } else if (parsed.type === 'json') {
-        return `t."${parsed.column}"->>'${parsed.path}'`;
+        const jsonCol = `t."${parsed.column}"->>'${parsed.path}'`;
+        groupColumns.push(jsonCol);
+        groupDisplayColumns.push(jsonCol);
       }
-      return null;
-    }).filter(Boolean);
+    }
 
     if (!groupColumns.length) {
       return this.query<T>(ctx, request);
     }
 
-    const selectParts = [
-      ...groupColumns.map((col, i) => `${col} AS "group_${i}"`),
-      'COUNT(*) AS "count"',
-    ];
+    // Select parts: group_N for actual value (ID), group_N_display for display value
+    const selectParts: string[] = [];
+    for (let i = 0; i < groupColumns.length; i++) {
+      selectParts.push(`${groupColumns[i]} AS "group_${i}"`);
+      selectParts.push(`${groupDisplayColumns[i]} AS "group_${i}_display"`);
+    }
+    selectParts.push('COUNT(*) AS "count"');
 
     // Add aggregations
     if (grouping.aggregations) {
@@ -298,8 +358,26 @@ export class GridQueryService {
     const qb = this.dataSource
       .createQueryBuilder()
       .select(selectParts)
-      .from(this.buildPhysicalTableForQb(model), 't')
-      .groupBy(groupColumns.join(', '));
+      .from(this.buildPhysicalTableForQb(model), 't');
+
+    // Add LEFT JOINs for reference fields used in grouping
+    for (const ref of referenceJoins) {
+      qb.leftJoin(
+        (subQuery) =>
+          subQuery
+            .select([
+              `sub_${ref.alias}.id AS id`,
+              `sub_${ref.alias}."${ref.displayProperty}" AS "${ref.displayProperty}"`,
+            ])
+            .from(`public.${ref.refTable}`, `sub_${ref.alias}`),
+        ref.alias,
+        `${ref.alias}.id = t."${ref.columnName}"`,
+      );
+    }
+
+    // Group by both ID columns and display columns (needed for aggregation)
+    const allGroupByColumns = [...groupColumns, ...groupDisplayColumns.filter((c, i) => c !== groupColumns[i])];
+    qb.groupBy(allGroupByColumns.join(', '));
 
     // Apply RLS
     const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
@@ -324,10 +402,11 @@ export class GridQueryService {
 
     const rows = await qb.getRawMany();
 
-    // Transform to group data
+    // Transform to group data - use display values when available
     const groupData: GridGroupData[] = rows.map((row) => ({
       groupKey: grouping.columns,
-      groupValue: grouping.columns.map((_, i) => row[`group_${i}`]),
+      // Use display value if available, otherwise fall back to raw value
+      groupValue: grouping.columns.map((_, i) => row[`group_${i}_display`] ?? row[`group_${i}`]),
       childCount: parseInt(row.count, 10),
       aggregations: grouping.aggregations?.reduce(
         (acc, agg) => {
@@ -354,17 +433,65 @@ export class GridQueryService {
   private buildSelectParts(readableFields: unknown[]): string[] {
     const selectParts = ['t.id', 't.created_at', 't.updated_at'];
 
-    (readableFields as Array<{ code: string; storagePath: string }>).forEach((f) => {
+    (readableFields as Array<ReferencePropertyInfo>).forEach((f) => {
       if (!f.storagePath) return;
       const parsed = this.parseStoragePath(f.storagePath);
       if (parsed.type === 'column') {
         selectParts.push(`t."${parsed.column}" AS "${f.code}"`);
+
+        // If this is a reference field, also select the display value from the joined table
+        if (f.config?.referenceCollection && f.config?.referenceDisplayProperty) {
+          const alias = `ref_${f.code}`;
+          const displayField = this.ensureSafeIdentifier(f.config.referenceDisplayProperty, 'reference display field');
+          selectParts.push(`${alias}."${displayField}" AS "${f.code}_display"`);
+        }
       } else if (parsed.type === 'json') {
         selectParts.push(`t."${parsed.column}"->>'${parsed.path}' AS "${f.code}"`);
       }
     });
 
     return selectParts;
+  }
+
+  /**
+   * Build LEFT JOINs for reference fields
+   * Uses subquery approach since TypeORM's leftJoin with raw table names
+   * is interpreted as entity relation paths.
+   */
+  private buildReferenceJoins(
+    qb: SelectQueryBuilder<ObjectLiteral>,
+    readableFields: unknown[],
+  ): void {
+    (readableFields as Array<ReferencePropertyInfo>).forEach((f) => {
+      if (!f.storagePath || !f.config?.referenceCollection || !f.config?.referenceDisplayProperty) return;
+
+      const parsed = this.parseStoragePath(f.storagePath);
+      if (parsed.type !== 'column') return;
+
+      const refTable = f.config.referenceCollection;
+      const alias = `ref_${f.code}`;
+      const displayField = f.config.referenceDisplayProperty;
+
+      // Validate the reference table and display field names for security
+      try {
+        this.ensureSafeIdentifier(refTable, 'reference table');
+        this.ensureSafeIdentifier(displayField, 'display field');
+      } catch {
+        // Skip invalid reference table names
+        return;
+      }
+
+      // LEFT JOIN the referenced table using a subquery
+      // This works with TypeORM's query builder when the main FROM is a raw table
+      qb.leftJoin(
+        (subQuery) =>
+          subQuery
+            .select([`sub_${alias}.id AS id`, `sub_${alias}."${displayField}" AS "${displayField}"`])
+            .from(`public.${refTable}`, `sub_${alias}`),
+        alias,
+        `${alias}.id = t."${parsed.column}"`,
+      );
+    });
   }
 
   private applyFilters(
