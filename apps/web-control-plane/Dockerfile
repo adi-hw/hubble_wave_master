@@ -49,35 +49,34 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist/apps/web-control-plane /usr/share/nginx/html
 
 # Create nginx config for SPA routing
-RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-}
-EOF
+RUN printf '%s\n' \
+    'server {' \
+    '    listen 80;' \
+    '    server_name _;' \
+    '    root /usr/share/nginx/html;' \
+    '    index index.html;' \
+    '' \
+    '    gzip on;' \
+    '    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;' \
+    '' \
+    '    add_header X-Frame-Options "SAMEORIGIN" always;' \
+    '    add_header X-Content-Type-Options "nosniff" always;' \
+    '' \
+    '    location / {' \
+    '        try_files $uri $uri/ /index.html;' \
+    '    }' \
+    '' \
+    '    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {' \
+    '        expires 1y;' \
+    '        add_header Cache-Control "public, immutable";' \
+    '    }' \
+    '' \
+    '    location /health {' \
+    '        access_log off;' \
+    '        return 200 "healthy\\n";' \
+    '        add_header Content-Type text/plain;' \
+    '    }' \
+    '}' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
