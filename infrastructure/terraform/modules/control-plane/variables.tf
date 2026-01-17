@@ -182,6 +182,34 @@ variable "instance_terraform_state_prefix" {
   default     = "instances"
 }
 
+variable "instance_container_registry" {
+  description = "Container registry host for customer instance images"
+  type        = string
+
+  validation {
+    condition     = length(var.instance_container_registry) > 0
+    error_message = "instance_container_registry must be set."
+  }
+}
+
+variable "instance_api_image_tag" {
+  description = "Default image tag for instance API service (falls back to platform release id)"
+  type        = string
+  default     = ""
+}
+
+variable "instance_web_image_tag" {
+  description = "Default image tag for instance web client (falls back to platform release id)"
+  type        = string
+  default     = ""
+}
+
+variable "instance_cert_manager_issuer" {
+  description = "Cert-manager cluster issuer for instance TLS certificates"
+  type        = string
+  default     = "letsencrypt-prod"
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API token for instance DNS management"
   type        = string

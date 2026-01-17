@@ -159,3 +159,37 @@ output "instance_metadata" {
     created_at       = kubernetes_namespace.instance.metadata[0].annotations["hubblewave.com/created-at"]
   }
 }
+
+# -----------------------------------------------------------------------------
+# Deployment Outputs
+# -----------------------------------------------------------------------------
+
+output "api_deployment_name" {
+  description = "Name of the API deployment"
+  value       = kubernetes_deployment.api.metadata[0].name
+}
+
+output "web_deployment_name" {
+  description = "Name of the web client deployment"
+  value       = kubernetes_deployment.web.metadata[0].name
+}
+
+output "api_service_name" {
+  description = "Name of the API service"
+  value       = kubernetes_service.api.metadata[0].name
+}
+
+output "web_service_name" {
+  description = "Name of the web client service"
+  value       = kubernetes_service.web.metadata[0].name
+}
+
+output "ingress_name" {
+  description = "Name of the instance ingress"
+  value       = kubernetes_ingress_v1.instance.metadata[0].name
+}
+
+output "instance_url" {
+  description = "URL to access the instance"
+  value       = "https://${local.instance_domain}"
+}

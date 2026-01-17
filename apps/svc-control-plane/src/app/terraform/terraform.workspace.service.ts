@@ -106,6 +106,13 @@ export class TerraformWorkspaceService {
     }
 
     const moduleSource = `${this.modulesRoot.replace(/\\\\/g, '/')}/customer-instance`;
+    const containerRegistry = this.requireConfig('INSTANCE_CONTAINER_REGISTRY');
+    const instanceApiImageTag = this.config.get<string>('INSTANCE_API_IMAGE_TAG')
+      || request.instance.version;
+    const instanceWebImageTag = this.config.get<string>('INSTANCE_WEB_IMAGE_TAG')
+      || request.instance.version;
+    const certManagerIssuer = this.config.get<string>('INSTANCE_CERT_MANAGER_ISSUER', 'letsencrypt-prod');
+
     const hclString = (value: string) => JSON.stringify(value);
     const mainTf = `module "instance" {
   source = ${hclString(moduleSource)}
@@ -127,6 +134,12 @@ export class TerraformWorkspaceService {
   instance_ingress_hostname = ${hclString(ingressHostname)}
   eks_oidc_provider_arn = ${hclString(eksOidcProviderArn)}
   eks_oidc_provider_host = ${hclString(eksOidcProviderHost)}
+
+  # Container deployment configuration
+  container_registry_host = ${hclString(containerRegistry)}
+  instance_api_image_tag = ${hclString(instanceApiImageTag)}
+  instance_web_image_tag = ${hclString(instanceWebImageTag)}
+  cert_manager_issuer = ${hclString(certManagerIssuer)}
 }
 `;
 

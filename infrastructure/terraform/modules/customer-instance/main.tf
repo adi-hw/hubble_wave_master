@@ -731,3 +731,501 @@ resource "kubernetes_config_map" "hpa_config" {
     scale_down_cooldown  = "300"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Database Migration Job
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_job_v1" "migrations" {
+  metadata {
+    name      = "instance-migrations-${replace(var.platform_release_id, ".", "-")}"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/component" = "migrations"
+    })
+  }
+
+  spec {
+    backoff_limit              = 3
+    ttl_seconds_after_finished = 3600
+
+    template {
+      metadata {
+        labels = merge(local.common_labels, {
+          "app.kubernetes.io/component" = "migrations"
+        })
+      }
+
+      spec {
+        restart_policy       = "OnFailure"
+        service_account_name = kubernetes_service_account.workload.metadata[0].name
+
+        container {
+          name    = "migrations"
+          image   = "${var.container_registry_host}/hubblewave/instance/svc-instance-api:${var.instance_api_image_tag}"
+          command = ["node"]
+          args = [
+            "./node_modules/typeorm/cli.js",
+            "migration:run",
+            "-d",
+            "dist/scripts/datasource-instance.js"
+          ]
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.database.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.redis.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.instance_config.metadata[0].name
+            }
+          }
+
+          env_from {
+            config_map_ref {
+              name = kubernetes_config_map.app_config.metadata[0].name
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  wait_for_completion = true
+  timeouts {
+    create = "10m"
+  }
+
+  depends_on = [
+    postgresql_database.instance,
+    postgresql_extension.pgvector,
+    postgresql_extension.uuid_ossp,
+    kubernetes_secret.database,
+  ]
+}
+
+# -----------------------------------------------------------------------------
+# Instance API Deployment
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_deployment" "api" {
+  metadata {
+    name      = "instance-api"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/component" = "api"
+    })
+  }
+
+  spec {
+    replicas = var.api_replicas
+
+    selector {
+      match_labels = {
+        "hubblewave.com/instance-id"  = var.instance_id
+        "app.kubernetes.io/component" = "api"
+      }
+    }
+
+    template {
+      metadata {
+        labels = merge(local.common_labels, {
+          "app.kubernetes.io/component" = "api"
+        })
+      }
+
+      spec {
+        service_account_name = kubernetes_service_account.workload.metadata[0].name
+
+        container {
+          name  = "api"
+          image = "${var.container_registry_host}/hubblewave/instance/svc-instance-api:${var.instance_api_image_tag}"
+
+          port {
+            container_port = 3000
+            name           = "http"
+          }
+
+          port {
+            container_port = 9090
+            name           = "metrics"
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.database.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.redis.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.instance_config.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.s3_credentials.metadata[0].name
+            }
+          }
+
+          env_from {
+            config_map_ref {
+              name = kubernetes_config_map.app_config.metadata[0].name
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = local.tier_config.cpu_request
+              memory = local.tier_config.memory_request
+            }
+            limits = {
+              cpu    = local.tier_config.cpu_limit
+              memory = local.tier_config.memory_limit
+            }
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/api/health"
+              port = 3000
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/api/health"
+              port = 3000
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+            timeout_seconds       = 3
+            failure_threshold     = 3
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [kubernetes_job_v1.migrations]
+}
+
+# -----------------------------------------------------------------------------
+# Instance Web Client Deployment
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_deployment" "web" {
+  metadata {
+    name      = "instance-web"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/component" = "web"
+    })
+  }
+
+  spec {
+    replicas = var.web_replicas
+
+    selector {
+      match_labels = {
+        "hubblewave.com/instance-id"  = var.instance_id
+        "app.kubernetes.io/component" = "web"
+      }
+    }
+
+    template {
+      metadata {
+        labels = merge(local.common_labels, {
+          "app.kubernetes.io/component" = "web"
+        })
+      }
+
+      spec {
+        container {
+          name  = "web"
+          image = "${var.container_registry_host}/hubblewave/instance/web-client:${var.instance_web_image_tag}"
+
+          port {
+            container_port = 80
+            name           = "http"
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "128Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = 80
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/"
+              port = 80
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+          }
+        }
+      }
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Instance API Service
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_service" "api" {
+  metadata {
+    name      = "instance-api"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/component" = "api"
+    })
+  }
+
+  spec {
+    selector = {
+      "hubblewave.com/instance-id"  = var.instance_id
+      "app.kubernetes.io/component" = "api"
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 3000
+    }
+
+    port {
+      name        = "metrics"
+      port        = 9090
+      target_port = 9090
+    }
+
+    type = "ClusterIP"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Instance Web Service
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_service" "web" {
+  metadata {
+    name      = "instance-web"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/component" = "web"
+    })
+  }
+
+  spec {
+    selector = {
+      "hubblewave.com/instance-id"  = var.instance_id
+      "app.kubernetes.io/component" = "web"
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 80
+    }
+
+    type = "ClusterIP"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Ingress for Instance
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_ingress_v1" "instance" {
+  metadata {
+    name      = "instance-ingress"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels    = local.common_labels
+
+    annotations = {
+      "kubernetes.io/ingress.class"                    = "nginx"
+      "cert-manager.io/cluster-issuer"                 = var.cert_manager_issuer
+      "nginx.ingress.kubernetes.io/ssl-redirect"       = "true"
+      "nginx.ingress.kubernetes.io/proxy-body-size"    = "50m"
+      "nginx.ingress.kubernetes.io/proxy-read-timeout" = "300"
+    }
+  }
+
+  spec {
+    tls {
+      hosts       = [local.instance_domain]
+      secret_name = "instance-tls-${var.customer_code}"
+    }
+
+    rule {
+      host = local.instance_domain
+
+      http {
+        path {
+          path      = "/api"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service.api.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service.web.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [cloudflare_record.instance]
+}
+
+# -----------------------------------------------------------------------------
+# Horizontal Pod Autoscaler for API
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
+  metadata {
+    name      = "instance-api-hpa"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    scale_target_ref {
+      api_version = "apps/v1"
+      kind        = "Deployment"
+      name        = kubernetes_deployment.api.metadata[0].name
+    }
+
+    min_replicas = var.api_replicas
+    max_replicas = local.tier_config.replicas * 3
+
+    metric {
+      type = "Resource"
+      resource {
+        name = "cpu"
+        target {
+          type                = "Utilization"
+          average_utilization = 70
+        }
+      }
+    }
+
+    metric {
+      type = "Resource"
+      resource {
+        name = "memory"
+        target {
+          type                = "Utilization"
+          average_utilization = 80
+        }
+      }
+    }
+
+    behavior {
+      scale_up {
+        stabilization_window_seconds = 60
+        select_policy                = "Max"
+        policy {
+          type           = "Pods"
+          value          = 2
+          period_seconds = 60
+        }
+      }
+      scale_down {
+        stabilization_window_seconds = 300
+        select_policy                = "Min"
+        policy {
+          type           = "Pods"
+          value          = 1
+          period_seconds = 120
+        }
+      }
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Pod Disruption Budget for API
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_pod_disruption_budget_v1" "api" {
+  metadata {
+    name      = "instance-api-pdb"
+    namespace = kubernetes_namespace.instance.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    min_available = 1
+
+    selector {
+      match_labels = {
+        "hubblewave.com/instance-id"  = var.instance_id
+        "app.kubernetes.io/component" = "api"
+      }
+    }
+  }
+}

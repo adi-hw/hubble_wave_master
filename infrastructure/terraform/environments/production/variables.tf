@@ -169,6 +169,18 @@ variable "default_platform_release_id" {
   type        = string
 }
 
+variable "instance_api_image_tag" {
+  description = "Image tag for instance API service (defaults to empty, uses platform release id)"
+  type        = string
+  default     = ""
+}
+
+variable "instance_web_image_tag" {
+  description = "Image tag for instance web client (defaults to empty, uses platform release id)"
+  type        = string
+  default     = ""
+}
+
 variable "cert_manager_issuer" {
   description = "cert-manager issuer name"
   type        = string

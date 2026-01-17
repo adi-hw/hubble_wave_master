@@ -164,9 +164,13 @@ module "control_plane" {
   instance_terraform_state_region = var.instance_terraform_state_region
   instance_terraform_lock_table   = var.instance_terraform_lock_table
   instance_terraform_state_prefix = var.instance_terraform_state_prefix
-  eks_oidc_provider_arn       = aws_iam_openid_connect_provider.eks.arn
-  eks_oidc_provider_host      = local.oidc_provider_host
-  cors_origins                = var.cors_origins
+  eks_oidc_provider_arn        = aws_iam_openid_connect_provider.eks.arn
+  eks_oidc_provider_host       = local.oidc_provider_host
+  instance_container_registry  = var.container_registry_host
+  instance_api_image_tag       = var.instance_api_image_tag
+  instance_web_image_tag       = var.instance_web_image_tag
+  instance_cert_manager_issuer = var.cert_manager_issuer
+  cors_origins                 = var.cors_origins
   manage_dns                  = var.manage_dns
   db_host                     = var.db_host
   db_port                     = var.db_port

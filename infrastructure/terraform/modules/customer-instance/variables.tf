@@ -198,3 +198,44 @@ variable "enable_backup" {
   type        = bool
   default     = true
 }
+
+# -----------------------------------------------------------------------------
+# Container Registry Configuration
+# -----------------------------------------------------------------------------
+
+variable "container_registry_host" {
+  description = "Container registry host (e.g., 687904696003.dkr.ecr.us-east-2.amazonaws.com)"
+  type        = string
+}
+
+variable "instance_api_image_tag" {
+  description = "Image tag for the instance API service"
+  type        = string
+}
+
+variable "instance_web_image_tag" {
+  description = "Image tag for the instance web client"
+  type        = string
+}
+
+# -----------------------------------------------------------------------------
+# Deployment Configuration
+# -----------------------------------------------------------------------------
+
+variable "api_replicas" {
+  description = "Number of API replicas"
+  type        = number
+  default     = 2
+}
+
+variable "web_replicas" {
+  description = "Number of web client replicas"
+  type        = number
+  default     = 2
+}
+
+variable "cert_manager_issuer" {
+  description = "Cert-manager cluster issuer name for TLS certificates"
+  type        = string
+  default     = "letsencrypt-prod"
+}

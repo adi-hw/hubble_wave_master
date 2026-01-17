@@ -478,6 +478,10 @@ resource "kubernetes_config_map" "control_plane_config" {
     INSTANCE_TERRAFORM_STATE_PREFIX = var.instance_terraform_state_prefix
     INSTANCE_EKS_OIDC_PROVIDER_ARN  = var.eks_oidc_provider_arn
     INSTANCE_EKS_OIDC_PROVIDER_HOST = var.eks_oidc_provider_host
+    INSTANCE_CONTAINER_REGISTRY     = var.instance_container_registry
+    INSTANCE_API_IMAGE_TAG          = var.instance_api_image_tag
+    INSTANCE_WEB_IMAGE_TAG          = var.instance_web_image_tag
+    INSTANCE_CERT_MANAGER_ISSUER    = var.instance_cert_manager_issuer
     TERRAFORM_WORKSPACES_ROOT       = "/app/terraform/workspaces"
     TERRAFORM_MODULES_ROOT          = "/app/terraform/modules"
     TERRAFORM_BINARY                = "/usr/local/bin/terraform"
