@@ -78,7 +78,8 @@ COPY --from=builder /app/dist/scripts ./dist/scripts
 COPY --from=builder /app/dist/libs ./dist/libs
 COPY infrastructure/terraform/modules/customer-instance ./terraform/modules/customer-instance
 
-RUN mkdir -p /app/terraform/workspaces
+RUN mkdir -p /app/terraform/workspaces && \
+    chown -R nestjs:nodejs /app/terraform
 
 USER nestjs
 
