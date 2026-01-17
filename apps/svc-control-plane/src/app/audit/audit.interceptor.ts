@@ -63,7 +63,6 @@ export class AuditInterceptor implements NestInterceptor {
     const user = req.user;
     const actor = user?.email || 'system';
     const actorType = user ? 'user' : 'system';
-    const target = req.params?.id || req.url;
     const targetType = (req.route?.path || '').split('/')[1] || 'unknown';
     const ipAddress = req.ip;
     const userAgent = req.headers['user-agent'];
@@ -75,34 +74,46 @@ export class AuditInterceptor implements NestInterceptor {
       tap({
         next: () => {
           this.auditService
-            .log(`${targetType}.${method.toLowerCase()}`, `${method} ${req.url}`, {
-              actor,
-              actorType,
-              target,
-              targetType: targetType as any,
+            .log(`${targetType}.${method.toLowerCase()}`, {
+              userId: user?.id,
               customerId: req.body?.customerId || req.query?.customerId,
+              resourceType: targetType,
+              resourceId: req.params?.id,
+              result: 'success',
               ipAddress,
               userAgent,
-              correlationId: correlationId as string | undefined,
-              durationMs: Date.now() - start,
-              metadata: { body: sanitizeBody(req.body) },
+              requestId: correlationId,
+              details: {
+                method,
+                url: req.url,
+                actor,
+                actorType,
+                durationMs: Date.now() - start,
+                body: sanitizeBody(req.body),
+              },
             })
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));
         },
-        error: () => {
+        error: (error) => {
           this.auditService
-            .log(`${targetType}.${method.toLowerCase()}.error`, `${method} ${req.url}`, {
-              actor,
-              actorType,
-              target,
-              targetType: targetType as any,
+            .log(`${targetType}.${method.toLowerCase()}`, {
+              userId: user?.id,
               customerId: req.body?.customerId || req.query?.customerId,
+              resourceType: targetType,
+              resourceId: req.params?.id,
+              result: 'failure',
+              errorMessage: error?.message || String(error),
               ipAddress,
               userAgent,
-              correlationId: correlationId as string | undefined,
-              durationMs: Date.now() - start,
-              metadata: { body: sanitizeBody(req.body) },
-              severity: 'error',
+              requestId: correlationId,
+              details: {
+                method,
+                url: req.url,
+                actor,
+                actorType,
+                durationMs: Date.now() - start,
+                body: sanitizeBody(req.body),
+              },
             })
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));
         },

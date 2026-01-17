@@ -3,38 +3,33 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ControlPlaneAuditLog } from '@hubblewave/control-plane-db';
 
-// Audit severity levels
-export type AuditSeverity = 'info' | 'warning' | 'error' | 'critical';
-
-// Actor types for audit logs
-export type ActorType = 'user' | 'system' | 'api' | 'scheduler';
-
-// Target types for audit logs
-export type TargetType = 'customer' | 'instance' | 'user' | 'subscription' | 'license' | 'config';
+// Result types for audit logs
+export type AuditResult = 'success' | 'failure' | 'partial';
 
 export interface CreateAuditLogDto {
+  userId?: string;
   customerId?: string;
-  eventType: string;
-  severity: AuditSeverity;
-  actor: string;
-  actorType: ActorType;
-  target: string;
-  targetType: TargetType;
-  description: string;
-  metadata?: Record<string, unknown>;
+  instanceId?: string;
+  action: string;
+  resourceType?: string;
+  resourceId?: string;
+  result?: string;
+  errorMessage?: string;
+  oldValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
+  details?: Record<string, unknown>;
   ipAddress?: string;
   userAgent?: string;
-  correlationId?: string;
-  durationMs?: number;
+  requestId?: string;
 }
 
 export interface AuditLogQueryParams {
+  userId?: string;
   customerId?: string;
-  eventType?: string;
-  severity?: AuditSeverity;
-  actorType?: ActorType;
-  targetType?: TargetType;
-  actor?: string;
+  instanceId?: string;
+  action?: string;
+  resourceType?: string;
+  result?: AuditResult;
   startDate?: Date;
   endDate?: Date;
   search?: string;
@@ -51,12 +46,12 @@ export class AuditService {
 
   async findAll(params: AuditLogQueryParams = {}) {
     const {
+      userId,
       customerId,
-      eventType,
-      severity,
-      actorType,
-      targetType,
-      actor,
+      instanceId,
+      action,
+      resourceType,
+      result,
       startDate,
       endDate,
       search,
@@ -66,23 +61,23 @@ export class AuditService {
 
     let query = this.auditRepo.createQueryBuilder('log');
 
+    if (userId) {
+      query = query.andWhere('log.user_id = :userId', { userId });
+    }
     if (customerId) {
       query = query.andWhere('log.customer_id = :customerId', { customerId });
     }
-    if (eventType) {
-      query = query.andWhere('log.event_type LIKE :eventType', { eventType: `${eventType}%` });
+    if (instanceId) {
+      query = query.andWhere('log.instance_id = :instanceId', { instanceId });
     }
-    if (severity) {
-      query = query.andWhere('log.severity = :severity', { severity });
+    if (action) {
+      query = query.andWhere('log.action LIKE :action', { action: `${action}%` });
     }
-    if (actorType) {
-      query = query.andWhere('log.actor_type = :actorType', { actorType });
+    if (resourceType) {
+      query = query.andWhere('log.resource_type = :resourceType', { resourceType });
     }
-    if (targetType) {
-      query = query.andWhere('log.target_type = :targetType', { targetType });
-    }
-    if (actor) {
-      query = query.andWhere('log.actor ILIKE :actor', { actor: `%${actor}%` });
+    if (result) {
+      query = query.andWhere('log.result = :result', { result });
     }
     if (startDate) {
       query = query.andWhere('log.created_at >= :startDate', { startDate });
@@ -92,7 +87,7 @@ export class AuditService {
     }
     if (search) {
       query = query.andWhere(
-        '(log.description ILIKE :search OR log.target ILIKE :search)',
+        '(log.action ILIKE :search OR log.error_message ILIKE :search)',
         { search: `%${search}%` }
       );
     }
@@ -122,19 +117,36 @@ export class AuditService {
   }
 
   async log(
-    eventType: string,
-    description: string,
-    options: Partial<CreateAuditLogDto> = {}
+    action: string,
+    descriptionOrOptions?: string | Partial<CreateAuditLogDto>,
+    legacyOptions?: Record<string, unknown>
   ): Promise<ControlPlaneAuditLog> {
+    let options: Partial<CreateAuditLogDto> = {};
+    let description: string | undefined;
+
+    if (typeof descriptionOrOptions === 'string') {
+      description = descriptionOrOptions;
+      options = (legacyOptions || {}) as Partial<CreateAuditLogDto>;
+    } else {
+      options = descriptionOrOptions || {};
+    }
+
     return this.create({
-      eventType,
-      description,
-      severity: options.severity || 'info',
-      actor: options.actor || 'system',
-      actorType: options.actorType || 'system',
-      target: options.target || '',
-      targetType: options.targetType || 'customer',
-      ...options,
+      action,
+      result: options.result || 'success',
+      details: {
+        ...(options.details || {}),
+        ...(description ? { description } : {}),
+        ...(legacyOptions?.metadata ? { legacyMetadata: legacyOptions.metadata } : {}),
+      },
+      userId: options.userId,
+      customerId: options.customerId || (legacyOptions?.customerId as string),
+      instanceId: options.instanceId || (legacyOptions?.instanceId as string),
+      resourceType: options.resourceType || (legacyOptions?.targetType as string),
+      resourceId: options.resourceId || (legacyOptions?.target as string),
+      ipAddress: options.ipAddress || (legacyOptions?.ipAddress as string),
+      userAgent: options.userAgent || (legacyOptions?.userAgent as string),
+      requestId: options.requestId || (legacyOptions?.correlationId as string),
     });
   }
 
@@ -145,28 +157,28 @@ export class AuditService {
       query = query.where('log.customer_id = :customerId', { customerId });
     }
 
-    const bySeverity = await query
+    const byResult = await query
       .clone()
-      .select('log.severity', 'severity')
+      .select('log.result', 'result')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('log.severity')
+      .groupBy('log.result')
       .getRawMany();
 
-    const byEventType = await query
+    const byAction = await query
       .clone()
-      .select("SPLIT_PART(log.event_type, '.', 1)", 'category')
+      .select("SPLIT_PART(log.action, '.', 1)", 'category')
       .addSelect('COUNT(*)', 'count')
-      .groupBy("SPLIT_PART(log.event_type, '.', 1)")
+      .groupBy("SPLIT_PART(log.action, '.', 1)")
       .orderBy('count', 'DESC')
       .limit(10)
       .getRawMany();
 
     return {
-      bySeverity: bySeverity.reduce((acc, s) => {
-        acc[s.severity] = parseInt(s.count);
+      byResult: byResult.reduce((acc, s) => {
+        acc[s.result] = parseInt(s.count);
         return acc;
       }, {} as Record<string, number>),
-      byEventType,
+      byAction,
     };
   }
 
