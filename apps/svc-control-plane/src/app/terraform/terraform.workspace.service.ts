@@ -164,7 +164,6 @@ provider "kubernetes" {
   host                   = "https://kubernetes.default.svc"
   token                  = file("/var/run/secrets/kubernetes.io/serviceaccount/token")
   cluster_ca_certificate = file("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
-  load_config_file       = false
 }
 
 provider "cloudflare" {}
