@@ -5,6 +5,11 @@ const { join } = require('path');
 
 const { instanceEntities } = require('../libs/instance-db/src/lib/entities/index');
 
+const isProduction = process.env.NODE_ENV === 'production';
+const migrationsPath = isProduction
+  ? join(process.cwd(), 'dist', 'migrations', 'instance', '*.js')
+  : join(process.cwd(), 'migrations', 'instance', '*.ts');
+
 const dataSource = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
@@ -12,10 +17,9 @@ const dataSource = new DataSource({
   username: process.env.DB_USER || 'hubblewave',
   password: process.env.DB_PASSWORD || 'hubblewave',
   database: process.env.DB_NAME || 'hubblewave',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   entities: instanceEntities,
-  migrations: [
-    join(process.cwd(), 'migrations', 'instance', '*.ts'),
-  ],
+  migrations: [migrationsPath],
   migrationsTableName: 'migrations',
 });
 

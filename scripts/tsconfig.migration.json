@@ -17,8 +17,10 @@
   "include": [
     "datasource-platform.ts",
     "datasource-control-plane.ts",
+    "datasource-instance.ts",
     "../libs/platform-db/src/lib/entities/**/*.ts",
     "../libs/control-plane-db/src/lib/entities/**/*.ts",
+    "../libs/instance-db/src/lib/entities/**/*.ts",
     "../migrations/**/*.ts"
   ],
   "ts-node": {

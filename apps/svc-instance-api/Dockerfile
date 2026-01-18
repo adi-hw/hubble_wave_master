@@ -65,6 +65,10 @@ RUN npm ci --omit=dev --legacy-peer-deps
 # Copy built output
 COPY --from=builder /app/dist/apps/svc-instance-api ./dist
 
+# Copy compiled migrations and datasource scripts
+COPY --from=builder /app/dist/migrations ./dist/migrations
+COPY --from=builder /app/dist/scripts ./dist/scripts
+
 USER nestjs
 
 EXPOSE 3000
