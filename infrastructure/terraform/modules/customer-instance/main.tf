@@ -733,10 +733,12 @@ resource "kubernetes_config_map" "hpa_config" {
 }
 
 # -----------------------------------------------------------------------------
-# Database Migration Job
+# Database Migration Job (Optional)
 # -----------------------------------------------------------------------------
 
 resource "kubernetes_job_v1" "migrations" {
+  count = var.enable_migrations ? 1 : 0
+
   metadata {
     name      = "instance-migrations-${replace(var.platform_release_id, ".", "-")}"
     namespace = kubernetes_namespace.instance.metadata[0].name
@@ -937,7 +939,11 @@ resource "kubernetes_deployment" "api" {
     }
   }
 
-  depends_on = [kubernetes_job_v1.migrations]
+  depends_on = [
+    kubernetes_secret.database,
+    kubernetes_secret.redis,
+    kubernetes_secret.instance_config,
+  ]
 }
 
 # -----------------------------------------------------------------------------

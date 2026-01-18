@@ -199,6 +199,12 @@ variable "enable_backup" {
   default     = true
 }
 
+variable "enable_migrations" {
+  description = "Enable database migrations during deployment"
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Container Registry Configuration
 # -----------------------------------------------------------------------------
