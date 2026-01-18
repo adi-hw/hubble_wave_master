@@ -44,12 +44,8 @@ export const clearAllTokens = () => {
  * This function only retrieves the new access token
  */
 export const refreshAccessToken = async (): Promise<string> => {
-  // Use env variable which points to proxy path in dev (same origin, no CORS issues)
   const IDENTITY_API_URL =
-    import.meta.env.VITE_IDENTITY_API_URL ??
-    (window.location.hostname.includes('localhost')
-      ? '/api/identity'
-      : `${window.location.origin}/api`);
+    import.meta.env.VITE_IDENTITY_API_URL ?? '/api/identity';
 
   const response = await fetch(`${IDENTITY_API_URL}/auth/refresh`, {
     method: 'POST',
