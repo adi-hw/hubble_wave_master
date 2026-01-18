@@ -17,6 +17,7 @@ import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
 import { PacksController } from './packs/packs.controller';
 import { PacksService } from './packs/packs.service';
+import { IdentityModule } from './identity/identity.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PacksService } from './packs/packs.service';
     RedisModule.forRoot(),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
+    IdentityModule,
   ],
   controllers: [
     HealthController,
