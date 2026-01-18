@@ -60,7 +60,7 @@ resource "kubernetes_persistent_volume_claim" "vllm_cache" {
         storage = "50Gi"
       }
     }
-    storage_class_name = "gp3"
+    storage_class_name = "gp2"
   }
 }
 
