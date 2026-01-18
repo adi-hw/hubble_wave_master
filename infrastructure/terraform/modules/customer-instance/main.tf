@@ -105,6 +105,11 @@ resource "random_password" "redis_password" {
   special          = false
 }
 
+resource "random_password" "jwt_secret" {
+  length  = 64
+  special = false
+}
+
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
@@ -497,6 +502,7 @@ resource "kubernetes_secret" "instance_config" {
     LICENSE_KEY         = local.instance_config_secret_data.LICENSE_KEY
     CONTROL_PLANE_URL   = local.instance_config_secret_data.CONTROL_PLANE_URL
     INSTANCE_DOMAIN     = local.instance_config_secret_data.INSTANCE_DOMAIN
+    JWT_SECRET          = random_password.jwt_secret.result
   }
 }
 
