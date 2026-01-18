@@ -31,8 +31,9 @@ export class RedisModule {
             const port = configService.get<number>('REDIS_PORT', 6379);
             const password = configService.get<string>('REDIS_PASSWORD');
             const db = configService.get<number>('REDIS_DB', 0);
+            const useTls = configService.get<string>('REDIS_TLS', 'false') === 'true';
 
-            this.logger.log(`Connecting to Redis at ${host}:${port} (db: ${db})`);
+            this.logger.log(`Connecting to Redis at ${host}:${port} (db: ${db}, tls: ${useTls})`);
 
             const redis = new Redis({
               host,
@@ -40,6 +41,7 @@ export class RedisModule {
               password: password || undefined,
               db,
               keyPrefix: 'hw:', // HubbleWave prefix for all keys
+              tls: useTls ? {} : undefined,
               retryStrategy: (times) => {
                 if (times > 10) {
                   this.logger.error('Redis connection failed after 10 retries');

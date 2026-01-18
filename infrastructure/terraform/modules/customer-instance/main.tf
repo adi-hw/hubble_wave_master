@@ -189,7 +189,7 @@ resource "kubernetes_network_policy" "instance_isolation" {
       }
     }
 
-    # Allow egress to same namespace and DNS only
+    # Allow egress to same namespace
     egress {
       to {
         namespace_selector {
@@ -198,6 +198,10 @@ resource "kubernetes_network_policy" "instance_isolation" {
           }
         }
       }
+    }
+
+    # Allow egress to kube-dns for DNS resolution
+    egress {
       to {
         namespace_selector {
           match_labels = {
@@ -209,6 +213,40 @@ resource "kubernetes_network_policy" "instance_isolation" {
             "k8s-app" = "kube-dns"
           }
         }
+      }
+      ports {
+        protocol = "UDP"
+        port     = "53"
+      }
+      ports {
+        protocol = "TCP"
+        port     = "53"
+      }
+    }
+
+    # Allow egress to PostgreSQL (RDS) on VPC CIDR
+    egress {
+      to {
+        ip_block {
+          cidr = "10.0.0.0/8"
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "5432"
+      }
+    }
+
+    # Allow egress to Redis (ElastiCache) on VPC CIDR
+    egress {
+      to {
+        ip_block {
+          cidr = "10.0.0.0/8"
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "6379"
       }
     }
   }
@@ -437,6 +475,7 @@ resource "kubernetes_secret" "redis" {
     REDIS_PORT     = local.redis_secret_data.REDIS_PORT
     REDIS_PASSWORD = local.redis_secret_data.REDIS_PASSWORD
     REDIS_URL      = local.redis_secret_data.REDIS_URL
+    REDIS_TLS      = "true"
   }
 }
 
