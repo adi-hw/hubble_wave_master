@@ -3,8 +3,6 @@ require('reflect-metadata');
 const { DataSource } = require('typeorm');
 const { join } = require('path');
 
-const { instanceEntities } = require('../libs/instance-db/src/lib/entities/index');
-
 const isProduction = process.env.NODE_ENV === 'production';
 const migrationsPath = isProduction
   ? join(process.cwd(), 'dist', 'migrations', 'instance', '*.js')
@@ -18,7 +16,7 @@ const dataSource = new DataSource({
   password: process.env.DB_PASSWORD || 'hubblewave',
   database: process.env.DB_NAME || 'hubblewave',
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  entities: instanceEntities,
+  entities: [],
   migrations: [migrationsPath],
   migrationsTableName: 'migrations',
 });
