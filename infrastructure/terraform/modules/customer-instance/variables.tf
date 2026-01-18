@@ -1,5 +1,7 @@
 /**
  * HubbleWave Customer Instance Module - Variables
+ *
+ * Dedicated infrastructure per instance model
  */
 
 # -----------------------------------------------------------------------------
@@ -52,7 +54,7 @@ variable "license_key" {
 # -----------------------------------------------------------------------------
 
 variable "resource_tier" {
-  description = "Resource tier for this instance"
+  description = "Resource tier for this instance (determines RDS/Redis size)"
   type        = string
   default     = "standard"
 
@@ -73,33 +75,64 @@ variable "platform_release_id" {
 }
 
 # -----------------------------------------------------------------------------
-# Database Configuration
+# VPC / Network Configuration
 # -----------------------------------------------------------------------------
 
-variable "db_host" {
-  description = "PostgreSQL host address"
+variable "vpc_id" {
+  description = "VPC ID where resources will be created"
   type        = string
 }
 
-variable "db_port" {
-  description = "PostgreSQL port"
+variable "vpc_cidr" {
+  description = "VPC CIDR block for network policies"
+  type        = string
+}
+
+variable "db_subnet_ids" {
+  description = "Subnet IDs for the RDS instance (private subnets)"
+  type        = list(string)
+}
+
+variable "redis_subnet_ids" {
+  description = "Subnet IDs for ElastiCache (private subnets)"
+  type        = list(string)
+}
+
+variable "eks_security_group_ids" {
+  description = "EKS node security group IDs (for RDS/Redis ingress rules)"
+  type        = list(string)
+}
+
+# -----------------------------------------------------------------------------
+# Database Configuration
+# -----------------------------------------------------------------------------
+
+variable "db_engine_version" {
+  description = "PostgreSQL engine version"
+  type        = string
+  default     = "16.4"
+}
+
+variable "db_allocated_storage" {
+  description = "Initial allocated storage in GB"
   type        = number
-  default     = 5432
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  description = "Maximum allocated storage in GB (for autoscaling)"
+  type        = number
+  default     = 100
 }
 
 # -----------------------------------------------------------------------------
 # Redis Configuration
 # -----------------------------------------------------------------------------
 
-variable "redis_host" {
-  description = "Redis host address"
+variable "redis_engine_version" {
+  description = "Redis engine version"
   type        = string
-}
-
-variable "redis_port" {
-  description = "Redis port"
-  type        = number
-  default     = 6379
+  default     = "7.1"
 }
 
 # -----------------------------------------------------------------------------
@@ -107,9 +140,9 @@ variable "redis_port" {
 # -----------------------------------------------------------------------------
 
 variable "aws_region" {
-  description = "AWS region for S3 bucket"
+  description = "AWS region for resources"
   type        = string
-  default     = "us-west-1"
+  default     = "us-east-2"
 }
 
 variable "eks_oidc_provider_arn" {
@@ -133,7 +166,7 @@ variable "eks_oidc_provider_host" {
 }
 
 # -----------------------------------------------------------------------------
-# Control Plane Configuration
+# DNS / Domain Configuration
 # -----------------------------------------------------------------------------
 
 variable "root_domain" {
@@ -178,34 +211,6 @@ variable "api_rate_limit" {
 }
 
 # -----------------------------------------------------------------------------
-# Feature Flags
-# -----------------------------------------------------------------------------
-
-variable "enable_ava" {
-  description = "Enable AVA AI assistant"
-  type        = bool
-  default     = true
-}
-
-variable "enable_audit_logs" {
-  description = "Enable comprehensive audit logging"
-  type        = bool
-  default     = true
-}
-
-variable "enable_backup" {
-  description = "Enable automated backups"
-  type        = bool
-  default     = true
-}
-
-variable "enable_migrations" {
-  description = "Enable database migrations during deployment"
-  type        = bool
-  default     = false
-}
-
-# -----------------------------------------------------------------------------
 # Container Registry Configuration
 # -----------------------------------------------------------------------------
 
@@ -231,13 +236,13 @@ variable "instance_web_image_tag" {
 variable "api_replicas" {
   description = "Number of API replicas"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "web_replicas" {
   description = "Number of web client replicas"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "cert_manager_issuer" {

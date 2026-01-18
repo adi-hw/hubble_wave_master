@@ -2,13 +2,13 @@
  * HubbleWave Customer Instance Module
  *
  * Provisions a complete customer instance environment including:
+ * - Dedicated RDS PostgreSQL database
+ * - Dedicated ElastiCache Redis cluster
  * - Kubernetes namespace and resources
- * - PostgreSQL database
- * - Redis cache
  * - S3-compatible storage bucket
  * - Network policies and security groups
  *
- * Architecture: Single-Instance-Per-Customer (NOT multi-tenant)
+ * Architecture: Single-Instance-Per-Customer with DEDICATED infrastructure
  */
 
 terraform {
@@ -17,10 +17,6 @@ terraform {
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = ">= 2.23.0"
-    }
-    postgresql = {
-      source  = "cyrilgdn/postgresql"
-      version = ">= 1.21.0"
     }
     aws = {
       source  = "hashicorp/aws"
@@ -48,6 +44,8 @@ locals {
   control_plane_url    = "https://${local.control_plane_domain}"
   instance_domain      = "${var.customer_code}.${var.environment}.${var.root_domain}"
   secrets_prefix       = "hubblewave/instance/${var.environment}/${var.customer_code}/${var.instance_id}"
+  db_identifier        = "hw-${local.instance_name}"
+  redis_identifier     = "hw-${local.instance_name}"
 
   common_labels = {
     "app.kubernetes.io/managed-by" = "terraform"
@@ -64,6 +62,8 @@ locals {
       memory_request = "1Gi"
       memory_limit   = "4Gi"
       replicas       = 2
+      db_instance    = "db.t3.micro"
+      redis_node     = "cache.t3.micro"
     }
     professional = {
       cpu_request    = "1000m"
@@ -71,6 +71,8 @@ locals {
       memory_request = "2Gi"
       memory_limit   = "8Gi"
       replicas       = 3
+      db_instance    = "db.t3.small"
+      redis_node     = "cache.t3.small"
     }
     enterprise = {
       cpu_request    = "2000m"
@@ -78,6 +80,8 @@ locals {
       memory_request = "4Gi"
       memory_limit   = "16Gi"
       replicas       = 5
+      db_instance    = "db.t3.medium"
+      redis_node     = "cache.t3.medium"
     }
   }
 
@@ -87,6 +91,7 @@ locals {
     hubblewave_environment = var.environment
     hubblewave_customer    = var.customer_code
     hubblewave_instance_id = var.instance_id
+    Name                   = "hw-${local.instance_name}"
   }
 }
 
@@ -100,9 +105,10 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-resource "random_password" "redis_password" {
+resource "random_password" "db_admin_password" {
   length           = 32
-  special          = false
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "random_password" "jwt_secret" {
@@ -112,6 +118,135 @@ resource "random_password" "jwt_secret" {
 
 resource "random_id" "bucket_suffix" {
   byte_length = 4
+}
+
+# -----------------------------------------------------------------------------
+# Dedicated RDS PostgreSQL Instance
+# -----------------------------------------------------------------------------
+
+resource "aws_db_subnet_group" "instance" {
+  name       = local.db_identifier
+  subnet_ids = var.db_subnet_ids
+  tags       = local.aws_tags
+}
+
+resource "aws_security_group" "rds" {
+  name        = "${local.db_identifier}-rds"
+  description = "Security group for ${local.instance_name} RDS instance"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "PostgreSQL from EKS"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = var.eks_security_group_ids
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.aws_tags
+}
+
+resource "aws_db_instance" "instance" {
+  identifier     = local.db_identifier
+  engine         = "postgres"
+  engine_version = var.db_engine_version
+  instance_class = local.tier_config.db_instance
+
+  allocated_storage     = var.db_allocated_storage
+  max_allocated_storage = var.db_max_allocated_storage
+  storage_type          = "gp3"
+  storage_encrypted     = true
+
+  db_name  = "hubblewave"
+  username = "hwadmin"
+  password = random_password.db_admin_password.result
+  port     = 5432
+
+  db_subnet_group_name   = aws_db_subnet_group.instance.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+
+  publicly_accessible    = false
+  multi_az               = var.environment == "production"
+  deletion_protection    = var.environment == "production"
+  skip_final_snapshot    = var.environment != "production"
+  final_snapshot_identifier = var.environment == "production" ? "${local.db_identifier}-final" : null
+
+  backup_retention_period = var.environment == "production" ? 7 : 1
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Mon:04:00-Mon:05:00"
+
+  auto_minor_version_upgrade = true
+  apply_immediately          = var.environment != "production"
+
+  performance_insights_enabled = var.environment == "production"
+
+  tags = local.aws_tags
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Dedicated ElastiCache Redis Cluster
+# -----------------------------------------------------------------------------
+
+resource "aws_elasticache_subnet_group" "instance" {
+  name       = local.redis_identifier
+  subnet_ids = var.redis_subnet_ids
+  tags       = local.aws_tags
+}
+
+resource "aws_security_group" "redis" {
+  name        = "${local.redis_identifier}-redis"
+  description = "Security group for ${local.instance_name} Redis cluster"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "Redis from EKS"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = var.eks_security_group_ids
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.aws_tags
+}
+
+resource "aws_elasticache_cluster" "instance" {
+  cluster_id           = local.redis_identifier
+  engine               = "redis"
+  engine_version       = var.redis_engine_version
+  node_type            = local.tier_config.redis_node
+  num_cache_nodes      = 1
+  port                 = 6379
+  parameter_group_name = "default.redis7"
+
+  subnet_group_name  = aws_elasticache_subnet_group.instance.name
+  security_group_ids = [aws_security_group.redis.id]
+
+  snapshot_retention_limit = var.environment == "production" ? 7 : 0
+  snapshot_window          = "02:00-03:00"
+  maintenance_window       = "sun:03:00-sun:04:00"
+
+  auto_minor_version_upgrade = true
+  apply_immediately          = var.environment != "production"
+
+  tags = local.aws_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -131,7 +266,7 @@ resource "kubernetes_namespace" "instance" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 
@@ -176,7 +311,6 @@ resource "kubernetes_network_policy" "instance_isolation" {
 
     policy_types = ["Ingress", "Egress"]
 
-    # Allow ingress from same namespace and ingress controller
     ingress {
       from {
         namespace_selector {
@@ -194,7 +328,6 @@ resource "kubernetes_network_policy" "instance_isolation" {
       }
     }
 
-    # Allow egress to same namespace
     egress {
       to {
         namespace_selector {
@@ -205,7 +338,6 @@ resource "kubernetes_network_policy" "instance_isolation" {
       }
     }
 
-    # Allow egress to kube-dns for DNS resolution
     egress {
       to {
         namespace_selector {
@@ -229,11 +361,10 @@ resource "kubernetes_network_policy" "instance_isolation" {
       }
     }
 
-    # Allow egress to PostgreSQL (RDS) on VPC CIDR
     egress {
       to {
         ip_block {
-          cidr = "10.0.0.0/8"
+          cidr = var.vpc_cidr
         }
       }
       ports {
@@ -242,11 +373,10 @@ resource "kubernetes_network_policy" "instance_isolation" {
       }
     }
 
-    # Allow egress to Redis (ElastiCache) on VPC CIDR
     egress {
       to {
         ip_block {
-          cidr = "10.0.0.0/8"
+          cidr = var.vpc_cidr
         }
       }
       ports {
@@ -258,124 +388,32 @@ resource "kubernetes_network_policy" "instance_isolation" {
 }
 
 # -----------------------------------------------------------------------------
-# Network Policy - Connector Egress
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_network_policy" "connector_egress" {
-  metadata {
-    name      = "connector-egress"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-  }
-
-  spec {
-    pod_selector {
-      match_labels = {
-        "hubblewave.com/service" = "svc-connectors"
-      }
-    }
-
-    policy_types = ["Egress"]
-
-    egress {
-      to {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace.instance.metadata[0].name
-          }
-        }
-      }
-      to {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = "kube-system"
-          }
-        }
-        pod_selector {
-          match_labels = {
-            "k8s-app" = "kube-dns"
-          }
-        }
-      }
-      to {
-        ip_block {
-          cidr = "0.0.0.0/0"
-          except = [
-            "10.0.0.0/8",
-            "172.16.0.0/12",
-            "192.168.0.0/16"
-          ]
-        }
-      }
-      ports {
-        protocol = "TCP"
-        port     = 443
-      }
-    }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# PostgreSQL Database
-# -----------------------------------------------------------------------------
-
-resource "postgresql_database" "instance" {
-  name              = "hw_${replace(local.instance_name, "-", "_")}"
-  owner             = postgresql_role.instance.name
-  template          = "template0"
-  lc_collate        = "en_US.UTF-8"
-  lc_ctype          = "en_US.UTF-8"
-  connection_limit  = var.resource_tier == "enterprise" ? 200 : (var.resource_tier == "professional" ? 100 : 50)
-  allow_connections = true
-}
-
-resource "postgresql_role" "instance" {
-  name     = "hw_${replace(local.instance_name, "-", "_")}_user"
-  login    = true
-  password = random_password.db_password.result
-
-  connection_limit = var.resource_tier == "enterprise" ? 200 : (var.resource_tier == "professional" ? 100 : 50)
-}
-
-resource "postgresql_grant" "instance" {
-  database    = postgresql_database.instance.name
-  role        = postgresql_role.instance.name
-  schema      = "public"
-  object_type = "database"
-  privileges  = ["ALL"]
-}
-
-# Enable pgvector extension
-resource "postgresql_extension" "pgvector" {
-  name     = "vector"
-  database = postgresql_database.instance.name
-}
-
-# Enable uuid-ossp extension
-resource "postgresql_extension" "uuid_ossp" {
-  name     = "uuid-ossp"
-  database = postgresql_database.instance.name
-}
-
-# -----------------------------------------------------------------------------
 # Secrets Manager Payloads
 # -----------------------------------------------------------------------------
 
 locals {
+  db_host = aws_db_instance.instance.address
+  db_port = aws_db_instance.instance.port
+  db_name = aws_db_instance.instance.db_name
+
+  redis_host = aws_elasticache_cluster.instance.cache_nodes[0].address
+  redis_port = aws_elasticache_cluster.instance.port
+
   database_secret_payload = {
-    DB_HOST     = var.db_host
-    DB_PORT     = tostring(var.db_port)
-    DB_NAME     = postgresql_database.instance.name
-    DB_USER     = postgresql_role.instance.name
-    DB_PASSWORD = random_password.db_password.result
-    DB_URL      = "postgresql://${postgresql_role.instance.name}:${random_password.db_password.result}@${var.db_host}:${var.db_port}/${postgresql_database.instance.name}?sslmode=require"
+    DB_HOST     = local.db_host
+    DB_PORT     = tostring(local.db_port)
+    DB_NAME     = local.db_name
+    DB_USER     = aws_db_instance.instance.username
+    DB_PASSWORD = random_password.db_admin_password.result
+    DB_URL      = "postgresql://${aws_db_instance.instance.username}:${random_password.db_admin_password.result}@${local.db_host}:${local.db_port}/${local.db_name}?sslmode=require"
   }
+
   redis_secret_payload = {
-    REDIS_HOST     = var.redis_host
-    REDIS_PORT     = tostring(var.redis_port)
-    REDIS_PASSWORD = random_password.redis_password.result
-    REDIS_URL      = "redis://:${random_password.redis_password.result}@${var.redis_host}:${var.redis_port}/0"
+    REDIS_HOST = local.redis_host
+    REDIS_PORT = tostring(local.redis_port)
+    REDIS_URL  = "redis://${local.redis_host}:${local.redis_port}/0"
   }
+
   instance_config_payload = {
     INSTANCE_ID         = var.instance_id
     CUSTOMER_CODE       = var.customer_code
@@ -386,9 +424,10 @@ locals {
     CONTROL_PLANE_URL   = local.control_plane_url
     INSTANCE_DOMAIN     = local.instance_domain
   }
+
   s3_secret_payload = {
-    S3_BUCKET             = aws_s3_bucket.instance.id
-    S3_REGION             = var.aws_region
+    S3_BUCKET = aws_s3_bucket.instance.id
+    S3_REGION = var.aws_region
   }
 }
 
@@ -476,11 +515,10 @@ resource "kubernetes_secret" "redis" {
   type = "Opaque"
 
   data = {
-    REDIS_HOST     = local.redis_secret_data.REDIS_HOST
-    REDIS_PORT     = local.redis_secret_data.REDIS_PORT
-    REDIS_PASSWORD = local.redis_secret_data.REDIS_PASSWORD
-    REDIS_URL      = local.redis_secret_data.REDIS_URL
-    REDIS_TLS      = "true"
+    REDIS_HOST = local.redis_secret_data.REDIS_HOST
+    REDIS_PORT = local.redis_secret_data.REDIS_PORT
+    REDIS_URL  = local.redis_secret_data.REDIS_URL
+    REDIS_TLS  = "false"
   }
 }
 
@@ -628,45 +666,14 @@ data "aws_iam_policy_document" "workload_assume" {
   }
 }
 
-data "aws_iam_policy_document" "connectors_assume" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [var.eks_oidc_provider_arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${var.eks_oidc_provider_host}:sub"
-      values   = ["system:serviceaccount:${local.namespace}:hubblewave-connectors"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${var.eks_oidc_provider_host}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-  }
-}
-
 resource "aws_iam_role" "workload" {
   name               = "hw-${local.instance_name}-workload"
   assume_role_policy = data.aws_iam_policy_document.workload_assume.json
   tags               = local.aws_tags
 }
 
-resource "aws_iam_role" "connectors" {
-  name               = "hw-${local.instance_name}-connectors"
-  assume_role_policy = data.aws_iam_policy_document.connectors_assume.json
-  tags               = local.aws_tags
-}
-
 resource "aws_iam_role_policy_attachment" "workload_storage" {
   role       = aws_iam_role.workload.name
-  policy_arn = aws_iam_policy.instance_storage.arn
-}
-
-resource "aws_iam_role_policy_attachment" "connectors_storage" {
-  role       = aws_iam_role.connectors.name
   policy_arn = aws_iam_policy.instance_storage.arn
 }
 
@@ -684,8 +691,8 @@ resource "kubernetes_secret" "s3_credentials" {
   type = "Opaque"
 
   data = {
-    S3_BUCKET             = local.s3_secret_data.S3_BUCKET
-    S3_REGION             = local.s3_secret_data.S3_REGION
+    S3_BUCKET = local.s3_secret_data.S3_BUCKET
+    S3_REGION = local.s3_secret_data.S3_REGION
   }
 }
 
@@ -701,13 +708,13 @@ resource "kubernetes_config_map" "app_config" {
   }
 
   data = {
-    NODE_ENV            = var.environment == "production" ? "production" : "development"
-    LOG_LEVEL           = var.environment == "production" ? "info" : "debug"
-    CORS_ORIGINS        = var.cors_origins
-    API_RATE_LIMIT      = tostring(var.api_rate_limit)
-    ENABLE_SWAGGER      = var.environment != "production" ? "true" : "false"
-    JWT_EXPIRES_IN      = "15m"
-    REFRESH_EXPIRES_IN  = "7d"
+    NODE_ENV           = var.environment == "production" ? "production" : "development"
+    LOG_LEVEL          = var.environment == "production" ? "info" : "debug"
+    CORS_ORIGINS       = var.cors_origins
+    API_RATE_LIMIT     = tostring(var.api_rate_limit)
+    ENABLE_SWAGGER     = var.environment != "production" ? "true" : "false"
+    JWT_EXPIRES_IN     = "15m"
+    REFRESH_EXPIRES_IN = "7d"
   }
 }
 
@@ -739,25 +746,7 @@ resource "kubernetes_service_account" "workload" {
 }
 
 # -----------------------------------------------------------------------------
-# Service Account for Connector Workloads
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_service_account" "connectors" {
-  metadata {
-    name      = "hubblewave-connectors"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-
-    annotations = {
-      "eks.amazonaws.com/role-arn" = aws_iam_role.connectors.arn
-    }
-  }
-
-  automount_service_account_token = true
-}
-
-# -----------------------------------------------------------------------------
-# Horizontal Pod Autoscaler Settings (stored as ConfigMap)
+# ConfigMap for HPA Settings
 # -----------------------------------------------------------------------------
 
 resource "kubernetes_config_map" "hpa_config" {
@@ -768,106 +757,13 @@ resource "kubernetes_config_map" "hpa_config" {
   }
 
   data = {
-    min_replicas         = tostring(local.tier_config.replicas)
-    max_replicas         = tostring(local.tier_config.replicas * 3)
-    cpu_target           = "70"
-    memory_target        = "80"
-    scale_up_cooldown    = "60"
-    scale_down_cooldown  = "300"
+    min_replicas        = tostring(local.tier_config.replicas)
+    max_replicas        = tostring(local.tier_config.replicas * 3)
+    cpu_target          = "70"
+    memory_target       = "80"
+    scale_up_cooldown   = "60"
+    scale_down_cooldown = "300"
   }
-}
-
-# -----------------------------------------------------------------------------
-# Database Migration Job (Optional)
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_job_v1" "migrations" {
-  count = var.enable_migrations ? 1 : 0
-
-  metadata {
-    name      = "instance-migrations-${replace(var.platform_release_id, ".", "-")}"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels = merge(local.common_labels, {
-      "app.kubernetes.io/component" = "migrations"
-    })
-  }
-
-  spec {
-    backoff_limit              = 3
-    ttl_seconds_after_finished = 3600
-
-    template {
-      metadata {
-        labels = merge(local.common_labels, {
-          "app.kubernetes.io/component" = "migrations"
-        })
-      }
-
-      spec {
-        restart_policy       = "OnFailure"
-        service_account_name = kubernetes_service_account.workload.metadata[0].name
-
-        container {
-          name    = "migrations"
-          image   = "${var.container_registry_host}/hubblewave/instance/svc-instance-api:${var.instance_api_image_tag}"
-          command = ["node"]
-          args = [
-            "./node_modules/typeorm/cli.js",
-            "migration:run",
-            "-d",
-            "dist/scripts/datasource-instance.js"
-          ]
-
-          env_from {
-            secret_ref {
-              name = kubernetes_secret.database.metadata[0].name
-            }
-          }
-
-          env_from {
-            secret_ref {
-              name = kubernetes_secret.redis.metadata[0].name
-            }
-          }
-
-          env_from {
-            secret_ref {
-              name = kubernetes_secret.instance_config.metadata[0].name
-            }
-          }
-
-          env_from {
-            config_map_ref {
-              name = kubernetes_config_map.app_config.metadata[0].name
-            }
-          }
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "256Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-        }
-      }
-    }
-  }
-
-  wait_for_completion = true
-  timeouts {
-    create = "10m"
-  }
-
-  depends_on = [
-    postgresql_database.instance,
-    postgresql_extension.pgvector,
-    postgresql_extension.uuid_ossp,
-    kubernetes_secret.database,
-  ]
 }
 
 # -----------------------------------------------------------------------------
@@ -985,6 +881,8 @@ resource "kubernetes_deployment" "api" {
   }
 
   depends_on = [
+    aws_db_instance.instance,
+    aws_elasticache_cluster.instance,
     kubernetes_secret.database,
     kubernetes_secret.redis,
     kubernetes_secret.instance_config,

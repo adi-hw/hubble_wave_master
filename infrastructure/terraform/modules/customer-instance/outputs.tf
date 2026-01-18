@@ -1,5 +1,7 @@
 /**
  * HubbleWave Customer Instance Module - Outputs
+ *
+ * Dedicated infrastructure per instance model
  */
 
 # -----------------------------------------------------------------------------
@@ -27,23 +29,62 @@ output "instance_domain" {
 }
 
 # -----------------------------------------------------------------------------
-# Database Outputs
+# Database Outputs (Dedicated RDS)
 # -----------------------------------------------------------------------------
 
-output "database_name" {
-  description = "PostgreSQL database name"
-  value       = postgresql_database.instance.name
+output "db_instance_id" {
+  description = "RDS instance identifier"
+  value       = aws_db_instance.instance.id
 }
 
-output "database_user" {
-  description = "PostgreSQL database user"
-  value       = postgresql_role.instance.name
+output "db_instance_arn" {
+  description = "RDS instance ARN"
+  value       = aws_db_instance.instance.arn
 }
 
-output "database_connection_string" {
-  description = "PostgreSQL connection string"
-  value       = "postgresql://${postgresql_role.instance.name}:****@${var.db_host}:${var.db_port}/${postgresql_database.instance.name}?sslmode=require"
+output "db_endpoint" {
+  description = "RDS instance endpoint (host:port)"
+  value       = aws_db_instance.instance.endpoint
+}
+
+output "db_host" {
+  description = "RDS instance hostname"
+  value       = aws_db_instance.instance.address
+}
+
+output "db_port" {
+  description = "RDS instance port"
+  value       = aws_db_instance.instance.port
+}
+
+output "db_name" {
+  description = "Database name"
+  value       = aws_db_instance.instance.db_name
+}
+
+output "db_username" {
+  description = "Database admin username"
+  value       = aws_db_instance.instance.username
   sensitive   = true
+}
+
+# -----------------------------------------------------------------------------
+# Redis Outputs (Dedicated ElastiCache)
+# -----------------------------------------------------------------------------
+
+output "redis_cluster_id" {
+  description = "ElastiCache cluster identifier"
+  value       = aws_elasticache_cluster.instance.cluster_id
+}
+
+output "redis_endpoint" {
+  description = "ElastiCache cluster endpoint"
+  value       = aws_elasticache_cluster.instance.cache_nodes[0].address
+}
+
+output "redis_port" {
+  description = "ElastiCache port"
+  value       = aws_elasticache_cluster.instance.port
 }
 
 # -----------------------------------------------------------------------------
@@ -64,6 +105,10 @@ output "s3_bucket_region" {
   description = "S3 bucket region"
   value       = var.aws_region
 }
+
+# -----------------------------------------------------------------------------
+# Secrets Manager Outputs
+# -----------------------------------------------------------------------------
 
 output "database_secret_arn" {
   description = "AWS Secrets Manager ARN for instance database credentials"
@@ -86,17 +131,40 @@ output "s3_secret_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# Security Groups
+# -----------------------------------------------------------------------------
+
+output "rds_security_group_id" {
+  description = "Security group ID for RDS instance"
+  value       = aws_security_group.rds.id
+}
+
+output "redis_security_group_id" {
+  description = "Security group ID for Redis cluster"
+  value       = aws_security_group.redis.id
+}
+
+# -----------------------------------------------------------------------------
+# IAM Outputs
+# -----------------------------------------------------------------------------
+
+output "workload_role_arn" {
+  description = "IAM role ARN for workload service account"
+  value       = aws_iam_role.workload.arn
+}
+
+output "workload_role_name" {
+  description = "IAM role name for workload service account"
+  value       = aws_iam_role.workload.name
+}
+
+# -----------------------------------------------------------------------------
 # Kubernetes Resources
 # -----------------------------------------------------------------------------
 
 output "service_account_name" {
   description = "Kubernetes service account for workloads"
   value       = kubernetes_service_account.workload.metadata[0].name
-}
-
-output "connectors_service_account_name" {
-  description = "Kubernetes service account for connector workloads"
-  value       = kubernetes_service_account.connectors.metadata[0].name
 }
 
 output "database_secret_name" {
@@ -139,28 +207,6 @@ output "tier_config" {
 }
 
 # -----------------------------------------------------------------------------
-# Connection Details (for Control Plane registration)
-# -----------------------------------------------------------------------------
-
-output "instance_metadata" {
-  description = "Metadata for Control Plane registration"
-  value = {
-    instance_id      = var.instance_id
-    customer_code    = var.customer_code
-    customer_name    = var.customer_name
-    environment      = var.environment
-    namespace        = kubernetes_namespace.instance.metadata[0].name
-    platform_release_id = var.platform_release_id
-    resource_tier    = var.resource_tier
-    database_name    = postgresql_database.instance.name
-    s3_bucket        = aws_s3_bucket.instance.id
-    instance_domain  = local.instance_domain
-    control_plane_url = local.control_plane_url
-    created_at       = kubernetes_namespace.instance.metadata[0].annotations["hubblewave.com/created-at"]
-  }
-}
-
-# -----------------------------------------------------------------------------
 # Deployment Outputs
 # -----------------------------------------------------------------------------
 
@@ -189,7 +235,41 @@ output "ingress_name" {
   value       = kubernetes_ingress_v1.instance.metadata[0].name
 }
 
+# -----------------------------------------------------------------------------
+# Connection URLs
+# -----------------------------------------------------------------------------
+
 output "instance_url" {
   description = "URL to access the instance"
   value       = "https://${local.instance_domain}"
+}
+
+output "api_url" {
+  description = "URL to access the instance API"
+  value       = "https://${local.instance_domain}/api"
+}
+
+# -----------------------------------------------------------------------------
+# Metadata for Control Plane Registration
+# -----------------------------------------------------------------------------
+
+output "instance_metadata" {
+  description = "Metadata for Control Plane registration"
+  value = {
+    instance_id         = var.instance_id
+    customer_code       = var.customer_code
+    customer_name       = var.customer_name
+    environment         = var.environment
+    namespace           = kubernetes_namespace.instance.metadata[0].name
+    platform_release_id = var.platform_release_id
+    resource_tier       = var.resource_tier
+    db_instance_id      = aws_db_instance.instance.id
+    db_endpoint         = aws_db_instance.instance.endpoint
+    redis_cluster_id    = aws_elasticache_cluster.instance.cluster_id
+    redis_endpoint      = aws_elasticache_cluster.instance.cache_nodes[0].address
+    s3_bucket           = aws_s3_bucket.instance.id
+    instance_domain     = local.instance_domain
+    control_plane_url   = local.control_plane_url
+    created_at          = kubernetes_namespace.instance.metadata[0].annotations["hubblewave.com/created-at"]
+  }
 }
