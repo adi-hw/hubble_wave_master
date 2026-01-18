@@ -76,7 +76,7 @@ export const resolveFormLayout = (
   const simpleLayout =
     (layoutPayload.layout as SimpleFormLayout | undefined) ||
     (layoutPayload.formLayout as SimpleFormLayout | undefined) ||
-    (layoutPayload as SimpleFormLayout);
+    (layoutPayload as unknown as SimpleFormLayout);
 
   if (simpleLayout?.tabs?.length) {
     return simpleLayout;

@@ -113,7 +113,7 @@ const resolveLayoutFromResolvedView = (view?: ResolvedView | null) => {
   const savedLayout =
     (layoutPayload.layout as SimpleFormLayout | undefined)
     || (layoutPayload.formLayout as SimpleFormLayout | undefined)
-    || (layoutPayload as SimpleFormLayout);
+    || (layoutPayload as unknown as SimpleFormLayout);
   if (savedLayout?.tabs?.length) {
     return { layout: savedLayout, designer: null };
   }

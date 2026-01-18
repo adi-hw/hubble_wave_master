@@ -10,7 +10,6 @@ import {
   Plus,
   Search,
   Sparkles,
-  Star,
   X,
 } from 'lucide-react';
 import { FormLayoutDesigner } from '../../../components/form/designer/FormLayoutDesigner';

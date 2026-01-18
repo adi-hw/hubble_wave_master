@@ -34,7 +34,7 @@ export const agentConsoleApi = {
   listQueues: async (params: ListQueryParams = {}) => {
     const response = await api.get<ListResponse<QueueDefinitionRecord>>(
       '/collections/queue_definitions/data',
-      params,
+      { params },
     );
     return response.data;
   },
@@ -45,7 +45,7 @@ export const agentConsoleApi = {
   listApprovalsForInstance: async (processFlowInstanceId?: string) => {
     const response = await api.get<WorkflowApprovalRecord[]>(
       '/workflows/approvals/by-instance',
-      { processFlowInstanceId },
+      { params: { processFlowInstanceId } },
     );
     return response.data;
   },

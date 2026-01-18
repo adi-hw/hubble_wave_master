@@ -637,7 +637,7 @@ function createColumnsFromViewLayout(
   const propertyMap = new Map(properties.map((prop) => [prop.code, prop]));
 
   return columns
-    .map((column, index) => {
+    .map((column) => {
       const code = (column.property_code || column.code) as string | undefined;
       if (!code) {
         return null;

@@ -14,6 +14,14 @@ import { TableColumn, FilterGroup } from '../table/types';
 
 export type ViewType = SharedViewType;
 
+export interface ViewAppearance {
+  density?: 'compact' | 'normal' | 'comfortable';
+  showGridLines?: boolean;
+  alternateRowColors?: boolean;
+  headerStyle?: 'default' | 'bold' | 'colored';
+  accentColor?: string;
+}
+
 export interface BaseViewConfig {
   id: string;
   name: string;
@@ -23,8 +31,10 @@ export interface BaseViewConfig {
   isPersonal?: boolean;
   ownerId?: string;
   filters?: FilterGroup;
+  filterLogic?: 'and' | 'or';
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
+  appearance?: ViewAppearance;
   createdAt?: string;
   updatedAt?: string;
 }

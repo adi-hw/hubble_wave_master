@@ -140,7 +140,7 @@ const flattenTree = (nodes: ResolvedNavNode[], parentKey?: string): NavNodeData[
 };
 
 export const NavigationBuilder: React.FC = () => {
-  const [modules, setModules] = useState<NavigationModuleListItem[]>([]);
+  const [, setModules] = useState<NavigationModuleListItem[]>([]);
   const [selectedModule, setSelectedModule] = useState<NavigationModuleListItem | null>(null);
   const [nodes, setNodes] = useState<NavNodeData[]>([]);
   const [previewNodes, setPreviewNodes] = useState<ResolvedNavNode[]>([]);
