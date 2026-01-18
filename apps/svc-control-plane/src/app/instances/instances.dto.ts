@@ -1,11 +1,12 @@
-import { IsIn, IsOptional, IsPositive, IsString, Length, Matches } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsOptional, IsPositive, IsString, Length, Matches } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { InstanceEnvironment, InstanceHealth, InstanceStatus, ResourceTier } from '@hubblewave/control-plane-db';
 
 const INSTANCE_ENV = ['production', 'staging', 'dev'] as const;
 const INSTANCE_STATUS = ['provisioning', 'active', 'suspended', 'terminated', 'failed'] as const;
 const INSTANCE_HEALTH = ['healthy', 'degraded', 'unhealthy', 'unknown'] as const;
-const RESOURCE_TIER = ['standard', 'professional', 'enterprise'] as const;
+const RESOURCE_TIER = ['standard', 'professional', 'enterprise', 'enterprise_gpu'] as const;
+const GPU_INSTANCE_TYPES = ['g4dn.xlarge', 'g4dn.2xlarge', 'g5.xlarge', 'g5.2xlarge'] as const;
 
 export class InstanceQueryParams {
   @IsOptional()
@@ -60,6 +61,21 @@ export class CreateInstanceDto {
   @IsOptional()
   @IsIn(RESOURCE_TIER as unknown as string[])
   resourceTier?: ResourceTier;
+
+  // GPU / vLLM Configuration
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  gpuEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(GPU_INSTANCE_TYPES as unknown as string[])
+  gpuInstanceType?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 200)
+  vllmModel?: string;
 }
 
 export class UpdateInstanceDto {
@@ -84,6 +100,26 @@ export class UpdateInstanceDto {
 
   @IsOptional()
   config?: Record<string, unknown>;
+
+  // GPU / vLLM Configuration
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  gpuEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(GPU_INSTANCE_TYPES as unknown as string[])
+  gpuInstanceType?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  huggingfaceToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 200)
+  vllmModel?: string;
 
   // Internal fields used by workers
   @IsOptional()

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Check, Server, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, Server, Loader2, AlertCircle, Cpu } from 'lucide-react';
 import { controlPlaneApi, Customer } from '../services/api';
 import { colors } from '../theme/theme';
 
@@ -18,7 +18,12 @@ export function InstanceCreatePage() {
     region: 'us-east-2',
     version: '',
     resourceTier: 'standard',
+    gpuEnabled: false,
+    gpuInstanceType: 'g4dn.xlarge',
+    vllmModel: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
   });
+
+  const showGpuConfig = formData.resourceTier === 'enterprise_gpu';
 
   useEffect(() => {
     async function loadCustomers() {
@@ -209,7 +214,11 @@ export function InstanceCreatePage() {
               </label>
               <select
                 value={formData.resourceTier}
-                onChange={(e) => setFormData({ ...formData, resourceTier: e.target.value })}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  resourceTier: e.target.value,
+                  gpuEnabled: e.target.value === 'enterprise_gpu',
+                })}
                 className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
                 style={{
                   backgroundColor: colors.glass.medium,
@@ -220,9 +229,71 @@ export function InstanceCreatePage() {
                 <option value="standard">Standard (2 vCPU, 4GB RAM)</option>
                 <option value="professional">Professional (4 vCPU, 8GB RAM)</option>
                 <option value="enterprise">Enterprise (8 vCPU, 16GB RAM)</option>
+                <option value="enterprise_gpu">Enterprise GPU (8 vCPU, 16GB RAM + NVIDIA T4)</option>
               </select>
             </div>
           </div>
+
+          {showGpuConfig && (
+            <div className="mt-6 pt-6 border-t" style={{ borderColor: colors.glass.border }}>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 rounded-xl" style={{ backgroundColor: colors.warning.glow }}>
+                  <Cpu size={24} style={{ color: colors.warning.base }} />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold" style={{ color: colors.text.primary }}>
+                    GPU / AVA Configuration
+                  </h2>
+                  <p className="text-sm" style={{ color: colors.text.tertiary }}>
+                    Configure vLLM and AI assistant for this instance (~$385/month additional)
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                    GPU Instance Type
+                  </label>
+                  <select
+                    value={formData.gpuInstanceType}
+                    onChange={(e) => setFormData({ ...formData, gpuInstanceType: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                    style={{
+                      backgroundColor: colors.glass.medium,
+                      borderColor: colors.glass.border,
+                      color: colors.text.primary,
+                    }}
+                  >
+                    <option value="g4dn.xlarge">g4dn.xlarge (T4 16GB, $0.526/hr)</option>
+                    <option value="g4dn.2xlarge">g4dn.2xlarge (T4 16GB, $0.752/hr)</option>
+                    <option value="g5.xlarge">g5.xlarge (A10G 24GB, $1.006/hr)</option>
+                    <option value="g5.2xlarge">g5.2xlarge (A10G 24GB, $1.212/hr)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text.secondary }}>
+                    LLM Model
+                  </label>
+                  <select
+                    value={formData.vllmModel}
+                    onChange={(e) => setFormData({ ...formData, vllmModel: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
+                    style={{
+                      backgroundColor: colors.glass.medium,
+                      borderColor: colors.glass.border,
+                      color: colors.text.primary,
+                    }}
+                  >
+                    <option value="meta-llama/Meta-Llama-3.1-8B-Instruct">Llama 3.1 8B Instruct</option>
+                    <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct v0.3</option>
+                    <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 7B Instruct</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 mt-8">
             <button

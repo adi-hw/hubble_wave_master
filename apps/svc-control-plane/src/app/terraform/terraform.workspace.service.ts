@@ -113,7 +113,37 @@ export class TerraformWorkspaceService {
       || request.instance.version;
     const certManagerIssuer = this.config.get<string>('INSTANCE_CERT_MANAGER_ISSUER', 'letsencrypt-prod');
 
+    // GPU/vLLM Configuration
+    const gpuEnabled = request.instance.gpuEnabled || false;
+    const gpuInstanceType = request.instance.gpuInstanceType || 'g4dn.xlarge';
+    const vllmModel = request.instance.vllmModel || 'meta-llama/Meta-Llama-3.1-8B-Instruct';
+    const huggingfaceToken = this.config.get<string>('INSTANCE_HUGGINGFACE_TOKEN', '');
+    const eksClusterName = this.config.get<string>('INSTANCE_EKS_CLUSTER_NAME', '');
+    const gpuSubnetIds = this.config.get<string>('INSTANCE_GPU_SUBNET_IDS', '');
+    const avaImageTag = this.config.get<string>('INSTANCE_AVA_IMAGE_TAG')
+      || request.instance.version;
+    const vllmImageTag = this.config.get<string>('INSTANCE_VLLM_IMAGE_TAG', 'v0.6.4.post1');
+
     const hclString = (value: string) => JSON.stringify(value);
+    const hclBool = (value: boolean) => value ? 'true' : 'false';
+    const hclList = (value: string) => {
+      if (!value) return '[]';
+      const items = value.split(',').map(s => s.trim()).filter(Boolean);
+      return `[${items.map(s => JSON.stringify(s)).join(', ')}]`;
+    };
+
+    // Build GPU configuration block (only if GPU is enabled)
+    const gpuConfig = gpuEnabled ? `
+  # GPU / vLLM Configuration
+  gpu_enabled = ${hclBool(gpuEnabled)}
+  gpu_instance_type = ${hclString(gpuInstanceType)}
+  vllm_model = ${hclString(vllmModel)}
+  huggingface_token = ${hclString(huggingfaceToken)}
+  eks_cluster_name = ${hclString(eksClusterName)}
+  gpu_subnet_ids = ${hclList(gpuSubnetIds)}
+  ava_image_tag = ${hclString(avaImageTag)}
+  vllm_image_tag = ${hclString(vllmImageTag)}` : '';
+
     const mainTf = `module "instance" {
   source = ${hclString(moduleSource)}
 
@@ -139,7 +169,7 @@ export class TerraformWorkspaceService {
   container_registry_host = ${hclString(containerRegistry)}
   instance_api_image_tag = ${hclString(instanceApiImageTag)}
   instance_web_image_tag = ${hclString(instanceWebImageTag)}
-  cert_manager_issuer = ${hclString(certManagerIssuer)}
+  cert_manager_issuer = ${hclString(certManagerIssuer)}${gpuConfig}
 }
 `;
 

@@ -28,7 +28,7 @@ export type InstanceHealth = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
 /**
  * Resource tier configuration
  */
-export type ResourceTier = 'standard' | 'professional' | 'enterprise';
+export type ResourceTier = 'standard' | 'professional' | 'enterprise' | 'enterprise_gpu';
 
 /**
  * Instance entity - represents a deployed customer instance
@@ -128,6 +128,26 @@ export class Instance {
   /** Terraform workspace name */
   @Column({ name: 'terraform_workspace', type: 'varchar', length: 100, nullable: true })
   terraformWorkspace?: string | null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // GPU / AI Configuration
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Whether GPU is enabled for this instance */
+  @Column({ name: 'gpu_enabled', type: 'boolean', default: false })
+  gpuEnabled!: boolean;
+
+  /** GPU instance type (e.g., g4dn.xlarge, g5.xlarge) */
+  @Column({ name: 'gpu_instance_type', type: 'varchar', length: 50, nullable: true })
+  gpuInstanceType?: string | null;
+
+  /** Hugging Face token for model access (encrypted) */
+  @Column({ name: 'huggingface_token', type: 'varchar', length: 500, nullable: true })
+  huggingfaceToken?: string | null;
+
+  /** vLLM model ID (e.g., meta-llama/Meta-Llama-3.1-8B-Instruct) */
+  @Column({ name: 'vllm_model', type: 'varchar', length: 200, nullable: true })
+  vllmModel?: string | null;
 
   // ─────────────────────────────────────────────────────────────────
   // Health & Monitoring

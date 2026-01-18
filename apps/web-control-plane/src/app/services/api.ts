@@ -103,7 +103,7 @@ export interface TenantInstance {
   domain?: string;
   region: string;
   version: string;
-  resourceTier: 'standard' | 'professional' | 'enterprise';
+  resourceTier: 'standard' | 'professional' | 'enterprise' | 'enterprise_gpu';
   customer?: Customer;
   resourceMetrics: {
     cpu_usage?: number;
@@ -113,6 +113,10 @@ export interface TenantInstance {
     db_connections?: number;
     active_users?: number;
   };
+  gpuEnabled?: boolean;
+  gpuInstanceType?: string;
+  huggingfaceToken?: string;
+  vllmModel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -342,7 +346,16 @@ export const controlPlaneApi = {
   getInstancesByCustomer: (customerId: string) =>
     api.get<TenantInstance[]>(`/instances/customer/${customerId}`).then((r) => r.data),
 
-  createInstance: (data: { customerId: string; environment: string; region: string; version: string; resourceTier?: string }) =>
+  createInstance: (data: {
+    customerId: string;
+    environment: string;
+    region: string;
+    version: string;
+    resourceTier?: string;
+    gpuEnabled?: boolean;
+    gpuInstanceType?: string;
+    vllmModel?: string;
+  }) =>
     api.post<TenantInstance>('/instances', data).then((r) => r.data),
 
   provisionInstance: (id: string) =>
