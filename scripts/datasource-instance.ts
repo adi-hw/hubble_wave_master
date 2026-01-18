@@ -1,3 +1,5 @@
+export {};
+
 require('dotenv').config();
 require('reflect-metadata');
 const { DataSource } = require('typeorm');
