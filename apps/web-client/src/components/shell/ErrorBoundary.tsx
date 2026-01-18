@@ -28,17 +28,17 @@ const ErrorFallback: React.FC<{
   resetError: () => void;
 }> = ({ error, resetError }) => {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <div className="max-w-md w-full rounded-xl p-8 text-center bg-card border border-border shadow-lg">
+    <div className="dark min-h-screen flex items-center justify-center p-6" style={{ background: '#0f0f14' }}>
+      <div className="max-w-md w-full rounded-xl p-8 text-center" style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center bg-destructive/10">
           <AlertTriangle className="w-8 h-8 text-destructive" />
         </div>
 
-        <h1 className="text-xl font-semibold mb-2 text-foreground">
+        <h1 className="text-xl font-semibold mb-2" style={{ color: '#f8fafc' }}>
           Something went wrong
         </h1>
 
-        <p className="text-sm mb-6 text-muted-foreground">
+        <p className="text-sm mb-6" style={{ color: '#a1a1aa' }}>
           An unexpected error occurred. Please try refreshing the page or return to the home page.
         </p>
 
