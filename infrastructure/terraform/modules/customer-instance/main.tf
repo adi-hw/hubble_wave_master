@@ -64,6 +64,7 @@ locals {
       replicas       = 2
       db_instance    = "db.t3.micro"
       redis_node     = "cache.t3.micro"
+      gpu_enabled    = false
     }
     professional = {
       cpu_request    = "1000m"
@@ -73,6 +74,7 @@ locals {
       replicas       = 3
       db_instance    = "db.t3.small"
       redis_node     = "cache.t3.small"
+      gpu_enabled    = false
     }
     enterprise = {
       cpu_request    = "2000m"
@@ -82,10 +84,24 @@ locals {
       replicas       = 5
       db_instance    = "db.t3.medium"
       redis_node     = "cache.t3.medium"
+      gpu_enabled    = false
+    }
+    enterprise_gpu = {
+      cpu_request    = "2000m"
+      cpu_limit      = "8000m"
+      memory_request = "4Gi"
+      memory_limit   = "16Gi"
+      replicas       = 5
+      db_instance    = "db.t3.medium"
+      redis_node     = "cache.t3.medium"
+      gpu_enabled    = true
     }
   }
 
   tier_config = local.resource_limits[var.resource_tier]
+
+  # Determine if GPU should be enabled (explicit var or tier setting)
+  gpu_enabled_effective = var.gpu_enabled || local.tier_config.gpu_enabled
 
   aws_tags = {
     hubblewave_environment = var.environment
@@ -1056,6 +1072,24 @@ resource "kubernetes_ingress_v1" "instance" {
       host = local.instance_domain
 
       http {
+        # AVA API route (conditional on GPU enabled)
+        dynamic "path" {
+          for_each = local.gpu_enabled_effective ? [1] : []
+          content {
+            path      = "/api/ava"
+            path_type = "Prefix"
+
+            backend {
+              service {
+                name = kubernetes_service.ava[0].metadata[0].name
+                port {
+                  number = 80
+                }
+              }
+            }
+          }
+        }
+
         path {
           path      = "/api"
           path_type = "Prefix"

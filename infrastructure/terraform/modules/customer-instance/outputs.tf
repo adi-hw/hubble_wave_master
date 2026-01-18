@@ -271,5 +271,50 @@ output "instance_metadata" {
     instance_domain     = local.instance_domain
     control_plane_url   = local.control_plane_url
     created_at          = kubernetes_namespace.instance.metadata[0].annotations["hubblewave.com/created-at"]
+    gpu_enabled         = local.gpu_enabled_effective
   }
+}
+
+# -----------------------------------------------------------------------------
+# GPU / vLLM Outputs
+# -----------------------------------------------------------------------------
+
+output "gpu_enabled" {
+  description = "Whether GPU/vLLM is enabled for this instance"
+  value       = local.gpu_enabled_effective
+}
+
+output "gpu_node_group_name" {
+  description = "Name of the GPU node group"
+  value       = local.gpu_enabled_effective ? aws_eks_node_group.gpu[0].node_group_name : null
+}
+
+output "gpu_node_group_arn" {
+  description = "ARN of the GPU node group"
+  value       = local.gpu_enabled_effective ? aws_eks_node_group.gpu[0].arn : null
+}
+
+output "vllm_service_url" {
+  description = "Internal URL for vLLM service"
+  value       = local.gpu_enabled_effective ? "http://vllm-service.${kubernetes_namespace.instance.metadata[0].name}.svc.cluster.local:8000" : null
+}
+
+output "vllm_deployment_name" {
+  description = "Name of the vLLM deployment"
+  value       = local.gpu_enabled_effective ? kubernetes_deployment.vllm[0].metadata[0].name : null
+}
+
+output "ava_service_url" {
+  description = "Internal URL for AVA service"
+  value       = local.gpu_enabled_effective ? "http://ava-service.${kubernetes_namespace.instance.metadata[0].name}.svc.cluster.local:80" : null
+}
+
+output "ava_deployment_name" {
+  description = "Name of the AVA deployment"
+  value       = local.gpu_enabled_effective ? kubernetes_deployment.ava[0].metadata[0].name : null
+}
+
+output "ava_external_url" {
+  description = "External URL for AVA API"
+  value       = local.gpu_enabled_effective ? "https://${local.instance_domain}/api/ava" : null
 }

@@ -59,8 +59,8 @@ variable "resource_tier" {
   default     = "standard"
 
   validation {
-    condition     = contains(["standard", "professional", "enterprise"], var.resource_tier)
-    error_message = "Resource tier must be one of: standard, professional, enterprise."
+    condition     = contains(["standard", "professional", "enterprise", "enterprise_gpu"], var.resource_tier)
+    error_message = "Resource tier must be one of: standard, professional, enterprise, enterprise_gpu."
   }
 }
 
@@ -249,4 +249,68 @@ variable "cert_manager_issuer" {
   description = "Cert-manager cluster issuer name for TLS certificates"
   type        = string
   default     = "letsencrypt-prod"
+}
+
+# -----------------------------------------------------------------------------
+# GPU / vLLM Configuration
+# -----------------------------------------------------------------------------
+
+variable "gpu_enabled" {
+  description = "Enable dedicated GPU node and vLLM deployment for this instance"
+  type        = bool
+  default     = false
+}
+
+variable "gpu_instance_type" {
+  description = "EC2 instance type for GPU nodes"
+  type        = string
+  default     = "g4dn.xlarge"
+
+  validation {
+    condition     = contains(["g4dn.xlarge", "g4dn.2xlarge", "g5.xlarge", "g5.2xlarge"], var.gpu_instance_type)
+    error_message = "GPU instance type must be a supported NVIDIA GPU instance."
+  }
+}
+
+variable "vllm_model" {
+  description = "Hugging Face model ID for vLLM"
+  type        = string
+  default     = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+}
+
+variable "vllm_image_tag" {
+  description = "vLLM container image tag"
+  type        = string
+  default     = "v0.6.4.post1"
+}
+
+variable "huggingface_token" {
+  description = "Hugging Face API token for model download (required for gated models like Llama)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "eks_cluster_name" {
+  description = "EKS cluster name (required for creating GPU node groups)"
+  type        = string
+  default     = ""
+}
+
+variable "gpu_subnet_ids" {
+  description = "Subnet IDs for GPU node placement (should be in AZs with GPU capacity)"
+  type        = list(string)
+  default     = []
+}
+
+variable "ava_image_tag" {
+  description = "Image tag for the AVA service"
+  type        = string
+  default     = ""
+}
+
+variable "ava_replicas" {
+  description = "Number of AVA service replicas"
+  type        = number
+  default     = 1
 }
