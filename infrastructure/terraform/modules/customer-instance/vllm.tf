@@ -155,17 +155,9 @@ print('Model download complete')
             value = "/models"
           }
 
-          dynamic "env" {
-            for_each = length(var.huggingface_token) > 0 ? { "hf_token" = true } : {}
-            content {
-              name = "HF_TOKEN"
-              value_from {
-                secret_key_ref {
-                  name = kubernetes_secret.huggingface[0].metadata[0].name
-                  key  = "HF_TOKEN"
-                }
-              }
-            }
+          env {
+            name  = "HF_TOKEN"
+            value = var.huggingface_token
           }
 
           volume_mount {
