@@ -156,7 +156,7 @@ print('Model download complete')
           }
 
           dynamic "env" {
-            for_each = length(var.huggingface_token) > 0 ? [1] : []
+            for_each = length(var.huggingface_token) > 0 ? { "hf_token" = true } : {}
             content {
               name = "HF_TOKEN"
               value_from {
