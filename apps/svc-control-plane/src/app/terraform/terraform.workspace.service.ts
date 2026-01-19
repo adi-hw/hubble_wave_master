@@ -82,14 +82,14 @@ export class TerraformWorkspaceService {
 
     const awsRegion = this.config.get<string>('INSTANCE_AWS_REGION')
       || this.config.get<string>('AWS_REGION');
-    const dbHost = this.requireConfig('INSTANCE_DB_HOST');
-    const dbPort = this.requireNumber('INSTANCE_DB_PORT', 5432);
-    const dbAdminHost = this.config.get<string>('INSTANCE_DB_ADMIN_HOST') || dbHost;
-    const dbAdminUser = this.requireConfig('INSTANCE_DB_ADMIN_USERNAME');
-    const dbAdminPassword = this.requireConfig('INSTANCE_DB_ADMIN_PASSWORD');
-    const dbAdminSslmode = this.config.get<string>('INSTANCE_DB_ADMIN_SSLMODE', 'require');
-    const redisHost = this.requireConfig('INSTANCE_REDIS_HOST');
-    const redisPort = this.requireNumber('INSTANCE_REDIS_PORT', 6379);
+
+    // VPC and subnet configuration for dedicated RDS/ElastiCache
+    const vpcId = this.requireConfig('INSTANCE_VPC_ID');
+    const vpcCidr = this.requireConfig('INSTANCE_VPC_CIDR');
+    const dbSubnetIds = this.requireConfig('INSTANCE_DB_SUBNET_IDS');
+    const redisSubnetIds = this.requireConfig('INSTANCE_REDIS_SUBNET_IDS');
+    const eksSecurityGroupIds = this.requireConfig('INSTANCE_EKS_SECURITY_GROUP_IDS');
+
     const cloudflareZoneId = this.requireConfig('INSTANCE_CLOUDFLARE_ZONE_ID');
     const ingressHostname = this.requireConfig('INSTANCE_INGRESS_HOSTNAME');
     const eksOidcProviderArn = this.requireConfig('INSTANCE_EKS_OIDC_PROVIDER_ARN');
@@ -154,11 +154,16 @@ export class TerraformWorkspaceService {
   license_key = ${hclString(request.licenseKey)}
   resource_tier = ${hclString(request.instance.resourceTier || 'standard')}
   platform_release_id = ${hclString(request.instance.version)}
-  db_host = ${hclString(dbHost)}
-  db_port = ${dbPort}
-  redis_host = ${hclString(redisHost)}
-  redis_port = ${redisPort}
+
+  # Infrastructure configuration
   aws_region = ${hclString(awsRegion)}
+  vpc_id = ${hclString(vpcId)}
+  vpc_cidr = ${hclString(vpcCidr)}
+  db_subnet_ids = ${hclList(dbSubnetIds)}
+  redis_subnet_ids = ${hclList(redisSubnetIds)}
+  eks_security_group_ids = ${hclList(eksSecurityGroupIds)}
+
+  # Domain and routing
   root_domain = ${hclString('hubblewave.com')}
   cloudflare_zone_id = ${hclString(cloudflareZoneId)}
   instance_ingress_hostname = ${hclString(ingressHostname)}
@@ -184,10 +189,6 @@ export class TerraformWorkspaceService {
       source  = "hashicorp/kubernetes"
       version = ">= 2.23.0"
     }
-    postgresql = {
-      source  = "cyrilgdn/postgresql"
-      version = ">= 1.21.0"
-    }
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
@@ -210,15 +211,6 @@ provider "kubernetes" {
 }
 
 provider "cloudflare" {}
-
-provider "postgresql" {
-  host      = ${hclString(dbAdminHost)}
-  port      = ${dbPort}
-  username  = ${hclString(dbAdminUser)}
-  password  = ${hclString(dbAdminPassword)}
-  sslmode   = ${hclString(dbAdminSslmode)}
-  superuser = false
-}
 `;
 
     const backendTf = `terraform {
@@ -253,18 +245,6 @@ provider "postgresql" {
       throw new Error(`${key} must be set`);
     }
     return value.trim();
-  }
-
-  private requireNumber(key: string, fallback: number): number {
-    const raw = this.config.get<string>(key);
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed)) {
-      throw new Error(`${key} must be a valid number`);
-    }
-    return parsed;
   }
 
   private async writeFileIfChanged(path: string, contents: string): Promise<void> {
