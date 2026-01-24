@@ -105,6 +105,29 @@ export class CollectionDataController {
     };
   }
 
+  // ============ COLLECTION METADATA ============
+  // NOTE: Schema route MUST come before data routes to avoid route matching issues
+
+  /**
+   * Get collection definition and properties
+   */
+  @Get(':collectionCode/schema')
+  async getSchema(
+    @Param('collectionCode') collectionCode: string,
+    @CurrentUser() _user: RequestUser
+  ) {
+    const collection = await this.collectionData.getCollection(collectionCode);
+    const properties = await this.collectionData.getProperties(collection.id);
+
+    // Enrich properties with reference collection codes for navigation
+    const enrichedProperties = await this.collectionData.enrichPropertiesWithReferences(properties);
+
+    return {
+      collection,
+      properties: enrichedProperties,
+    };
+  }
+
   // ============ GROUPED QUERIES ============
   // NOTE: These routes MUST come before the generic :collectionCode/data routes
   // because NestJS matches routes in order and :collectionCode/data would match first
@@ -312,25 +335,4 @@ export class CollectionDataController {
     );
   }
 
-  // ============ COLLECTION METADATA ============
-
-  /**
-   * Get collection definition and properties
-   */
-  @Get(':collectionCode/schema')
-  async getSchema(
-    @Param('collectionCode') collectionCode: string,
-    @CurrentUser() _user: RequestUser
-  ) {
-    const collection = await this.collectionData.getCollection(collectionCode);
-    const properties = await this.collectionData.getProperties(collection.id);
-
-    // Enrich properties with reference collection codes for navigation
-    const enrichedProperties = await this.collectionData.enrichPropertiesWithReferences(properties);
-
-    return {
-      collection,
-      properties: enrichedProperties,
-    };
-  }
 }

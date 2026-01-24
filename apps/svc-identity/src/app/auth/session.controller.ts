@@ -47,6 +47,19 @@ export class SessionController {
   }
 
   /**
+   * Get session count for the current user
+   * NOTE: Must come before :sessionId route to avoid 'count' being interpreted as ID
+   */
+  @Get('count')
+  async getSessionCount(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ count: number }> {
+    const userId = user.userId || user.id;
+    const count = await this.sessionService.countActiveSessions(userId);
+    return { count };
+  }
+
+  /**
    * Get details of a specific session
    */
   @Get(':sessionId')
@@ -131,15 +144,4 @@ export class SessionController {
     };
   }
 
-  /**
-   * Get session count for the current user
-   */
-  @Get('count')
-  async getSessionCount(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ count: number }> {
-    const userId = user.userId || user.id;
-    const count = await this.sessionService.countActiveSessions(userId);
-    return { count };
-  }
 }

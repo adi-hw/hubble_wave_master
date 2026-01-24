@@ -20,23 +20,28 @@ export const notificationService = {
   enabled: notificationsEnabled,
   async list(): Promise<NotificationDTO[]> {
     if (!notificationsEnabled) return [];
-    const res = await notificationsApi.get<NotificationDTO[]>('/notifications');
+    const res = await notificationsApi.get<NotificationDTO[]>('/in-app');
     return res.data;
+  },
+  async getUnreadCount(): Promise<number> {
+    if (!notificationsEnabled) return 0;
+    const res = await notificationsApi.get<{ count: number }>('/in-app/unread-count');
+    return res.data.count;
   },
   async markRead(id: string): Promise<void> {
     if (!notificationsEnabled) return;
-    await notificationsApi.post(`/notifications/${id}/read`);
+    await notificationsApi.post(`/in-app/${id}/read`);
   },
   async markAllRead(): Promise<void> {
     if (!notificationsEnabled) return;
-    await notificationsApi.post('/notifications/read-all');
+    await notificationsApi.post('/in-app/read-all');
   },
   async dismiss(id: string): Promise<void> {
     if (!notificationsEnabled) return;
-    await notificationsApi.delete(`/notifications/${id}`);
+    await notificationsApi.delete(`/in-app/${id}`);
   },
   async clearAll(): Promise<void> {
     if (!notificationsEnabled) return;
-    await notificationsApi.delete('/notifications');
+    await notificationsApi.delete('/in-app');
   },
 };

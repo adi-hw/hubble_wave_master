@@ -23,6 +23,7 @@ export class SeedAdminUser1818000000000 implements MigrationInterface {
     }
 
     // Create admin user with argon2id hashed password (Admin123!)
+    // Sets is_admin=true for full platform access bypass
     const userId = await queryRunner.query(`
       INSERT INTO users (
         id,
@@ -32,6 +33,8 @@ export class SeedAdminUser1818000000000 implements MigrationInterface {
         first_name,
         last_name,
         status,
+        is_admin,
+        email_verified,
         created_at,
         updated_at
       ) VALUES (
@@ -42,6 +45,8 @@ export class SeedAdminUser1818000000000 implements MigrationInterface {
         'Admin',
         'User',
         'active',
+        true,
+        true,
         NOW(),
         NOW()
       )
@@ -53,21 +58,24 @@ export class SeedAdminUser1818000000000 implements MigrationInterface {
       throw new Error('Failed to create admin user');
     }
 
-    // Check if admin role exists
+    // Check if admin role exists (should be created by 1817999999999-seed-admin-role migration)
     const adminRole = await queryRunner.query(
-      `SELECT id FROM roles WHERE code = 'admin' OR name = 'Admin' LIMIT 1`
+      `SELECT id FROM roles WHERE code = 'admin' LIMIT 1`
     );
 
     if (adminRole && adminRole.length > 0) {
       // Assign admin role to user
       await queryRunner.query(`
-        INSERT INTO user_roles (id, user_id, role_id, created_at)
-        VALUES (uuid_generate_v4(), '${adminUserId}', '${adminRole[0].id}', NOW())
+        INSERT INTO user_roles (id, user_id, role_id, source, created_at)
+        VALUES (uuid_generate_v4(), '${adminUserId}', '${adminRole[0].id}', 'direct', NOW())
         ON CONFLICT DO NOTHING
       `);
+      console.log('Admin role assigned to admin user');
+    } else {
+      console.warn('Admin role not found - user created without role assignment');
     }
 
-    console.log('Admin user created: admin@hubblewave.local');
+    console.log('Admin user created: admin@hubblewave.local (is_admin=true)');
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
