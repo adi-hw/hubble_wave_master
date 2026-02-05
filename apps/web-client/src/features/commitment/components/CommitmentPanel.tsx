@@ -39,8 +39,8 @@ export const CommitmentPanel: React.FC<CommitmentPanelProps> = ({ collectionCode
     try {
       const data = await commitmentApi.getTrackersByRecord(collectionCode, recordId);
       setTrackers(data);
-    } catch (error) {
-      console.error('Failed to load commitments', error);
+    } catch {
+      // Commitments load failed - panel will remain empty
     } finally {
       setLoading(false);
     }
@@ -52,8 +52,8 @@ export const CommitmentPanel: React.FC<CommitmentPanelProps> = ({ collectionCode
       if (action === 'resume') await commitmentApi.resumeTracker(trackerId);
       if (action === 'cancel') await commitmentApi.cancelTracker(trackerId, 'User cancelled');
       await loadTrackers();
-    } catch (error) {
-      console.error(`Failed to ${action} tracker`, error);
+    } catch {
+      // Tracker action failed - state remains unchanged
     }
     setMenuOpen(null);
   };

@@ -35,8 +35,8 @@ export const PropertiesPage: React.FC = () => {
       const property = await propertyApi.get(cId, pId);
       setSelectedProperty(property);
       setEditorOpen(true);
-    } catch (error) {
-      console.error('Failed to load property', error);
+    } catch {
+      // Property load failed - editor will remain closed
     }
   };
 
@@ -59,7 +59,7 @@ export const PropertiesPage: React.FC = () => {
   };
 
   const handleDelete = async (property: PropertyDefinition) => {
-    console.log('Delete', property);
+    // TODO: Implement property deletion via API
     setRefreshTrigger((prev) => prev + 1);
   };
 
@@ -68,7 +68,7 @@ export const PropertiesPage: React.FC = () => {
   };
 
   const handleSmartCreate = (suggestion: { dataType: string; formatOptions?: Record<string, unknown> }) => {
-    console.log('Applying suggestion:', suggestion);
+    // TODO: Pre-populate PropertyEditor with suggested type and options
     setSelectedProperty(undefined);
     setEditorOpen(true);
   };

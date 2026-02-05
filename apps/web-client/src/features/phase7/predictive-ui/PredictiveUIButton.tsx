@@ -22,8 +22,8 @@ export const PredictiveUIButton: React.FC<PredictiveUIButtonProps> = ({ classNam
     try {
       const response = await predictiveUIApi.getSuggestions(context);
       setSuggestionCount(response.suggestions.length);
-    } catch (error) {
-      console.error('Failed to check suggestions:', error);
+    } catch {
+      // Suggestions check failed - count remains unchanged
     }
   };
 

@@ -71,8 +71,8 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
       setSwitching(true);
       await onSwitch(profileId);
       setIsOpen(false);
-    } catch (err) {
-      console.error('Failed to switch profile:', err);
+    } catch {
+      // Profile switch failed - keep current profile
     } finally {
       setSwitching(false);
     }

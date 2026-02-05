@@ -23,7 +23,7 @@ export async function registerServiceWorker(
   config: ServiceWorkerConfig = {}
 ): Promise<ServiceWorkerRegistration | undefined> {
   if (!('serviceWorker' in navigator)) {
-    console.log('Service workers are not supported');
+    // Service workers not supported in this browser
     return undefined;
   }
 
@@ -41,12 +41,10 @@ export async function registerServiceWorker(
       installingWorker.onstatechange = () => {
         if (installingWorker.state === 'installed') {
           if (navigator.serviceWorker.controller) {
-            // New update available
-            console.log('New content is available; please refresh.');
+            // New update available - notify via callback
             config.onUpdate?.(registration);
           } else {
-            // Content cached for offline use
-            console.log('Content is cached for offline use.');
+            // Content cached for offline use - notify via callback
             config.onSuccess?.(registration);
           }
         }
@@ -54,8 +52,8 @@ export async function registerServiceWorker(
     };
 
     return registration;
-  } catch (error) {
-    console.error('Service worker registration failed:', error);
+  } catch {
+    // Service worker registration failed - app continues without SW
     return undefined;
   }
 }
@@ -72,8 +70,8 @@ export async function unregisterServiceWorker(): Promise<boolean> {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((reg) => reg.unregister()));
     return true;
-  } catch (error) {
-    console.error('Service worker unregistration failed:', error);
+  } catch {
+    // Service worker unregistration failed
     return false;
   }
 }
