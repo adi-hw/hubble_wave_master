@@ -84,8 +84,8 @@ export const NotificationCenterPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch notifications');
       const data = await response.json();
       setNotifications(data);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
+    } catch {
+      // Notifications fetch failed - UI shows loading skeleton
     } finally {
       setLoading(false);
     }
@@ -97,8 +97,8 @@ export const NotificationCenterPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch unread count');
       const data = await response.json();
       setUnreadCount(data.count);
-    } catch (error) {
-      console.error('Error fetching unread count:', error);
+    } catch {
+      // Unread count unavailable - non-critical
     }
   };
 
@@ -111,8 +111,8 @@ export const NotificationCenterPage: React.FC = () => {
 
       updateNotificationInState(id, { read: true, readAt: new Date().toISOString() });
       setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error marking as read:', error);
+    } catch {
+      // Mark as read failed - notification remains unread
     }
   };
 
@@ -131,8 +131,8 @@ export const NotificationCenterPage: React.FC = () => {
         older: prev.older.map((n) => ({ ...n, read: true, readAt: now })),
       }));
       setUnreadCount(0);
-    } catch (error) {
-      console.error('Error marking all as read:', error);
+    } catch {
+      // Mark all as read failed - notifications remain unread
     }
   };
 
@@ -144,8 +144,8 @@ export const NotificationCenterPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to dismiss');
 
       removeNotificationFromState(id);
-    } catch (error) {
-      console.error('Error dismissing notification:', error);
+    } catch {
+      // Dismiss failed - notification remains visible
     }
   };
 
@@ -163,8 +163,8 @@ export const NotificationCenterPage: React.FC = () => {
         older: [],
       });
       setUnreadCount(0);
-    } catch (error) {
-      console.error('Error dismissing all:', error);
+    } catch {
+      // Dismiss all failed - notifications remain visible
     }
   };
 
@@ -177,8 +177,8 @@ export const NotificationCenterPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to execute action');
 
       updateNotificationInState(notificationId, { read: true });
-    } catch (error) {
-      console.error('Error executing action:', error);
+    } catch {
+      // Action execution failed - non-critical
     }
   };
 

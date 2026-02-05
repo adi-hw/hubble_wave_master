@@ -27,6 +27,7 @@ import {
   ColumnOrderState,
   SSRMRequest,
   SSRMResponse,
+  BulkAction,
 } from '@hubblewave/ui';
 import { LayoutList, LayoutGrid } from 'lucide-react';
 import { api } from '../lib/api';
@@ -609,7 +610,7 @@ function createColumnsFromProperties(
         resizable: true,
         pinnable: true,
         editable: true, // Enable inline editing for all columns
-        options: prop.options,
+        options: prop.options ?? prop.choiceList,
         reference: refCollection
           ? {
               collection: refCollection,
@@ -669,7 +670,7 @@ function createColumnsFromViewLayout(
         resizable: true,
         pinnable: true,
         editable: permissions ? permissions.canWrite : true,
-        options: prop.options,
+        options: prop.options ?? prop.choiceList,
         reference: refCollection
           ? {
               collection: refCollection,
@@ -1365,9 +1366,9 @@ export function ListView() {
           setResolvedView(view);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (active) {
-          console.warn('List view resolution failed', err);
+          // View resolution failed - show default view
           setResolvedView(null);
         }
       });
@@ -1426,61 +1427,111 @@ export function ListView() {
     try {
       setGridLoading(true);
 
-      // Build query params with filters
-      const params = new URLSearchParams();
-      params.set('pageSize', '200'); // Load more for grid view
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
 
-      // Add sorting (format: field:direction,field:direction)
-      if (currentSorting.length > 0) {
-        const sortParam = currentSorting.map(s => `${s.id}:${s.desc ? 'desc' : 'asc'}`).join(',');
-        params.set('sort', sortParam);
+      const token = getStoredToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
 
-      // Add global filter/search (backend expects 'search' not 'q')
-      if (currentGlobalFilter) {
-        params.set('search', currentGlobalFilter);
-      }
-
-      // Add column filters as JSON array (backend expects 'filters' as array of FilterCondition)
-      // FilterCondition: { field: string, operator: string, value: unknown }
-      if (currentFilters.length > 0) {
-        const filtersArr: Array<{ field: string; operator: string; value: unknown }> = [];
-        currentFilters.forEach(filter => {
-          if (filter.value != null && filter.value !== '') {
-            const filterValue = filter.value as Record<string, unknown>;
-            if (typeof filter.value === 'object' && 'operator' in filterValue) {
-              // Already has operator specified
-              filtersArr.push({
-                field: filter.id,
-                operator: filterValue.operator as string,
-                value: filterValue.value,
-              });
-            } else {
-              // Default to 'contains' for text/string searches
-              filtersArr.push({
-                field: filter.id,
-                operator: 'contains',
-                value: filter.value,
-              });
-            }
-          }
-        });
-        if (filtersArr.length > 0) {
-          params.set('filters', JSON.stringify(filtersArr));
+      // Handle virtual collections differently
+      if (isCollectionsVirtualCollection(collectionCode)) {
+        // Use metadata API for collections
+        const params = new URLSearchParams();
+        params.set('includeSystem', 'true');
+        params.set('limit', '200');
+        if (currentGlobalFilter) {
+          params.set('search', currentGlobalFilter);
         }
+        if (currentSorting.length > 0) {
+          const sort = currentSorting[0];
+          params.set('sortBy', sort.id);
+          params.set('sortOrder', sort.desc ? 'desc' : 'asc');
+        }
+
+        const response = await fetch(`/api/metadata/collections?${params.toString()}`, {
+          method: 'GET',
+          headers,
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch collections: ${response.statusText}`);
+        }
+        const result = await response.json();
+        setGridData(Array.isArray(result) ? result : result.data ?? []);
+        return;
       }
 
-      const url = `/data/collections/${collectionCode}/data?${params.toString()}`;
-      console.log('Loading grid data from:', url);
-      const response = await api.get<{ data: Record<string, unknown>[]; meta: unknown }>(url);
-      console.log('Grid data response:', response);
-      setGridData(response.data);
-    } catch (err) {
-      console.error('Failed to load grid data', err);
-      // Log more details about the error
-      if (err instanceof Error) {
-        console.error('Error details:', err.message, err.stack);
+      if (isUsersVirtualCollection(collectionCode)) {
+        // Use auth API for users
+        const params = new URLSearchParams();
+        params.set('limit', '200');
+        if (currentGlobalFilter) {
+          params.set('search', currentGlobalFilter);
+        }
+
+        const response = await fetch(`/api/auth/users?${params.toString()}`, {
+          method: 'GET',
+          headers,
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch users: ${response.statusText}`);
+        }
+        const result = await response.json();
+        setGridData(Array.isArray(result) ? result : result.data ?? result.users ?? []);
+        return;
       }
+
+      // For regular collections, use the grid query API (same as list view)
+      const body: Record<string, unknown> = {
+        collection: collectionCode,
+        startRow: 0,
+        endRow: 200,
+      };
+
+      // Add sorting
+      if (currentSorting.length > 0) {
+        body.sorting = currentSorting.map((s) => ({
+          column: s.id,
+          direction: s.desc ? 'desc' : 'asc',
+        }));
+      }
+
+      // Add filters
+      if (currentFilters.length > 0) {
+        body.filters = currentFilters
+          .filter((f) => f.value !== undefined && f.value !== '')
+          .map((f) => ({
+            column: f.id,
+            operator: 'contains',
+            value: f.value,
+          }));
+      }
+
+      // Add global search
+      if (currentGlobalFilter) {
+        body.globalFilter = currentGlobalFilter;
+      }
+
+      const response = await fetch('/api/data/grid/query', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Grid query failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setGridData(result.rows ?? []);
+    } catch {
+      // Grid data load failed - display empty state
+      setGridData([]);
     } finally {
       setGridLoading(false);
     }
@@ -1565,8 +1616,8 @@ export function ListView() {
                   `/data/collections/${collectionCode}/data/${row.id}`
                 );
                 // Refresh will happen via grid refetch
-              } catch (err) {
-                console.error('Delete failed:', err);
+              } catch {
+                // Delete failed - record remains in grid
               }
             }
           },
@@ -1574,6 +1625,62 @@ export function ListView() {
       ];
     }
   }, [collectionCode, collection, navigate, isCollections, isUsers]);
+
+  // Bulk actions for selected rows
+  const bulkActions: BulkAction<ListViewRecord>[] = useMemo(() => {
+    // Virtual collections don't support bulk operations
+    if (isCollections || isUsers) {
+      return [];
+    }
+
+    return [
+      {
+        id: 'export',
+        label: 'Export',
+        variant: 'secondary',
+        onAction: async (selectedRows) => {
+          // Export selected rows as CSV
+          const headers = columns.map(c => c.label).join(',');
+          const rows = selectedRows.map(row =>
+            columns.map(c => {
+              const val = (row as Record<string, unknown>)[c.code];
+              return val !== undefined && val !== null ? String(val).replace(/,/g, ';') : '';
+            }).join(',')
+          ).join('\n');
+          const csv = `${headers}\n${rows}`;
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${collectionCode}-export.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+      },
+      {
+        id: 'delete',
+        label: 'Delete',
+        variant: 'danger',
+        requiresConfirmation: true,
+        confirmationMessage: 'This action cannot be undone. The selected records will be permanently deleted.',
+        onAction: async (selectedRows) => {
+          const label = collection ? getCollectionLabelPlural(collection).toLowerCase() : 'records';
+          try {
+            // Delete all selected rows
+            await Promise.all(
+              selectedRows.map(row =>
+                api.delete(`/data/collections/${collectionCode}/data/${row.id}`)
+              )
+            );
+            // Trigger grid refresh through navigation state update
+            window.dispatchEvent(new CustomEvent('grid-refresh'));
+          } catch {
+            // Bulk delete failed - some records may remain
+          }
+        },
+      },
+    ];
+  }, [collectionCode, collection, columns, isCollections, isUsers]);
 
   // Event handlers - different navigation for virtual collections
   const handleRowClick = useCallback(
@@ -1882,6 +1989,8 @@ export function ListView() {
             onRowView={handleRowClick}
             onRowClick={handleRowClick}
             rowActions={rowActions}
+            enableBulkActions={true}
+            bulkActions={bulkActions}
             onSortChange={handleSortChange}
             onFilterChange={handleFilterChange}
             onGroupChange={handleGroupChange}

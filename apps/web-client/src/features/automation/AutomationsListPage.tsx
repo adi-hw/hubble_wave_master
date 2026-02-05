@@ -60,8 +60,8 @@ export const AutomationsListPage: React.FC = () => {
     try {
       const data = await automationApi.getAutomations(collectionId, true);
       setAutomations(data);
-    } catch (error) {
-      console.error('Failed to load automations', error);
+    } catch {
+      // Load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -71,8 +71,8 @@ export const AutomationsListPage: React.FC = () => {
     try {
       await automationApi.toggleActive(automation.id);
       loadAutomations();
-    } catch (error) {
-      console.error('Failed to toggle automation', error);
+    } catch {
+      // Toggle failed - state unchanged
     }
   };
 
@@ -81,8 +81,8 @@ export const AutomationsListPage: React.FC = () => {
     try {
       await automationApi.deleteAutomation(id);
       loadAutomations();
-    } catch (error) {
-      console.error('Failed to delete automation', error);
+    } catch {
+      // Delete failed - automation remains in list
     }
   };
 

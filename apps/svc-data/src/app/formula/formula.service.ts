@@ -11,6 +11,8 @@ import {
   FormulaEngine,
   FormulaContext as EngineContext,
   RecordData,
+  ValidationError,
+  FormulaFunction,
 } from '@hubblewave/formula-parser';
 import { FormulaCacheService } from './formula-cache.service';
 import { DependencyService } from './dependency.service';
@@ -215,7 +217,7 @@ export class FormulaService implements OnModuleInit {
 
     return {
       valid: validation.valid,
-      errors: validation.errors.map((e) => e.message),
+      errors: validation.errors.map((e: ValidationError) => e.message),
       dependencies: [
         ...validation.dependencies.properties,
         ...validation.dependencies.relatedCollections,
@@ -249,11 +251,11 @@ export class FormulaService implements OnModuleInit {
     syntax: string;
   }> {
     const functions = this.engine.getFunctions();
-    return functions.map((f) => ({
+    return functions.map((f: FormulaFunction) => ({
       name: f.name,
       category: f.category,
       description: f.description,
-      syntax: `${f.name}(${f.args.map((a) => a.name).join(', ')})`,
+      syntax: `${f.name}(${f.args.map((a: { name: string }) => a.name).join(', ')})`,
     }));
   }
 
@@ -266,7 +268,7 @@ export class FormulaService implements OnModuleInit {
     description: string;
   }> {
     const results = this.engine.searchFunctions(query);
-    return results.map((f) => ({
+    return results.map((f: FormulaFunction) => ({
       name: f.name,
       category: f.category,
       description: f.description,

@@ -58,8 +58,8 @@ export const SelfHealingDashboard: React.FC = () => {
       if (data.services.length > 0 && !selectedService) {
         setSelectedService(data.services[0]);
       }
-    } catch (error) {
-      console.error('Failed to load dashboard:', error);
+    } catch {
+      // Dashboard load failed - UI shows loading state
     } finally {
       setLoading(false);
     }
@@ -69,8 +69,8 @@ export const SelfHealingDashboard: React.FC = () => {
     try {
       const response = await selfHealingApi.getEvents({ serviceId });
       setServiceEvents(response.events);
-    } catch (error) {
-      console.error('Failed to load events:', error);
+    } catch {
+      // Events load failed - list remains empty
     }
   };
 
@@ -85,8 +85,8 @@ export const SelfHealingDashboard: React.FC = () => {
     try {
       await selfHealingApi.runAllHealthChecks();
       await loadDashboard();
-    } catch (error) {
-      console.error('Failed to run checks:', error);
+    } catch {
+      // Health checks failed to run
     } finally {
       setRunningChecks(false);
     }
@@ -99,8 +99,8 @@ export const SelfHealingDashboard: React.FC = () => {
       if (selectedService?.id === serviceId) {
         loadServiceEvents(serviceId);
       }
-    } catch (error) {
-      console.error('Failed to trigger health check:', error);
+    } catch {
+      // Health check trigger failed
     }
   };
 
@@ -108,8 +108,8 @@ export const SelfHealingDashboard: React.FC = () => {
     try {
       await selfHealingApi.executeRecoveryAction(actionId);
       await loadDashboard();
-    } catch (error) {
-      console.error('Failed to execute recovery:', error);
+    } catch {
+      // Recovery execution failed
     }
   };
 

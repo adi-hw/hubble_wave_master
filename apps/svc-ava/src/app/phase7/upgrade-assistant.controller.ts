@@ -26,7 +26,7 @@ interface AnalyzeUpgradeDto {
 
 @ApiTags('Phase 7 - Intelligent Upgrade Assistant')
 @ApiBearerAuth()
-@Controller('api/phase7/upgrade-assistant')
+@Controller('phase7/upgrade-assistant')
 @UseGuards(JwtAuthGuard)
 export class UpgradeAssistantController {
   private readonly PLATFORM_VERSION = '2.4.0';

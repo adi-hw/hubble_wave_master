@@ -42,7 +42,7 @@ interface SummarizeDto {
 
 @ApiTags('AI Chat')
 @ApiBearerAuth()
-@Controller('api/chat')
+@Controller('chat')
 @UseGuards(JwtAuthGuard)
 export class ChatController {
   private readonly logger = new Logger(ChatController.name);

@@ -53,8 +53,18 @@ export class CollectionAccessGuard implements CanActivate {
     // Extract Collection ID from route params
     const collectionId = request.params['collectionId'] || request.params['id'];
 
-    // If no collection ID, allow access (global endpoints like /collections list)
+    // For global endpoints (no collectionId), require collection.read permission
     if (!collectionId) {
+      const operation = this.determineOperation(request.method);
+      const requiredPermission = operation === 'create'
+        ? 'collection.create'
+        : 'collection.read';
+
+      if (!permissions.includes(requiredPermission) && !permissions.includes('collection.admin')) {
+        throw new ForbiddenException(
+          `Permission '${requiredPermission}' required for this operation`
+        );
+      }
       return true;
     }
 

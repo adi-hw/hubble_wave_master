@@ -134,8 +134,7 @@ export const searchService = {
         metadata: result.metadata,
       }));
     } catch {
-      // Fall back to empty results if AI service unavailable
-      console.warn('Semantic search unavailable, returning empty results');
+      // AI search service unavailable - return empty results
       return [];
     }
   },

@@ -36,7 +36,7 @@ interface BulkDeleteDto {
   ids: string[];
 }
 
-@Controller('collections')
+@Controller('data/collections')
 @UseGuards(JwtAuthGuard)
 export class CollectionDataController {
   private readonly logger = new Logger(CollectionDataController.name);

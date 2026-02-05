@@ -1,14 +1,16 @@
 /**
  * HubbleWave Customer Instance Module
  *
- * Provisions a complete customer instance environment including:
+ * Provisions a complete customer instance environment with:
+ * - Dedicated VPC with VPC peering to control plane
+ * - Dedicated EKS cluster with managed node group
  * - Dedicated RDS PostgreSQL database
  * - Dedicated ElastiCache Redis cluster
- * - Kubernetes namespace and resources
- * - S3-compatible storage bucket
- * - Network policies and security groups
+ * - S3 storage bucket
+ * - AWS Load Balancer Controller and ALB ingress
+ * - Kubeconfig stored in Secrets Manager for control plane access
  *
- * Architecture: Single-Instance-Per-Customer with DEDICATED infrastructure
+ * Architecture: Cluster-per-Customer with complete infrastructure isolation
  */
 
 terraform {
@@ -17,6 +19,10 @@ terraform {
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = ">= 2.23.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.12.0"
     }
     aws = {
       source  = "hashicorp/aws"
@@ -39,7 +45,6 @@ terraform {
 
 locals {
   instance_name        = "${var.customer_code}-${var.environment}"
-  namespace            = "hw-${local.instance_name}"
   control_plane_domain = "control.${var.environment}.${var.root_domain}"
   control_plane_url    = "https://${local.control_plane_domain}"
   instance_domain      = "${var.customer_code}.${var.environment}.${var.root_domain}"
@@ -48,13 +53,14 @@ locals {
   redis_identifier     = "hw-${local.instance_name}"
 
   common_labels = {
-    "app.kubernetes.io/managed-by" = "terraform"
+    "app.kubernetes.io/managed-by"  = "terraform"
     "hubblewave.com/customer"       = var.customer_code
     "hubblewave.com/environment"    = var.environment
     "hubblewave.com/instance-id"    = var.instance_id
     "hubblewave.com/release-id"     = var.platform_release_id
   }
 
+  # Resource configuration per tier
   resource_limits = {
     standard = {
       cpu_request    = "500m"
@@ -64,6 +70,7 @@ locals {
       replicas       = 2
       db_instance    = "db.t3.micro"
       redis_node     = "cache.t3.micro"
+      node_instance  = "t3.medium"
       gpu_enabled    = false
     }
     professional = {
@@ -74,6 +81,7 @@ locals {
       replicas       = 3
       db_instance    = "db.t3.small"
       redis_node     = "cache.t3.small"
+      node_instance  = "t3.large"
       gpu_enabled    = false
     }
     enterprise = {
@@ -84,6 +92,7 @@ locals {
       replicas       = 5
       db_instance    = "db.t3.medium"
       redis_node     = "cache.t3.medium"
+      node_instance  = "t3.xlarge"
       gpu_enabled    = false
     }
     enterprise_gpu = {
@@ -94,6 +103,7 @@ locals {
       replicas       = 5
       db_instance    = "db.t3.medium"
       redis_node     = "cache.t3.medium"
+      node_instance  = "g4dn.xlarge"
       gpu_enabled    = true
     }
   }
@@ -142,21 +152,21 @@ resource "random_id" "bucket_suffix" {
 
 resource "aws_db_subnet_group" "instance" {
   name       = local.db_identifier
-  subnet_ids = var.db_subnet_ids
+  subnet_ids = module.vpc.private_subnets
   tags       = local.aws_tags
 }
 
 resource "aws_security_group" "rds" {
   name        = "${local.db_identifier}-rds"
   description = "Security group for ${local.instance_name} RDS instance"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description     = "PostgreSQL from EKS"
+    description     = "PostgreSQL from EKS nodes"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = var.eks_security_group_ids
+    security_groups = [module.eks.node_security_group_id]
   }
 
   egress {
@@ -216,21 +226,21 @@ resource "aws_db_instance" "instance" {
 
 resource "aws_elasticache_subnet_group" "instance" {
   name       = local.redis_identifier
-  subnet_ids = var.redis_subnet_ids
+  subnet_ids = module.vpc.private_subnets
   tags       = local.aws_tags
 }
 
 resource "aws_security_group" "redis" {
   name        = "${local.redis_identifier}-redis"
   description = "Security group for ${local.instance_name} Redis cluster"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description     = "Redis from EKS"
+    description     = "Redis from EKS nodes"
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = var.eks_security_group_ids
+    security_groups = [module.eks.node_security_group_id]
   }
 
   egress {
@@ -263,144 +273,6 @@ resource "aws_elasticache_cluster" "instance" {
   apply_immediately          = var.environment != "production"
 
   tags = local.aws_tags
-}
-
-# -----------------------------------------------------------------------------
-# Kubernetes Namespace
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_namespace" "instance" {
-  metadata {
-    name   = local.namespace
-    labels = local.common_labels
-
-    annotations = {
-      "hubblewave.com/created-at"    = timestamp()
-      "hubblewave.com/customer-name" = var.customer_name
-      "hubblewave.com/release-id"    = var.platform_release_id
-    }
-  }
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Resource Quota
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_resource_quota" "instance" {
-  metadata {
-    name      = "instance-quota"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-  }
-
-  spec {
-    hard = {
-      "requests.cpu"    = var.resource_tier == "enterprise" ? "16" : (var.resource_tier == "professional" ? "8" : "4")
-      "requests.memory" = var.resource_tier == "enterprise" ? "32Gi" : (var.resource_tier == "professional" ? "16Gi" : "8Gi")
-      "limits.cpu"      = var.resource_tier == "enterprise" ? "32" : (var.resource_tier == "professional" ? "16" : "8")
-      "limits.memory"   = var.resource_tier == "enterprise" ? "64Gi" : (var.resource_tier == "professional" ? "32Gi" : "16Gi")
-      "pods"            = var.resource_tier == "enterprise" ? "50" : (var.resource_tier == "professional" ? "30" : "20")
-      "services"        = "20"
-      "secrets"         = "50"
-      "configmaps"      = "50"
-    }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Network Policy - Instance Isolation
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_network_policy" "instance_isolation" {
-  metadata {
-    name      = "instance-isolation"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-  }
-
-  spec {
-    pod_selector {}
-
-    policy_types = ["Ingress", "Egress"]
-
-    ingress {
-      from {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace.instance.metadata[0].name
-          }
-        }
-      }
-      from {
-        namespace_selector {
-          match_labels = {
-            "name" = "ingress-nginx"
-          }
-        }
-      }
-    }
-
-    egress {
-      to {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace.instance.metadata[0].name
-          }
-        }
-      }
-    }
-
-    egress {
-      to {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = "kube-system"
-          }
-        }
-        pod_selector {
-          match_labels = {
-            "k8s-app" = "kube-dns"
-          }
-        }
-      }
-      ports {
-        protocol = "UDP"
-        port     = "53"
-      }
-      ports {
-        protocol = "TCP"
-        port     = "53"
-      }
-    }
-
-    egress {
-      to {
-        ip_block {
-          cidr = var.vpc_cidr
-        }
-      }
-      ports {
-        protocol = "TCP"
-        port     = "5432"
-      }
-    }
-
-    egress {
-      to {
-        ip_block {
-          cidr = var.vpc_cidr
-        }
-      }
-      ports {
-        protocol = "TCP"
-        port     = "6379"
-      }
-    }
-  }
 }
 
 # -----------------------------------------------------------------------------
@@ -452,8 +324,9 @@ locals {
 # -----------------------------------------------------------------------------
 
 resource "aws_secretsmanager_secret" "database" {
-  name = "${local.secrets_prefix}/database"
-  tags = local.aws_tags
+  name                    = "${local.secrets_prefix}/database"
+  recovery_window_in_days = var.environment == "production" ? 7 : 0
+  tags                    = local.aws_tags
 }
 
 resource "aws_secretsmanager_secret_version" "database" {
@@ -462,8 +335,9 @@ resource "aws_secretsmanager_secret_version" "database" {
 }
 
 resource "aws_secretsmanager_secret" "redis" {
-  name = "${local.secrets_prefix}/redis"
-  tags = local.aws_tags
+  name                    = "${local.secrets_prefix}/redis"
+  recovery_window_in_days = var.environment == "production" ? 7 : 0
+  tags                    = local.aws_tags
 }
 
 resource "aws_secretsmanager_secret_version" "redis" {
@@ -472,8 +346,9 @@ resource "aws_secretsmanager_secret_version" "redis" {
 }
 
 resource "aws_secretsmanager_secret" "instance_config" {
-  name = "${local.secrets_prefix}/instance-config"
-  tags = local.aws_tags
+  name                    = "${local.secrets_prefix}/instance-config"
+  recovery_window_in_days = var.environment == "production" ? 7 : 0
+  tags                    = local.aws_tags
 }
 
 resource "aws_secretsmanager_secret_version" "instance_config" {
@@ -482,8 +357,9 @@ resource "aws_secretsmanager_secret_version" "instance_config" {
 }
 
 resource "aws_secretsmanager_secret" "s3" {
-  name = "${local.secrets_prefix}/s3"
-  tags = local.aws_tags
+  name                    = "${local.secrets_prefix}/s3"
+  recovery_window_in_days = var.environment == "production" ? 7 : 0
+  tags                    = local.aws_tags
 }
 
 resource "aws_secretsmanager_secret_version" "s3" {
@@ -502,10 +378,12 @@ locals {
 # Kubernetes Secrets
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_secret" "database" {
+resource "kubernetes_secret_v1" "database" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "database-credentials"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -519,12 +397,16 @@ resource "kubernetes_secret" "database" {
     DB_PASSWORD = local.database_secret_data.DB_PASSWORD
     DB_URL      = local.database_secret_data.DB_URL
   }
+
+  depends_on = [module.eks]
 }
 
-resource "kubernetes_secret" "redis" {
+resource "kubernetes_secret_v1" "redis" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "redis-credentials"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -536,12 +418,16 @@ resource "kubernetes_secret" "redis" {
     REDIS_URL  = local.redis_secret_data.REDIS_URL
     REDIS_TLS  = "false"
   }
+
+  depends_on = [module.eks]
 }
 
-resource "kubernetes_secret" "instance_config" {
+resource "kubernetes_secret_v1" "instance_config" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-config"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -558,6 +444,8 @@ resource "kubernetes_secret" "instance_config" {
     INSTANCE_DOMAIN     = local.instance_config_secret_data.INSTANCE_DOMAIN
     JWT_SECRET          = random_password.jwt_secret.result
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
@@ -605,6 +493,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "instance" {
   rule {
     id     = "archive-old-versions"
     status = "Enabled"
+    filter {}
 
     noncurrent_version_transition {
       noncurrent_days = 30
@@ -624,6 +513,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "instance" {
   rule {
     id     = "cleanup-incomplete-uploads"
     status = "Enabled"
+    filter {}
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
@@ -662,21 +552,26 @@ resource "aws_iam_policy" "instance_storage" {
   policy = data.aws_iam_policy_document.instance_storage.json
 }
 
+# Extract OIDC host from the cluster issuer URL for IRSA
+locals {
+  oidc_provider_host = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
+}
+
 data "aws_iam_policy_document" "workload_assume" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [var.eks_oidc_provider_arn]
+      identifiers = [module.eks.oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"
-      variable = "${var.eks_oidc_provider_host}:sub"
-      values   = ["system:serviceaccount:${local.namespace}:hubblewave-workload"]
+      variable = "${local.oidc_provider_host}:sub"
+      values   = ["system:serviceaccount:default:hubblewave-workload"]
     }
     condition {
       test     = "StringEquals"
-      variable = "${var.eks_oidc_provider_host}:aud"
+      variable = "${local.oidc_provider_host}:aud"
       values   = ["sts.amazonaws.com"]
     }
   }
@@ -697,10 +592,12 @@ resource "aws_iam_role_policy_attachment" "workload_storage" {
 # S3 Access for Kubernetes
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_secret" "s3_credentials" {
+resource "kubernetes_secret_v1" "s3_credentials" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "s3-credentials"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -710,16 +607,20 @@ resource "kubernetes_secret" "s3_credentials" {
     S3_BUCKET = local.s3_secret_data.S3_BUCKET
     S3_REGION = local.s3_secret_data.S3_REGION
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # ConfigMap for Application Settings
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_config_map" "app_config" {
+resource "kubernetes_config_map_v1" "app_config" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "app-config"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -731,26 +632,22 @@ resource "kubernetes_config_map" "app_config" {
     ENABLE_SWAGGER     = var.environment != "production" ? "true" : "false"
     JWT_EXPIRES_IN     = "15m"
     REFRESH_EXPIRES_IN = "7d"
+    DB_SSL             = "true"
   }
-}
 
-resource "cloudflare_record" "instance" {
-  zone_id = var.cloudflare_zone_id
-  name    = local.instance_domain
-  type    = "CNAME"
-  content = var.instance_ingress_hostname
-  ttl     = 300
-  proxied = false
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # Service Account for Workloads
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_service_account" "workload" {
+resource "kubernetes_service_account_v1" "workload" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "hubblewave-workload"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
 
     annotations = {
@@ -759,37 +656,20 @@ resource "kubernetes_service_account" "workload" {
   }
 
   automount_service_account_token = true
-}
 
-# -----------------------------------------------------------------------------
-# ConfigMap for HPA Settings
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_config_map" "hpa_config" {
-  metadata {
-    name      = "hpa-config"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-  }
-
-  data = {
-    min_replicas        = tostring(local.tier_config.replicas)
-    max_replicas        = tostring(local.tier_config.replicas * 3)
-    cpu_target          = "70"
-    memory_target       = "80"
-    scale_up_cooldown   = "60"
-    scale_down_cooldown = "300"
-  }
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # Instance API Deployment
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_deployment" "api" {
+resource "kubernetes_deployment_v1" "api" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-api"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels = merge(local.common_labels, {
       "app.kubernetes.io/component" = "api"
     })
@@ -813,7 +693,12 @@ resource "kubernetes_deployment" "api" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.workload.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.workload.metadata[0].name
+
+        # Schedule on standard nodes
+        node_selector = {
+          "hubblewave.com/node-type" = "standard"
+        }
 
         container {
           name  = "api"
@@ -831,31 +716,31 @@ resource "kubernetes_deployment" "api" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.database.metadata[0].name
+              name = kubernetes_secret_v1.database.metadata[0].name
             }
           }
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.redis.metadata[0].name
+              name = kubernetes_secret_v1.redis.metadata[0].name
             }
           }
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.instance_config.metadata[0].name
+              name = kubernetes_secret_v1.instance_config.metadata[0].name
             }
           }
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.s3_credentials.metadata[0].name
+              name = kubernetes_secret_v1.s3_credentials.metadata[0].name
             }
           }
 
           env_from {
             config_map_ref {
-              name = kubernetes_config_map.app_config.metadata[0].name
+              name = kubernetes_config_map_v1.app_config.metadata[0].name
             }
           }
 
@@ -899,9 +784,9 @@ resource "kubernetes_deployment" "api" {
   depends_on = [
     aws_db_instance.instance,
     aws_elasticache_cluster.instance,
-    kubernetes_secret.database,
-    kubernetes_secret.redis,
-    kubernetes_secret.instance_config,
+    kubernetes_secret_v1.database,
+    kubernetes_secret_v1.redis,
+    kubernetes_secret_v1.instance_config,
   ]
 }
 
@@ -909,10 +794,12 @@ resource "kubernetes_deployment" "api" {
 # Instance Web Client Deployment
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_deployment" "web" {
+resource "kubernetes_deployment_v1" "web" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-web"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels = merge(local.common_labels, {
       "app.kubernetes.io/component" = "web"
     })
@@ -936,6 +823,11 @@ resource "kubernetes_deployment" "web" {
       }
 
       spec {
+        # Schedule on standard nodes
+        node_selector = {
+          "hubblewave.com/node-type" = "standard"
+        }
+
         container {
           name  = "web"
           image = "${var.container_registry_host}/hubblewave/instance/web-client:${var.instance_web_image_tag}"
@@ -977,16 +869,20 @@ resource "kubernetes_deployment" "web" {
       }
     }
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # Instance API Service
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_service" "api" {
+resource "kubernetes_service_v1" "api" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-api"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels = merge(local.common_labels, {
       "app.kubernetes.io/component" = "api"
     })
@@ -1012,16 +908,20 @@ resource "kubernetes_service" "api" {
 
     type = "ClusterIP"
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # Instance Web Service
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_service" "web" {
+resource "kubernetes_service_v1" "web" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-web"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels = merge(local.common_labels, {
       "app.kubernetes.io/component" = "web"
     })
@@ -1041,87 +941,8 @@ resource "kubernetes_service" "web" {
 
     type = "ClusterIP"
   }
-}
 
-# -----------------------------------------------------------------------------
-# Ingress for Instance
-# -----------------------------------------------------------------------------
-
-resource "kubernetes_ingress_v1" "instance" {
-  metadata {
-    name      = "instance-ingress"
-    namespace = kubernetes_namespace.instance.metadata[0].name
-    labels    = local.common_labels
-
-    annotations = {
-      "kubernetes.io/ingress.class"                    = "nginx"
-      "cert-manager.io/cluster-issuer"                 = var.cert_manager_issuer
-      "nginx.ingress.kubernetes.io/ssl-redirect"       = "true"
-      "nginx.ingress.kubernetes.io/proxy-body-size"    = "50m"
-      "nginx.ingress.kubernetes.io/proxy-read-timeout" = "300"
-    }
-  }
-
-  spec {
-    tls {
-      hosts       = [local.instance_domain]
-      secret_name = "instance-tls-${var.customer_code}"
-    }
-
-    rule {
-      host = local.instance_domain
-
-      http {
-        # AVA API route (conditional on GPU enabled)
-        dynamic "path" {
-          for_each = local.gpu_enabled_effective ? [1] : []
-          content {
-            path      = "/api/ava"
-            path_type = "Prefix"
-
-            backend {
-              service {
-                name = kubernetes_service.ava[0].metadata[0].name
-                port {
-                  number = 80
-                }
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/api"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.api.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.web.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [cloudflare_record.instance]
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
@@ -1129,9 +950,11 @@ resource "kubernetes_ingress_v1" "instance" {
 # -----------------------------------------------------------------------------
 
 resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-api-hpa"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -1139,7 +962,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
     scale_target_ref {
       api_version = "apps/v1"
       kind        = "Deployment"
-      name        = kubernetes_deployment.api.metadata[0].name
+      name        = kubernetes_deployment_v1.api.metadata[0].name
     }
 
     min_replicas = var.api_replicas
@@ -1188,6 +1011,8 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
       }
     }
   }
+
+  depends_on = [helm_release.metrics_server]
 }
 
 # -----------------------------------------------------------------------------
@@ -1195,9 +1020,11 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
 # -----------------------------------------------------------------------------
 
 resource "kubernetes_pod_disruption_budget_v1" "api" {
+  provider = kubernetes.instance
+
   metadata {
     name      = "instance-api-pdb"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -1211,4 +1038,6 @@ resource "kubernetes_pod_disruption_budget_v1" "api" {
       }
     }
   }
+
+  depends_on = [module.eks]
 }

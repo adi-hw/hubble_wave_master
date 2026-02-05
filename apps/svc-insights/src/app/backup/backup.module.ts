@@ -6,7 +6,7 @@ import { BackupController } from './backup.controller';
 import { BackupService } from './backup.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog]), StorageModule],
+  imports: [TypeOrmModule.forFeature([AuditLog]), StorageModule.forRoot()],
   controllers: [BackupController],
   providers: [BackupService],
 })

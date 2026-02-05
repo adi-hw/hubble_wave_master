@@ -128,8 +128,8 @@ export const ApiExplorerPage: React.FC = () => {
       });
 
       setEndpoints(parsedEndpoints);
-    } catch (error) {
-      console.error('Error fetching API spec:', error);
+    } catch {
+      // API spec fetch failed - endpoints remain empty
     } finally {
       setLoading(false);
     }
@@ -146,8 +146,8 @@ export const ApiExplorerPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch API keys');
       const data = await response.json();
       setApiKeys(data.items || []);
-    } catch (error) {
-      console.error('Error fetching API keys:', error);
+    } catch {
+      // API keys fetch failed - keys remain empty
     }
   };
 
@@ -245,8 +245,8 @@ export const ApiExplorerPage: React.FC = () => {
       const data = await response.json();
       setCreatedKeySecret(data.secret || data.key || null);
       fetchApiKeys();
-    } catch (error) {
-      console.error('Error creating API key:', error);
+    } catch {
+      // API key creation failed - secret remains null
     } finally {
       setCreateLoading(false);
     }

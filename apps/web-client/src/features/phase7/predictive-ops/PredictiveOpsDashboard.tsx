@@ -67,8 +67,8 @@ export const PredictiveOpsDashboard: React.FC = () => {
     try {
       const data = await predictiveOpsApi.getDashboard();
       setDashboard(data);
-    } catch (error) {
-      console.error('Failed to load dashboard:', error);
+    } catch {
+      // Dashboard load failed - UI shows loading skeleton
     } finally {
       setLoading(false);
     }
@@ -82,8 +82,8 @@ export const PredictiveOpsDashboard: React.FC = () => {
 
       const response = await predictiveOpsApi.getInsights(params);
       setInsights(response?.insights ?? []);
-    } catch (error) {
-      console.error('Failed to load insights:', error);
+    } catch {
+      // Insights load failed - UI shows empty state
       setInsights([]);
     }
   };
@@ -103,8 +103,8 @@ export const PredictiveOpsDashboard: React.FC = () => {
         loadInsights();
         setRunningAnalysis(null);
       }, 2000);
-    } catch (error) {
-      console.error('Failed to trigger analysis:', error);
+    } catch {
+      // Analysis trigger failed
       setRunningAnalysis(null);
     }
   };
@@ -114,8 +114,8 @@ export const PredictiveOpsDashboard: React.FC = () => {
       await predictiveOpsApi.resolveInsight(id, 'Resolved via dashboard');
       loadInsights();
       loadDashboard();
-    } catch (error) {
-      console.error('Failed to resolve insight:', error);
+    } catch {
+      // Resolve failed - insight remains open
     }
   };
 
@@ -124,8 +124,8 @@ export const PredictiveOpsDashboard: React.FC = () => {
       await predictiveOpsApi.dismissInsight(id, 'Dismissed via dashboard');
       loadInsights();
       loadDashboard();
-    } catch (error) {
-      console.error('Failed to dismiss insight:', error);
+    } catch {
+      // Dismiss failed - insight remains open
     }
   };
 

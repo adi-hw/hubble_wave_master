@@ -21,7 +21,7 @@ interface GenerateDocsDto {
 
 @ApiTags('Phase 7 - Living Documentation System')
 @ApiBearerAuth()
-@Controller('api/phase7/docs')
+@Controller('phase7/docs')
 @UseGuards(JwtAuthGuard)
 export class LivingDocsController {
   constructor(

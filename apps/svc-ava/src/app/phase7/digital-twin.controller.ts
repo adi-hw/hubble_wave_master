@@ -50,7 +50,7 @@ interface SensorReadingDto {
 
 @ApiTags('Phase 7 - Digital Twins & IoT Integration')
 @ApiBearerAuth()
-@Controller('api/phase7/digital-twins')
+@Controller('phase7/digital-twins')
 @UseGuards(JwtAuthGuard)
 export class DigitalTwinController {
   constructor(

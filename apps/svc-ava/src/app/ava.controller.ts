@@ -59,7 +59,7 @@ interface PreviewRequestDto {
 
 @ApiTags('AVA - AI Virtual Assistant')
 @ApiBearerAuth()
-@Controller('api/ava')
+@Controller('ava')
 @UseGuards(JwtAuthGuard)
 export class AVAController {
   constructor(
@@ -391,7 +391,7 @@ export class AVAController {
       userRole: user.roles?.[0],
     };
 
-    if (dto.action.type !== 'navigate' && !dto.previewId) {
+    if (!dto.previewId) {
       return {
         success: false,
         message: 'Preview is required before execution.',

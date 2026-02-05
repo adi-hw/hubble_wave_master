@@ -111,8 +111,8 @@ export const ProcessFlowEditorPage: React.FC = () => {
       setCollectionId(data.collectionId || '');
       setSteps(data.canvas?.nodes || []);
       setConnections(data.canvas?.connections || []);
-    } catch (error) {
-      console.error('Error fetching process flow:', error);
+    } catch {
+      // Fetch failed - loading state cleared
     } finally {
       setLoading(false);
     }
@@ -159,8 +159,8 @@ export const ProcessFlowEditorPage: React.FC = () => {
       if (isNew) {
         navigate(`/process-flows/${savedProcessFlow.id}`, { replace: true });
       }
-    } catch (error) {
-      console.error('Error saving process flow:', error);
+    } catch {
+      // Save failed - saving state cleared
     } finally {
       setSaving(false);
     }
@@ -176,8 +176,8 @@ export const ProcessFlowEditorPage: React.FC = () => {
 
       if (!response.ok) throw new Error('Failed to delete process flow');
       navigate('/process-flows');
-    } catch (error) {
-      console.error('Error deleting process flow:', error);
+    } catch {
+      // Delete failed - user remains on page
     }
   };
 
@@ -194,8 +194,8 @@ export const ProcessFlowEditorPage: React.FC = () => {
 
       const updated = await response.json();
       setProcessFlow({ ...processFlow, isActive: updated.isActive });
-    } catch (error) {
-      console.error('Error toggling process flow:', error);
+    } catch {
+      // Toggle failed - active state unchanged
     }
   };
 

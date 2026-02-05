@@ -69,20 +69,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
    * Fetch navigation for the current user
    */
   const fetchNavigation = useCallback(async (force = false) => {
-    // Skip if not authenticated, already fetched (unless forced), or currently fetching
-    console.log('[NavigationContext] fetchNavigation called', {
-      isAuthenticated,
-      force,
-      hasFetched: hasFetchedRef.current,
-      isFetching: isFetchingRef.current,
-      hasToken: !!token,
-      tokenLength: token?.length,
-    });
     if (!isAuthenticated) return;
-    if (!token) {
-      console.warn('[NavigationContext] No token available, skipping fetch');
-      return;
-    }
+    if (!token) return;
     if (!force && hasFetchedRef.current) return;
     if (isFetchingRef.current) return;
 
@@ -91,9 +79,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     setError(null);
 
     try {
-      // Use new navigation system
       const contextTags = getContextTags();
-      console.log('[NavigationContext] Fetching navigation with tags', contextTags);
       const [nav, profs] = await Promise.all([
         navigationService.getNavigation(contextTags),
         navigationService.getProfiles(),
@@ -101,10 +87,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       setNavigation(nav);
       setProfiles(profs);
       hasFetchedRef.current = true;
-    } catch (err) {
-      console.error('Failed to fetch navigation:', err);
+    } catch {
       setError('Failed to load navigation');
-      // Navigation stays null on error - no fallback
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
@@ -143,7 +127,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         hasFetchedRef.current = false;
         await fetchNavigation(true);
       } catch (err) {
-        console.error('Failed to switch profile:', err);
         throw err;
       }
     },
@@ -174,7 +157,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
           };
         });
       } catch (err) {
-        console.error('Failed to toggle favorite:', err);
         throw err;
       }
     },
@@ -198,14 +180,10 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         recentNavigationsRef.current.delete(moduleKey);
       }, 5000);
 
-      try {
-        // Fire and forget - don't wait for response
-        navigationService.recordNavigation(moduleKey).catch((err) => {
-          console.warn('Failed to record navigation:', err);
-        });
-      } catch (err) {
-        // Silently ignore errors - this is non-critical
-      }
+      // Fire and forget - don't wait for response, silently ignore errors
+      navigationService.recordNavigation(moduleKey).catch(() => {
+        // Non-critical operation - silent failure acceptable
+      });
     },
     []
   );

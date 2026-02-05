@@ -48,8 +48,8 @@ export const PredictiveUIPanel: React.FC<PredictiveUIPanelProps> = ({
     try {
       const response = await predictiveUIApi.getSuggestions(context);
       setSuggestions(response.suggestions);
-    } catch (error) {
-      console.error('Failed to load suggestions:', error);
+    } catch {
+      // Suggestions load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -59,8 +59,8 @@ export const PredictiveUIPanel: React.FC<PredictiveUIPanelProps> = ({
     try {
       await predictiveUIApi.applySuggestion(suggestion.id);
       loadSuggestions();
-    } catch (error) {
-      console.error('Failed to apply suggestion:', error);
+    } catch {
+      // Apply failed - suggestion remains
     }
   };
 
@@ -68,16 +68,16 @@ export const PredictiveUIPanel: React.FC<PredictiveUIPanelProps> = ({
     try {
       await predictiveUIApi.dismissSuggestion(suggestion.id);
       setSuggestions(suggestions.filter(s => s.id !== suggestion.id));
-    } catch (error) {
-      console.error('Failed to dismiss suggestion:', error);
+    } catch {
+      // Dismiss failed - suggestion remains
     }
   };
 
   const handleProvideFeedback = async (suggestionId: string, helpful: boolean) => {
     try {
       await predictiveUIApi.provideFeedback(suggestionId, helpful);
-    } catch (error) {
-      console.error('Failed to provide feedback:', error);
+    } catch {
+      // Feedback submission failed - non-critical
     }
   };
 

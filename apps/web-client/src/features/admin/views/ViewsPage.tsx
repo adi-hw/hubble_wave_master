@@ -123,8 +123,8 @@ export const ViewsPage: React.FC = () => {
 
       const viewList = await viewApi.listDefinitions({ collection: collectionRes.data.code });
       setViews(viewList);
-    } catch (err) {
-      console.error('Failed to load views', err);
+    } catch {
+      // Load failed - show error state
       setError('Failed to load views. Please try again.');
     } finally {
       setLoading(false);
@@ -196,8 +196,8 @@ export const ViewsPage: React.FC = () => {
       await viewApi.publish(code);
       closeEditor();
       loadViews();
-    } catch (err) {
-      console.error('Failed to save view', err);
+    } catch {
+      // Save failed - show error state
       setError('Failed to save view. Please try again.');
     } finally {
       setSaving(false);

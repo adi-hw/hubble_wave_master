@@ -156,8 +156,14 @@ async function bootstrap() {
     })
   );
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/identity';
   app.setGlobalPrefix(globalPrefix);
+
+  // Add health check endpoint at /api/health for ALB health checks
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api/health', (_req: any, res: any) => {
+    res.status(200).json({ status: 'ok', service: 'svc-identity' });
+  });
 
   // Swagger Configuration (disable in prod unless explicitly enabled)
   const swaggerEnabled =

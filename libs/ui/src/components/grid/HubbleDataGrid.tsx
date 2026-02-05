@@ -50,6 +50,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from './utils/cn';
 import { GridProvider } from './context/GridProvider';
 import { GridToolbar } from './toolbar/GridToolbar';
+import { BulkActionToolbar } from './toolbar/BulkActionToolbar';
 import { InlineFilterPanel, FilterState } from './toolbar/InlineFilterPanel';
 import { InlineColumnPanel } from './toolbar/InlineColumnPanel';
 import { AvaAssistBar } from './ava/AvaAssistBar';
@@ -72,6 +73,7 @@ import type {
   AvaInsight,
   AvaGridCommand,
   GridContext,
+  BulkAction,
 } from './types';
 
 // Grid styles + tokens for layout (required for header/row sizing)
@@ -375,7 +377,8 @@ export function HubbleDataGrid<TData extends GridRowData>({
   enableExport = true,
   enableSearch = true,
   enableQuickFilters: _enableQuickFilters = false,
-  enableBulkActions: _enableBulkActions = true,
+  enableBulkActions = true,
+  bulkActions,
   columnResizeMode = 'onEnd',
 
   // AVA Integration
@@ -438,7 +441,6 @@ export function HubbleDataGrid<TData extends GridRowData>({
   void _hoverRows;
   void _onColumnResize;
   void _enableQuickFilters;
-  void _enableBulkActions;
   void _avaContext;
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -473,6 +475,7 @@ export function HubbleDataGrid<TData extends GridRowData>({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => initialFilters ?? []);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => initialColumnVisibility);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [selectedRowsData, setSelectedRowsData] = useState<TData[]>([]);
   const [grouping, setGrouping] = useState<GroupingState>(() => initialGrouping ?? []);
   const [expanded, setExpanded] = useState<ExpandedState>({});
   // Initialize column order with all column IDs to enable reordering
@@ -985,6 +988,7 @@ export function HubbleDataGrid<TData extends GridRowData>({
           type: col.type,
           format: col.format,
           options: col.options,
+          description: col.description,
         },
       }))
     );
@@ -1082,6 +1086,8 @@ export function HubbleDataGrid<TData extends GridRowData>({
           .map((id) => cache.get(id))
           .filter((row): row is TData => row !== undefined);
 
+        // Update internal state for bulk action toolbar
+        setSelectedRowsData(selectedRows);
         onSelectionChange?.(selectedRows);
 
         // Announce selection change for screen readers
@@ -1178,8 +1184,11 @@ export function HubbleDataGrid<TData extends GridRowData>({
   const pageEndRow = Math.min(pageStartRow + currentPageSize, effectiveTotalRowCount);
   const currentPageRowCount = Math.max(0, pageEndRow - pageStartRow);
 
+  // For SSRM mode, use the actual data length to avoid mismatches when filtering
+  // The effectiveData (windowData) contains the actual rows fetched from the server
+  // This prevents showing empty rows when the count is stale during filter transitions
   const virtualizerRowCount = ssrmEnabled
-    ? currentPageRowCount  // Only show current page's rows
+    ? Math.min(currentPageRowCount, effectiveData.length)  // Use actual data length to avoid showing empty rows
     : effectiveData.length;
 
   // Track scroll container height for virtualizer
@@ -1385,6 +1394,14 @@ export function HubbleDataGrid<TData extends GridRowData>({
     onRefresh?.();
   }, [isGrouped, refetch, refetchGrouped, onRefresh]);
 
+  // Clear row selection
+  const handleClearSelection = useCallback(() => {
+    setRowSelection({});
+    setSelectedRowsData([]);
+    selectedRowsCacheRef.current.clear();
+    setLiveAnnouncement('Selection cleared');
+  }, []);
+
   // Auto-size column based on content - tight fit algorithm
   const handleAutoSizeColumn = useCallback((columnId: string) => {
     // Get the column definition
@@ -1547,6 +1564,16 @@ export function HubbleDataGrid<TData extends GridRowData>({
             onShowFiltersChange={setShowInlineFilters}
             showColumns={showInlineColumns}
             onShowColumnsChange={setShowInlineColumns}
+          />
+        )}
+
+        {/* Bulk Action Toolbar - shows when rows are selected */}
+        {enableBulkActions && selectedRowsData.length > 0 && (
+          <BulkActionToolbar
+            selectedCount={selectedRowsData.length}
+            selectedRows={selectedRowsData}
+            bulkActions={bulkActions}
+            onClearSelection={handleClearSelection}
           />
         )}
 

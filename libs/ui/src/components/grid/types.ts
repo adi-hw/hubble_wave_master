@@ -356,6 +356,9 @@ export interface HubbleDataGridProps<TData extends GridRowData> {
   enableQuickFilters?: boolean;
   enableBulkActions?: boolean;
 
+  /** Bulk actions available when rows are selected */
+  bulkActions?: BulkAction<TData>[];
+
   /** Column resize mode - 'onChange' resizes while dragging, 'onEnd' resizes after releasing */
   columnResizeMode?: 'onChange' | 'onEnd';
 

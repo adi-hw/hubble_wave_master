@@ -170,7 +170,7 @@ export class ModelEvaluationService {
     metadata: Record<string, unknown>,
   ): Promise<void> {
     const event = this.analyticsRepo.create({
-      userId: userId || null,
+      userId: userId,
       eventType,
       eventCategory: 'modelops',
       eventAction: eventType.split('.').pop(),

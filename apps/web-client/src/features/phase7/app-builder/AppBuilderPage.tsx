@@ -52,8 +52,8 @@ export const AppBuilderPage: React.FC = () => {
     try {
       const response = await appBuilderApi.getApps();
       setApps(response.apps);
-    } catch (error) {
-      console.error('Failed to load apps:', error);
+    } catch {
+      // Apps load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -73,8 +73,8 @@ export const AppBuilderPage: React.FC = () => {
       setNewAppDescription('');
       setNewAppPrompt('');
       loadApps();
-    } catch (error) {
-      console.error('Failed to generate app:', error);
+    } catch {
+      // Generation failed - modal remains open
     } finally {
       setGenerating(false);
     }
@@ -84,8 +84,8 @@ export const AppBuilderPage: React.FC = () => {
     try {
       await appBuilderApi.deployApp(appId);
       loadApps();
-    } catch (error) {
-      console.error('Failed to deploy app:', error);
+    } catch {
+      // Deploy failed - app status unchanged
     }
   };
 
@@ -93,8 +93,8 @@ export const AppBuilderPage: React.FC = () => {
     try {
       await appBuilderApi.deleteApp(appId);
       loadApps();
-    } catch (error) {
-      console.error('Failed to delete app:', error);
+    } catch {
+      // Delete failed - app remains in list
     }
   };
 

@@ -24,18 +24,24 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   readonly name = 'vllm';
   private readonly logger = new Logger(VLLMProvider.name);
   private baseUrl: string;
+  private embeddingUrl: string;
   private defaultModel: string;
   private embeddingModel: string;
   private apiKey: string;
   private available = false;
+  private embeddingsAvailable = false;
 
   constructor() {
     this.baseUrl = process.env['VLLM_BASE_URL'] || process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434';
+    this.embeddingUrl = process.env['EMBEDDING_SERVICE_URL'] || this.baseUrl;
     this.defaultModel = process.env['VLLM_DEFAULT_MODEL'] || process.env['OLLAMA_MODEL'] || 'llama3:latest';
-    this.embeddingModel = process.env['VLLM_EMBEDDING_MODEL'] || process.env['OLLAMA_EMBEDDING_MODEL'] || 'nomic-embed-text';
+    this.embeddingModel = process.env['VLLM_EMBEDDING_MODEL'] || process.env['OLLAMA_EMBEDDING_MODEL'] || 'BAAI/bge-small-en-v1.5';
     this.apiKey = process.env['VLLM_API_KEY'] || '';
 
     this.logger.log(`LLM Provider initialized - URL: ${this.baseUrl}, Model: ${this.defaultModel}`);
+    if (this.embeddingUrl !== this.baseUrl) {
+      this.logger.log(`Embedding Service: ${this.embeddingUrl}, Model: ${this.embeddingModel}`);
+    }
   }
 
   async onModuleInit() {
@@ -222,49 +228,92 @@ export class VLLMProvider implements ILLMProvider, OnModuleInit {
   }
 
   async embed(text: string): Promise<LLMEmbeddingResponse> {
-    const response = await fetch(this.getApiUrl('/embeddings'), {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({
+    try {
+      // Use dedicated embedding service if configured, otherwise use vLLM
+      const embeddingEndpoint = this.embeddingUrl !== this.baseUrl
+        ? `${this.embeddingUrl}/embed`  // TEI uses /embed endpoint
+        : this.getApiUrl('/embeddings');
+
+      const body = this.embeddingUrl !== this.baseUrl
+        ? JSON.stringify({ inputs: text })  // TEI format
+        : JSON.stringify({ model: this.embeddingModel, input: text });  // OpenAI format
+
+      const response = await fetch(embeddingEndpoint, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body,
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Embeddings not available. RAG features disabled.`);
+        return { embedding: [], model: this.embeddingModel };
+      }
+
+      const data = await response.json();
+
+      // Handle both TEI format (array of embeddings) and OpenAI format
+      const embedding = Array.isArray(data)
+        ? data[0]  // TEI returns array directly
+        : data.data?.[0]?.embedding || [];
+
+      if (!this.embeddingsAvailable && embedding.length > 0) {
+        this.embeddingsAvailable = true;
+        this.logger.log(`Embeddings enabled with ${embedding.length} dimensions`);
+      }
+
+      return {
+        embedding,
         model: this.embeddingModel,
-        input: text,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`vLLM embedding failed: ${response.statusText}`);
+        tokenCount: data.usage?.total_tokens,
+      };
+    } catch (error) {
+      this.logger.warn(`Embedding generation failed: ${error}. RAG features disabled.`);
+      return { embedding: [], model: this.embeddingModel };
     }
-
-    const data = await response.json();
-    const embedding = data.data?.[0]?.embedding || [];
-
-    return {
-      embedding,
-      model: this.embeddingModel,
-      tokenCount: data.usage?.total_tokens,
-    };
   }
 
   async embedBatch(texts: string[]): Promise<LLMEmbeddingResponse[]> {
-    // vLLM supports batch embeddings natively
-    const response = await fetch(this.getApiUrl('/embeddings'), {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({
+    try {
+      // Use dedicated embedding service if configured
+      const embeddingEndpoint = this.embeddingUrl !== this.baseUrl
+        ? `${this.embeddingUrl}/embed`
+        : this.getApiUrl('/embeddings');
+
+      const body = this.embeddingUrl !== this.baseUrl
+        ? JSON.stringify({ inputs: texts })
+        : JSON.stringify({ model: this.embeddingModel, input: texts });
+
+      const response = await fetch(embeddingEndpoint, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body,
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Batch embeddings not available`);
+        return texts.map(() => ({ embedding: [], model: this.embeddingModel }));
+      }
+
+      const data = await response.json();
+
+      // Handle both TEI format and OpenAI format
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        // TEI returns array of embedding arrays
+        return data.map((embedding: number[]) => ({
+          embedding,
+          model: this.embeddingModel,
+        }));
+      }
+
+      // OpenAI format
+      return (data.data || []).map((item: { embedding: number[]; index: number }) => ({
+        embedding: item.embedding,
         model: this.embeddingModel,
-        input: texts,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`vLLM batch embedding failed: ${response.statusText}`);
+      }));
+    } catch (error) {
+      this.logger.warn(`Batch embedding failed: ${error}`);
+      return texts.map(() => ({ embedding: [], model: this.embeddingModel }));
     }
-
-    const data = await response.json();
-    return (data.data || []).map((item: { embedding: number[]; index: number }) => ({
-      embedding: item.embedding,
-      model: this.embeddingModel,
-    }));
   }
 
   private getHeaders(): Record<string, string> {

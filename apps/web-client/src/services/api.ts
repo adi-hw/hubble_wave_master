@@ -29,12 +29,6 @@ export function createApiClient(baseURL: string): AxiosInstance {
 
     // Add Authorization header if we have a token
     const token = getStoredToken();
-    console.log('[API] Request interceptor', {
-      url: config.url,
-      baseURL,
-      hasToken: !!token,
-      tokenLength: token?.length,
-    });
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -73,13 +67,8 @@ export function createApiClient(baseURL: string): AxiosInstance {
         // Only attempt refresh if we have an access token (user was logged in)
         // If no token exists, user needs to log in - don't bother trying refresh
         const currentToken = getStoredToken();
-        console.log('[API] 401 response interceptor', {
-          url: requestUrl,
-          hasToken: !!currentToken,
-          tokenLength: currentToken?.length,
-        });
         if (!currentToken) {
-          console.error('[API] No token on 401, redirecting to login');
+          // No token on 401 - redirect to login
           sessionStorage.setItem('auth_debug', JSON.stringify({
             time: new Date().toISOString(),
             reason: 'no_token_on_401',

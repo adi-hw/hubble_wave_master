@@ -15,6 +15,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  NotImplementedException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -930,13 +931,12 @@ export class CollectionService {
    * Clone a collection.
    */
   async cloneCollection(
-    collectionId: string,
+    _collectionId: string,
     _newCode: string,
     _newLabel: string,
     _userId?: string
   ): Promise<CollectionDefinition> {
-    // Cloning disabled in trimmed build; return original collection
-    return this.getCollection(collectionId);
+    throw new NotImplementedException('Collection cloning is not available');
   }
 
   // --------------------------------------------------------------------------
@@ -1148,16 +1148,32 @@ export class CollectionService {
    * Get audit log for a collection
    */
   async getAuditLog(
-    _collectionId: string,
+    collectionId: string,
     options: { page?: number; limit?: number } = {}
   ) {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const auditRepo = this.dataSource.getRepository(AuditLog);
+
+    const [data, total] = await auditRepo.findAndCount({
+      where: {
+        entityType: 'collection',
+        entityId: collectionId,
+      },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+
     return {
-      data: [],
+      data,
       pagination: {
-        page: 1,
-        limit: options.limit || 20,
-        total: 0,
-        totalPages: 0,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }

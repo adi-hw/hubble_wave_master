@@ -1,13 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ChevronRight, ChevronDown, GitBranch, Loader2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { FieldComponentProps } from '../types';
 import { FieldWrapper } from './FieldWrapper';
+import { useAuth } from '../../../auth/AuthContext';
 
 interface HierarchicalConfig {
   parentProperty?: string;
   maxDepth?: number;
   displayMode?: 'tree' | 'path' | 'breadcrumb' | 'flat';
   pathSeparator?: string;
+  referenceCollection?: string;
 }
 
 interface TreeNode {
@@ -34,15 +37,62 @@ export const HierarchicalField: React.FC<FieldComponentProps<string>> = ({
   readOnly,
   error,
 }) => {
+  const { token } = useAuth();
   const config = field.config as HierarchicalConfig | undefined;
   const displayMode = config?.displayMode ?? 'path';
   const pathSeparator = config?.pathSeparator ?? ' > ';
+  const referenceCollection = config?.referenceCollection || '';
+  const parentProperty = config?.parentProperty || 'parent';
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [treeData, setTreeData] = useState<TreeNode | null>(null);
+  const [currentPath, setCurrentPath] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Mock path data - in production this would come from the API
-  const currentPath = value ? ['Root', 'Category', String(value)] : [];
+  useEffect(() => {
+    if (!referenceCollection) return;
+
+    const fetchTreeData = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/data/${referenceCollection}/hierarchy?parentProperty=${parentProperty}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTreeData(data);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTreeData();
+  }, [referenceCollection, parentProperty, token]);
+
+  useEffect(() => {
+    if (!value || !referenceCollection) {
+      setCurrentPath([]);
+      return;
+    }
+
+    const fetchPath = async () => {
+      try {
+        const response = await fetch(`/api/data/${referenceCollection}/${value}/path`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const pathData = await response.json();
+          setCurrentPath(pathData.path || []);
+        }
+      } catch {
+        setCurrentPath([]);
+      }
+    };
+
+    fetchPath();
+  }, [value, referenceCollection, token]);
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpandedNodes((prev) => {
@@ -62,9 +112,7 @@ export const HierarchicalField: React.FC<FieldComponentProps<string>> = ({
         <React.Fragment key={index}>
           {index > 0 && (
             <span className="text-muted-foreground">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight className="w-4 h-4" />
             </span>
           )}
           <button
@@ -87,22 +135,14 @@ export const HierarchicalField: React.FC<FieldComponentProps<string>> = ({
   const renderPath = () => (
     <div className="flex items-center gap-1">
       <span className="flex-shrink-0" title="Hierarchy">
-        <svg
-          className="w-4 h-4 text-warning-text"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-          />
-        </svg>
+        <GitBranch className="w-4 h-4 text-muted-foreground" />
       </span>
       <span className="flex-1 truncate">
-        {currentPath.length > 0 ? currentPath.join(pathSeparator) : (
+        {loading ? (
+          <span className="text-muted-foreground">Loading...</span>
+        ) : currentPath.length > 0 ? (
+          currentPath.join(pathSeparator)
+        ) : (
           <span className="text-muted-foreground">No selection</span>
         )}
       </span>
@@ -111,21 +151,24 @@ export const HierarchicalField: React.FC<FieldComponentProps<string>> = ({
 
   const renderTree = () => (
     <div className="space-y-1 max-h-48 overflow-y-auto">
-      {/* Mock tree data - in production this would come from API */}
-      <TreeItem
-        node={{ id: 'root', label: 'Root', level: 0, children: [
-          { id: 'cat1', label: 'Category 1', level: 1, children: [
-            { id: 'sub1', label: 'Subcategory 1.1', level: 2 },
-            { id: 'sub2', label: 'Subcategory 1.2', level: 2 },
-          ]},
-          { id: 'cat2', label: 'Category 2', level: 1 },
-        ]}}
-        selectedId={value}
-        expandedNodes={expandedNodes}
-        onToggle={toggleNode}
-        onSelect={(id) => onChange(id)}
-        disabled={disabled || readOnly}
-      />
+      {loading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : treeData ? (
+        <TreeItem
+          node={treeData}
+          selectedId={value}
+          expandedNodes={expandedNodes}
+          onToggle={toggleNode}
+          onSelect={(id) => onChange(id)}
+          disabled={disabled || readOnly}
+        />
+      ) : (
+        <div className="px-2 py-4 text-sm text-muted-foreground">
+          No hierarchical data available
+        </div>
+      )}
     </div>
   );
 
@@ -150,14 +193,9 @@ export const HierarchicalField: React.FC<FieldComponentProps<string>> = ({
         >
           {displayMode === 'breadcrumb' ? renderBreadcrumb() : renderPath()}
           {!readOnly && !disabled && (
-            <svg
+            <ChevronDown
               className={cn('w-4 h-4 transition-transform text-muted-foreground', isExpanded && 'rotate-180')}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            />
           )}
         </button>
 
@@ -212,14 +250,9 @@ const TreeItem: React.FC<TreeItemProps> = ({
             className="p-0.5"
             disabled={disabled}
           >
-            <svg
-              className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight
+              className={cn('w-3 h-3 transition-transform', isExpanded && 'rotate-90')}
+            />
           </button>
         ) : (
           <span className="w-4" />

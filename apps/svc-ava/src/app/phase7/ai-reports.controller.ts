@@ -33,7 +33,7 @@ interface CreateTemplateDto {
 
 @ApiTags('Phase 7 - AI Report Generator')
 @ApiBearerAuth()
-@Controller('api/phase7/reports')
+@Controller('phase7/reports')
 @UseGuards(JwtAuthGuard)
 export class AIReportsController {
   constructor(

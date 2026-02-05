@@ -376,7 +376,6 @@ export const ThemePreferenceProvider: React.FC<ThemePreferenceProviderProps> = (
           preference = await uiService.getThemePreference();
         } catch {
           // If preference fails (e.g., 401), use default theme
-          console.debug('Could not load theme preference, using default theme');
         }
 
         if (!isMounted) return;
@@ -397,8 +396,8 @@ export const ThemePreferenceProvider: React.FC<ThemePreferenceProviderProps> = (
         const result = resolveTheme(themeList, preference);
         setResolved(result.resolved);
         setCurrentTheme(result.theme);
-      } catch (err) {
-        console.warn('Failed to load themes', err);
+      } catch {
+        // Theme load failed - using defaults
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -436,9 +435,8 @@ export const ThemePreferenceProvider: React.FC<ThemePreferenceProviderProps> = (
             return currentThemes;
           });
         })
-        .catch((err) => {
-          console.debug('Could not save theme preference to backend:', err);
-          // Keep the optimistic update - theme is applied locally
+        .catch(() => {
+          // Preference save failed - keeping optimistic local update
         });
 
       return optimisticPref;

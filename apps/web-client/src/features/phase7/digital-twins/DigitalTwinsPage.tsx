@@ -59,8 +59,8 @@ export const DigitalTwinsPage: React.FC = () => {
       if (twinsList.length > 0 && !selectedTwin) {
         setSelectedTwin(twinsList[0]);
       }
-    } catch (error) {
-      console.error('Failed to load twins:', error);
+    } catch {
+      // Twins load failed - list remains empty
       setTwins([]);
     } finally {
       setLoading(false);
@@ -74,8 +74,8 @@ export const DigitalTwinsPage: React.FC = () => {
         from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       });
       setReadings(response?.readings ?? []);
-    } catch (error) {
-      console.error('Failed to load readings:', error);
+    } catch {
+      // Readings load failed - list remains empty
       setReadings([]);
     } finally {
       setReadingsLoading(false);
@@ -97,8 +97,8 @@ export const DigitalTwinsPage: React.FC = () => {
       setCreateModalOpen(false);
       setNewTwin({ name: '', description: '', assetId: '', assetType: '' });
       loadTwins();
-    } catch (error) {
-      console.error('Failed to create twin:', error);
+    } catch {
+      // Create failed - modal remains open
     } finally {
       setCreating(false);
     }
@@ -111,8 +111,8 @@ export const DigitalTwinsPage: React.FC = () => {
         setSelectedTwin(null);
       }
       loadTwins();
-    } catch (error) {
-      console.error('Failed to delete twin:', error);
+    } catch {
+      // Delete failed - twin remains in list
     }
   };
 
@@ -121,8 +121,8 @@ export const DigitalTwinsPage: React.FC = () => {
     try {
       const response = await digitalTwinsApi.getCurrentState(selectedTwin.id);
       setSelectedTwin({ ...selectedTwin, currentState: response.state });
-    } catch (error) {
-      console.error('Failed to refresh state:', error);
+    } catch {
+      // State refresh failed
     }
   };
 

@@ -45,7 +45,7 @@ interface RecoveryActionDto {
 
 @ApiTags('Phase 7 - Self-Healing Infrastructure')
 @ApiBearerAuth()
-@Controller('api/phase7/self-healing')
+@Controller('phase7/self-healing')
 @UseGuards(JwtAuthGuard)
 export class SelfHealingController {
   constructor(

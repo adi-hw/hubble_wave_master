@@ -322,6 +322,14 @@ export function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/studio/collections/:id/automation-logs"
+            element={
+              <ProtectedRoute roles="admin">
+                <AutomationLogsPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Admin - Enterprise Features */}
           <Route

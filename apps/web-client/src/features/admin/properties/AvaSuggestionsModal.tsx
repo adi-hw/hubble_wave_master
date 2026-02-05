@@ -38,8 +38,8 @@ export const AvaSuggestionsModal: React.FC<AvaSuggestionsModalProps> = ({
       const sampleList = samples.split('\n').filter((s) => s.trim());
       const detection = await propertyApi.detectType(collectionId, sampleList);
       setResult(detection);
-    } catch (error) {
-      console.error('Failed to detect type', error);
+    } catch {
+      // Type detection failed - result remains null
     } finally {
       setLoading(false);
     }

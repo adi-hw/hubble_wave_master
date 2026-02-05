@@ -24,12 +24,13 @@ locals {
 # AVA ConfigMap
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_config_map" "ava_config" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_config_map_v1" "ava_config" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = "ava-config"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.ava_labels
   }
 
@@ -67,18 +68,21 @@ resource "kubernetes_config_map" "ava_config" {
     # CORS
     CORS_ORIGINS = var.cors_origins
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # AVA Deployment
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_deployment" "ava" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_deployment_v1" "ava" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = local.ava_name
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.ava_labels
   }
 
@@ -98,7 +102,12 @@ resource "kubernetes_deployment" "ava" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.workload.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.workload.metadata[0].name
+
+        # Schedule on standard nodes (AVA calls vLLM via HTTP, no GPU needed)
+        node_selector = {
+          "hubblewave.com/node-type" = "standard"
+        }
 
         container {
           name  = "ava"
@@ -116,25 +125,25 @@ resource "kubernetes_deployment" "ava" {
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.database.metadata[0].name
+              name = kubernetes_secret_v1.database.metadata[0].name
             }
           }
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.redis.metadata[0].name
+              name = kubernetes_secret_v1.redis.metadata[0].name
             }
           }
 
           env_from {
             secret_ref {
-              name = kubernetes_secret.instance_config.metadata[0].name
+              name = kubernetes_secret_v1.instance_config.metadata[0].name
             }
           }
 
           env_from {
             config_map_ref {
-              name = kubernetes_config_map.ava_config[0].metadata[0].name
+              name = kubernetes_config_map_v1.ava_config[0].metadata[0].name
             }
           }
 
@@ -175,9 +184,11 @@ resource "kubernetes_deployment" "ava" {
     }
   }
 
+  wait_for_rollout = false
+
   depends_on = [
-    kubernetes_deployment.vllm,
-    kubernetes_service.vllm,
+    kubernetes_deployment_v1.vllm,
+    kubernetes_service_v1.vllm,
   ]
 }
 
@@ -185,12 +196,13 @@ resource "kubernetes_deployment" "ava" {
 # AVA Service
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_service" "ava" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_service_v1" "ava" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = local.ava_name
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.ava_labels
   }
 
@@ -214,4 +226,6 @@ resource "kubernetes_service" "ava" {
 
     type = "ClusterIP"
   }
+
+  depends_on = [module.eks]
 }

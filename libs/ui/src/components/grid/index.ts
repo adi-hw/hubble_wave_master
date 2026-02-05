@@ -65,6 +65,8 @@ export type {
   OnCellEditComplete,
   OnCellEditStart,
   OnCellEditCancel,
+  // Bulk actions
+  BulkAction,
 } from './types';
 
 // Utility functions
@@ -85,6 +87,8 @@ export type { UseGridEditingOptions, UseGridEditingReturn } from './hooks/useGri
 export { GridHeader, SelectAllCheckbox } from './header/GridHeader';
 export { GridBody } from './body/GridBody';
 export { GridToolbar } from './toolbar/GridToolbar';
+export { BulkActionToolbar } from './toolbar/BulkActionToolbar';
+export type { BulkActionToolbarProps } from './toolbar/BulkActionToolbar';
 export { InlineFilterPanel } from './toolbar/InlineFilterPanel';
 export type { FilterState, FilterCondition, FilterGroup, LogicalOperator, FilterOperator } from './toolbar/InlineFilterPanel';
 export { InlineColumnPanel } from './toolbar/InlineColumnPanel';
@@ -148,3 +152,5 @@ export { GridDataManager } from './ssrm/GridDataManager';
 
 // Utility
 export { cn } from './utils/cn';
+export { TruncatedText } from './utils/TruncatedText';
+export type { TruncatedTextProps } from './utils/TruncatedText';

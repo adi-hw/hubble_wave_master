@@ -171,8 +171,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
     root.children = parts.map(parseNode).filter((n): n is FilterNode => n !== null);
 
     return root;
-  } catch (e) {
-    console.error('Failed to parse filter string:', e);
+  } catch {
+    // Parse failed - return empty filter group
     return root;
   }
 };
@@ -350,8 +350,8 @@ export const useFilterUrl = (options: UseFilterUrlOptions = {}): UseFilterUrlRet
       const url = getShareableUrl(state);
       await navigator.clipboard.writeText(url);
       return true;
-    } catch (e) {
-      console.error('Failed to copy URL:', e);
+    } catch {
+      // Clipboard copy failed
       return false;
     }
   }, [getShareableUrl]);

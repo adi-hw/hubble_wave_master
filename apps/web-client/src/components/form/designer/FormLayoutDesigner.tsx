@@ -429,8 +429,7 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
 
   // Default fetch collection properties handler (placeholder)
   const fetchCollectionPropertiesHandler = onFetchCollectionProperties || (async (_collectionCode: string): Promise<ModelProperty[]> => {
-    // In a real implementation, this would fetch from the API
-    console.warn('No onFetchCollectionProperties handler provided');
+    // No handler provided - return empty array
     return [];
   });
 

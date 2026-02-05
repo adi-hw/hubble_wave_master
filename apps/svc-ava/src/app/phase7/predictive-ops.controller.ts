@@ -19,7 +19,7 @@ interface TriggerAnalysisDto {
 
 @ApiTags('Phase 7 - Predictive Operations')
 @ApiBearerAuth()
-@Controller('api/phase7/predictive-ops')
+@Controller('phase7/predictive-ops')
 @UseGuards(JwtAuthGuard)
 export class PredictiveOpsController {
   constructor(

@@ -30,8 +30,8 @@ export const AccessRulesPage: React.FC = () => {
       // Handle both array response and object with data property
       const rulesArray = Array.isArray(data) ? data : (data as any)?.data || [];
       setRules(rulesArray);
-    } catch (err) {
-      console.error('Failed to load rules', err);
+    } catch {
+      // Rules fetch failed - show empty list
       setRules([]);
     } finally {
       setLoading(false);
@@ -43,8 +43,8 @@ export const AccessRulesPage: React.FC = () => {
       try {
         await accessApi.deleteCollectionRule(ruleId);
         await loadRules();
-      } catch (err) {
-        console.error('Failed to delete rule', err);
+      } catch {
+        // Rule deletion failed - list unchanged
       }
     }
   };
@@ -61,8 +61,8 @@ export const AccessRulesPage: React.FC = () => {
         priority: 100
       });
       await loadRules();
-    } catch (err) {
-      console.error('Failed to save rule', err);
+    } catch {
+      // Rule save failed - editor remains open
     }
   };
 

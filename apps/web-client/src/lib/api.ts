@@ -74,12 +74,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     } catch {
       error = { message: errorText || `HTTP ${response.status}` };
     }
-    console.error('API Error Response:', {
-      url,
-      status: response.status,
-      statusText: response.statusText,
-      error,
-    });
+    // API request failed - throw with details
     throw new Error(error.message || error.error || `HTTP ${response.status}`);
   }
 

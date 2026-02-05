@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LLMService } from '@hubblewave/ai';
 
 @ApiTags('Health')
-@Controller('api/health')
+@Controller('health')
 export class HealthController {
   constructor(private readonly llmService: LLMService) {}
 

@@ -33,6 +33,18 @@ async function bootstrap() {
     })
   );
 
+  // Global prefix for all routes
+  const globalPrefix = 'api/ai';
+  app.setGlobalPrefix(globalPrefix, {
+    exclude: ['api/health'],
+  });
+
+  // Add health check endpoint at /api/health for ALB health checks
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api/health', (_req: unknown, res: { status: (code: number) => { json: (body: unknown) => void } }) => {
+    res.status(200).json({ status: 'ok', service: 'svc-ava' });
+  });
+
   // Swagger API documentation
   const config = new DocumentBuilder()
     .setTitle('HubbleWave AVA Service')
@@ -45,7 +57,7 @@ async function bootstrap() {
     .addTag('AVA Embeddings', 'Vector store and embedding management')
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup(`${globalPrefix}/docs`, app, document);
 
   // Initialize AI tables
   const dataSource = app.get(DataSource);

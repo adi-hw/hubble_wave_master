@@ -68,7 +68,7 @@ const storiesStore: Map<string, {
 
 @ApiTags('Phase 7 - AVA-Powered Agile Development')
 @ApiBearerAuth()
-@Controller('api/phase7/agile')
+@Controller('phase7/agile')
 @UseGuards(JwtAuthGuard)
 export class AgileDevelopmentController {
   constructor(

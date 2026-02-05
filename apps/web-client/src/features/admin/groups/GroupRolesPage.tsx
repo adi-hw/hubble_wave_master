@@ -63,8 +63,8 @@ export const GroupRolesPage: React.FC = () => {
     try {
       const response = await identityApi.get<{ data: Group }>(`/admin/groups/${id}`);
       setGroup(response.data.data);
-    } catch (err) {
-      console.error('Failed to fetch group:', err);
+    } catch {
+      // Group fetch failed - header shows empty state
     }
   }, [id]);
 
@@ -80,8 +80,8 @@ export const GroupRolesPage: React.FC = () => {
       }>(`/admin/groups/${id}/roles`);
       setDirectRoles(response.data.data.direct);
       setInheritedRoles(response.data.data.inherited);
-    } catch (err) {
-      console.error('Failed to fetch roles:', err);
+    } catch {
+      // Roles fetch failed - lists remain empty
     } finally {
       setLoading(false);
     }
@@ -97,8 +97,8 @@ export const GroupRolesPage: React.FC = () => {
         (r) => !assignedRoleIds.has(r.id) && r.isSystem !== true
       );
       setAvailableRoles(available);
-    } catch (err) {
-      console.error('Failed to fetch roles:', err);
+    } catch {
+      // Available roles fetch failed - modal shows empty state
     }
   }, [roleSearchQuery, directRoles]);
 
@@ -120,8 +120,8 @@ export const GroupRolesPage: React.FC = () => {
       await identityApi.delete(`/admin/groups/${id}/roles/${roleId}`);
       fetchRoles();
       fetchGroup();
-    } catch (err) {
-      console.error('Failed to remove role:', err);
+    } catch {
+      // Remove failed - role remains in list
     }
   };
 
@@ -137,8 +137,8 @@ export const GroupRolesPage: React.FC = () => {
       setSelectedRoles([]);
       fetchRoles();
       fetchGroup();
-    } catch (err) {
-      console.error('Failed to add roles:', err);
+    } catch {
+      // Add failed - modal remains open, selection preserved
     } finally {
       setAddingRoles(false);
     }

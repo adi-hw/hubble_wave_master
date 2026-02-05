@@ -29,7 +29,7 @@ interface RegisterPatternDto {
 
 @ApiTags('Phase 7 - Voice Control')
 @ApiBearerAuth()
-@Controller('api/phase7/voice')
+@Controller('phase7/voice')
 @UseGuards(JwtAuthGuard)
 export class VoiceControlController {
   constructor(

@@ -1,6 +1,42 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { CollectionDefinition } from './collection-definition.entity';
 
+/**
+ * Stored form layout configuration including sections and fields.
+ */
+export interface StoredFormLayout {
+  type: 'single-column' | 'two-column' | 'responsive-grid';
+  tabs?: FormTab[];
+  sections?: FormLayoutSection[];
+  gridConfig?: {
+    columns?: number;
+    gap?: string;
+  };
+}
+
+export interface FormTab {
+  id: string;
+  label: string;
+  sections: FormLayoutSection[];
+}
+
+export interface FormLayoutSection {
+  id: string;
+  title: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  fields: FormLayoutField[];
+  layout?: 'vertical' | 'horizontal' | 'grid';
+}
+
+export interface FormLayoutField {
+  id: string;
+  propertyCode: string;
+  width?: 'full' | 'half' | 'third' | 'quarter';
+  hidden?: boolean;
+  readonly?: boolean;
+}
+
 @Entity('form_definitions')
 @Index(['collectionId'])
 export class FormDefinition {
@@ -21,7 +57,7 @@ export class FormDefinition {
   isDefault!: boolean;
 
   @Column({ type: 'jsonb', nullable: true })
-  layout?: any | null;
+  layout?: StoredFormLayout | null;
 
   @CreateDateColumn()
   createdAt!: Date;
@@ -46,7 +82,7 @@ export class FormVersion {
   version!: number;
 
   @Column({ type: 'jsonb' })
-  layout!: any;
+  layout!: StoredFormLayout;
 
   @CreateDateColumn()
   createdAt!: Date;

@@ -202,8 +202,8 @@ export function CollectionRecordPage() {
         return;
       }
       setFormLayout(null);
-    } catch (err) {
-      console.warn('Failed to resolve form layout:', err);
+    } catch {
+      // Layout resolution failed - use default layout
       setFormLayout(null);
       setResolvedView(null);
     }

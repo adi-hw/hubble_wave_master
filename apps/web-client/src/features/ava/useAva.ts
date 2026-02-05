@@ -204,7 +204,7 @@ export function useAva(options: UseAvaOptions = {}): UseAvaReturn {
           return;
         }
 
-        console.error('AVA chat error:', err);
+        // AVA chat request failed - show error state
         setError((err as Error).message);
 
         // Provide fallback response
@@ -272,8 +272,8 @@ export function useAva(options: UseAvaOptions = {}): UseAvaReturn {
             comment,
           }),
         });
-      } catch (err) {
-        console.error('Failed to submit feedback:', err);
+      } catch {
+        // Feedback submission failed - no action needed
       }
     },
     [conversationId]

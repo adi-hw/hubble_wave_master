@@ -182,20 +182,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
         }
 
-        // Login successful
-        console.log('[AuthContext] Login successful, setting token', {
-          tokenLength: response.accessToken?.length,
-          userId: response.user?.id,
-        });
         setStoredToken(response.accessToken);
         setToken(response.accessToken);
-
-        // Verify token was stored
-        const storedCheck = getStoredToken();
-        console.log('[AuthContext] Token stored check', {
-          wasStored: !!storedCheck,
-          storedLength: storedCheck?.length,
-        });
 
         setAuth({
           user: response.user,
@@ -291,19 +279,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
         user,
       }));
-    } catch (err) {
-      console.error('Failed to refresh user:', err);
+    } catch {
+      // Silent failure - user profile refresh is non-critical
     }
   }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
-    console.log('[AuthContext] refresh() called');
     try {
       const newToken = await refreshAccessToken();
-      console.log('[AuthContext] refresh() succeeded, token length:', newToken?.length);
       setToken(newToken);
 
-      // Fetch updated user profile
       const user = await authService.getCurrentUser();
       setAuth({
         user,
@@ -313,8 +298,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         mfaRequired: false,
         mfaSessionToken: null,
       });
-    } catch (err) {
-      console.error('[AuthContext] refresh() failed, clearing tokens', err);
+    } catch {
       clearAllTokens();
       setToken(null);
       setAuth({
@@ -543,15 +527,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       const storedToken = getStoredToken();
-      const debugLog = sessionStorage.getItem('auth_debug');
-      if (debugLog) {
-        console.warn('[AuthContext] Previous auth failure:', JSON.parse(debugLog));
-        sessionStorage.removeItem('auth_debug');
-      }
-      console.log('[AuthContext] initializeAuth', { hasToken: !!storedToken });
+      sessionStorage.removeItem('auth_debug');
 
       if (storedToken) {
-        // Token exists in memory, fetch user profile
         try {
           const user = await authService.getCurrentUser();
           setAuth({
@@ -562,9 +540,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             mfaRequired: false,
             mfaSessionToken: null,
           });
-        } catch (err) {
-          console.error('[AuthContext] getCurrentUser failed, trying refresh', err);
-          // Token invalid, try refresh
+        } catch {
           await refresh();
         }
       } else {

@@ -216,7 +216,7 @@ export const FormLayoutPage: React.FC = () => {
         setActiveViewId(defaultView.id);
       }
     } catch (err) {
-      console.error('Failed to load form studio data:', err);
+      // Load failed - show error state
       setError(err instanceof Error ? err.message : 'Failed to load form studio');
     } finally {
       setLoading(false);
@@ -294,7 +294,7 @@ export const FormLayoutPage: React.FC = () => {
         await loadData();
         showSuccess('Form layout saved.');
       } catch (err) {
-        console.error('Failed to save form layout:', err);
+        // Save failed - error toast shown
         showError('Failed to save form layout. Please try again.');
         throw err;
       }
@@ -352,8 +352,8 @@ export const FormLayoutPage: React.FC = () => {
       await loadData();
       showSuccess(viewEditorState ? 'View updated.' : 'View created.');
       closeViewEditor();
-    } catch (err) {
-      console.error('Failed to save view:', err);
+    } catch {
+      // Save failed - error toast shown
       showError('Failed to save view. Please try again.');
     }
   };
@@ -380,8 +380,8 @@ export const FormLayoutPage: React.FC = () => {
       await loadData();
       setActiveTab('builder');
       showSuccess('View duplicated.');
-    } catch (err) {
-      console.error('Failed to duplicate view:', err);
+    } catch {
+      // Duplicate failed - error toast shown
       showError('Failed to duplicate view.');
     }
   };
@@ -415,8 +415,8 @@ export const FormLayoutPage: React.FC = () => {
       await propertyApi.delete(collectionId, property.id);
       setFieldStudioRefresh((prev) => prev + 1);
       showSuccess('Field deleted.');
-    } catch (err) {
-      console.error('Failed to delete field:', err);
+    } catch {
+      // Delete failed - error toast shown
       showError('Failed to delete field.');
     }
   };
@@ -455,8 +455,8 @@ export const FormLayoutPage: React.FC = () => {
       await viewApi.publish(activeView.code);
       await loadData();
       showSuccess('Policies saved.');
-    } catch (err) {
-      console.error('Failed to save policies:', err);
+    } catch {
+      // Save failed - error toast shown
       showError('Failed to save policies.');
     }
   };

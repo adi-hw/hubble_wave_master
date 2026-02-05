@@ -63,8 +63,8 @@ export const PropertyList: React.FC<PropertyListProps> = ({
     try {
       const result = await propertyApi.list(collectionId);
       setProperties(result.data || []);
-    } catch (err) {
-      console.error('Failed to load properties', err);
+    } catch {
+      // Properties fetch failed - show error message
       setError('Failed to load properties. Please try again.');
     } finally {
       setLoading(false);
@@ -89,8 +89,8 @@ export const PropertyList: React.FC<PropertyListProps> = ({
         collectionId,
         updatedItems.map((p) => ({ id: p.id, displayOrder: p.displayOrder }))
       );
-    } catch (err) {
-      console.error('Failed to reorder properties', err);
+    } catch {
+      // Reorder failed - reload properties to restore original order
       loadProperties();
     }
   };

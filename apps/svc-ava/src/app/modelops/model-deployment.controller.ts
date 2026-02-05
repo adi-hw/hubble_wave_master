@@ -3,7 +3,7 @@ import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-
 import { ModelDeploymentService } from './model-deployment.service';
 import { ModelDeploymentRequest, ModelDeploymentUpdate } from './model-deployment.types';
 
-@Controller('api/ava/deployments')
+@Controller('ava/deployments')
 @UseGuards(JwtAuthGuard)
 export class ModelDeploymentController {
   constructor(private readonly deploymentService: ModelDeploymentService) {}

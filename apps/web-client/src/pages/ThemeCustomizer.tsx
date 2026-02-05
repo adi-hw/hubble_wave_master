@@ -478,8 +478,8 @@ function AvaAssistant({ currentTheme, onApplySuggestion: _onApplySuggestion }: A
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.error('AVA API error:', response.status, errorText);
+        await response.text().catch(() => '');
+        // AVA API request failed
         if (response.status === 401) {
           throw new Error('Please log in to use AVA');
         }
@@ -850,8 +850,8 @@ export function ThemeCustomizerPage() {
     try {
       await setPreference({ customOverrides });
       setHasChanges(false);
-    } catch (err) {
-      console.error('Failed to save:', err);
+    } catch {
+      // Save failed - changes remain unsaved
     }
   };
 

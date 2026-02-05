@@ -92,7 +92,7 @@ export const automationApi = {
   },
 
   updateAutomation: async (id: string, data: Partial<Automation>) => {
-    const response = await authenticatedClient.patch<Automation>(`/automations/${id}`, data);
+    const response = await authenticatedClient.put<Automation>(`/automations/${id}`, data);
     return response.data;
   },
 

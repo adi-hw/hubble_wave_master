@@ -46,8 +46,8 @@ export const LivingDocsPage: React.FC = () => {
     try {
       const response = await livingDocsApi.search('', typeFilter !== 'all' ? typeFilter : undefined, 50);
       setDocs(response.results);
-    } catch (error) {
-      console.error('Failed to load docs:', error);
+    } catch {
+      // Docs load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -62,8 +62,8 @@ export const LivingDocsPage: React.FC = () => {
         50
       );
       setDocs(response.results);
-    } catch (error) {
-      console.error('Failed to search docs:', error);
+    } catch {
+      // Search failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -75,8 +75,8 @@ export const LivingDocsPage: React.FC = () => {
       const response = await livingDocsApi.generateForArtifact(doc.artifactType, doc.artifactId);
       setSelectedDoc(response.documentation);
       loadDocs();
-    } catch (error) {
-      console.error('Failed to regenerate:', error);
+    } catch {
+      // Regeneration failed
     } finally {
       setRegenerating(false);
     }
@@ -87,8 +87,8 @@ export const LivingDocsPage: React.FC = () => {
     try {
       await livingDocsApi.regenerateAll();
       loadDocs();
-    } catch (error) {
-      console.error('Failed to regenerate all:', error);
+    } catch {
+      // Regenerate all failed
     } finally {
       setRegenerating(false);
     }
@@ -104,8 +104,8 @@ export const LivingDocsPage: React.FC = () => {
       a.download = `${doc.title.toLowerCase().replace(/\s+/g, '-')}.md`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export:', error);
+    } catch {
+      // Export failed - no download triggered
     }
   };
 

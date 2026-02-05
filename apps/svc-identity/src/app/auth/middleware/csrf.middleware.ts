@@ -22,18 +22,21 @@ export class CsrfMiddleware implements NestMiddleware {
   private readonly protectedMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
   // Path patterns that are exempt from CSRF (public/stateless endpoints)
-  // Uses pattern matching to handle paths with or without /api prefix
+  // Uses pattern matching to handle paths with various prefixes:
+  // - /auth/... (direct)
+  // - /api/auth/... (with api prefix)
+  // - /api/identity/auth/... (with full service prefix from ingress)
   private readonly exemptPatterns = [
-    /^\/(?:api\/)?auth\/login$/,
-    /^\/(?:api\/)?auth\/refresh$/,
-    /^\/(?:api\/)?auth\/logout$/,
-    /^\/(?:api\/)?auth\/change-password-expired$/,
-    /^\/(?:api\/)?auth\/password-reset\/.*/,
-    /^\/(?:api\/)?auth\/email-verification\/.*/,
-    /^\/(?:api\/)?auth\/sso\/.*/,
-    /^\/(?:api\/)?auth\/api-keys/,
-    /^\/(?:api\/)?auth\/mfa\/.*/,
-    /^\/(?:api\/)?health$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/login$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/refresh$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/logout$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/change-password-expired$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/password-reset\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/email-verification\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/sso\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/api-keys/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/mfa\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?health$/,
   ];
 
   use(req: Request, res: Response, next: NextFunction) {

@@ -50,7 +50,7 @@ interface SearchDto {
 
 @ApiTags('AI Embeddings')
 @ApiBearerAuth()
-@Controller('api/embeddings')
+@Controller('embeddings')
 @UseGuards(JwtAuthGuard)
 export class EmbeddingController {
   constructor(

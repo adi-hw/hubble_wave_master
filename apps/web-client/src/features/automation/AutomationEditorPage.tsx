@@ -62,8 +62,8 @@ export const AutomationEditorPage: React.FC = () => {
         const automation = await automationApi.getAutomation(automationId);
         setInitialRule(convertToRuleConfig(automation));
       }
-    } catch (err) {
-      console.error('Failed to load data', err);
+    } catch {
+      // Load failed - show error state
       setError('Failed to load automation data');
     } finally {
       setLoading(false);
@@ -170,8 +170,10 @@ export const AutomationEditorPage: React.FC = () => {
 
         navigate(`/studio/collections/${collectionId}/automations`);
       } catch (err) {
-        console.error('Failed to save automation', err);
-        setError('Failed to save automation');
+        // Save failed - show error message
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        const apiError = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        setError(apiError || `Failed to save automation: ${message}`);
         throw err;
       }
     },

@@ -2,7 +2,7 @@
  * HubbleWave Customer Instance Module - vLLM Deployment
  *
  * Serves Llama 3.1 8B (or configured model) with OpenAI-compatible API
- * Runs on dedicated GPU node with NVIDIA T4
+ * Runs on dedicated EKS cluster with GPU node (g4dn.xlarge with NVIDIA T4)
  */
 
 # -----------------------------------------------------------------------------
@@ -24,12 +24,13 @@ locals {
 # Kubernetes Secret for Hugging Face Token
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_secret" "huggingface" {
-  count = local.gpu_enabled_effective && length(var.huggingface_token) > 0 ? 1 : 0
+resource "kubernetes_secret_v1" "huggingface" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective && length(var.huggingface_token) > 0 ? 1 : 0
 
   metadata {
     name      = "huggingface-token"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.common_labels
   }
 
@@ -38,18 +39,21 @@ resource "kubernetes_secret" "huggingface" {
   data = {
     HF_TOKEN = var.huggingface_token
   }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------
 # PersistentVolumeClaim for Model Cache
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_persistent_volume_claim" "vllm_cache" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_persistent_volume_claim_v1" "vllm_cache" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = "vllm-model-cache"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.vllm_labels
   }
 
@@ -60,20 +64,25 @@ resource "kubernetes_persistent_volume_claim" "vllm_cache" {
         storage = "50Gi"
       }
     }
-    storage_class_name = "gp2"
+    storage_class_name = "gp3"
   }
+
+  wait_until_bound = false
+
+  depends_on = [kubernetes_storage_class_v1.gp3]
 }
 
 # -----------------------------------------------------------------------------
 # vLLM Deployment
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_deployment" "vllm" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_deployment_v1" "vllm" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = local.vllm_name
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.vllm_labels
   }
 
@@ -100,25 +109,17 @@ resource "kubernetes_deployment" "vllm" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.workload.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.workload.metadata[0].name
 
-        # Node selection for dedicated GPU node
+        # Schedule exclusively on GPU nodes
         node_selector = {
-          "hubblewave.com/gpu-instance" = var.instance_id
-        }
-
-        # Tolerations for GPU taints
-        toleration {
-          key      = "hubblewave.com/instance"
-          operator = "Equal"
-          value    = var.instance_id
-          effect   = "NoSchedule"
+          "hubblewave.com/node-type" = "gpu"
         }
 
         toleration {
           key      = "nvidia.com/gpu"
           operator = "Equal"
-          value    = "present"
+          value    = "true"
           effect   = "NoSchedule"
         }
 
@@ -251,7 +252,7 @@ print('Model download complete')
         volume {
           name = "model-cache"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.vllm_cache[0].metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.vllm_cache[0].metadata[0].name
           }
         }
 
@@ -268,9 +269,12 @@ print('Model download complete')
     }
   }
 
+  wait_for_rollout = false
+
   depends_on = [
-    aws_eks_node_group.gpu,
-    kubernetes_persistent_volume_claim.vllm_cache,
+    module.eks,
+    kubernetes_daemon_set_v1.nvidia_device_plugin,
+    kubernetes_persistent_volume_claim_v1.vllm_cache,
   ]
 
   timeouts {
@@ -283,12 +287,13 @@ print('Model download complete')
 # vLLM Service
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_service" "vllm" {
-  count = local.gpu_enabled_effective ? 1 : 0
+resource "kubernetes_service_v1" "vllm" {
+  provider = kubernetes.instance
+  count    = local.gpu_enabled_effective ? 1 : 0
 
   metadata {
     name      = "vllm-service"
-    namespace = kubernetes_namespace.instance.metadata[0].name
+    namespace = "default"
     labels    = local.vllm_labels
   }
 
@@ -307,4 +312,6 @@ resource "kubernetes_service" "vllm" {
 
     type = "ClusterIP"
   }
+
+  depends_on = [module.eks]
 }

@@ -91,8 +91,8 @@ export const GroupMembersPage: React.FC = () => {
     try {
       const response = await identityApi.get<{ data: Group }>(`/admin/groups/${id}`);
       setGroup(response.data.data);
-    } catch (err) {
-      console.error('Failed to fetch group:', err);
+    } catch {
+      // Group fetch failed - non-critical, header shows empty state
     }
   }, [id]);
 
@@ -106,8 +106,8 @@ export const GroupMembersPage: React.FC = () => {
       );
       setMembers(response.data.data);
       setTotal(response.data.total);
-    } catch (err) {
-      console.error('Failed to fetch members:', err);
+    } catch {
+      // Members fetch failed - UI shows empty state
     } finally {
       setLoading(false);
     }
@@ -121,8 +121,8 @@ export const GroupMembersPage: React.FC = () => {
       const memberUserIds = new Set(members.map((m) => m.userId));
       const available = response.data.data.filter((u) => !memberUserIds.has(u.id));
       setAvailableUsers(available);
-    } catch (err) {
-      console.error('Failed to fetch users:', err);
+    } catch {
+      // Users fetch failed - modal shows empty state
     }
   }, [userSearchQuery, members]);
 
@@ -144,8 +144,8 @@ export const GroupMembersPage: React.FC = () => {
       await identityApi.delete(`/admin/groups/${id}/members/${userId}`);
       fetchMembers();
       fetchGroup();
-    } catch (err) {
-      console.error('Failed to remove member:', err);
+    } catch {
+      // Remove failed - member remains in list
     }
   };
 
@@ -155,8 +155,8 @@ export const GroupMembersPage: React.FC = () => {
         isManager: !currentIsManager,
       });
       fetchMembers();
-    } catch (err) {
-      console.error('Failed to update member:', err);
+    } catch {
+      // Update failed - manager status unchanged
     }
   };
 
@@ -172,8 +172,8 @@ export const GroupMembersPage: React.FC = () => {
       setSelectedUsers([]);
       fetchMembers();
       fetchGroup();
-    } catch (err) {
-      console.error('Failed to add members:', err);
+    } catch {
+      // Add failed - modal remains open, selection preserved
     } finally {
       setAddingMembers(false);
     }

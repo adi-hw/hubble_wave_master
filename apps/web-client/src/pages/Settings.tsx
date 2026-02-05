@@ -192,8 +192,8 @@ export function SettingsPage() {
       await patchPreferences(updates);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (err) {
-      console.error('Failed to save:', err);
+    } catch {
+      // Preferences save failed - changes not persisted
     }
   };
 

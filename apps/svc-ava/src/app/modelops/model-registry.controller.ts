@@ -3,7 +3,7 @@ import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-
 import { ModelRegistryService } from './model-registry.service';
 import { ModelArtifactRegister, ModelArtifactRequest, ModelArtifactUpdate } from './model-registry.types';
 
-@Controller('api/ava/models')
+@Controller('ava/models')
 @UseGuards(JwtAuthGuard)
 export class ModelRegistryController {
   constructor(private readonly registry: ModelRegistryService) {}

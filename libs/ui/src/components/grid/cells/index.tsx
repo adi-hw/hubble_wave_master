@@ -9,6 +9,7 @@
 
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { cn } from '../utils/cn';
+import { TruncatedText } from '../utils/TruncatedText';
 import type { CellRendererProps, GridRowData, GridColumnType } from '../types';
 
 // =============================================================================
@@ -121,12 +122,14 @@ export const TextCell = memo(function TextCell<TData extends GridRowData>({
   const displayValue = value != null ? String(value) : '-';
 
   return (
-    <span
-      className="truncate text-[var(--grid-cell-color)]"
-      title={displayValue !== '-' ? displayValue : undefined}
+    <TruncatedText
+      className="text-[var(--grid-cell-color)]"
+      tooltip={displayValue !== '-' ? displayValue : undefined}
+      placement="top"
+      showDelay={400}
     >
       {displayValue}
-    </span>
+    </TruncatedText>
   );
 });
 

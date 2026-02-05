@@ -83,17 +83,13 @@ export class TerraformWorkspaceService {
     const awsRegion = this.config.get<string>('INSTANCE_AWS_REGION')
       || this.config.get<string>('AWS_REGION');
 
-    // VPC and subnet configuration for dedicated RDS/ElastiCache
-    const vpcId = this.requireConfig('INSTANCE_VPC_ID');
-    const vpcCidr = this.requireConfig('INSTANCE_VPC_CIDR');
-    const dbSubnetIds = this.requireConfig('INSTANCE_DB_SUBNET_IDS');
-    const redisSubnetIds = this.requireConfig('INSTANCE_REDIS_SUBNET_IDS');
-    const eksSecurityGroupIds = this.requireConfig('INSTANCE_EKS_SECURITY_GROUP_IDS');
+    // Control Plane connection for VPC Peering (Cluster-per-Customer architecture)
+    const controlPlaneVpcId = this.requireConfig('CONTROL_PLANE_VPC_ID');
+    const controlPlaneVpcCidr = this.requireConfig('CONTROL_PLANE_VPC_CIDR');
+    const controlPlaneRouteTableIds = this.requireConfig('CONTROL_PLANE_ROUTE_TABLE_IDS');
+    const controlPlaneRoleArn = this.requireConfig('CONTROL_PLANE_ROLE_ARN');
 
     const cloudflareZoneId = this.requireConfig('INSTANCE_CLOUDFLARE_ZONE_ID');
-    const ingressHostname = this.requireConfig('INSTANCE_INGRESS_HOSTNAME');
-    const eksOidcProviderArn = this.requireConfig('INSTANCE_EKS_OIDC_PROVIDER_ARN');
-    const eksOidcProviderHost = this.requireConfig('INSTANCE_EKS_OIDC_PROVIDER_HOST');
 
     if (!awsRegion) {
       throw new Error('INSTANCE_AWS_REGION or AWS_REGION must be set');
@@ -111,15 +107,13 @@ export class TerraformWorkspaceService {
       || request.instance.version;
     const instanceWebImageTag = this.config.get<string>('INSTANCE_WEB_IMAGE_TAG')
       || request.instance.version;
-    const certManagerIssuer = this.config.get<string>('INSTANCE_CERT_MANAGER_ISSUER', 'letsencrypt-prod');
 
     // GPU/vLLM Configuration
     const gpuEnabled = request.instance.gpuEnabled || false;
     const gpuInstanceType = request.instance.gpuInstanceType || 'g4dn.xlarge';
     const vllmModel = request.instance.vllmModel || 'meta-llama/Meta-Llama-3.1-8B-Instruct';
-    const huggingfaceToken = this.config.get<string>('INSTANCE_HUGGINGFACE_TOKEN', '');
-    const eksClusterName = this.config.get<string>('INSTANCE_EKS_CLUSTER_NAME', '');
-    const gpuSubnetIds = this.config.get<string>('INSTANCE_GPU_SUBNET_IDS', '');
+    const huggingfaceToken = request.instance.huggingfaceToken
+      || this.config.get<string>('INSTANCE_HUGGINGFACE_TOKEN', '');
     const avaImageTag = this.config.get<string>('INSTANCE_AVA_IMAGE_TAG')
       || request.instance.version;
     const vllmImageTag = this.config.get<string>('INSTANCE_VLLM_IMAGE_TAG', 'v0.6.4.post1');
@@ -139,14 +133,13 @@ export class TerraformWorkspaceService {
   gpu_instance_type = ${hclString(gpuInstanceType)}
   vllm_model = ${hclString(vllmModel)}
   huggingface_token = ${hclString(huggingfaceToken)}
-  eks_cluster_name = ${hclString(eksClusterName)}
-  gpu_subnet_ids = ${hclList(gpuSubnetIds)}
   ava_image_tag = ${hclString(avaImageTag)}
   vllm_image_tag = ${hclString(vllmImageTag)}` : '';
 
     const mainTf = `module "instance" {
   source = ${hclString(moduleSource)}
 
+  # Instance Identity
   instance_id = ${hclString(request.instance.id)}
   customer_code = ${hclString(request.customerCode)}
   customer_name = ${hclString(request.customerName)}
@@ -155,26 +148,23 @@ export class TerraformWorkspaceService {
   resource_tier = ${hclString(request.instance.resourceTier || 'standard')}
   platform_release_id = ${hclString(request.instance.version)}
 
-  # Infrastructure configuration
+  # AWS Configuration
   aws_region = ${hclString(awsRegion)}
-  vpc_id = ${hclString(vpcId)}
-  vpc_cidr = ${hclString(vpcCidr)}
-  db_subnet_ids = ${hclList(dbSubnetIds)}
-  redis_subnet_ids = ${hclList(redisSubnetIds)}
-  eks_security_group_ids = ${hclList(eksSecurityGroupIds)}
 
-  # Domain and routing
+  # Control Plane Connection (for VPC Peering)
+  control_plane_vpc_id = ${hclString(controlPlaneVpcId)}
+  control_plane_vpc_cidr = ${hclString(controlPlaneVpcCidr)}
+  control_plane_route_table_ids = ${hclList(controlPlaneRouteTableIds)}
+  control_plane_role_arn = ${hclString(controlPlaneRoleArn)}
+
+  # DNS Configuration
   root_domain = ${hclString('hubblewave.com')}
   cloudflare_zone_id = ${hclString(cloudflareZoneId)}
-  instance_ingress_hostname = ${hclString(ingressHostname)}
-  eks_oidc_provider_arn = ${hclString(eksOidcProviderArn)}
-  eks_oidc_provider_host = ${hclString(eksOidcProviderHost)}
 
-  # Container deployment configuration
+  # Container Registry
   container_registry_host = ${hclString(containerRegistry)}
   instance_api_image_tag = ${hclString(instanceApiImageTag)}
-  instance_web_image_tag = ${hclString(instanceWebImageTag)}
-  cert_manager_issuer = ${hclString(certManagerIssuer)}${gpuConfig}
+  instance_web_image_tag = ${hclString(instanceWebImageTag)}${gpuConfig}
 }
 `;
 
@@ -187,7 +177,11 @@ export class TerraformWorkspaceService {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.23.0"
+      version = "~> 3.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
@@ -197,6 +191,10 @@ export class TerraformWorkspaceService {
       source  = "hashicorp/random"
       version = ">= 3.5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0.0"
+    }
   }
 }
 
@@ -204,11 +202,8 @@ provider "aws" {
   region = ${hclString(awsRegion)}
 }
 
-provider "kubernetes" {
-  host                   = "https://kubernetes.default.svc"
-  token                  = file("/var/run/secrets/kubernetes.io/serviceaccount/token")
-  cluster_ca_certificate = file("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
-}
+# Note: kubernetes and helm providers are configured in the module
+# using the EKS cluster endpoint after it's created
 
 provider "cloudflare" {}
 `;

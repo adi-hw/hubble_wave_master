@@ -77,8 +77,8 @@ export const ProcessFlowsListPage: React.FC = () => {
       const response = await authenticatedClient.get('/workflows/definitions', { params });
       const data = response.data;
       setProcessFlows(Array.isArray(data) ? data : data.items || []);
-    } catch (error) {
-      console.error('Error fetching process flows:', error);
+    } catch {
+      // Fetch failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -97,8 +97,8 @@ export const ProcessFlowsListPage: React.FC = () => {
           pf.id === processFlow.id ? { ...pf, isActive: !pf.isActive } : pf
         )
       );
-    } catch (error) {
-      console.error('Error toggling process flow:', error);
+    } catch {
+      // Toggle failed - state unchanged
     }
   };
 
@@ -111,8 +111,8 @@ export const ProcessFlowsListPage: React.FC = () => {
       );
 
       setProcessFlows([...processFlows, response.data]);
-    } catch (error) {
-      console.error('Error duplicating process flow:', error);
+    } catch {
+      // Duplicate failed
     }
   };
 
@@ -125,8 +125,8 @@ export const ProcessFlowsListPage: React.FC = () => {
       setProcessFlows(processFlows.filter((pf) => pf.id !== selectedProcessFlow.id));
       setShowDeleteModal(false);
       setSelectedProcessFlow(null);
-    } catch (error) {
-      console.error('Error deleting process flow:', error);
+    } catch {
+      // Delete failed - process flow remains in list
     }
   };
 

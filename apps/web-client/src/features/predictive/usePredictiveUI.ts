@@ -61,7 +61,7 @@ export function usePredictiveUI(options: UsePredictiveUIOptions): UsePredictiveU
         actionsRef.current = JSON.parse(stored);
       }
     } catch {
-      console.error('Failed to load behavior data');
+      // Behavior data load failed - start fresh
     }
 
     // Start tracking route changes

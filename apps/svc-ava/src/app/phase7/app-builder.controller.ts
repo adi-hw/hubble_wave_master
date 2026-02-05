@@ -28,7 +28,7 @@ interface RefineAppDto {
 
 @ApiTags('Phase 7 - Zero-Code App Builder')
 @ApiBearerAuth()
-@Controller('api/phase7/app-builder')
+@Controller('phase7/app-builder')
 @UseGuards(JwtAuthGuard)
 export class AppBuilderController {
   constructor(

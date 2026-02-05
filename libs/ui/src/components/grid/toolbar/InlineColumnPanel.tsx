@@ -208,6 +208,9 @@ export function InlineColumnPanel<TData extends GridRowData>({
     }
   }, [isOpen]);
 
+  // Track visibility state to trigger re-render when it changes
+  const columnVisibility = table.getState().columnVisibility;
+
   // Get all columns with visibility info
   const allColumns = useMemo<ColumnInfo[]>(() => {
     return table
@@ -226,7 +229,7 @@ export function InlineColumnPanel<TData extends GridRowData>({
           isVisible: col.getIsVisible(),
         };
       });
-  }, [table]);
+  }, [table, columnVisibility]);
 
   // Filter columns by search query
   const filteredColumns = useMemo(() => {

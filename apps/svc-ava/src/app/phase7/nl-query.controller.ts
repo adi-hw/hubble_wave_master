@@ -23,7 +23,7 @@ interface SaveQueryDto {
 
 @ApiTags('Phase 7 - Natural Language Queries')
 @ApiBearerAuth()
-@Controller('api/phase7/nl-query')
+@Controller('phase7/nl-query')
 @UseGuards(JwtAuthGuard)
 export class NLQueryController {
   constructor(

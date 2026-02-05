@@ -206,7 +206,15 @@ export class BackupService implements OnModuleInit {
       throw new BadRequestException('Database connection is not configured for backup');
     }
 
-    const dumpBuffer = await this.runPgDump(options);
+    const pgOptions = {
+      host: options.host,
+      port: options.port,
+      username: options.username,
+      password: options.password,
+      database: options.database,
+    };
+
+    const dumpBuffer = await this.runPgDump(pgOptions);
     const checksum = this.sha256(dumpBuffer);
     const key = `${prefix}/postgres/instance.dump`;
 
@@ -382,7 +390,8 @@ export class BackupService implements OnModuleInit {
     }
 
     for (const schema of schemas) {
-      await client.collections().create(schema);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await client.collections().create(schema as any);
     }
 
     for (const artifact of artifacts) {

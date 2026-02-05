@@ -99,9 +99,8 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
         setPreferences(prefs);
         // Also store in local storage for offline access
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(prefs));
-      } catch (err) {
-        console.warn('Failed to load preferences from server:', err);
-        // Try to use local storage as fallback
+      } catch {
+        // Server unavailable - use local storage as fallback
         const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (stored) {
           try {
@@ -180,7 +179,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to update preferences:', err);
       throw err;
     }
   }, []);
@@ -203,7 +201,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to patch preferences:', err);
       throw err;
     }
   }, []);
@@ -223,7 +220,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       setPreferences(reset);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reset));
     } catch (err) {
-      console.error('Failed to reset preferences:', err);
       throw err;
     }
   }, []);
@@ -237,7 +233,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const items = await preferencesService.addPinnedItem(dto);
       setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
     } catch (err) {
-      console.error('Failed to add pinned item:', err);
       throw err;
     }
   }, []);
@@ -250,7 +245,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const items = await preferencesService.updatePinnedItem(itemId, dto);
       setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
     } catch (err) {
-      console.error('Failed to update pinned item:', err);
       throw err;
     }
   }, []);
@@ -263,7 +257,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const items = await preferencesService.removePinnedItem(itemId);
       setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
     } catch (err) {
-      console.error('Failed to remove pinned item:', err);
       throw err;
     }
   }, []);
@@ -276,7 +269,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const items = await preferencesService.reorderPinnedItems(order);
       setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
     } catch (err) {
-      console.error('Failed to reorder pinned items:', err);
       throw err;
     }
   }, []);
@@ -299,7 +291,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to set density mode:', err);
       throw err;
     }
   }, []);
@@ -321,7 +312,6 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to set sidebar position:', err);
       throw err;
     }
   }, []);
@@ -342,15 +332,13 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const updated = await preferencesService.toggleSidebarCollapsed();
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to toggle sidebar via API, using local fallback:', err);
-      // Fallback: update local state even if API fails
+    } catch {
+      // Server sync failed - update local state as fallback
       setPreferences(prev => {
         const updated = { ...prev, sidebarCollapsed: !prev?.sidebarCollapsed } as UserPreferences;
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
         return updated;
       });
-      // Don't throw - allow UI to update even if server sync fails
     }
   }, []);
 

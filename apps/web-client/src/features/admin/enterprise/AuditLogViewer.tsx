@@ -122,7 +122,7 @@ export const AuditLogViewer: React.FC = () => {
         compliance: logData.filter(l => l.complianceFlags?.length).length,
       });
     } catch (err: unknown) {
-      console.error('Failed to fetch audit logs:', err);
+      // Fetch failed - check if API unavailable or error
       const axiosError = err as { response?: { status?: number } };
       if (axiosError?.response?.status === 404) {
         setApiAvailable(false);
@@ -162,8 +162,8 @@ export const AuditLogViewer: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err) {
-      console.error('Failed to export audit logs:', err);
+    } catch {
+      // Export failed - no action needed
     }
   };
 

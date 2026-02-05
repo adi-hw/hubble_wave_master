@@ -202,8 +202,8 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
       }));
 
       setStep('complete');
-    } catch (error) {
-      console.error('Import failed:', error);
+    } catch {
+      // Import failed - step remains at progress
     } finally {
       setImporting(false);
     }
