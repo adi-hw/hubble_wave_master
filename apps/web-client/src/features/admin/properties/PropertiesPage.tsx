@@ -58,7 +58,7 @@ export const PropertiesPage: React.FC = () => {
     setEditorOpen(true);
   };
 
-  const handleDelete = async (property: PropertyDefinition) => {
+  const handleDelete = async (_property: PropertyDefinition) => {
     // TODO: Implement property deletion via API
     setRefreshTrigger((prev) => prev + 1);
   };
@@ -67,7 +67,7 @@ export const PropertiesPage: React.FC = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
 
-  const handleSmartCreate = (suggestion: { dataType: string; formatOptions?: Record<string, unknown> }) => {
+  const handleSmartCreate = (_suggestion: { dataType: string; formatOptions?: Record<string, unknown> }) => {
     // TODO: Pre-populate PropertyEditor with suggested type and options
     setSelectedProperty(undefined);
     setEditorOpen(true);

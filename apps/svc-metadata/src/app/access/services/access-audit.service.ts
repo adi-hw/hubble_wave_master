@@ -27,13 +27,16 @@ export class AccessAuditService {
       action: operation,
       decision: accessGranted ? 'ALLOW' : 'DENY',
       context: {
-        recordId: details.recordId || null,
-        propertyCode: details.propertyCode || null,
-        denialReason: details.denialReason || null,
-        isBreakGlass: !!details.sessionId,
-        breakGlassSessionId: details.sessionId || null,
-        breakGlassJustification: details.justification || null,
-        trace: details.trace || null,
+        sessionId: details.sessionId || undefined,
+        additionalData: {
+          recordId: details.recordId || null,
+          propertyCode: details.propertyCode || null,
+          denialReason: details.denialReason || null,
+          isBreakGlass: !!details.sessionId,
+          breakGlassSessionId: details.sessionId || null,
+          breakGlassJustification: details.justification || null,
+          trace: details.trace || null,
+        }
       },
     });
 

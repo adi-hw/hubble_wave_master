@@ -1664,7 +1664,6 @@ export function ListView() {
         requiresConfirmation: true,
         confirmationMessage: 'This action cannot be undone. The selected records will be permanently deleted.',
         onAction: async (selectedRows) => {
-          const label = collection ? getCollectionLabelPlural(collection).toLowerCase() : 'records';
           try {
             // Delete all selected rows
             await Promise.all(

@@ -73,7 +73,6 @@ import type {
   AvaInsight,
   AvaGridCommand,
   GridContext,
-  BulkAction,
 } from './types';
 
 // Grid styles + tokens for layout (required for header/row sizing)

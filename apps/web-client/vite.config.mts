@@ -19,7 +19,6 @@ export default defineConfig(() => ({
       '/api/identity': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/identity/, '/api'),
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
@@ -34,17 +33,14 @@ export default defineConfig(() => ({
       '/api/data': {
         target: 'http://localhost:3002',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/data/, '/api'),
       },
       '/api/metadata': {
         target: 'http://localhost:3003',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/metadata/, '/api'),
       },
       '/api/ai': {
         target: 'http://localhost:3004',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/ai/, '/api'),
       },
       // Studio routes go to svc-data
       '/api/studio': {
@@ -63,18 +59,22 @@ export default defineConfig(() => ({
       '/api/collections': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/properties': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/themes': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/views': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/navigation/resolve': {
         target: 'http://localhost:3006',
@@ -84,6 +84,7 @@ export default defineConfig(() => ({
       '/api/navigation': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/view-engine': {
         target: 'http://localhost:3006',
@@ -117,6 +118,7 @@ export default defineConfig(() => ({
       '/api/ava': {
         target: 'http://localhost:3004',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
       '/api/workflows': {
         target: 'http://localhost:3007',
@@ -137,6 +139,7 @@ export default defineConfig(() => ({
       '/api/phase7': {
         target: 'http://localhost:3004',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
     },
   },

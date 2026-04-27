@@ -1159,8 +1159,8 @@ export class CollectionService {
 
     const [data, total] = await auditRepo.findAndCount({
       where: {
-        entityType: 'collection',
-        entityId: collectionId,
+        collectionCode: 'collection_definitions',
+        recordId: collectionId,
       },
       order: { createdAt: 'DESC' },
       skip,
