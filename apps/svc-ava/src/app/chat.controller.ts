@@ -6,7 +6,11 @@ import {
   Res,
   UseGuards,
   Logger,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -116,9 +120,24 @@ export class ChatController {
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (error) {
-      this.logger.error(`queryStream error: ${(error as Error).message}`, (error as Error).stack);
+      const correlationId = randomUUID();
+      const knownClientError =
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException;
+      const clientMessage = knownClientError
+        ? (error as Error).message
+        : 'Internal error processing chat';
+      if (knownClientError) {
+        this.logger.warn(`[${correlationId}] queryStream client error: ${(error as Error).message}`);
+      } else {
+        this.logger.error(
+          `[${correlationId}] queryStream error: ${(error as Error).message}`,
+          (error as Error).stack,
+        );
+      }
       res.write(
-        `data: ${JSON.stringify({ type: 'error', data: (error as Error).message })}\n\n`
+        `data: ${JSON.stringify({ type: 'error', data: clientMessage, correlationId })}\n\n`,
       );
       res.end();
     }

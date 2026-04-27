@@ -114,6 +114,10 @@ interface ReferencePropertyInfo {
 // SERVICE
 // =============================================================================
 
+// Mirror collection-data.service.ts MAX_PAGE_SIZE — caps the maximum number of
+// rows the grid will return per request to prevent DoS via huge page sizes.
+const MAX_GRID_PAGE_SIZE = 500;
+
 @Injectable()
 export class GridQueryService {
   constructor(
@@ -134,11 +138,24 @@ export class GridQueryService {
     // Note: grouping is handled in queryGrouped method
 
     // Validate pagination
-    if (startRow < 0 || endRow < startRow) {
+    if (
+      !Number.isFinite(startRow) ||
+      !Number.isFinite(endRow) ||
+      startRow < 0 ||
+      endRow < startRow ||
+      endRow > Number.MAX_SAFE_INTEGER
+    ) {
       throw new BadRequestException('Invalid row range');
     }
 
-    const limit = endRow - startRow;
+    const requestedRows = endRow - startRow;
+    if (requestedRows > MAX_GRID_PAGE_SIZE) {
+      throw new BadRequestException(
+        `Page size exceeds limit (max ${MAX_GRID_PAGE_SIZE} rows per request)`,
+      );
+    }
+
+    const limit = requestedRows;
     const skip = startRow;
 
     // Get table metadata
@@ -162,8 +179,8 @@ export class GridQueryService {
       .select(selectParts)
       .from(this.buildPhysicalTableForQb(model), 't');
 
-    // Add LEFT JOINs for reference fields to fetch display values
-    this.buildReferenceJoins(qb, readableFields);
+    // Add LEFT JOINs for reference fields to fetch display values (RLS-applied)
+    await this.buildReferenceJoins(qb, ctx, readableFields);
 
     // Apply RLS
     const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
@@ -266,6 +283,22 @@ export class GridQueryService {
       return this.query<T>(ctx, request);
     }
 
+    // Validate pagination (same constraints as the flat query path)
+    if (
+      !Number.isFinite(startRow) ||
+      !Number.isFinite(endRow) ||
+      startRow < 0 ||
+      endRow < startRow ||
+      endRow > Number.MAX_SAFE_INTEGER
+    ) {
+      throw new BadRequestException('Invalid row range');
+    }
+    if (endRow - startRow > MAX_GRID_PAGE_SIZE) {
+      throw new BadRequestException(
+        `Page size exceeds limit (max ${MAX_GRID_PAGE_SIZE} rows per request)`,
+      );
+    }
+
     // Get table metadata
     const model = await this.modelRegistry.getCollection(collection);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
@@ -360,16 +393,37 @@ export class GridQueryService {
       .select(selectParts)
       .from(this.buildPhysicalTableForQb(model), 't');
 
-    // Add LEFT JOINs for reference fields used in grouping
+    // Add LEFT JOINs for reference fields used in grouping (RLS-applied)
     for (const ref of referenceJoins) {
+      const fieldCheck = await this.authz.getAuthorizedFields(ctx, ref.refTable, [
+        { code: ref.displayProperty, storagePath: `column:${ref.displayProperty}`, label: ref.displayProperty },
+      ]);
+      const displayProjection = fieldCheck[0]?.canRead
+        ? `sub_${ref.alias}."${ref.displayProperty}"`
+        : 'NULL';
+      const refRls = await this.authz.buildRowLevelClause(ctx, ref.refTable, 'read', `sub_${ref.alias}`);
+
       qb.leftJoin(
-        (subQuery) =>
-          subQuery
+        (subQuery) => {
+          let sub = subQuery
             .select([
               `sub_${ref.alias}.id AS id`,
-              `sub_${ref.alias}."${ref.displayProperty}" AS "${ref.displayProperty}"`,
+              `${displayProjection} AS "${ref.displayProperty}"`,
             ])
-            .from(`public.${ref.refTable}`, `sub_${ref.alias}`),
+            .from(`public.${ref.refTable}`, `sub_${ref.alias}`);
+          refRls.clauses.forEach((clause, index) => {
+            const prefixed: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(refRls.params)) {
+              prefixed[`grprefrls_${ref.alias}_${index}_${k}`] = v;
+            }
+            const replaced = clause.replace(
+              /:([a-zA-Z0-9_]+)/g,
+              (_, name) => `:grprefrls_${ref.alias}_${index}_${name}`,
+            );
+            sub = sub.andWhere(replaced, prefixed);
+          });
+          return sub;
+        },
         ref.alias,
         `${ref.alias}.id = t."${ref.columnName}"`,
       );
@@ -454,19 +508,23 @@ export class GridQueryService {
   }
 
   /**
-   * Build LEFT JOINs for reference fields
-   * Uses subquery approach since TypeORM's leftJoin with raw table names
-   * is interpreted as entity relation paths.
+   * Build LEFT JOINs for reference fields. Each subquery applies the caller's
+   * row-level security predicates against the referenced table, and the display
+   * column is only projected when the caller has field-level read access. If
+   * the display field is not readable, the join still happens but the display
+   * value is replaced with NULL (so the caller never sees the protected value
+   * via the join).
    */
-  private buildReferenceJoins(
+  private async buildReferenceJoins(
     qb: SelectQueryBuilder<ObjectLiteral>,
+    ctx: RequestContext,
     readableFields: unknown[],
-  ): void {
-    (readableFields as Array<ReferencePropertyInfo>).forEach((f) => {
-      if (!f.storagePath || !f.config?.referenceCollection || !f.config?.referenceDisplayProperty) return;
+  ): Promise<void> {
+    for (const f of readableFields as Array<ReferencePropertyInfo>) {
+      if (!f.storagePath || !f.config?.referenceCollection || !f.config?.referenceDisplayProperty) continue;
 
       const parsed = this.parseStoragePath(f.storagePath);
-      if (parsed.type !== 'column') return;
+      if (parsed.type !== 'column') continue;
 
       const refTable = f.config.referenceCollection;
       const alias = `ref_${f.code}`;
@@ -477,21 +535,44 @@ export class GridQueryService {
         this.ensureSafeIdentifier(refTable, 'reference table');
         this.ensureSafeIdentifier(displayField, 'display field');
       } catch {
-        // Skip invalid reference table names
-        return;
+        continue;
       }
 
-      // LEFT JOIN the referenced table using a subquery
-      // This works with TypeORM's query builder when the main FROM is a raw table
+      // Field-level: only project the display column if the caller can read it
+      // on the referenced table. Otherwise, project NULL.
+      const fieldCheck = await this.authz.getAuthorizedFields(ctx, refTable, [
+        { code: displayField, storagePath: `column:${displayField}`, label: displayField },
+      ]);
+      const displayProjection = fieldCheck[0]?.canRead
+        ? `sub_${alias}."${displayField}"`
+        : 'NULL';
+
+      // Row-level: apply RLS predicates from the caller's context to the
+      // referenced table inside the subquery.
+      const refRls = await this.authz.buildRowLevelClause(ctx, refTable, 'read', `sub_${alias}`);
+
       qb.leftJoin(
-        (subQuery) =>
-          subQuery
-            .select([`sub_${alias}.id AS id`, `sub_${alias}."${displayField}" AS "${displayField}"`])
-            .from(`public.${refTable}`, `sub_${alias}`),
+        (subQuery) => {
+          let sub = subQuery
+            .select([`sub_${alias}.id AS id`, `${displayProjection} AS "${displayField}"`])
+            .from(`public.${refTable}`, `sub_${alias}`);
+          refRls.clauses.forEach((clause, index) => {
+            const prefixed: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(refRls.params)) {
+              prefixed[`refrls_${alias}_${index}_${k}`] = v;
+            }
+            const replaced = clause.replace(
+              /:([a-zA-Z0-9_]+)/g,
+              (_, name) => `:refrls_${alias}_${index}_${name}`,
+            );
+            sub = sub.andWhere(replaced, prefixed);
+          });
+          return sub;
+        },
         alias,
         `${alias}.id = t."${parsed.column}"`,
       );
-    });
+    }
   }
 
   private applyFilters(

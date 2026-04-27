@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   Condition,
   SingleCondition,
   ConditionOperator,
   ExecutionContext,
 } from './automation-runtime.types';
+
+// Property paths that bypass the field-authorization check. These are not
+// stored fields — they reference execution-context primitives or change-set
+// metadata that exists only at evaluation time.
+const SYSTEM_PROPERTY_PREFIXES = ['_previous.'];
+const SYSTEM_PROPERTIES = new Set(['_changes']);
 
 export interface EvaluationResult {
   result: boolean;
@@ -27,6 +33,8 @@ export interface ConditionTrace {
 
 @Injectable()
 export class ConditionEvaluatorService {
+  private readonly logger = new Logger(ConditionEvaluatorService.name);
+
   evaluate(condition: Condition, context: ExecutionContext): EvaluationResult {
     const startTime = Date.now();
     const trace = this.evaluateNode(condition, context);
@@ -234,12 +242,39 @@ export class ConditionEvaluatorService {
   private getPropertyValue(property: string, context: ExecutionContext): unknown {
     if (property.startsWith('_previous.')) {
       const prop = property.substring(10);
+      if (!this.isPropertyAuthorized(prop, context)) {
+        this.logger.debug(
+          `Condition evaluator: skipping unauthorized previous-property '${prop}'`,
+        );
+        return undefined;
+      }
       return context.previousRecord?.[prop];
     }
     if (property === '_changes') {
       return context.changes;
     }
+    if (!this.isPropertyAuthorized(property, context)) {
+      this.logger.debug(
+        `Condition evaluator: skipping unauthorized property '${property}'`,
+      );
+      return undefined;
+    }
     return context.record[property];
+  }
+
+  private isPropertyAuthorized(property: string, context: ExecutionContext): boolean {
+    // Field-level authorization: when the caller has supplied an authorized
+    // field set, restrict reads to that allowlist. When no allowlist is
+    // present (e.g. system-context evaluation) all properties are readable.
+    if (SYSTEM_PROPERTIES.has(property)) return true;
+    for (const prefix of SYSTEM_PROPERTY_PREFIXES) {
+      if (property.startsWith(prefix)) return true;
+    }
+    const ctx = context as ExecutionContext & { authorizedFields?: Set<string> };
+    if (!ctx.authorizedFields) {
+      return true;
+    }
+    return ctx.authorizedFields.has(property);
   }
 
   private resolveValue(value: unknown, context: ExecutionContext): unknown {

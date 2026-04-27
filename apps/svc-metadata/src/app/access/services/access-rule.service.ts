@@ -745,10 +745,43 @@ export class AccessRuleService {
         if (!propertyCodeSet.has(propertyCode)) {
           throw new BadRequestException(`Property not found in collection: ${propertyCode}`);
         }
+
+        // A leaf condition must declare a supported operator. Anything else is rejected.
+        const operator = conditionObj['operator'];
+        if (typeof operator !== 'string' || !ALLOWED_CONDITION_OPERATORS.has(operator)) {
+          throw new BadRequestException(`Unsupported operator: ${String(operator)}`);
+        }
       }
     };
 
     validateConditionNode(condition);
   }
 }
+
+/**
+ * Operators permitted in collection access rule conditions. Anything outside
+ * this allow-list is rejected at create/update time.
+ */
+const ALLOWED_CONDITION_OPERATORS: ReadonlySet<string> = new Set([
+  'eq',
+  'neq',
+  'in',
+  'not_in',
+  'contains',
+  'starts_with',
+  'ends_with',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'is_null',
+  'is_not_null',
+  // Aliases also accepted by compareValues() at evaluation time.
+  'equals',
+  'not_equals',
+  'greater_than',
+  'greater_than_or_equals',
+  'less_than',
+  'less_than_or_equals',
+]);
 

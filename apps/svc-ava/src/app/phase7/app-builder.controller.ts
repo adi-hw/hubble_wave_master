@@ -8,6 +8,8 @@ import {
   Param,
   Query,
   UseGuards,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AppBuilderService } from '@hubblewave/ai';
@@ -70,9 +72,14 @@ export class AppBuilderController {
   @ApiOperation({ summary: 'Get app details' })
   @ApiResponse({ status: 200, description: 'App details' })
   async getApp(
+    @CurrentUser() user: RequestUser,
     @Param('id') appId: string,
   ) {
     const app = await this.appBuilderService.getApp(appId);
+    if (!app) throw new NotFoundException('App not found');
+    if (app.createdBy !== user.id && !app.isPublished && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     return { app };
   }
 
@@ -108,8 +115,14 @@ export class AppBuilderController {
   @ApiOperation({ summary: 'Delete an app' })
   @ApiResponse({ status: 200, description: 'App deleted' })
   async deleteApp(
+    @CurrentUser() user: RequestUser,
     @Param('id') appId: string,
   ) {
+    const app = await this.appBuilderService.getApp(appId);
+    if (!app) throw new NotFoundException('App not found');
+    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.appBuilderService.deleteApp(appId);
     return { success: true };
   }
@@ -135,8 +148,14 @@ export class AppBuilderController {
   @ApiOperation({ summary: 'Get app version history' })
   @ApiResponse({ status: 200, description: 'Version history' })
   async getVersionHistory(
+    @CurrentUser() user: RequestUser,
     @Param('id') appId: string,
   ) {
+    const app = await this.appBuilderService.getApp(appId);
+    if (!app) throw new NotFoundException('App not found');
+    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     const versions = await this.appBuilderService.getVersionHistory(appId);
     return { versions };
   }
@@ -162,8 +181,14 @@ export class AppBuilderController {
   @ApiOperation({ summary: 'Export app configuration' })
   @ApiResponse({ status: 200, description: 'App export' })
   async exportApp(
+    @CurrentUser() user: RequestUser,
     @Param('id') appId: string,
   ) {
+    const app = await this.appBuilderService.getApp(appId);
+    if (!app) throw new NotFoundException('App not found');
+    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     const exported = await this.appBuilderService.exportApp(appId);
     return exported;
   }

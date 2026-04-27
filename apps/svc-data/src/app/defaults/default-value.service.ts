@@ -260,9 +260,21 @@ export class DefaultValueService {
 
     try {
       this.validateExpressionSecurity(config.expression);
+      // Filter `record` to authorized fields only before exposing it to the
+      // user-authored expression. If the caller passes no authorizedFieldCodes,
+      // the full record is used (back-compat for create flows where the caller
+      // owns every field they sent).
+      const recordForExpression = context.authorizedFieldCodes
+        ? Object.fromEntries(
+            Object.entries(context.record).filter(([key]) =>
+              context.authorizedFieldCodes!.includes(key),
+            ),
+          )
+        : context.record;
+
       // Create evaluation context
       const evalContext = {
-        record: context.record,
+        record: recordForExpression,
         user: {
           id: context.userId,
           name: context.userName || 'Unknown',

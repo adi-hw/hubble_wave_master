@@ -8,6 +8,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface LookupConfig {
@@ -31,7 +33,8 @@ export class LookupService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly cacheService: FormulaCacheService
+    private readonly cacheService: FormulaCacheService,
+    private readonly authz: AuthorizationService,
   ) {}
 
   /**
@@ -42,21 +45,33 @@ export class LookupService {
   }
 
   /**
-   * Resolve a lookup value for a record
+   * Resolve a lookup value for a record. The caller's RequestContext is used to
+   * enforce row- and field-level access on the source collection. If the caller
+   * cannot read the source field or referenced row, null is returned for that
+   * value (fail-closed).
    */
   async resolveLookup(
     collectionCode: string,
     recordId: string,
     referenceValue: unknown,
-    config: LookupConfig
+    config: LookupConfig,
+    ctx: RequestContext,
   ): Promise<LookupResult> {
     try {
       if (referenceValue === null || referenceValue === undefined) {
         return { success: true, value: null };
       }
 
-      // Check cache first
-      const cacheKey = `lookup:${collectionCode}:${recordId}:${config.referenceProperty}:${config.sourceProperty}`;
+      // Field-level access on source collection: if caller cannot read the
+      // source property, return null without querying.
+      const fieldReadable = await this.isFieldReadable(ctx, config.sourceCollection, config.sourceProperty);
+      if (!fieldReadable) {
+        return { success: true, value: null };
+      }
+
+      // Check cache first — cache key includes user identity so users with
+      // different access do not share lookup results.
+      const cacheKey = `lookup:${ctx.userId}:${collectionCode}:${recordId}:${config.referenceProperty}:${config.sourceProperty}`;
       const cached = await this.cacheService.get(cacheKey);
       if (cached !== null) {
         return { success: true, value: cached };
@@ -65,6 +80,7 @@ export class LookupService {
       // Handle single reference
       if (!Array.isArray(referenceValue)) {
         const value = await this.getLookupValue(
+          ctx,
           config.sourceCollection,
           referenceValue as string,
           config.sourceProperty
@@ -78,6 +94,7 @@ export class LookupService {
       const values = await Promise.all(
         (referenceValue as string[]).map((ref) =>
           this.getLookupValue(
+            ctx,
             config.sourceCollection,
             ref,
             config.sourceProperty
@@ -96,9 +113,10 @@ export class LookupService {
   }
 
   /**
-   * Get a single lookup value from the source collection
+   * Get a single lookup value from the source collection, applying RLS.
    */
   private async getLookupValue(
+    ctx: RequestContext,
     sourceCollection: string,
     recordId: string,
     sourceProperty: string
@@ -110,22 +128,59 @@ export class LookupService {
         return null;
       }
 
-      const result = await this.dataSource.query(
-        `SELECT "${sourceProperty}" FROM "${sourceCollection}"
-         WHERE id = $1 AND deleted_at IS NULL
-         LIMIT 1`,
-        [recordId]
-      );
-
-      if (result.length > 0) {
-        return result[0][sourceProperty];
+      // Row-level access: if caller cannot read the table at all, return null.
+      const canRead = await this.authz.canAccessTable(ctx, sourceCollection, 'read');
+      if (!canRead) {
+        return null;
       }
 
+      const qb = this.dataSource
+        .createQueryBuilder()
+        .select(`t."${sourceProperty}"`, sourceProperty)
+        .from(`public."${sourceCollection}"`, 't')
+        .where('t.id = :lookup_id', { lookup_id: recordId })
+        .andWhere('t.deleted_at IS NULL')
+        .limit(1);
+
+      const rls = await this.authz.buildRowLevelClause(ctx, sourceCollection, 'read', 't');
+      rls.clauses.forEach((clause, index) => {
+        const prefixed: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rls.params)) {
+          prefixed[`lookup_rls_${index}_${k}`] = v;
+        }
+        const replaced = clause.replace(/:([a-zA-Z0-9_]+)/g, (_, name) => `:lookup_rls_${index}_${name}`);
+        qb.andWhere(replaced, prefixed);
+      });
+
+      const row = await qb.getRawOne();
+      if (row && sourceProperty in row) {
+        return row[sourceProperty];
+      }
       return null;
     } catch (error) {
       this.logger.debug(`Failed to get lookup value: ${(error as Error).message}`);
       return null;
     }
+  }
+
+  /**
+   * Check whether the caller can read a specific property on a collection.
+   */
+  private async isFieldReadable(
+    ctx: RequestContext,
+    sourceCollection: string,
+    sourceProperty: string,
+  ): Promise<boolean> {
+    if (ctx.isAdmin) {
+      return true;
+    }
+    if (!this.validateIdentifier(sourceCollection) || !this.validateIdentifier(sourceProperty)) {
+      return false;
+    }
+    const fields = await this.authz.getAuthorizedFields(ctx, sourceCollection, [
+      { code: sourceProperty, storagePath: `column:${sourceProperty}`, label: sourceProperty },
+    ]);
+    return fields[0]?.canRead === true;
   }
 
   /**
@@ -138,7 +193,8 @@ export class LookupService {
     lookupConfigs: Array<{
       propertyCode: string;
       config: LookupConfig;
-    }>
+    }>,
+    ctx: RequestContext,
   ): Promise<Record<string, unknown>> {
     const results: Record<string, unknown> = {};
 
@@ -148,7 +204,8 @@ export class LookupService {
         collectionCode,
         recordId,
         referenceValue,
-        config
+        config,
+        ctx,
       );
 
       if (result.success) {

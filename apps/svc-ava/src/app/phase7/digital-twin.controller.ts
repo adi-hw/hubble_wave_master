@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { DigitalTwinService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { SensorMapping, TwinStatus } from '@hubblewave/instance-db';
 
 interface CreateTwinDto {
@@ -51,13 +51,14 @@ interface SensorReadingDto {
 @ApiTags('Phase 7 - Digital Twins & IoT Integration')
 @ApiBearerAuth()
 @Controller('phase7/digital-twins')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class DigitalTwinController {
   constructor(
     private readonly twinService: DigitalTwinService,
   ) {}
 
   @Post()
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a digital twin' })
   @ApiResponse({ status: 201, description: 'Digital twin created' })
   async createTwin(
@@ -100,6 +101,7 @@ export class DigitalTwinController {
   }
 
   @Put(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update digital twin' })
   @ApiResponse({ status: 200, description: 'Twin updated' })
   async updateTwin(
@@ -111,6 +113,7 @@ export class DigitalTwinController {
   }
 
   @Delete(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete digital twin' })
   @ApiResponse({ status: 200, description: 'Twin deleted' })
   async deleteTwin(
@@ -131,6 +134,7 @@ export class DigitalTwinController {
   }
 
   @Post(':id/sensors')
+  @Roles('admin')
   @ApiOperation({ summary: 'Add sensor mapping to twin' })
   @ApiResponse({ status: 201, description: 'Sensor mapping added' })
   async addSensorMapping(
@@ -152,6 +156,7 @@ export class DigitalTwinController {
   }
 
   @Delete(':id/sensors/:sensorId')
+  @Roles('admin')
   @ApiOperation({ summary: 'Remove sensor mapping' })
   @ApiResponse({ status: 200, description: 'Sensor mapping removed' })
   async removeSensorMapping(
@@ -245,6 +250,7 @@ export class DigitalTwinController {
   }
 
   @Post(':assetId/cleanup')
+  @Roles('admin')
   @ApiOperation({ summary: 'Cleanup old sensor readings' })
   @ApiResponse({ status: 200, description: 'Number of readings deleted' })
   async cleanupOldReadings(

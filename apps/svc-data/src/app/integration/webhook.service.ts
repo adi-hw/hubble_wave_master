@@ -5,17 +5,89 @@
  * Manages webhook subscriptions and delivery with retry logic.
  */
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
+import { isIP } from 'net';
 import {
   WebhookSubscription,
   WebhookDelivery,
   WebhookEvent,
   WebhookDeliveryStatus,
 } from '@hubblewave/instance-db';
+
+// validateOutboundUrl: inline impl — central helper lands in Wave 3 libs/integrations
+function validateOutboundUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new BadRequestException('Webhook endpointUrl invalid: not a valid URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new BadRequestException('Webhook endpointUrl invalid: must use https');
+  }
+  const hostname = (parsed.hostname || '').toLowerCase();
+  if (!hostname) {
+    throw new BadRequestException('Webhook endpointUrl invalid: missing hostname');
+  }
+  if (isPrivateIpLiteral(hostname)) {
+    throw new BadRequestException('Webhook endpointUrl invalid: hostname resolves to private network');
+  }
+  return parsed;
+}
+
+function isPrivateIpLiteral(hostname: string): boolean {
+  const candidate = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  const family = isIP(candidate);
+  if (family === 0) {
+    return false;
+  }
+  if (family === 4) {
+    const parts = candidate.split('.').map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
+      return true;
+    }
+    const [a, b] = parts;
+    if (a === 10) return true;                          // 10.0.0.0/8
+    if (a === 127) return true;                         // 127.0.0.0/8
+    if (a === 169 && b === 254) return true;            // 169.254.0.0/16
+    if (a === 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
+    if (a === 192 && b === 168) return true;            // 192.168.0.0/16
+    return false;
+  }
+  // IPv6
+  const lowered = candidate.toLowerCase();
+  if (lowered === '::1') return true;
+  if (lowered.startsWith('fe8') || lowered.startsWith('fe9') ||
+      lowered.startsWith('fea') || lowered.startsWith('feb')) {
+    return true;
+  }
+  if (lowered.startsWith('fc') || lowered.startsWith('fd')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Reject header maps that could be used for header smuggling. Names containing
+ * CR, LF, or colons (which would be interpreted as separators) are rejected.
+ */
+function validateHeaderMap(headers: Record<string, string> | undefined): void {
+  if (!headers) return;
+  for (const [name, value] of Object.entries(headers)) {
+    if (typeof name !== 'string' || /[\r\n:]/.test(name)) {
+      throw new BadRequestException(`Webhook header name invalid: '${name}'`);
+    }
+    if (typeof value !== 'string' || /[\r\n]/.test(value)) {
+      throw new BadRequestException(`Webhook header value invalid for '${name}'`);
+    }
+  }
+}
 
 interface DeliverWebhookOptions {
   subscriptionId: string;
@@ -86,6 +158,8 @@ export class WebhookService {
   }
 
   async create(dto: CreateWebhookDto): Promise<WebhookSubscription> {
+    validateOutboundUrl(dto.endpointUrl);
+    validateHeaderMap(dto.headers);
     const secret = dto.secret || crypto.randomBytes(32).toString('hex');
 
     const subscription = this.subscriptionRepo.create({
@@ -134,11 +208,17 @@ export class WebhookService {
       throw new Error('Webhook subscription not found');
     }
 
+    if (dto.endpointUrl !== undefined) {
+      validateOutboundUrl(dto.endpointUrl);
+      subscription.endpointUrl = dto.endpointUrl;
+    }
+    if (dto.headers !== undefined) {
+      validateHeaderMap(dto.headers);
+      subscription.headers = dto.headers;
+    }
     if (dto.name !== undefined) subscription.name = dto.name;
-    if (dto.endpointUrl !== undefined) subscription.endpointUrl = dto.endpointUrl;
     if (dto.events !== undefined) subscription.events = dto.events;
     if (dto.filterConditions !== undefined) subscription.filterConditions = dto.filterConditions;
-    if (dto.headers !== undefined) subscription.headers = dto.headers;
     if (dto.isActive !== undefined) subscription.isActive = dto.isActive;
     if (dto.retryCount !== undefined) subscription.retryCount = dto.retryCount;
     if (dto.timeoutSeconds !== undefined) subscription.timeoutSeconds = dto.timeoutSeconds;
@@ -318,6 +398,11 @@ export class WebhookService {
     timeout: number;
     verifySsl: boolean;
   }): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+    // Defense-in-depth: re-validate at delivery time in case the persisted URL
+    // was mutated by another path or the IP was assumed safe at registration.
+    validateOutboundUrl(options.url);
+    validateHeaderMap(options.headers);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout);
 
@@ -405,6 +490,10 @@ export class WebhookService {
     });
 
     return { items, total };
+  }
+
+  async findDeliveryById(deliveryId: string): Promise<WebhookDelivery | null> {
+    return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
   async retryDelivery(deliveryId: string): Promise<WebhookDelivery> {

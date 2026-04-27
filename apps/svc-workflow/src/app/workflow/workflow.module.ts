@@ -12,6 +12,7 @@ import {
   AuditLog,
   CollectionDefinition,
   PropertyDefinition,
+  User,
 } from '@hubblewave/instance-db';
 import { WorkflowDefinitionsController } from './workflow-definitions.controller';
 import { WorkflowInstancesController } from './workflow-instances.controller';
@@ -42,6 +43,7 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
       AuditLog,
       CollectionDefinition,
       PropertyDefinition,
+      User,
     ]),
   ],
   controllers: [

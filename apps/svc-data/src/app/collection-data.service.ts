@@ -267,7 +267,10 @@ export class CollectionDataService {
       }
     }
 
-    // Look up collection codes for all referenced collections
+    // Look up collection codes for all referenced collections.
+    // Per HubbleWave canon §5 (one instance per customer), the collection
+    // metadata repository is scoped to this customer's instance database at
+    // the connection level — there is no cross-instance tenant id to filter.
     const idToCodeMap = new Map<string, string>();
     if (refCollectionIds.size > 0) {
       const refCollections = await this.collectionRepo().find({
@@ -821,7 +824,12 @@ export class CollectionDataService {
     );
     const writableCodes = new Set(authorizedFields.filter((f) => f.canWrite).map((f) => f.code));
 
-    // Create default value context
+    // Create default value context. Expose only readable field codes so any
+    // user-authored expression cannot read fields the caller can't read on
+    // this collection.
+    const readableFieldCodes = authorizedFields
+      .filter((f) => f.canRead)
+      .map((f) => f.code);
     const defaultValueContext: DefaultValueContext = {
       userId: ctx.userId,
       userName: ctx.username,
@@ -829,6 +837,7 @@ export class CollectionDataService {
       collectionId: collection.id,
       record: data,
       isCreate: true,
+      authorizedFieldCodes: readableFieldCodes,
     };
 
     // Apply default values first
@@ -1107,7 +1116,7 @@ export class CollectionDataService {
     collectionCode: string,
     ids: string[],
     data: Record<string, unknown>
-  ): Promise<{ success: boolean; updatedCount: number }> {
+  ): Promise<{ success: boolean; updatedCount: number; skippedCount: number; skippedIds: string[] }> {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided');
     }
@@ -1145,22 +1154,30 @@ export class CollectionDataService {
 
     updateData['updated_at'] = new Date();
 
+    // Filter ids through row-level access for the 'update' operation. Each row
+    // selected by the caller must independently satisfy RLS predicates.
+    const authorizedIds = await this.filterIdsByRowLevel(context, collection.tableName, ids, 'update');
+    const skippedIds = ids.filter((id) => !authorizedIds.includes(id));
+    if (authorizedIds.length === 0) {
+      throw new ForbiddenException('No accessible records in selection');
+    }
+
     const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
     const properties = await this.getProperties(collection.id);
-    const beforeRecords = await this.fetchRecordsByIds(collection.tableName, ids, properties);
+    const beforeRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
 
-    const result = await ds.createQueryBuilder().update(tableName).set(updateData).whereInIds(ids).execute();
+    const result = await ds.createQueryBuilder().update(tableName).set(updateData).whereInIds(authorizedIds).execute();
 
     await this.writeAuditLog({
       userId: context.userId,
       action: 'bulk_update',
       collectionCode: collection.code,
-      newValues: { ids, data },
+      newValues: { ids: authorizedIds, data, skippedIds },
     });
 
-    const afterRecords = await this.fetchRecordsByIds(collection.tableName, ids, properties);
+    const afterRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
 
     const beforeMap = new Map(beforeRecords.map((record) => [record.id as string, record]));
     for (const record of afterRecords) {
@@ -1177,10 +1194,19 @@ export class CollectionDataService {
       });
     }
 
-    return { success: true, updatedCount: result.affected || 0 };
+    return {
+      success: true,
+      updatedCount: result.affected || 0,
+      skippedCount: skippedIds.length,
+      skippedIds,
+    };
   }
 
-  async bulkDelete(ctx: RequestContext, collectionCode: string, ids: string[]): Promise<{ success: boolean; deletedCount: number }> {
+  async bulkDelete(
+    ctx: RequestContext,
+    collectionCode: string,
+    ids: string[],
+  ): Promise<{ success: boolean; deletedCount: number; skippedCount: number; skippedIds: string[] }> {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided');
     }
@@ -1189,19 +1215,26 @@ export class CollectionDataService {
     const collection = await this.getCollection(collectionCode);
     await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
 
+    // Filter ids through row-level access for the 'delete' operation.
+    const authorizedIds = await this.filterIdsByRowLevel(context, collection.tableName, ids, 'delete');
+    const skippedIds = ids.filter((id) => !authorizedIds.includes(id));
+    if (authorizedIds.length === 0) {
+      throw new ForbiddenException('No accessible records in selection');
+    }
+
     const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
     const properties = await this.getProperties(collection.id);
-    const deletedRecords = await this.fetchRecordsByIds(collection.tableName, ids, properties);
+    const deletedRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
 
-    const result = await ds.createQueryBuilder().delete().from(tableName).whereInIds(ids).execute();
+    const result = await ds.createQueryBuilder().delete().from(tableName).whereInIds(authorizedIds).execute();
 
     await this.writeAuditLog({
       userId: context.userId,
       action: 'bulk_delete',
       collectionCode: collection.code,
-      newValues: { ids },
+      newValues: { ids: authorizedIds, skippedIds },
     });
 
     for (const record of deletedRecords) {
@@ -1217,7 +1250,47 @@ export class CollectionDataService {
       });
     }
 
-    return { success: true, deletedCount: result.affected || 0 };
+    return {
+      success: true,
+      deletedCount: result.affected || 0,
+      skippedCount: skippedIds.length,
+      skippedIds,
+    };
+  }
+
+  /**
+   * Resolve the subset of `ids` the caller is permitted to operate on for a given
+   * row-level operation (read/update/delete). Admins bypass; otherwise the same
+   * RLS predicates used by getList are applied to constrain the id set.
+   */
+  private async filterIdsByRowLevel(
+    context: RequestContext,
+    tableName: string,
+    ids: string[],
+    operation: 'read' | 'update' | 'delete',
+  ): Promise<string[]> {
+    if (context.isAdmin) {
+      return ids;
+    }
+    const ds = this.dataSource;
+    const schemaName = this.ensureSafeIdentifier('public', 'schema');
+    const safeTable = this.ensureSafeIdentifier(tableName, 'table');
+
+    const qb = ds
+      .createQueryBuilder()
+      .select('t.id', 'id')
+      .from(`${schemaName}.${safeTable}`, 't')
+      .where('t.id IN (:...rls_ids)', { rls_ids: ids });
+
+    const rowLevelClause = await this.authz.buildRowLevelClause(context, tableName, operation, 't');
+    if (rowLevelClause.clauses.length > 0) {
+      rowLevelClause.clauses.forEach((clause, index) => {
+        qb.andWhere(clause, this.prefixParams(rowLevelClause.params, `rls_bk_${index}_`));
+      });
+    }
+
+    const rows = await qb.getRawMany();
+    return rows.map((r) => r.id as string);
   }
 
   private calculateChangedProperties(

@@ -2,7 +2,9 @@
  * LLM Provider Service
  * HubbleWave Platform - Phase 6
  *
- * Manages LLM provider integration with fallback support.
+ * Manages LLM provider integration. Primary: Claude. Fallback: OpenAI.
+ * If neither provider is configured, the service throws — there is no
+ * canned/mock response path.
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -117,8 +119,12 @@ export class LLMProviderService {
       }
     }
 
-    // No provider available, return mock response for development
-    return this.getMockResponse(request);
+    // Fail-closed: refusing to invent a response when no provider is configured.
+    // Returning canned text would silently mask a misconfiguration and produce
+    // hallucinated output that downstream code treats as a real LLM answer.
+    throw new Error(
+      'No LLM provider configured: set CLAUDE_API_KEY (preferred) or OPENAI_API_KEY to enable AVA chat.'
+    );
   }
 
   private async callClaude(request: AIRequest): Promise<AIResponse> {
@@ -238,46 +244,6 @@ export class LLMProviderService {
       },
       latency,
       model: 'gpt-4-turbo-preview',
-    };
-  }
-
-  private getMockResponse(request: AIRequest): AIResponse {
-    const lastUserMessage = request.messages.filter((m) => m.role === 'user').pop();
-    const userContent = lastUserMessage?.content.toLowerCase() || '';
-
-    let responseContent = "I'm AVA, your virtual assistant. How can I help you today?";
-
-    if (userContent.includes('ticket') || userContent.includes('issue')) {
-      responseContent =
-        "I can help you with tickets. Would you like me to create a new ticket, search for existing tickets, or view your assigned tickets?";
-    } else if (userContent.includes('asset')) {
-      responseContent =
-        "I can help you manage assets. Would you like to search for assets, view asset details, or track an asset?";
-    } else if (userContent.includes('help') || userContent.includes('what can you do')) {
-      responseContent = `Hi ${request.context.user.name}! I'm AVA, your intelligent assistant. I can help you with:
-
-• Ticket Management - Create, search, update, and close tickets
-• Asset Management - Search, track, and allocate assets
-• Knowledge Base - Find articles and documentation
-• Analytics - Generate reports and insights
-• Process Flows - Trigger automations and approvals
-
-Just tell me what you need!`;
-    } else if (userContent.includes('hello') || userContent.includes('hi')) {
-      responseContent = `Hello ${request.context.user.name}! I'm AVA, your intelligent assistant at ${request.context.organization.name}. How can I help you today?`;
-    }
-
-    return {
-      id: `mock-${Date.now()}`,
-      content: responseContent,
-      toolCalls: [],
-      usage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-      },
-      latency: 50,
-      model: 'mock-provider',
     };
   }
 

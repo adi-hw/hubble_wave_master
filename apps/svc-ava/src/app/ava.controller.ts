@@ -11,7 +11,10 @@ import {
   UseGuards,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -27,6 +30,36 @@ import {
 import { DataSource } from 'typeorm';
 import { JwtAuthGuard, CurrentUser, RequestUser, extractContext, AuthenticatedRequest } from '@hubblewave/auth-guard';
 import { AvaPreviewService } from './ava-preview.service';
+
+/**
+ * Map a server-side error to a client-safe SSE error payload. Known business
+ * exceptions surface their message (the framework guarantees they are
+ * sanitized); everything else is opaque with a correlation ID for operators.
+ */
+function buildSseErrorPayload(
+  error: unknown,
+  logger: Logger,
+  context: string,
+): { type: 'error'; data: string; correlationId?: string } {
+  const correlationId = randomUUID();
+  if (
+    error instanceof ForbiddenException ||
+    error instanceof NotFoundException ||
+    error instanceof BadRequestException
+  ) {
+    logger.warn(`[${correlationId}] ${context}: ${(error as Error).message}`);
+    return { type: 'error', data: (error as Error).message, correlationId };
+  }
+  logger.error(
+    `[${correlationId}] ${context}: ${(error as Error)?.message || 'unknown'}`,
+    (error as Error)?.stack,
+  );
+  return {
+    type: 'error',
+    data: 'Internal error processing chat',
+    correlationId,
+  };
+}
 
 interface ChatRequestDto {
   message: string;
@@ -64,6 +97,8 @@ interface PreviewRequestDto {
 @Controller('ava')
 @UseGuards(JwtAuthGuard)
 export class AVAController {
+  private readonly logger = new Logger(AVAController.name);
+
   constructor(
     private avaService: AVAService,
     private llmService: LLMService,
@@ -254,9 +289,8 @@ export class AVAController {
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (error) {
-      res.write(
-        `data: ${JSON.stringify({ type: 'error', data: (error as Error).message })}\n\n`
-      );
+      const payload = buildSseErrorPayload(error, this.logger, 'AVA chatStream');
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
       res.end();
     }
   }

@@ -5,10 +5,11 @@
  * Manages external connectors and data synchronization.
  */
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, LessThan } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { isIP } from 'net';
 import { AuthorizationService } from '@hubblewave/authorization';
 import {
   ExternalConnector,
@@ -29,6 +30,60 @@ import {
 import { ConnectorCredentialsService } from './connector-credentials.service';
 import { EventOutboxService } from '../events/event-outbox.service';
 import { RequestContext } from '@hubblewave/auth-guard';
+
+// validateOutboundUrl: inline impl — central helper lands in Wave 3 libs/integrations
+function validateOutboundUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new BadRequestException('Connector source url invalid: not a valid URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new BadRequestException('Connector source url invalid: must use https');
+  }
+  const hostname = (parsed.hostname || '').toLowerCase();
+  if (!hostname) {
+    throw new BadRequestException('Connector source url invalid: missing hostname');
+  }
+  if (isPrivateIpLiteral(hostname)) {
+    throw new BadRequestException('Connector source url invalid: hostname resolves to private network');
+  }
+  return parsed;
+}
+
+function isPrivateIpLiteral(hostname: string): boolean {
+  const candidate = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  const family = isIP(candidate);
+  if (family === 0) {
+    return false;
+  }
+  if (family === 4) {
+    const parts = candidate.split('.').map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
+      return true;
+    }
+    const [a, b] = parts;
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+  }
+  const lowered = candidate.toLowerCase();
+  if (lowered === '::1') return true;
+  if (lowered.startsWith('fe8') || lowered.startsWith('fe9') ||
+      lowered.startsWith('fea') || lowered.startsWith('feb')) {
+    return true;
+  }
+  if (lowered.startsWith('fc') || lowered.startsWith('fd')) {
+    return true;
+  }
+  return false;
+}
 
 interface CreateConnectionDto {
   connectorId: string;
@@ -666,6 +721,7 @@ export class ConnectorService {
     if (!url) {
       throw new Error('Sync source config must include a url');
     }
+    validateOutboundUrl(url);
 
     const method = (source.method as string | undefined)?.toUpperCase() || 'GET';
     const headers: Record<string, string> = {

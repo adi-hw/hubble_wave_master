@@ -73,6 +73,7 @@ export class PredictiveUIController {
   @ApiOperation({ summary: 'Record feedback on a suggestion' })
   @ApiResponse({ status: 200, description: 'Feedback recorded' })
   async recordFeedback(
+    @CurrentUser() _user: RequestUser,
     @Param('id') suggestionId: string,
     @Body() dto: { accepted: boolean },
   ) {

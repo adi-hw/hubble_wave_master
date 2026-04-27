@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { JwtAuthGuard, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { ModuleService } from './module.service';
+import { CreateModuleDto } from './module.dto';
 
 @Controller('modules')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -14,10 +15,8 @@ export class ModuleController {
 
   @Post()
   @Roles('admin')
-  create(
-    @Body()
-    body: { name: string; slug: string; description?: string; route?: string; icon?: string; category?: string; sortOrder?: number }
-  ) {
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  create(@Body() body: CreateModuleDto) {
     return this.moduleService.createModule(body);
   }
 }

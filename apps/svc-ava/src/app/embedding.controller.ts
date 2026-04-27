@@ -6,7 +6,10 @@ import {
   Body,
   Param,
   UseGuards,
+  ConflictException,
+  Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import {
   EmbeddingService,
@@ -15,6 +18,11 @@ import {
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
 import { JwtAuthGuard, CurrentUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import { RedisService } from '@hubblewave/redis';
+
+// Distributed lock TTL: full reindex/initialize jobs are bounded by this
+// horizon. If a job dies without releasing the lock it expires automatically.
+const EMBEDDING_REINDEX_LOCK_TTL_SECONDS = 1800;
 
 interface IndexKnowledgeArticleDto {
   id: string;
@@ -53,12 +61,44 @@ interface SearchDto {
 @Controller('embeddings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmbeddingController {
+  private readonly logger = new Logger(EmbeddingController.name);
+
   constructor(
     private embeddingService: EmbeddingService,
     private embeddingQueueService: EmbeddingQueueService,
     private vectorStoreService: VectorStoreService,
-    private dataSource: DataSource
+    private dataSource: DataSource,
+    private redisService: RedisService,
   ) {}
+
+  /**
+   * Acquire a distributed lock so concurrent reindex/initialize calls do not
+   * stampede. Returns the job id that owns the lock if already held.
+   */
+  private async acquireReindexLock(jobId: string): Promise<{ acquired: true } | { acquired: false; heldBy: string }> {
+    const key = 'embedding:reindex:lock';
+    const client = this.redisService.getClient();
+    // SET NX EX — atomic "set if not exists" with TTL.
+    const result = await client.set(key, jobId, 'EX', EMBEDDING_REINDEX_LOCK_TTL_SECONDS, 'NX');
+    if (result === 'OK') {
+      return { acquired: true };
+    }
+    const current = (await client.get(key)) || 'unknown';
+    return { acquired: false, heldBy: current };
+  }
+
+  private async releaseReindexLock(jobId: string): Promise<void> {
+    const key = 'embedding:reindex:lock';
+    const client = this.redisService.getClient();
+    // Only release the lock if we still own it.
+    const lua =
+      'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end';
+    try {
+      await client.eval(lua, 1, key, jobId);
+    } catch (error) {
+      this.logger.warn(`Failed to release embedding reindex lock: ${(error as Error).message}`);
+    }
+  }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get embedding statistics for this instance' })
@@ -80,9 +120,20 @@ export class EmbeddingController {
   @ApiOperation({ summary: 'Initialize vector store for this instance' })
   @ApiResponse({ status: 200, description: 'Vector store initialized' })
   async initialize(@CurrentUser() _user: any) {
-    await this.vectorStoreService.initializeVectorStore(this.dataSource);
-
-    return { message: 'Vector store initialized successfully' };
+    const jobId = randomUUID();
+    const lock = await this.acquireReindexLock(jobId);
+    if (!lock.acquired) {
+      throw new ConflictException({
+        message: 'Vector store initialize/reindex already in progress',
+        currentJobId: lock.heldBy,
+      });
+    }
+    try {
+      await this.vectorStoreService.initializeVectorStore(this.dataSource);
+      return { message: 'Vector store initialized successfully', jobId };
+    } finally {
+      await this.releaseReindexLock(jobId);
+    }
   }
 
   @Post('search')
@@ -220,13 +271,27 @@ export class EmbeddingController {
       };
     }
 
-    const jobId = await this.embeddingQueueService.scheduleReindex(dto.sourceTypes);
-
-    return {
-      success: true,
-      jobId,
-      message: 'Reindex scheduled',
-    };
+    // Acquire distributed lock so two admins cannot kick off simultaneous
+    // full reindex jobs. The lock is released as soon as the job is enqueued
+    // (the queue itself serialises execution from there).
+    const ownerId = randomUUID();
+    const lock = await this.acquireReindexLock(ownerId);
+    if (!lock.acquired) {
+      throw new ConflictException({
+        message: 'Embedding reindex already in progress',
+        currentJobId: lock.heldBy,
+      });
+    }
+    try {
+      const jobId = await this.embeddingQueueService.scheduleReindex(dto.sourceTypes);
+      return {
+        success: true,
+        jobId,
+        message: 'Reindex scheduled',
+      };
+    } finally {
+      await this.releaseReindexLock(ownerId);
+    }
   }
 
   @Get('queue/jobs')

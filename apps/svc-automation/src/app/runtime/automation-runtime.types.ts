@@ -1,6 +1,27 @@
 export type TriggerTiming = 'before' | 'after' | 'async';
 export type TriggerOperation = 'insert' | 'update' | 'delete' | 'query';
 
+// Distinguishes the source of an automation trigger for audit attribution.
+// 'user'        - direct user action (login session)
+// 'service'     - internal service (no human actor)
+// 'schedule'    - scheduled trigger (cron/scheduler)
+// 'integration' - external integration callback or webhook
+export type TriggeredByPrincipalType = 'user' | 'service' | 'schedule' | 'integration';
+
+// Top-level outcome reported by the automation runtime.
+// 'success'         - all actions ran without errors
+// 'partial_failure' - at least one action failed but execution continued
+//                     because continueOnError was set on the failing action
+// 'error'           - execution failed (no successful actions, or aborted)
+// 'skipped'         - condition was not met or runtime opted out
+// 'timeout'         - script/condition exceeded allowed time budget
+export type AutomationExecutionStatus =
+  | 'success'
+  | 'partial_failure'
+  | 'error'
+  | 'skipped'
+  | 'timeout';
+
 export interface AutomationUserContext {
   id: string | null;
   email?: string;
@@ -24,6 +45,10 @@ export interface ExecutionContext {
   outputs: Record<string, unknown>;
   errors: Array<{ property: string; message: string }>;
   warnings: Array<{ property: string; message: string }>;
+  // Property codes the actor is permitted to read on this collection. When
+  // present, condition/action evaluation must treat unlisted properties as
+  // unreadable rather than silently exposing their values.
+  authorizedFields?: Set<string>;
 }
 
 export interface ActionExecutionResult {

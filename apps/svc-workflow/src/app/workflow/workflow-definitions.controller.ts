@@ -32,7 +32,7 @@ export class WorkflowDefinitionsController {
     @Body() body: CreateWorkflowDefinitionRequest,
     @CurrentUser() user?: RequestUser,
   ) {
-    return this.definitions.create(body, user?.id);
+    return this.definitions.create(body, this.toActor(user));
   }
 
   @Put(':id')
@@ -41,7 +41,7 @@ export class WorkflowDefinitionsController {
     @Body() body: UpdateWorkflowDefinitionRequest,
     @CurrentUser() user?: RequestUser,
   ) {
-    return this.definitions.update(id, body, user?.id);
+    return this.definitions.update(id, body, this.toActor(user));
   }
 
   @Delete(':id')
@@ -65,6 +65,15 @@ export class WorkflowDefinitionsController {
     @Body() body: { code: string },
     @CurrentUser() user?: RequestUser,
   ) {
-    return this.definitions.duplicate(id, body.code, user?.id);
+    return this.definitions.duplicate(id, body.code, this.toActor(user));
+  }
+
+  private toActor(user?: RequestUser) {
+    if (!user) return undefined;
+    return {
+      id: user.id,
+      roles: user.roles,
+      permissions: user.permissions,
+    };
   }
 }

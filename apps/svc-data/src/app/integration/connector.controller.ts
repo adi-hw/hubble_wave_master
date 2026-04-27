@@ -10,6 +10,8 @@ import {
   Put,
   Delete,
   Body,
+  ForbiddenException,
+  NotFoundException,
   Param,
   Query,
   UseGuards,
@@ -63,6 +65,23 @@ interface CreateSyncConfigDto {
 @UseGuards(JwtAuthGuard)
 export class ConnectorController {
   constructor(private readonly connectorService: ConnectorService) {}
+
+  /**
+   * Confirm the caller created this connection (or is an admin). Returns the
+   * entity for downstream use; throws NotFound when the id is unknown to avoid
+   * leaking existence, and Forbidden when the row is owned by someone else.
+   */
+  private async assertConnectionOwnership(id: string, user: RequestUser) {
+    const connection = await this.connectorService.findConnectionById(id);
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+    const isAdmin = user.roles?.includes('admin');
+    if (!isAdmin && connection.createdBy !== user.id) {
+      throw new ForbiddenException('Not the owner of this connection');
+    }
+    return connection;
+  }
 
   // Connectors (System-defined)
 
@@ -118,23 +137,30 @@ export class ConnectorController {
   }
 
   @Get('connections/:id')
-  async findConnection(@Param('id') id: string) {
-    return this.connectorService.findConnectionById(id);
+  async findConnection(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.assertConnectionOwnership(id, user);
   }
 
   @Put('connections/:id')
-  async updateConnection(@Param('id') id: string, @Body() dto: Partial<CreateConnectionDto>) {
+  async updateConnection(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateConnectionDto>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    await this.assertConnectionOwnership(id, user);
     return this.connectorService.updateConnection(id, dto);
   }
 
   @Delete('connections/:id')
-  async deleteConnection(@Param('id') id: string) {
+  async deleteConnection(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.assertConnectionOwnership(id, user);
     await this.connectorService.deleteConnection(id);
     return { success: true };
   }
 
   @Post('connections/:id/test')
-  async testConnection(@Param('id') id: string) {
+  async testConnection(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.assertConnectionOwnership(id, user);
     return this.connectorService.testConnection(id);
   }
 

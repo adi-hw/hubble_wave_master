@@ -10,6 +10,20 @@ import { AccessRuleService } from '../services/access-rule.service';
 import { UserAccessContext, Operation } from '../types/access.types';
 import { Request } from 'express';
 
+/**
+ * Guards collection metadata endpoints by mapping the HTTP method to the
+ * specific permission required for that operation.
+ *
+ * Permission semantics:
+ *   - system.admin and collection.admin grant every operation.
+ *   - collection.read  -> GET only
+ *   - collection.create -> POST only
+ *   - collection.update -> PUT / PATCH only
+ *   - collection.delete -> DELETE only
+ *
+ * A user holding `collection.read` MUST NOT be able to create, update, or
+ * delete collections, and vice versa.
+ */
 @Injectable()
 export class CollectionAccessGuard implements CanActivate {
   private readonly logger = new Logger(CollectionAccessGuard.name);
@@ -26,49 +40,45 @@ export class CollectionAccessGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    // Admin users have full access to collection metadata (schema operations)
-    // Check multiple possible admin indicators from JWT payload
-    if (
+    const operation = this.determineOperation(request.method);
+    const requiredPermission = this.permissionForOperation(operation);
+
+    // Admin role grants full schema access.
+    const isAdminRole =
       rawUser.isAdmin ||
       rawUser.is_admin ||
-      (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin'))
-    ) {
+      (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin'));
+
+    const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
+
+    // Only system.admin and collection.admin are operation-agnostic.
+    const hasBlanketPermission =
+      permissions.includes('system.admin') || permissions.includes('collection.admin');
+
+    if (isAdminRole || hasBlanketPermission) {
       return true;
     }
 
-    // Check for system.admin or collection-related permissions
-    const permissions = rawUser.permissions || [];
-    if (Array.isArray(permissions)) {
-      if (
-        permissions.includes('system.admin') ||
-        permissions.includes('collection.admin') ||
-        permissions.includes('collection.create') ||
-        permissions.includes('collection.read') ||
-        permissions.includes('collection.update')
-      ) {
-        return true;
-      }
-    }
-
-    // Extract Collection ID from route params
     const collectionId = request.params['collectionId'] || request.params['id'];
 
-    // For global endpoints (no collectionId), require collection.read permission
+    // Global (no :collectionId) endpoints: enforce the operation's permission directly.
     if (!collectionId) {
-      const operation = this.determineOperation(request.method);
-      const requiredPermission = operation === 'create'
-        ? 'collection.create'
-        : 'collection.read';
-
-      if (!permissions.includes(requiredPermission) && !permissions.includes('collection.admin')) {
+      if (!permissions.includes(requiredPermission)) {
         throw new ForbiddenException(
-          `Permission '${requiredPermission}' required for this operation`
+          `Permission '${requiredPermission}' required for this operation`,
         );
       }
       return true;
     }
 
-    // Build a properly typed UserAccessContext from the raw JWT payload
+    // Record-scoped endpoints: the user must hold the operation permission AND
+    // pass the per-collection access rules.
+    if (!permissions.includes(requiredPermission)) {
+      throw new ForbiddenException(
+        `Permission '${requiredPermission}' required for this operation`,
+      );
+    }
+
     const user: UserAccessContext = {
       id: rawUser.sub || rawUser.id || '',
       email: rawUser.email || '',
@@ -78,9 +88,6 @@ export class CollectionAccessGuard implements CanActivate {
       departmentId: rawUser.departmentId || rawUser.department_id,
       locationId: rawUser.locationId || rawUser.location_id,
     };
-
-    // Determine Operation
-    const operation = this.determineOperation(request.method);
 
     try {
       const result = await this.accessService.checkAccess({
@@ -95,9 +102,7 @@ export class CollectionAccessGuard implements CanActivate {
         );
       }
 
-      // Store the matching rule or permissions in request for downstream use
       (request as any).accessResult = result;
-
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof UnauthorizedException) {
@@ -116,6 +121,16 @@ export class CollectionAccessGuard implements CanActivate {
       case 'PATCH': return 'update';
       case 'DELETE': return 'delete';
       default: return 'read';
+    }
+  }
+
+  private permissionForOperation(operation: Operation): string {
+    switch (operation) {
+      case 'read': return 'collection.read';
+      case 'create': return 'collection.create';
+      case 'update': return 'collection.update';
+      case 'delete': return 'collection.delete';
+      default: return 'collection.read';
     }
   }
 }

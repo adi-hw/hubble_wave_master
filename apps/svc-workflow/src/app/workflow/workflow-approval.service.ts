@@ -1,17 +1,25 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
-import { Approval, ApprovalStatus, ApprovalType } from '@hubblewave/instance-db';
+import { Approval, ApprovalStatus, ApprovalType, AuditLog, User } from '@hubblewave/instance-db';
 import { WorkflowAuditService } from './workflow-audit.service';
 
 const DEFAULT_APPROVAL_TYPE: ApprovalType = 'sequential';
+// Delegation forms a chain: A delegates to B, B delegates to C, ...
+// Capping the depth prevents runaway chains and the cycle check prevents
+// approvers from delegating back to a prior link in the same chain.
+const MAX_DELEGATION_DEPTH = 3;
 
 @Injectable()
 export class WorkflowApprovalService {
   constructor(
     @InjectRepository(Approval)
     private readonly approvalRepo: Repository<Approval>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(AuditLog)
+    private readonly auditRepo: Repository<AuditLog>,
     private readonly eventEmitter: EventEmitter2,
     private readonly auditService: WorkflowAuditService,
   ) {}
@@ -49,6 +57,33 @@ export class WorkflowApprovalService {
   async delegate(id: string, delegatedTo: string, actorId: string, reason?: string, isAdmin = false) {
     const approval = await this.findById(id);
     this.assertActorAuthorized(approval, actorId, isAdmin);
+
+    if (!delegatedTo) {
+      throw new BadRequestException('delegatedTo is required');
+    }
+    if (delegatedTo === actorId) {
+      throw new BadRequestException('Cannot delegate an approval to yourself');
+    }
+
+    const delegate = await this.userRepo.findOne({ where: { id: delegatedTo } });
+    if (!delegate || delegate.status !== 'active' || delegate.deletedAt) {
+      throw new BadRequestException(`Unknown or inactive delegate: ${delegatedTo}`);
+    }
+
+    // Walk the existing chain on this approval and reject if appending would
+    // exceed the depth budget or revisit a participant (cycle). The chain is
+    // reconstructed from immutable audit log entries — every prior delegate
+    // action on this approval contributes one link.
+    const chain = await this.readDelegationChain(approval.id);
+    if (chain.length >= MAX_DELEGATION_DEPTH) {
+      throw new BadRequestException(
+        `Delegation depth limit reached (max ${MAX_DELEGATION_DEPTH})`,
+      );
+    }
+    if (chain.includes(delegatedTo) || delegatedTo === approval.approverId) {
+      throw new BadRequestException('Delegation would create a cycle');
+    }
+
     const previous = this.auditValues(approval);
     approval.status = 'delegated';
     approval.delegatedTo = delegatedTo;
@@ -74,6 +109,21 @@ export class WorkflowApprovalService {
     return approval;
   }
 
+  private async readDelegationChain(approvalId: string): Promise<string[]> {
+    // Each delegation on the same approval row produces one audit row with
+    // action='approval.delegate'. The actor of each entry is the link in the
+    // chain; we order by createdAt ascending so the returned array reads
+    // earliest-first.
+    const entries = await this.auditRepo.find({
+      where: { recordId: approvalId, action: 'approval.delegate' },
+      order: { createdAt: 'ASC' },
+      select: ['userId', 'createdAt'],
+    });
+    return entries
+      .map((e) => e.userId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  }
+
   @OnEvent('approval.create')
   async handleApprovalCreate(payload: {
     processFlowInstanceId: string;
@@ -89,7 +139,28 @@ export class WorkflowApprovalService {
       ? new Date(now.getTime() + payload.timeoutMinutes * 60 * 1000)
       : undefined;
 
-    const approvals = payload.approvers.map((approverId, index) =>
+    // Dedupe — duplicate approverIds would create redundant Approval rows
+    // with conflicting sequence numbers.
+    const uniqueApprovers = Array.from(new Set((payload.approvers || []).filter(Boolean)));
+    if (uniqueApprovers.length === 0) {
+      throw new BadRequestException('Approval node has no approvers');
+    }
+
+    // Validate every approver resolves to an active user before persisting.
+    const users = await this.userRepo.find({
+      where: uniqueApprovers.map((id) => ({ id })),
+      select: ['id', 'status', 'deletedAt'],
+    });
+    const activeIds = new Set(
+      users.filter((u) => u.status === 'active' && !u.deletedAt).map((u) => u.id),
+    );
+    for (const approverId of uniqueApprovers) {
+      if (!activeIds.has(approverId)) {
+        throw new BadRequestException(`Unknown approver: ${approverId}`);
+      }
+    }
+
+    const approvals = uniqueApprovers.map((approverId, index) =>
       this.approvalRepo.create({
         processFlowInstanceId: payload.processFlowInstanceId,
         nodeId: payload.nodeId,

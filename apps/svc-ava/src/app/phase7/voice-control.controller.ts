@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { VoiceControlService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 
 interface VoiceCommandDto {
   audioData?: string;
@@ -30,7 +30,7 @@ interface RegisterPatternDto {
 @ApiTags('Phase 7 - Voice Control')
 @ApiBearerAuth()
 @Controller('phase7/voice')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class VoiceControlController {
   constructor(
     private readonly voiceService: VoiceControlService,
@@ -91,6 +91,7 @@ export class VoiceControlController {
   }
 
   @Post('patterns')
+  @Roles('admin')
   @ApiOperation({ summary: 'Register a command pattern' })
   @ApiResponse({ status: 201, description: 'Pattern registered' })
   async registerPattern(

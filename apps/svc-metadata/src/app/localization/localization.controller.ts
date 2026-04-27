@@ -9,6 +9,17 @@ import {
   UpsertTranslationValue,
 } from './localization-studio.service';
 
+/**
+ * Localization endpoints serve translation bundles, locales, keys, and values.
+ *
+ * Tenant scope: HubbleWave runs one instance per customer (Manifesto §5), so
+ * "tenant" is implicit in the database itself. Translations are
+ * instance-global — every translation row, every locale, and every key in
+ * this database belongs to this customer instance and is shared by all of
+ * its users. There is therefore no per-tenant filter applied here, and there
+ * must not be one: introducing a tenantId column would constitute a
+ * cross-customer data sharing model, which the architecture forbids.
+ */
 @Controller('localization')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LocalizationController {

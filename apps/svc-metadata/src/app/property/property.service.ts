@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { PropertyDefinition, DefaultValueType, AuditLog } from '@hubblewave/instance-db';
+import {
+  PropertyDefinition,
+  DefaultValueType,
+  AuditLog,
+  CollectionDefinition,
+} from '@hubblewave/instance-db';
 
 export interface CreatePropertyDto {
   code: string;
@@ -57,7 +62,23 @@ export class PropertyService {
     private readonly propertyRepo: Repository<PropertyDefinition>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(CollectionDefinition)
+    private readonly collectionRepo: Repository<CollectionDefinition>,
   ) {}
+
+  /**
+   * Verify a referenced collection exists in this instance. Reference
+   * collections must be present before a property can point at them.
+   */
+  private async assertReferenceCollectionExists(referenceCollectionId: string): Promise<void> {
+    const exists = await this.collectionRepo.findOne({
+      where: { id: referenceCollectionId },
+      select: ['id'],
+    });
+    if (!exists) {
+      throw new BadRequestException('Reference collection not found');
+    }
+  }
 
   /**
    * List all properties for a collection
@@ -160,6 +181,10 @@ export class PropertyService {
       throw new ConflictException(`Property code '${dto.code}' already exists in this collection`);
     }
 
+    if (dto.referenceCollectionId) {
+      await this.assertReferenceCollectionExists(dto.referenceCollectionId);
+    }
+
     const maxPosition = await this.getMaxPosition(collectionId);
 
     const property = this.propertyRepo.create({
@@ -221,8 +246,64 @@ export class PropertyService {
     const created: PropertyDefinition[] = [];
     const errors: Array<{ index: number; code: string; error: string }> = [];
 
+    if (!Array.isArray(properties) || properties.length === 0) {
+      throw new BadRequestException('properties array is required and must not be empty');
+    }
+
+    // In-batch collision detection: any duplicates within the request itself
+    // are caught up-front so we never silently insert one and reject the next.
+    const codeCounts = new Map<string, number>();
+    const columnCounts = new Map<string, number>();
+    for (const p of properties) {
+      if (p.code) {
+        codeCounts.set(p.code, (codeCounts.get(p.code) || 0) + 1);
+      }
+      const columnName = p.columnName || (p.code ? this.generateColumnName(p.code) : null);
+      if (columnName) {
+        columnCounts.set(columnName, (columnCounts.get(columnName) || 0) + 1);
+      }
+    }
+    const duplicateCodes = Array.from(codeCounts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([code]) => code);
+    const duplicateColumns = Array.from(columnCounts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([col]) => col);
+    if (duplicateCodes.length > 0 || duplicateColumns.length > 0) {
+      const parts: string[] = [];
+      if (duplicateCodes.length > 0) {
+        parts.push(`duplicate codes in request: ${duplicateCodes.join(', ')}`);
+      }
+      if (duplicateColumns.length > 0) {
+        parts.push(`duplicate columnNames in request: ${duplicateColumns.join(', ')}`);
+      }
+      throw new BadRequestException(parts.join('; '));
+    }
+
     const codes = properties.map((p) => p.code);
     const existingCodes = await this.getExistingCodes(collectionId, codes);
+
+    // Pre-flight: validate every distinct referenceCollectionId in one round-trip.
+    const referenceIds = Array.from(
+      new Set(
+        properties
+          .map((p) => p.referenceCollectionId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+    if (referenceIds.length > 0) {
+      const found = await this.collectionRepo.find({
+        where: { id: In(referenceIds) },
+        select: ['id'],
+      });
+      const foundIds = new Set(found.map((c) => c.id));
+      const missing = referenceIds.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Reference collection not found: ${missing.join(', ')}`,
+        );
+      }
+    }
 
     let maxPosition = await this.getMaxPosition(collectionId);
 
@@ -349,6 +430,10 @@ export class PropertyService {
 
     if (existing.isSystem && dto.isRequired !== undefined) {
       throw new BadRequestException('Cannot modify system property required status');
+    }
+
+    if (dto.referenceCollectionId !== undefined && dto.referenceCollectionId !== null) {
+      await this.assertReferenceCollectionExists(dto.referenceCollectionId);
     }
 
     const updateData: Record<string, unknown> = {};

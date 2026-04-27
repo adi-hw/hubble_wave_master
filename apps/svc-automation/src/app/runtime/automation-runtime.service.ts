@@ -4,13 +4,18 @@ import {
   AutomationRule,
   AuditLog,
   CollectionDefinition,
+  PropertyDefinition,
 } from '@hubblewave/instance-db';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
 import {
   ActionExecutionResult,
   AutomationAction,
+  AutomationExecutionStatus,
   ExecutionContext,
   RecordEventPayload,
   TriggerOperation,
+  TriggeredByPrincipalType,
 } from './automation-runtime.types';
 import { ConditionEvaluatorService } from './condition-evaluator.service';
 import { ActionHandlerService } from './action-handler.service';
@@ -34,6 +39,7 @@ export class AutomationRuntimeService {
     private readonly executionLog: ExecutionLogService,
     private readonly recordMutation: RecordMutationService,
     private readonly outboxPublisher: OutboxPublisherService,
+    private readonly authz: AuthorizationService,
   ) {}
 
   async processRecordEvent(payload: RecordEventPayload): Promise<void> {
@@ -68,6 +74,11 @@ export class AutomationRuntimeService {
     const previousRecord = payload.previousRecord ?? null;
     const changes = payload.changedProperties ?? this.calculateChanges(record, previousRecord || {});
 
+    const authorizedFields = await this.computeAuthorizedFields(
+      collection.tableName,
+      payload.userId ?? null,
+    );
+
     const baseContext: ExecutionContext = {
       user: {
         id: payload.userId ?? null,
@@ -82,7 +93,10 @@ export class AutomationRuntimeService {
       outputs: {},
       errors: [],
       warnings: [],
+      authorizedFields,
     };
+
+    const principalType = this.resolvePrincipalType(payload);
 
     const automations = await this.getAutomationsForCollection(collection.id);
     let executedCount = 0;
@@ -121,6 +135,7 @@ export class AutomationRuntimeService {
           status: 'skipped',
           skippedReason: 'Circular automation reference detected',
           triggeredBy: payload.userId ?? null,
+          triggeredByPrincipalType: principalType,
           executionDepth: baseContext.depth,
         });
         continue;
@@ -135,7 +150,7 @@ export class AutomationRuntimeService {
       baseContext.executionChain.push(automation.id);
 
       try {
-        await this.executeAutomation(automation, baseContext, collection.code, operation);
+        await this.executeAutomation(automation, baseContext, collection.code, operation, principalType);
         executedCount++;
         baseContext.executionChain.pop();
       } catch (error) {
@@ -152,12 +167,14 @@ export class AutomationRuntimeService {
     context: ExecutionContext,
     collectionCode: string,
     operation: TriggerOperation,
+    principalType: TriggeredByPrincipalType,
   ): Promise<void> {
     const startTime = Date.now();
     const actionsExecuted: ActionExecutionResult[] = [];
     let modifiedRecord = { ...context.record };
     const errors: Array<{ property: string; message: string }> = [];
     const warnings: Array<{ property: string; message: string }> = [];
+    let actionFailureCount = 0;
 
     if (automation.conditionType !== 'always') {
       const conditionResult = await this.evaluateCondition(automation, context);
@@ -173,6 +190,7 @@ export class AutomationRuntimeService {
           skippedReason: 'Condition not met',
           inputData: { condition: automation.condition, evaluation: conditionResult.trace },
           triggeredBy: context.user.id,
+          triggeredByPrincipalType: principalType,
           executionDepth: context.depth,
           durationMs: Date.now() - startTime,
         });
@@ -184,6 +202,7 @@ export class AutomationRuntimeService {
           collectionCode,
           recordId: context.record.id as string,
           status: 'skipped',
+          principalType,
           details: { reason: 'Condition not met' },
         });
 
@@ -275,6 +294,7 @@ export class AutomationRuntimeService {
             warnings.push({ property: result.property || 'record', message: result.message || 'Warning' });
           }
         } catch (error) {
+          actionFailureCount++;
           actionsExecuted.push({
             actionId: action.id,
             actionType: action.type,
@@ -289,18 +309,34 @@ export class AutomationRuntimeService {
         }
       }
     } else if (automation.actionType === 'script' && automation.script) {
-      const scriptResult = await this.scriptSandbox.execute(automation.script, context);
-      if (scriptResult.changes && operation !== 'delete') {
-        modifiedRecord = { ...modifiedRecord, ...scriptResult.changes };
+      const scriptStart = Date.now();
+      try {
+        const scriptResult = await this.scriptSandbox.execute(automation.script, context, {
+          mode: 'transformation',
+        });
+        if (scriptResult.changes && operation !== 'delete') {
+          modifiedRecord = { ...modifiedRecord, ...scriptResult.changes };
+        }
+        actionsExecuted.push({
+          actionId: 'script',
+          actionType: 'run_script',
+          success: true,
+          output: scriptResult.output,
+          durationMs: scriptResult.durationMs,
+        });
+      } catch (error) {
+        // Transformation script failures must not be silently swallowed.
+        // Record the failure as an error so the automation status reflects it.
+        const message = (error as Error).message;
+        actionsExecuted.push({
+          actionId: 'script',
+          actionType: 'run_script',
+          success: false,
+          error: message,
+          durationMs: Date.now() - scriptStart,
+        });
+        errors.push({ property: '_script', message });
       }
-      actionsExecuted.push({
-        actionId: 'script',
-        actionType: 'run_script',
-        success: !scriptResult.error,
-        error: scriptResult.error,
-        output: scriptResult.output,
-        durationMs: scriptResult.durationMs,
-      });
     }
 
     let persistedRecord: Record<string, unknown> | undefined;
@@ -313,7 +349,19 @@ export class AutomationRuntimeService {
       });
     }
 
-    const status = errors.length > 0 ? 'error' : 'success';
+    // 'success' is reserved for executions where every action ran without
+    // error. If any action failed but the automation continued (because the
+    // failing action set continueOnError), we report 'partial_failure' to
+    // make the partial outcome visible to the audit log and downstream
+    // consumers — silent success would mask real failures.
+    let status: AutomationExecutionStatus;
+    if (errors.length > 0 && actionsExecuted.some((a) => a.success)) {
+      status = 'partial_failure';
+    } else if (errors.length > 0 || actionFailureCount > 0) {
+      status = actionsExecuted.some((a) => a.success) ? 'partial_failure' : 'error';
+    } else {
+      status = 'success';
+    }
     await this.executionLog.log({
       automationId: automation.id,
       automationName: automation.name,
@@ -327,6 +375,7 @@ export class AutomationRuntimeService {
       outputData: persistedRecord || modifiedRecord,
       actionsExecuted: actionsExecuted as unknown as Record<string, unknown>[],
       triggeredBy: context.user.id,
+      triggeredByPrincipalType: principalType,
       executionDepth: context.depth,
       durationMs: Date.now() - startTime,
       errorMessage: errors[0]?.message,
@@ -339,6 +388,7 @@ export class AutomationRuntimeService {
       collectionCode,
       recordId: context.record.id as string,
       status: aborted ? 'skipped' : status,
+      principalType,
       details: {
         errors,
         warnings,
@@ -369,8 +419,12 @@ export class AutomationRuntimeService {
       return { result: evalResult.result, trace: evalResult.trace as unknown as Record<string, unknown> };
     }
     if (automation.conditionType === 'script' && automation.conditionScript) {
-      const result = await this.scriptSandbox.execute(automation.conditionScript, context);
-      return { result: Boolean(result.output), trace: { scriptOutput: result.output } };
+      // Condition scripts run in fail-closed mode — a thrown or invalid script
+      // is treated as 'condition not met' (output=false) by the sandbox.
+      const result = await this.scriptSandbox.execute(automation.conditionScript, context, {
+        mode: 'condition',
+      });
+      return { result: Boolean(result.output), trace: { scriptOutput: result.output, scriptError: result.error } };
     }
     return { result: true, trace: {} };
   }
@@ -380,7 +434,57 @@ export class AutomationRuntimeService {
     return repo.findOne({ where: { code, isActive: true } });
   }
 
+  private async computeAuthorizedFields(
+    tableName: string,
+    userId: string | null,
+  ): Promise<Set<string>> {
+    // Build the request context for the actor; null userId implies a
+    // system-driven event (schedule, integration), which receives full
+    // visibility. Human-triggered events are filtered through the
+    // authorization service so condition evaluators never read fields the
+    // actor cannot legitimately see.
+    const ctx: RequestContext = {
+      userId: userId ?? '00000000-0000-0000-0000-000000000000',
+      roles: [],
+      permissions: [],
+      isAdmin: !userId,
+    };
+    const propertyRepo = this.dataSource.getRepository(PropertyDefinition);
+    const properties = await propertyRepo
+      .createQueryBuilder('property')
+      .innerJoin('collection_definitions', 'collection', 'collection.id = property.collection_id')
+      .where('collection.table_name = :tableName', { tableName })
+      .andWhere('property.is_active = true')
+      .getMany();
+    const meta = properties.map((p) => ({
+      code: p.code,
+      label: p.name,
+      isSystem: p.isSystem,
+      storagePath: `column:${p.columnName || p.code}`,
+    }));
+    const authorized = await this.authz.getAuthorizedFields(ctx, tableName, meta);
+    return new Set(authorized.filter((f) => f.canRead).map((f) => f.code));
+  }
+
+  private resolvePrincipalType(payload: RecordEventPayload): TriggeredByPrincipalType {
+    // Distinguish trigger sources so audit/log consumers can attribute
+    // automation effects accurately. Metadata is set by the publisher
+    // (e.g. scheduler emits triggeredBy='schedule').
+    const declared = (payload.metadata?.triggeredByPrincipalType ?? '') as string;
+    if (declared === 'user' || declared === 'service' || declared === 'schedule' || declared === 'integration') {
+      return declared;
+    }
+    if (!payload.userId) return 'service';
+    return 'user';
+  }
+
   private async getAutomationsForCollection(collectionId: string): Promise<AutomationRule[]> {
+    // Tenancy invariant: this DataSource is the instance database injected by
+    // AutomationRuntimeModule (which is itself only mounted in the
+    // per-instance AppModule). Each customer instance runs its own service
+    // process with its own DataSource, so there is no shared connection that
+    // could leak rules between customers. The query intentionally has no
+    // tenant filter — the connection itself enforces the boundary.
     const repo: Repository<AutomationRule> = this.dataSource.getRepository(AutomationRule);
     return repo.find({
       where: { collectionId, isActive: true },
@@ -475,6 +579,7 @@ export class AutomationRuntimeService {
     collectionCode: string;
     recordId: string;
     status: string;
+    principalType: TriggeredByPrincipalType;
     details?: Record<string, unknown>;
   }): Promise<void> {
     const repo = this.dataSource.getRepository(AuditLog);
@@ -486,6 +591,7 @@ export class AutomationRuntimeService {
       newValues: {
         automationName: params.automationName,
         status: params.status,
+        triggeredByPrincipalType: params.principalType,
         targetCollection: params.collectionCode,
         targetRecordId: params.recordId,
         details: params.details || {},

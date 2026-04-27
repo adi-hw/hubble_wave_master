@@ -10,7 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Phase7UpgradeAssistantService } from '@hubblewave/ai';
 import { CustomizationType } from '@hubblewave/instance-db';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 
 interface RegisterCustomizationDto {
   customizationType: CustomizationType;
@@ -27,7 +27,7 @@ interface AnalyzeUpgradeDto {
 @ApiTags('Phase 7 - Intelligent Upgrade Assistant')
 @ApiBearerAuth()
 @Controller('phase7/upgrade-assistant')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class UpgradeAssistantController {
   private readonly PLATFORM_VERSION = '2.4.0';
   private readonly LATEST_VERSION = '2.5.0';
@@ -90,6 +90,7 @@ export class UpgradeAssistantController {
   }
 
   @Post('customizations')
+  @Roles('admin')
   @ApiOperation({ summary: 'Register a customization' })
   @ApiResponse({ status: 201, description: 'Customization registered' })
   async registerCustomization(
@@ -121,6 +122,7 @@ export class UpgradeAssistantController {
   }
 
   @Post('analyze')
+  @Roles('admin')
   @ApiOperation({ summary: 'Analyze upgrade impact' })
   @ApiResponse({ status: 200, description: 'Upgrade analysis' })
   async analyzeUpgrade(
@@ -157,6 +159,7 @@ export class UpgradeAssistantController {
   }
 
   @Post('analyses/:id/fixes')
+  @Roles('admin')
   @ApiOperation({ summary: 'Generate fixes for analysis' })
   @ApiResponse({ status: 201, description: 'Fixes generated' })
   async generateFixes(
@@ -179,6 +182,7 @@ export class UpgradeAssistantController {
   }
 
   @Post('fixes/:id/apply')
+  @Roles('admin')
   @ApiOperation({ summary: 'Apply a fix' })
   @ApiResponse({ status: 200, description: 'Fix applied' })
   async applyFix(
@@ -204,6 +208,7 @@ export class UpgradeAssistantController {
   }
 
   @Post('simulate')
+  @Roles('admin')
   @ApiOperation({ summary: 'Simulate upgrade' })
   @ApiResponse({ status: 200, description: 'Simulation results' })
   async simulateUpgrade(
