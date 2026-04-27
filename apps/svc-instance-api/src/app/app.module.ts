@@ -17,6 +17,7 @@ import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
 import { PacksController } from './packs/packs.controller';
 import { PacksService } from './packs/packs.service';
+import { PackInstallTokenGuard } from './packs/guards/pack-install-token.guard';
 import { IdentityModule } from './identity/identity.module';
 
 @Module({
@@ -61,6 +62,7 @@ import { IdentityModule } from './identity/identity.module';
       inject: [getRepositoryToken(PropertyAccessRule)],
     },
     PacksService,
+    PackInstallTokenGuard,
   ],
 })
 export class AppModule implements NestModule {

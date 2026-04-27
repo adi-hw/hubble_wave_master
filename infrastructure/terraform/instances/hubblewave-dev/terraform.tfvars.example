@@ -1,0 +1,48 @@
+# HubbleWave Dev Instance Configuration
+
+aws_region              = "# REQUIRED — set in your local untracked terraform.tfvars"
+eks_cluster_name        = "# REQUIRED — set in your local untracked terraform.tfvars"
+control_plane_role_name = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Instance identifiers
+instance_id         = "# REQUIRED — set in your local untracked terraform.tfvars"
+customer_code       = "# REQUIRED — set in your local untracked terraform.tfvars"
+customer_name       = "# REQUIRED — set in your local untracked terraform.tfvars"
+environment         = "# REQUIRED — set in your local untracked terraform.tfvars"
+license_key         = "# REQUIRED — set in your local untracked terraform.tfvars"
+platform_release_id = "# REQUIRED — set in your local untracked terraform.tfvars"
+resource_tier       = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Database
+db_engine_version        = "# REQUIRED — set in your local untracked terraform.tfvars"
+db_allocated_storage     = "# REQUIRED — set in your local untracked terraform.tfvars"
+db_max_allocated_storage = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Redis
+redis_engine_version = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# DNS
+root_domain          = "# REQUIRED — set in your local untracked terraform.tfvars"
+cloudflare_zone_id   = "# REQUIRED — set in your local untracked terraform.tfvars"
+cloudflare_api_token = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Application
+cors_origins   = "# REQUIRED — set in your local untracked terraform.tfvars"
+api_rate_limit = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Container images
+container_registry_host = "# REQUIRED — set in your local untracked terraform.tfvars"
+instance_api_image_tag  = "# REQUIRED — set in your local untracked terraform.tfvars"
+instance_web_image_tag  = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# Deployment
+api_replicas = "# REQUIRED — set in your local untracked terraform.tfvars"
+web_replicas = "# REQUIRED — set in your local untracked terraform.tfvars"
+
+# GPU / vLLM (Llama 3.1 8B)
+gpu_enabled       = "# REQUIRED — set in your local untracked terraform.tfvars"
+gpu_instance_type = "# REQUIRED — set in your local untracked terraform.tfvars"
+vllm_model        = "# REQUIRED — set in your local untracked terraform.tfvars"
+vllm_image_tag    = "# REQUIRED — set in your local untracked terraform.tfvars"
+huggingface_token = "# REQUIRED — set in your local untracked terraform.tfvars"
+ava_replicas      = "# REQUIRED — set in your local untracked terraform.tfvars"

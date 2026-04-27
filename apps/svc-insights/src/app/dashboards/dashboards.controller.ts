@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Put, Post, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, InstanceRequest, extractContext, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { DashboardsService, DashboardDefinitionInput } from './dashboards.service';
 
 @Controller('insights/dashboards')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class DashboardsController {
   constructor(private readonly dashboards: DashboardsService) {}
 
@@ -18,12 +18,14 @@ export class DashboardsController {
   }
 
   @Post()
+  @Roles('admin')
   async create(@Body() body: DashboardDefinitionInput, @Req() req?: InstanceRequest) {
     const context = extractContext(req || {});
     return this.dashboards.create(context, body);
   }
 
   @Put(':code')
+  @Roles('admin')
   async update(
     @Param('code') code: string,
     @Body() body: Partial<DashboardDefinitionInput>,

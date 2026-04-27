@@ -254,7 +254,12 @@ export class InstancesService {
     return saved;
   }
 
-  async updateHealth(id: string, health: InstanceHealth, details?: Record<string, unknown>): Promise<Instance> {
+  async updateHealth(
+    id: string,
+    health: InstanceHealth,
+    details?: Record<string, unknown>,
+    actorId?: string,
+  ): Promise<Instance> {
     const instance = await this.findOne(id);
 
     instance.health = health;
@@ -266,7 +271,7 @@ export class InstancesService {
     const saved = await this.instanceRepo.save(instance);
     await this.auditService.log('instance.health.updated', `Health ${health} for instance ${saved.id}`, {
       customerId: saved.customerId,
-      actor: 'system',
+      actor: actorId || 'system',
       target: saved.id,
       targetType: 'instance',
       metadata: { health, details },
@@ -274,10 +279,21 @@ export class InstancesService {
     return saved;
   }
 
-  async updateMetrics(id: string, metrics: Instance['resourceMetrics']): Promise<Instance> {
+  async updateMetrics(
+    id: string,
+    metrics: Instance['resourceMetrics'],
+    actorId?: string,
+  ): Promise<Instance> {
     const instance = await this.findOne(id);
     instance.resourceMetrics = metrics;
-    return this.instanceRepo.save(instance);
+    const saved = await this.instanceRepo.save(instance);
+    await this.auditService.log('instance.metrics.updated', `Metrics updated for instance ${saved.id}`, {
+      customerId: saved.customerId,
+      actor: actorId || 'system',
+      target: saved.id,
+      targetType: 'instance',
+    });
+    return saved;
   }
 
   async setDomain(id: string, domain: string, updatedBy?: string): Promise<Instance> {

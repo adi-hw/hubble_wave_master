@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Body, Param, Delete, Patch, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Patch, NotFoundException, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NavProfile, NavNode, NavPatch } from '@hubblewave/instance-db';
+import { JwtAuthGuard, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { CreateNavProfileDto, UpdateNavProfileDto, CreateNavNodeDto, UpdateNavNodeDto } from './dto/navigation.dto';
 
 @Controller('admin/navigation')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin')
 export class NavigationAdminController {
   constructor(
     @InjectRepository(NavProfile)

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
 import { WorkflowInstanceService } from './workflow-instance.service';
 import { StartWorkflowRequest } from './workflow.types';
@@ -14,21 +14,35 @@ export class WorkflowInstancesController {
 
   @Get('instances')
   async list(
+    @CurrentUser() user: RequestUser,
     @Query('state') state?: string,
     @Query('processFlowId') processFlowId?: string,
     @Query('collectionId') collectionId?: string,
     @Query('recordId') recordId?: string,
   ) {
-    return this.instances.list({ state, processFlowId, collectionId, recordId });
+    const all = await this.instances.list({ state, processFlowId, collectionId, recordId });
+    // Scope listing: non-admins only see workflow instances they started.
+    if (user.roles?.includes('admin')) {
+      return all;
+    }
+    return all.filter((i) => i.startedBy === user.id);
   }
 
   @Get('instances/:id')
-  async getById(@Param('id') id: string) {
-    return this.instances.getById(id);
+  async getById(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const instance = await this.instances.getById(id);
+    if (instance.startedBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
+    return instance;
   }
 
   @Get('instances/:id/history')
-  async getHistory(@Param('id') id: string) {
+  async getHistory(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const instance = await this.instances.getById(id);
+    if (instance.startedBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     return this.instances.getHistory(id);
   }
 

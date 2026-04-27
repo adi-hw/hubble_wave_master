@@ -16,6 +16,9 @@ on:
           - staging
           - production
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}
@@ -150,6 +153,9 @@ jobs:
     needs: [setup, build-images, migrations]
     if: needs.setup.outputs.should_deploy == 'true'
     environment: ${{ needs.setup.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -169,26 +175,34 @@ jobs:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Deploy Control Plane
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          DEPLOY_ENV: ${{ needs.setup.outputs.environment }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          LICENSE_SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
         run: |
           helm upgrade --install hubblewave-control-plane \
             ./infrastructure/helm/control-plane \
             --namespace hubblewave-system \
             --create-namespace \
-            --set image.tag=${{ github.sha }} \
-            --set environment=${{ needs.setup.outputs.environment }} \
-            --set-string secrets.jwtSecret=${{ secrets.JWT_SECRET }} \
-            --set-string secrets.licenseSigningKey=${{ secrets.LICENSE_SIGNING_KEY }} \
-            --values ./infrastructure/helm/control-plane/values-${{ needs.setup.outputs.environment }}.yaml \
+            --set image.tag="$IMAGE_TAG" \
+            --set environment="$DEPLOY_ENV" \
+            --set-string secrets.jwtSecret="$JWT_SECRET" \
+            --set-string secrets.licenseSigningKey="$LICENSE_SIGNING_KEY" \
+            --values "./infrastructure/helm/control-plane/values-${DEPLOY_ENV}.yaml" \
             --wait --timeout 10m
 
       - name: Deploy Instance Services
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          DEPLOY_ENV: ${{ needs.setup.outputs.environment }}
         run: |
           helm upgrade --install hubblewave-services \
             ./infrastructure/helm/instance-services \
             --namespace hubblewave-system \
-            --set image.tag=${{ github.sha }} \
-            --set environment=${{ needs.setup.outputs.environment }} \
-            --values ./infrastructure/helm/instance-services/values-${{ needs.setup.outputs.environment }}.yaml \
+            --set image.tag="$IMAGE_TAG" \
+            --set environment="$DEPLOY_ENV" \
+            --values "./infrastructure/helm/instance-services/values-${DEPLOY_ENV}.yaml" \
             --wait --timeout 10m
 
       - name: Verify deployment
@@ -210,9 +224,10 @@ jobs:
         run: sleep 30
 
       - name: Check Control Plane API health
+        env:
+          CONTROL_PLANE_URL: ${{ secrets.CONTROL_PLANE_URL }}
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            ${{ secrets.CONTROL_PLANE_URL }}/api/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${CONTROL_PLANE_URL}/api/health")
           if [ "$response" != "200" ]; then
             echo "Control Plane health check failed with status $response"
             exit 1
@@ -220,9 +235,10 @@ jobs:
           echo "Control Plane is healthy"
 
       - name: Check Identity Service health
+        env:
+          API_URL: ${{ secrets.API_URL }}
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            ${{ secrets.API_URL }}/api/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}/api/health")
           if [ "$response" != "200" ]; then
             echo "Identity Service health check failed with status $response"
             exit 1

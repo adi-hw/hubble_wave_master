@@ -1,19 +1,31 @@
-import { Controller, Post, Get, Body, Query, Logger, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+  Query,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { PacksService } from './packs.service';
-
-export interface PackInstallPayload {
-  packCode: string;
-  releaseId: string;
-  manifest: unknown;
-  artifactUrl: string;
-}
-
-export interface PackRollbackPayload {
-  packCode: string;
-  releaseId: string;
-}
+import { PackInstallDto, PackRollbackDto } from './dto/pack-install.dto';
+import { PackInstallTokenGuard } from './guards/pack-install-token.guard';
 
 @Controller('packs')
+@UseGuards(JwtAuthGuard, PackInstallTokenGuard)
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    forbidUnknownValues: true,
+    transform: true,
+  }),
+)
 export class PacksController {
   private readonly logger = new Logger(PacksController.name);
 
@@ -21,14 +33,14 @@ export class PacksController {
 
   @Post('install')
   @HttpCode(HttpStatus.ACCEPTED)
-  async install(@Body() payload: PackInstallPayload) {
+  async install(@Body() payload: PackInstallDto) {
     this.logger.log(`Received pack install request: ${payload.packCode}@${payload.releaseId}`);
     return this.packsService.install(payload);
   }
 
   @Post('rollback')
   @HttpCode(HttpStatus.ACCEPTED)
-  async rollback(@Body() payload: PackRollbackPayload) {
+  async rollback(@Body() payload: PackRollbackDto) {
     this.logger.log(`Received pack rollback request: ${payload.packCode}@${payload.releaseId}`);
     return this.packsService.rollback(payload);
   }

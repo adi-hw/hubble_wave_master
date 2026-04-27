@@ -9,6 +9,7 @@ import {
   Query,
   Res,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
@@ -139,9 +140,15 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Update a template' })
   @ApiResponse({ status: 200, description: 'Template updated' })
   async updateTemplate(
+    @CurrentUser() user: RequestUser,
     @Param('id') templateId: string,
     @Body() dto: Partial<CreateTemplateDto>,
   ) {
+    // Ownership check: only the template creator (or admin) may update.
+    const existing = await this.reportsService.getTemplate(templateId);
+    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     const template = await this.reportsService.updateTemplate(templateId, dto);
     return { template };
   }
@@ -150,8 +157,14 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Delete a template' })
   @ApiResponse({ status: 200, description: 'Template deleted' })
   async deleteTemplate(
+    @CurrentUser() user: RequestUser,
     @Param('id') templateId: string,
   ) {
+    // Ownership check: only the template creator (or admin) may delete.
+    const existing = await this.reportsService.getTemplate(templateId);
+    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.reportsService.deleteTemplate(templateId);
     return { success: true };
   }
@@ -187,8 +200,14 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Delete a report' })
   @ApiResponse({ status: 200, description: 'Report deleted' })
   async deleteReport(
+    @CurrentUser() user: RequestUser,
     @Param('id') reportId: string,
   ) {
+    // Ownership check: only the user who generated the report (or admin) may delete it.
+    const report = await this.reportsService.getReport(reportId);
+    if (report.generatedBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.reportsService.deleteReport(reportId);
     return { success: true };
   }

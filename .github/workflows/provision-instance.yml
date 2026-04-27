@@ -20,7 +20,7 @@ on:
         type: choice
         options:
           - standard
-          - professional
+          - premium
           - enterprise
         default: standard
       environment:
@@ -35,11 +35,8 @@ on:
   repository_dispatch:
     types: [provision-instance]
 
-env:
-  TF_VAR_customer_code: ${{ github.event.inputs.customer_code || github.event.client_payload.customer_code }}
-  TF_VAR_instance_id: ${{ github.event.inputs.instance_id || github.event.client_payload.instance_id }}
-  TF_VAR_resource_tier: ${{ github.event.inputs.resource_tier || github.event.client_payload.resource_tier || 'standard' }}
-  TF_VAR_environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}
+permissions:
+  contents: read
 
 jobs:
   validate:
@@ -53,29 +50,57 @@ jobs:
     steps:
       - name: Validate inputs
         id: validate
+        env:
+          RAW_CUSTOMER_CODE: ${{ github.event.inputs.customer_code || github.event.client_payload.customer_code }}
+          RAW_INSTANCE_ID: ${{ github.event.inputs.instance_id || github.event.client_payload.instance_id }}
+          RAW_RESOURCE_TIER: ${{ github.event.inputs.resource_tier || github.event.client_payload.resource_tier || 'standard' }}
+          RAW_ENVIRONMENT: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}
         run: |
-          # Validate customer code format
-          if ! [[ "${{ env.TF_VAR_customer_code }}" =~ ^[a-z0-9][a-z0-9-]{2,30}[a-z0-9]$ ]]; then
-            echo "Invalid customer_code format. Must be lowercase alphanumeric with hyphens, 4-32 chars."
+          set -euo pipefail
+
+          # customer_code: lowercase letter start, lowercase alphanumeric + hyphen, 3-31 chars total
+          if ! [[ "$RAW_CUSTOMER_CODE" =~ ^[a-z][a-z0-9-]{2,30}$ ]]; then
+            echo "::error::Invalid customer_code. Expected ^[a-z][a-z0-9-]{2,30}$"
             exit 1
           fi
 
-          # Validate instance ID is a UUID
-          if ! [[ "${{ env.TF_VAR_instance_id }}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-            echo "Invalid instance_id format. Must be a valid UUID."
+          # instance_id: UUID v4 (version nibble = 4, variant nibble in 8/9/a/b)
+          if ! [[ "$RAW_INSTANCE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+            echo "::error::Invalid instance_id. Expected UUID v4."
             exit 1
           fi
 
-          echo "customer_code=${{ env.TF_VAR_customer_code }}" >> $GITHUB_OUTPUT
-          echo "instance_id=${{ env.TF_VAR_instance_id }}" >> $GITHUB_OUTPUT
-          echo "resource_tier=${{ env.TF_VAR_resource_tier }}" >> $GITHUB_OUTPUT
-          echo "environment=${{ env.TF_VAR_environment }}" >> $GITHUB_OUTPUT
+          # resource_tier allowlist
+          case "$RAW_RESOURCE_TIER" in
+            standard|premium|enterprise) ;;
+            *)
+              echo "::error::Invalid resource_tier '$RAW_RESOURCE_TIER'. Allowed: standard, premium, enterprise."
+              exit 1
+              ;;
+          esac
+
+          # environment allowlist
+          case "$RAW_ENVIRONMENT" in
+            staging|production) ;;
+            *)
+              echo "::error::Invalid environment '$RAW_ENVIRONMENT'. Allowed: staging, production."
+              exit 1
+              ;;
+          esac
+
+          echo "customer_code=$RAW_CUSTOMER_CODE" >> "$GITHUB_OUTPUT"
+          echo "instance_id=$RAW_INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "resource_tier=$RAW_RESOURCE_TIER" >> "$GITHUB_OUTPUT"
+          echo "environment=$RAW_ENVIRONMENT" >> "$GITHUB_OUTPUT"
 
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
     needs: validate
     environment: ${{ needs.validate.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -93,23 +118,26 @@ jobs:
 
       - name: Terraform Init
         working-directory: infrastructure/terraform/modules/customer-instance
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          INSTANCE_ID: ${{ needs.validate.outputs.instance_id }}
         run: |
           terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=instances/${{ needs.validate.outputs.instance_id }}/terraform.tfstate" \
-            -backend-config="region=${{ secrets.AWS_REGION }}"
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=instances/${INSTANCE_ID}/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}"
 
       - name: Terraform Plan
         working-directory: infrastructure/terraform/modules/customer-instance
-        run: |
-          terraform plan \
-            -var="instance_id=${{ needs.validate.outputs.instance_id }}" \
-            -var="customer_code=${{ needs.validate.outputs.customer_code }}" \
-            -var="environment=${{ needs.validate.outputs.environment }}" \
-            -var="resource_tier=${{ needs.validate.outputs.resource_tier }}" \
-            -var="db_host=${{ secrets.DB_HOST }}" \
-            -var="redis_host=${{ secrets.REDIS_HOST }}" \
-            -out=tfplan
+        env:
+          TF_VAR_instance_id: ${{ needs.validate.outputs.instance_id }}
+          TF_VAR_customer_code: ${{ needs.validate.outputs.customer_code }}
+          TF_VAR_environment: ${{ needs.validate.outputs.environment }}
+          TF_VAR_resource_tier: ${{ needs.validate.outputs.resource_tier }}
+          TF_VAR_db_host: ${{ secrets.DB_HOST }}
+          TF_VAR_redis_host: ${{ secrets.REDIS_HOST }}
+        run: terraform plan -out=tfplan
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
@@ -122,6 +150,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate, terraform-plan]
     environment: ${{ needs.validate.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      namespace: ${{ steps.tf-outputs.outputs.namespace }}
+      database_name: ${{ steps.tf-outputs.outputs.database_name }}
+      s3_bucket: ${{ steps.tf-outputs.outputs.s3_bucket }}
     steps:
       - uses: actions/checkout@v4
 
@@ -145,11 +180,15 @@ jobs:
 
       - name: Terraform Init
         working-directory: infrastructure/terraform/modules/customer-instance
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          INSTANCE_ID: ${{ needs.validate.outputs.instance_id }}
         run: |
           terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=instances/${{ needs.validate.outputs.instance_id }}/terraform.tfstate" \
-            -backend-config="region=${{ secrets.AWS_REGION }}"
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=instances/${INSTANCE_ID}/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}"
 
       - name: Terraform Apply
         working-directory: infrastructure/terraform/modules/customer-instance
@@ -159,9 +198,9 @@ jobs:
         id: tf-outputs
         working-directory: infrastructure/terraform/modules/customer-instance
         run: |
-          echo "namespace=$(terraform output -raw namespace)" >> $GITHUB_OUTPUT
-          echo "database_name=$(terraform output -raw database_name)" >> $GITHUB_OUTPUT
-          echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+          echo "namespace=$(terraform output -raw namespace)" >> "$GITHUB_OUTPUT"
+          echo "database_name=$(terraform output -raw database_name)" >> "$GITHUB_OUTPUT"
+          echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> "$GITHUB_OUTPUT"
 
   run-migrations:
     name: Run Instance Migrations
@@ -187,12 +226,12 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: instance_${{ needs.validate.outputs.customer_code }}
+          DB_NAME: ${{ needs.terraform-apply.outputs.database_name }}
 
   deploy-services:
     name: Deploy Instance Services
     runs-on: ubuntu-latest
-    needs: [validate, run-migrations]
+    needs: [validate, terraform-apply, run-migrations]
     environment: ${{ needs.validate.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
@@ -213,20 +252,28 @@ jobs:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Deploy instance services
+        env:
+          CUSTOMER_CODE: ${{ needs.validate.outputs.customer_code }}
+          INSTANCE_ID: ${{ needs.validate.outputs.instance_id }}
+          RESOURCE_TIER: ${{ needs.validate.outputs.resource_tier }}
+          ENVIRONMENT: ${{ needs.validate.outputs.environment }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ needs.terraform-apply.outputs.database_name }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
         run: |
-          NAMESPACE="hw-${{ needs.validate.outputs.customer_code }}"
+          NAMESPACE="hw-${CUSTOMER_CODE}"
 
           helm upgrade --install hubblewave-instance \
             ./infrastructure/helm/instance-services \
-            --namespace $NAMESPACE \
-            --set instanceId=${{ needs.validate.outputs.instance_id }} \
-            --set customerCode=${{ needs.validate.outputs.customer_code }} \
-            --set resourceTier=${{ needs.validate.outputs.resource_tier }} \
-            --set environment=${{ needs.validate.outputs.environment }} \
-            --set-string database.host=${{ secrets.DB_HOST }} \
-            --set-string database.name=instance_${{ needs.validate.outputs.customer_code }} \
-            --set-string redis.host=${{ secrets.REDIS_HOST }} \
-            --values ./infrastructure/helm/instance-services/values-${{ needs.validate.outputs.environment }}.yaml \
+            --namespace "$NAMESPACE" \
+            --set instanceId="$INSTANCE_ID" \
+            --set customerCode="$CUSTOMER_CODE" \
+            --set resourceTier="$RESOURCE_TIER" \
+            --set environment="$ENVIRONMENT" \
+            --set-string database.host="$DB_HOST" \
+            --set-string database.name="$DB_NAME" \
+            --set-string redis.host="$REDIS_HOST" \
+            --values "./infrastructure/helm/instance-services/values-${ENVIRONMENT}.yaml" \
             --wait --timeout 10m
 
   notify-control-plane:
@@ -236,13 +283,14 @@ jobs:
     environment: ${{ needs.validate.outputs.environment }}
     steps:
       - name: Update instance status in Control Plane
+        env:
+          CONTROL_PLANE_API_KEY: ${{ secrets.CONTROL_PLANE_API_KEY }}
+          CONTROL_PLANE_URL: ${{ secrets.CONTROL_PLANE_URL }}
+          INSTANCE_ID: ${{ needs.validate.outputs.instance_id }}
         run: |
+          PROVISIONED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.CONTROL_PLANE_API_KEY }}" \
+            -H "Authorization: Bearer ${CONTROL_PLANE_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "instanceId": "${{ needs.validate.outputs.instance_id }}",
-              "status": "active",
-              "provisionedAt": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
-            }' \
-            "${{ secrets.CONTROL_PLANE_URL }}/api/internal/instances/status"
+            -d "{\"instanceId\":\"${INSTANCE_ID}\",\"status\":\"active\",\"provisionedAt\":\"${PROVISIONED_AT}\"}" \
+            "${CONTROL_PLANE_URL}/api/internal/instances/status"

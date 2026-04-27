@@ -15,7 +15,9 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { AVACoreService } from './ava-core.service';
 import { ConversationStatus, FeedbackType } from '@hubblewave/instance-db';
 
@@ -45,6 +47,7 @@ interface SuggestionResponseDto {
 }
 
 @Controller('ava')
+@UseGuards(JwtAuthGuard)
 export class AVAController {
   constructor(private readonly avaService: AVACoreService) {}
 

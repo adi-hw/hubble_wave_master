@@ -7,15 +7,11 @@ async function bootstrap() {
   // SECURITY: Validate configuration before starting
   assertSecureConfig();
 
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
+  // Ensure JWT secret is set BEFORE module initialization so AuthGuardModule picks it up
+  process.env.JWT_SECRET = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+  if (!process.env.JWT_SECRET) {
+    throw new Error('REQUIRED env var JWT_SECRET (or IDENTITY_JWT_SECRET) not set');
   }
-
-  // Ensure JWT secret is set BEFORE module initialization so AuthGuardModule picks it up (dev fallback only)
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-only-insecure-secret' : undefined);
 
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';

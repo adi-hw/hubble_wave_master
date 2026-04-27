@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { ModuleService } from './module.service';
 
 @Controller('modules')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ModuleController {
   constructor(private readonly moduleService: ModuleService) {}
 
@@ -13,6 +13,7 @@ export class ModuleController {
   }
 
   @Post()
+  @Roles('admin')
   create(
     @Body()
     body: { name: string; slug: string; description?: string; route?: string; icon?: string; category?: string; sortOrder?: number }

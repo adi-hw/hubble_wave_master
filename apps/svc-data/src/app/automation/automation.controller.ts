@@ -17,7 +17,7 @@ import {
   ParseUUIDPipe,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import {
   AutomationService,
   CreateAutomationDto,
@@ -28,7 +28,7 @@ import { ExecutionLogService, ExecutionStatus } from './execution-log.service';
 import { AvaAutomationService, AvaAutomationRequest } from './ava-automation.service';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AutomationController {
   constructor(
     private readonly automationService: AutomationService,
@@ -42,6 +42,7 @@ export class AutomationController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get('automations')
+  @Roles('admin')
   async listAllAutomations(
     @Query('includeInactive') includeInactive?: string,
   ) {
@@ -114,6 +115,7 @@ export class AutomationController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get('scheduled-jobs')
+  @Roles('admin')
   async listScheduledJobs(@Query('includeInactive') includeInactive?: string) {
     return this.scheduledJobService.getAllJobs(includeInactive === 'true');
   }

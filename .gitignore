@@ -51,9 +51,10 @@ Thumbs.db
 
 vite.config.*.timestamp*
 # Environment files (NEVER commit secrets!)
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
+!.env.production.example
+**/*.env.backup
 apps/**/.env
 libs/**/.env
 **/secrets.json
@@ -63,5 +64,7 @@ libs/**/.env
 .terraform/
 *.tfstate
 *.tfstate.*
+**/*.tfvars
+!**/*.tfvars.example
 tools/terraform/terraform.exe
 infrastructure/terraform/environments/*/.terraform/

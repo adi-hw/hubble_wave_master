@@ -14,7 +14,7 @@ import {
   VectorStoreService,
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 
 interface IndexKnowledgeArticleDto {
   id: string;
@@ -51,7 +51,7 @@ interface SearchDto {
 @ApiTags('AI Embeddings')
 @ApiBearerAuth()
 @Controller('embeddings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EmbeddingController {
   constructor(
     private embeddingService: EmbeddingService,
@@ -76,6 +76,7 @@ export class EmbeddingController {
   }
 
   @Post('initialize')
+  @Roles('admin')
   @ApiOperation({ summary: 'Initialize vector store for this instance' })
   @ApiResponse({ status: 200, description: 'Vector store initialized' })
   async initialize(@CurrentUser() _user: any) {
@@ -205,6 +206,7 @@ export class EmbeddingController {
   }
 
   @Post('reindex')
+  @Roles('admin')
   @ApiOperation({ summary: 'Schedule a full reindex for this instance' })
   @ApiResponse({ status: 200, description: 'Reindex scheduled' })
   async scheduleReindex(

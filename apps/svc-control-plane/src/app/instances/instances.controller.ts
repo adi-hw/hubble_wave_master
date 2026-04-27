@@ -67,16 +67,18 @@ export class InstancesController {
   async updateHealth(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { health: string; details?: Record<string, unknown> },
+    @CurrentUser('id') userId: string,
   ) {
-    return this.instancesService.updateHealth(id, body.health as any, body.details);
+    return this.instancesService.updateHealth(id, body.health as any, body.details, userId);
   }
 
   @Patch(':id/metrics')
   async updateMetrics(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() metrics: Record<string, unknown>,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.instancesService.updateMetrics(id, metrics as any);
+    return this.instancesService.updateMetrics(id, metrics as any, userId);
   }
 
   @Patch(':id/domain')

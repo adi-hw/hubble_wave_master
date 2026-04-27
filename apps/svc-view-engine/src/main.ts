@@ -14,14 +14,10 @@ import { assertSecureConfig } from '@hubblewave/shared-types';
 async function bootstrap() {
   assertSecureConfig();
 
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
+  process.env.JWT_SECRET = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+  if (!process.env.JWT_SECRET) {
+    throw new Error('REQUIRED env var JWT_SECRET (or IDENTITY_JWT_SECRET) not set');
   }
-
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-only-insecure-secret' : undefined);
 
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';

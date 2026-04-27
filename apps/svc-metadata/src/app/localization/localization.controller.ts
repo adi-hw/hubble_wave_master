@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { LocalizationService, PublishLocalizationRequest } from './localization.service';
 import { LocalizationRequestService, CreateTranslationRequest } from './localization-request.service';
 import {
@@ -10,7 +10,7 @@ import {
 } from './localization-studio.service';
 
 @Controller('localization')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class LocalizationController {
   constructor(
     private readonly localizationService: LocalizationService,
@@ -19,6 +19,7 @@ export class LocalizationController {
   ) {}
 
   @Post('publish')
+  @Roles('admin')
   async publish(@Body() body: PublishLocalizationRequest, @CurrentUser() user?: RequestUser) {
     return this.localizationService.publishBundles(body || {}, user?.id);
   }
@@ -58,6 +59,7 @@ export class LocalizationController {
   }
 
   @Post('values')
+  @Roles('admin')
   async upsertValue(
     @Body() body: UpsertTranslationValue,
     @CurrentUser() user?: RequestUser,
@@ -66,6 +68,7 @@ export class LocalizationController {
   }
 
   @Patch('values/:id')
+  @Roles('admin')
   async updateValue(
     @Param('id') id: string,
     @Body() body: UpdateTranslationValue,

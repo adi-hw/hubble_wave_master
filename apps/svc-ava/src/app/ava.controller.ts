@@ -9,6 +9,8 @@ import {
   Req,
   Res,
   UseGuards,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
@@ -281,7 +283,7 @@ export class AVAController {
   @ApiOperation({ summary: 'Get conversation by ID' })
   @ApiResponse({ status: 200, description: 'Conversation details' })
   async getConversation(
-    @CurrentUser() _user: RequestUser,
+    @CurrentUser() user: RequestUser,
     @Param('id') conversationId: string
   ) {
     const dataSource = this.dataSource;
@@ -292,7 +294,12 @@ export class AVAController {
     );
 
     if (!conversation) {
-      return { error: 'Conversation not found' };
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Ownership check: only the originating user (or admin) may read the conversation.
+    if (conversation.userId !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
     }
 
     return { conversation };
@@ -302,10 +309,24 @@ export class AVAController {
   @ApiOperation({ summary: 'Delete a conversation' })
   @ApiResponse({ status: 200, description: 'Conversation deleted' })
   async deleteConversation(
-    @CurrentUser() _user: RequestUser,
+    @CurrentUser() user: RequestUser,
     @Param('id') conversationId: string
   ) {
     const dataSource = this.dataSource;
+
+    const conversation = await this.conversationMemory.getConversation(
+      dataSource,
+      conversationId
+    );
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Ownership check: only the originating user (or admin) may delete the conversation.
+    if (conversation.userId !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
 
     await this.conversationMemory.deleteConversation(dataSource, conversationId);
 

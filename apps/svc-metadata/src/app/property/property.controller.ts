@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   UseGuards,
   ForbiddenException,
+  NotFoundException,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -87,9 +88,16 @@ export class PropertyController {
   @Get(':id')
   @RequirePermission('property.read')
   async getById(
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.propertyService.getProperty(id);
+    const property = await this.propertyService.getProperty(id);
+    // IDOR protection: verify the property actually belongs to the collection
+    // declared in the route. Use NotFound (not Forbidden) to avoid leaking existence.
+    if (!property || property.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    return property;
   }
 
   @Post()

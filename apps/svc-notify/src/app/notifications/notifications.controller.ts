@@ -1,4 +1,5 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
 import { NotificationService, SendNotificationRequest } from './notification.service';
 
@@ -8,6 +9,7 @@ export class NotificationsController {
   constructor(private readonly notifications: NotificationService) {}
 
   @Post('send')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async send(
     @Body() body: SendNotificationRequest,
     @CurrentUser() user?: RequestUser,

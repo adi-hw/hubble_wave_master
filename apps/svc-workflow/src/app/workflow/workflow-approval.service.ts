@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
@@ -38,16 +38,17 @@ export class WorkflowApprovalService {
     return approval;
   }
 
-  async approve(id: string, actorId: string, comments?: string) {
-    return this.updateStatus(id, actorId, 'approved', comments);
+  async approve(id: string, actorId: string, comments?: string, isAdmin = false) {
+    return this.updateStatus(id, actorId, 'approved', comments, isAdmin);
   }
 
-  async reject(id: string, actorId: string, comments?: string) {
-    return this.updateStatus(id, actorId, 'rejected', comments);
+  async reject(id: string, actorId: string, comments?: string, isAdmin = false) {
+    return this.updateStatus(id, actorId, 'rejected', comments, isAdmin);
   }
 
-  async delegate(id: string, delegatedTo: string, actorId: string, reason?: string) {
+  async delegate(id: string, delegatedTo: string, actorId: string, reason?: string, isAdmin = false) {
     const approval = await this.findById(id);
+    this.assertActorAuthorized(approval, actorId, isAdmin);
     const previous = this.auditValues(approval);
     approval.status = 'delegated';
     approval.delegatedTo = delegatedTo;
@@ -115,8 +116,10 @@ export class WorkflowApprovalService {
     actorId: string,
     status: ApprovalStatus,
     comments?: string,
+    isAdmin = false,
   ) {
     const approval = await this.findById(id);
+    this.assertActorAuthorized(approval, actorId, isAdmin);
     const previous = this.auditValues(approval);
 
     approval.status = status;
@@ -147,6 +150,17 @@ export class WorkflowApprovalService {
     });
 
     return approval;
+  }
+
+  private assertActorAuthorized(approval: Approval, actorId: string, isAdmin: boolean) {
+    // Only the assigned approver, the delegate, or an admin may act on an approval.
+    const isAuthorized =
+      isAdmin ||
+      approval.approverId === actorId ||
+      approval.delegatedTo === actorId;
+    if (!isAuthorized) {
+      throw new ForbiddenException('Not the owner');
+    }
   }
 
   private auditValues(approval: Approval) {

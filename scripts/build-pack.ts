@@ -3,8 +3,9 @@ import { promises as fs } from 'fs';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { createPrivateKey, sign as cryptoSign } from 'crypto';
 import archiver = require('archiver');
-import { parseYaml, toYaml, validatePackManifest, sha256, signEd25519 } from '../libs/packs/src';
+import { parseYaml, toYaml, validatePackManifest, sha256, signEd25519, normalizePrivateKey } from '../libs/packs/src';
 
 type AssetInput = {
   type?: unknown;
@@ -131,6 +132,17 @@ async function buildPack(options: BuildOptions): Promise<string> {
   if (validatedManifest.dependencies && validatedManifest.dependencies.length > 0) {
     manifestOutput.dependencies = validatedManifest.dependencies;
   }
+
+  // Sign the canonical JSON form of the manifest so svc-instance-api can verify
+  // it at install time. The signature is computed over the manifest *without*
+  // the `signature` field, then embedded as `manifest.signature` (base64).
+  const manifestSigningPayload = Buffer.from(JSON.stringify(manifestOutput), 'utf8');
+  const manifestSignature = cryptoSign(
+    null,
+    manifestSigningPayload,
+    createPrivateKey(normalizePrivateKey(options.privateKey)),
+  ).toString('base64');
+  manifestOutput.signature = manifestSignature;
 
   const checksumsLines = validatedManifest.assets.map(
     (asset) => `${asset.sha256} ${asset.path}`

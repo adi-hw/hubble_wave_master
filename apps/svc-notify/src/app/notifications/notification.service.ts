@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   AuditLog,
   InAppNotification,
@@ -10,6 +10,7 @@ import {
   NotificationTemplate,
   NotificationChannel,
   NotificationQueueStatus,
+  User,
   UserNotificationPreferences,
 } from '@hubblewave/instance-db';
 import { TemplateEngineService } from './template-engine.service';
@@ -56,6 +57,8 @@ export class NotificationService {
     private readonly preferenceRepo: Repository<UserNotificationPreferences>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly templateEngine: TemplateEngineService,
   ) {}
 
@@ -160,6 +163,20 @@ export class NotificationService {
 
     if (!template) {
       throw new NotFoundException('Template not found');
+    }
+
+    // Validate every recipient resolves to an existing user before queueing.
+    if (request.recipients && request.recipients.length > 0) {
+      const existingUsers = await this.userRepo.find({
+        where: { id: In(request.recipients) },
+        select: ['id'],
+      });
+      const existingIds = new Set(existingUsers.map((u) => u.id));
+      for (const recipientId of request.recipients) {
+        if (!existingIds.has(recipientId)) {
+          throw new BadRequestException(`Unknown recipient: ${recipientId}`);
+        }
+      }
     }
 
     const channels = request.channels && request.channels.length > 0
