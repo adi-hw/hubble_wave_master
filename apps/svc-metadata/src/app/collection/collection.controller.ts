@@ -168,6 +168,14 @@ export class CollectionController {
     });
   }
 
+  /**
+   * List revisions for a collection (ADR-5 lifecycle history).
+   */
+  @Get(':id/revisions')
+  listRevisions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.collectionService.listCollectionRevisions(id);
+  }
+
   // --------------------------------------------------------------------------
   // Mutation Endpoints
   // --------------------------------------------------------------------------

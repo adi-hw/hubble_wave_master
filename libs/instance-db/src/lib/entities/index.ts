@@ -27,8 +27,24 @@ export type { ApplicationStatus, ApplicationRevisionStatus } from './application
 // ─────────────────────────────────────────────────────────────────
 // Schema Engine (Collections & Properties)
 // ─────────────────────────────────────────────────────────────────
-export { CollectionDefinition, OwnerType } from './collection-definition.entity';
-export { PropertyDefinition, DefaultValueType } from './property-definition.entity';
+export {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+  OwnerType,
+} from './collection-definition.entity';
+export type {
+  CollectionDefinitionStatus,
+  CollectionDefinitionRevisionStatus,
+} from './collection-definition.entity';
+export {
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+  DefaultValueType,
+} from './property-definition.entity';
+export type {
+  PropertyDefinitionStatus,
+  PropertyDefinitionRevisionStatus,
+} from './property-definition.entity';
 export { PropertyType, PropertyTypeCategory, ChoiceList, ChoiceItem } from './property-type.entity';
 export {
   CollectionIndex,
@@ -494,8 +510,14 @@ import { Permission } from './permission.entity';
 import { RolePermission, UserRole } from './role-permission.entity';
 import { Group, GroupMember, GroupRole } from './group.entity';
 import { Application, ApplicationRevision } from './application.entity';
-import { CollectionDefinition } from './collection-definition.entity';
-import { PropertyDefinition } from './property-definition.entity';
+import {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+} from './collection-definition.entity';
+import {
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+} from './property-definition.entity';
 import { PropertyType, ChoiceList, ChoiceItem } from './property-type.entity';
 import { CollectionIndex, CollectionConstraint } from './collection-index.entity';
 import { SchemaChangeLog } from './schema-change-log.entity';
@@ -699,7 +721,9 @@ export const instanceEntities = [
 
   // Schema Engine
   CollectionDefinition,
+  CollectionDefinitionRevision,
   PropertyDefinition,
+  PropertyDefinitionRevision,
   PropertyType,
   ChoiceList,
   ChoiceItem,

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import {
   PropertyDefinition,
+  PropertyDefinitionRevision,
   DefaultValueType,
   AuditLog,
   CollectionDefinition,
@@ -60,6 +61,8 @@ export class PropertyService {
   constructor(
     @InjectRepository(PropertyDefinition)
     private readonly propertyRepo: Repository<PropertyDefinition>,
+    @InjectRepository(PropertyDefinitionRevision)
+    private readonly revisionRepo: Repository<PropertyDefinitionRevision>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
     @InjectRepository(CollectionDefinition)
@@ -78,6 +81,27 @@ export class PropertyService {
     if (!exists) {
       throw new BadRequestException('Reference collection not found');
     }
+  }
+
+  /**
+   * Look up the parent collection's applicationId. Used during property
+   * creation to denormalize the FK so cross-application reference checks
+   * don't have to traverse the parent collection (ADR-6).
+   */
+  private async getCollectionApplicationId(collectionId: string): Promise<string> {
+    const parent = await this.collectionRepo.findOne({
+      where: { id: collectionId },
+      select: ['id', 'applicationId'],
+    });
+    if (!parent) {
+      throw new NotFoundException(`Collection ${collectionId} not found`);
+    }
+    if (!parent.applicationId) {
+      throw new ConflictException(
+        `Collection ${collectionId} is not bound to an Application — assign it before creating properties.`,
+      );
+    }
+    return parent.applicationId;
   }
 
   /**
@@ -185,10 +209,12 @@ export class PropertyService {
       await this.assertReferenceCollectionExists(dto.referenceCollectionId);
     }
 
+    const applicationId = await this.getCollectionApplicationId(collectionId);
     const maxPosition = await this.getMaxPosition(collectionId);
 
     const property = this.propertyRepo.create({
       collectionId,
+      applicationId,
       code: dto.code,
       name: dto.name || dto.code,
       description: dto.description,
@@ -218,10 +244,24 @@ export class PropertyService {
       ownerType: 'custom',
       isSystem: false,
       isActive: true,
+      status: 'draft',
       createdBy: userId,
     });
 
     const saved = await this.propertyRepo.save(property);
+
+    // Seed revision 1 (draft) so currentRevisionId is non-null from creation.
+    const revision = this.revisionRepo.create({
+      propertyId: saved.id,
+      revision: 1,
+      status: 'draft',
+      payload: this.snapshotProperty(saved),
+      createdBy: userId ?? null,
+    });
+    const savedRevision = await this.revisionRepo.save(revision);
+    saved.currentRevisionId = savedRevision.id;
+    await this.propertyRepo.save(saved);
+
     await this.logAudit({
       userId: userId || 'system',
       action: 'create',
@@ -305,6 +345,7 @@ export class PropertyService {
       }
     }
 
+    const applicationId = await this.getCollectionApplicationId(collectionId);
     let maxPosition = await this.getMaxPosition(collectionId);
 
     for (let i = 0; i < properties.length; i++) {
@@ -323,6 +364,7 @@ export class PropertyService {
         maxPosition++;
         const property = this.propertyRepo.create({
           collectionId,
+          applicationId,
           code: dto.code,
           name: dto.name || dto.code,
           description: dto.description,
@@ -352,10 +394,22 @@ export class PropertyService {
           ownerType: 'custom',
           isSystem: false,
           isActive: true,
+          status: 'draft',
           createdBy: userId,
         });
 
         const saved = await this.propertyRepo.save(property);
+        const savedRevision = await this.revisionRepo.save(
+          this.revisionRepo.create({
+            propertyId: saved.id,
+            revision: 1,
+            status: 'draft',
+            payload: this.snapshotProperty(saved),
+            createdBy: userId ?? null,
+          }),
+        );
+        saved.currentRevisionId = savedRevision.id;
+        await this.propertyRepo.save(saved);
         created.push(saved);
         await this.logAudit({
           userId: userId || 'system',
@@ -421,12 +475,6 @@ export class PropertyService {
     context?: { ipAddress?: string; userAgent?: string },
   ): Promise<PropertyDefinition> {
     const existing = await this.getProperty(id);
-    const currentStatus = this.getMetadataStatus(existing.metadata);
-    const requestedStatus = (dto.metadata as { status?: string } | undefined)?.status;
-    const targetStatus = this.normalizeStatus(requestedStatus) || currentStatus;
-    if (currentStatus === 'published' && targetStatus !== 'draft') {
-      throw new BadRequestException('Published properties are immutable');
-    }
 
     if (existing.isSystem && dto.isRequired !== undefined) {
       throw new BadRequestException('Cannot modify system property required status');
@@ -436,6 +484,8 @@ export class PropertyService {
       await this.assertReferenceCollectionExists(dto.referenceCollectionId);
     }
 
+    // Per ADR-5 every edit becomes a new draft revision; the parent
+    // flips back to draft regardless of its previous lifecycle state.
     const updateData: Record<string, unknown> = {};
 
     if (dto.name !== undefined) updateData.name = dto.name;
@@ -461,12 +511,27 @@ export class PropertyService {
     if (dto.isSortable !== undefined) updateData.isSortable = dto.isSortable;
     if (dto.isFilterable !== undefined) updateData.isFilterable = dto.isFilterable;
     if (dto.metadata !== undefined) {
-      updateData.metadata = this.mergeMetadata(dto.metadata, targetStatus, existing.metadata);
+      updateData.metadata = this.mergeMetadata(dto.metadata, 'draft', existing.metadata);
     }
     if (dto.columnName !== undefined) updateData.columnName = dto.columnName;
 
     if (Object.keys(updateData).length > 0) {
+      updateData.status = 'draft';
       await this.propertyRepo.update(id, updateData);
+
+      // Append a new draft revision capturing the post-edit snapshot.
+      const refreshed = await this.getProperty(id);
+      const nextRev = await this.nextRevisionNumber(id);
+      const savedRevision = await this.revisionRepo.save(
+        this.revisionRepo.create({
+          propertyId: id,
+          revision: nextRev,
+          status: 'draft',
+          payload: this.snapshotProperty(refreshed),
+          createdBy: _userId ?? null,
+        }),
+      );
+      await this.propertyRepo.update(id, { currentRevisionId: savedRevision.id });
     }
 
     const saved = await this.getProperty(id);
@@ -482,6 +547,85 @@ export class PropertyService {
       });
     }
     return saved;
+  }
+
+  /**
+   * Publish the current draft revision of a property. Mirrors
+   * CollectionService.publishCollection but scoped to a single property.
+   */
+  async publishProperty(
+    id: string,
+    userId?: string,
+    context?: { ipAddress?: string; userAgent?: string },
+  ): Promise<PropertyDefinition> {
+    const property = await this.getProperty(id);
+    const previousState = this.toAuditState(property);
+    const now = new Date();
+
+    if (property.currentRevisionId) {
+      const revision = await this.revisionRepo.findOne({
+        where: { id: property.currentRevisionId },
+      });
+      if (revision && revision.status !== 'published') {
+        revision.status = 'published';
+        revision.publishedBy = userId ?? null;
+        revision.publishedAt = now;
+        await this.revisionRepo.save(revision);
+      }
+    }
+
+    await this.propertyRepo.update(id, {
+      status: 'published',
+      publishedAt: now,
+      metadata: this.mergeMetadata(property.metadata, 'published', property.metadata) as Record<string, unknown>,
+    } as Partial<PropertyDefinition> as never);
+
+    const saved = await this.getProperty(id);
+    await this.logAudit({
+      userId: userId || 'system',
+      action: 'publish',
+      recordId: saved.id,
+      previousState,
+      newState: this.toAuditState(saved),
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+    return saved;
+  }
+
+  /** Deprecate a property without deleting its records. */
+  async deprecateProperty(
+    id: string,
+    userId?: string,
+    context?: { ipAddress?: string; userAgent?: string },
+  ): Promise<PropertyDefinition> {
+    const property = await this.getProperty(id);
+    const previousState = this.toAuditState(property);
+
+    await this.propertyRepo.update(id, {
+      status: 'deprecated',
+      metadata: this.mergeMetadata(property.metadata, 'deprecated', property.metadata) as Record<string, unknown>,
+    } as Partial<PropertyDefinition> as never);
+
+    const saved = await this.getProperty(id);
+    await this.logAudit({
+      userId: userId || 'system',
+      action: 'deprecate',
+      recordId: saved.id,
+      previousState,
+      newState: this.toAuditState(saved),
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+    return saved;
+  }
+
+  /** List revisions for a property, newest first. */
+  listRevisions(propertyId: string): Promise<PropertyDefinitionRevision[]> {
+    return this.revisionRepo.find({
+      where: { propertyId },
+      order: { revision: 'DESC' },
+    });
   }
 
   /**
@@ -557,18 +701,6 @@ export class PropertyService {
       .substring(0, 63);
   }
 
-  private getMetadataStatus(metadata?: Record<string, unknown>): 'draft' | 'published' | 'deprecated' {
-    const status = (metadata as { status?: string } | undefined)?.status;
-    return this.normalizeStatus(status) || 'published';
-  }
-
-  private normalizeStatus(value?: string): 'draft' | 'published' | 'deprecated' | null {
-    if (value === 'draft' || value === 'published' || value === 'deprecated') {
-      return value;
-    }
-    return null;
-  }
-
   private mergeMetadata(
     incoming: Record<string, unknown> | undefined,
     status: 'draft' | 'published' | 'deprecated',
@@ -587,10 +719,65 @@ export class PropertyService {
       code: property.code,
       name: property.name,
       collectionId: property.collectionId,
+      applicationId: property.applicationId,
+      status: property.status,
       propertyTypeId: property.propertyTypeId,
       isActive: property.isActive,
       metadata: property.metadata,
     };
+  }
+
+  /** Authoring snapshot persisted on every PropertyDefinitionRevision row. */
+  private snapshotProperty(p: PropertyDefinition): Record<string, unknown> {
+    return {
+      code: p.code,
+      name: p.name,
+      description: p.description,
+      collectionId: p.collectionId,
+      applicationId: p.applicationId,
+      propertyTypeId: p.propertyTypeId,
+      columnName: p.columnName,
+      config: p.config,
+      isRequired: p.isRequired,
+      isUnique: p.isUnique,
+      isIndexed: p.isIndexed,
+      validationRules: p.validationRules,
+      defaultValue: p.defaultValue,
+      defaultValueType: p.defaultValueType,
+      position: p.position,
+      isVisible: p.isVisible,
+      isReadonly: p.isReadonly,
+      displayFormat: p.displayFormat,
+      placeholder: p.placeholder,
+      helpText: p.helpText,
+      referenceCollectionId: p.referenceCollectionId,
+      referenceDisplayProperty: p.referenceDisplayProperty,
+      referenceFilter: p.referenceFilter,
+      choiceListId: p.choiceListId,
+      ownerType: p.ownerType,
+      isSystem: p.isSystem,
+      isActive: p.isActive,
+      isSearchable: p.isSearchable,
+      isSortable: p.isSortable,
+      isFilterable: p.isFilterable,
+      isPhi: p.isPhi,
+      isPii: p.isPii,
+      isSensitive: p.isSensitive,
+      maskingStrategy: p.maskingStrategy,
+      maskValue: p.maskValue,
+      requiresBreakGlass: p.requiresBreakGlass,
+      metadata: p.metadata,
+    };
+  }
+
+  private async nextRevisionNumber(propertyId: string): Promise<number> {
+    const result: Array<{ max: number | string | null }> = await this.revisionRepo
+      .createQueryBuilder('rev')
+      .select('MAX(rev.revision)', 'max')
+      .where('rev.property_id = :propertyId', { propertyId })
+      .getRawMany();
+    const current = Number(result[0]?.max ?? 0);
+    return Number.isFinite(current) ? current + 1 : 1;
   }
 
   private async logAudit(data: {

@@ -1,6 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CollectionDefinition, PropertyDefinition, PropertyType, CollectionAccessRule, InstanceDbModule } from '@hubblewave/instance-db';
+import {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+  PropertyType,
+  CollectionAccessRule,
+  InstanceDbModule,
+} from '@hubblewave/instance-db';
 import { CollectionController } from './collection.controller';
 import { CollectionService } from './collection.service';
 import { CollectionStorageService } from './collection-storage.service';
@@ -11,7 +19,9 @@ import { CollectionAvaService } from './collection-ava.service';
     InstanceDbModule,
     TypeOrmModule.forFeature([
       CollectionDefinition,
+      CollectionDefinitionRevision,
       PropertyDefinition,
+      PropertyDefinitionRevision,
       PropertyType,
       CollectionAccessRule,
     ]),

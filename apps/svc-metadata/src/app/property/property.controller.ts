@@ -208,4 +208,61 @@ export class PropertyController {
     };
     return this.propertyService.deleteProperty(id, force === 'true', user.id, context);
   }
+
+  @Post(':id/publish')
+  @RequirePermission('property.update')
+  async publish(
+    @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ) {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    const context = {
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] as string | undefined,
+    };
+    return this.propertyService.publishProperty(id, user.id, context);
+  }
+
+  @Post(':id/deprecate')
+  @RequirePermission('property.update')
+  async deprecate(
+    @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ) {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    const context = {
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] as string | undefined,
+    };
+    return this.propertyService.deprecateProperty(id, user.id, context);
+  }
+
+  @Get(':id/revisions')
+  @RequirePermission('property.read')
+  async listRevisions(
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const property = await this.propertyService.getProperty(id);
+    if (!property || property.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    return this.propertyService.listRevisions(id);
+  }
 }

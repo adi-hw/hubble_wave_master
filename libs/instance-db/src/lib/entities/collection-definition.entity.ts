@@ -21,6 +21,15 @@ import { PropertyDefinition } from './property-definition.entity';
 export type OwnerType = 'system' | 'platform' | 'custom';
 
 /**
+ * Lifecycle status for the collection definition itself (ADR-5).
+ *  - draft: Editable, not yet visible to runtime data services
+ *  - published: Authoritative, used by runtime
+ *  - deprecated: Read-only, scheduled for removal
+ */
+export type CollectionDefinitionStatus = 'draft' | 'published' | 'deprecated';
+export type CollectionDefinitionRevisionStatus = 'draft' | 'published';
+
+/**
  * CollectionDefinition entity - defines data collections (tables)
  * 
  * This is the schema engine's core entity for defining what data
@@ -32,6 +41,7 @@ export type OwnerType = 'system' | 'platform' | 'custom';
 @Index(['category'])
 @Index(['applicationId'])
 @Index(['isActive'])
+@Index(['status'])
 export class CollectionDefinition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -156,9 +166,23 @@ export class CollectionDefinition {
   @Column({ type: 'jsonb', default: () => `'{}'` })
   metadata!: Record<string, unknown>;
 
-  // Optional fields used by higher layers (not persisted in single-instance build)
-  status?: string;
+  // ─────────────────────────────────────────────────────────────────
+  // Lifecycle (ADR-5)
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Current lifecycle state of this collection definition. */
+  @Column({ type: 'varchar', length: 20, default: 'draft' })
+  status!: CollectionDefinitionStatus;
+
+  /** The revision the collection currently advertises as canonical. */
+  @Column({ name: 'current_revision_id', type: 'uuid', nullable: true })
+  currentRevisionId?: string | null;
+
+  /** When the most recent publish happened (null while draft). */
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt?: Date | null;
+
+  // Optional fields used by higher layers (not persisted in single-instance build)
   deletedAt?: Date | null;
   propertyCount?: number;
   recordCount?: number;
@@ -201,4 +225,59 @@ export class CollectionDefinition {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
+}
+
+/**
+ * CollectionDefinitionRevision — append-only edit history for a Collection.
+ * Mirrors ApplicationRevision so the lifecycle pattern is uniform across
+ * metadata entities (ADR-5).
+ */
+@Entity('collection_definition_revisions')
+@Index(['collectionId'])
+@Index(['status'])
+@Index(['collectionId', 'revision'], { unique: true })
+export class CollectionDefinitionRevision {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'collection_id', type: 'uuid' })
+  collectionId!: string;
+
+  @ManyToOne(() => CollectionDefinition, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'collection_id' })
+  collection?: CollectionDefinition;
+
+  @Column({ name: 'revision', type: 'integer' })
+  revision!: number;
+
+  @Column({ name: 'status', type: 'varchar', length: 20 })
+  status!: CollectionDefinitionRevisionStatus;
+
+  /**
+   * Snapshot of the collection's authoring fields at this revision.
+   * Stored as JSON so future fields don't require schema migrations
+   * just to be revisioned.
+   */
+  @Column({ name: 'payload', type: 'jsonb', default: () => `'{}'` })
+  payload!: Record<string, unknown>;
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser?: User | null;
+
+  @Column({ name: 'published_by', type: 'uuid', nullable: true })
+  publishedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'published_by' })
+  publishedByUser?: User | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
 }
