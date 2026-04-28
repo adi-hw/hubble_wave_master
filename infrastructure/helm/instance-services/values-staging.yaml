@@ -1,0 +1,28 @@
+# Staging overrides for instance-services.
+# Smaller footprint; autoscaling disabled by default.
+
+environment: staging
+
+config:
+  NODE_ENV: staging
+  LOG_LEVEL: debug
+
+defaults:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  host: ""
+  tlsSecret: ""

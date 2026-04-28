@@ -1,11 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   assertSecureConfig();
+  assertJwtConfig();
 
   // Ensure JWT secret is set BEFORE module initialization so AuthGuardModule picks it up
   process.env.JWT_SECRET = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;

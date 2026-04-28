@@ -1,0 +1,42 @@
+# Staging overrides for the HubbleWave Control Plane chart.
+
+environment: staging
+
+config:
+  NODE_ENV: staging
+  LOG_LEVEL: debug
+  CONTROL_PLANE_URL: https://control-staging.hubblewave.com
+  CONTROL_PLANE_CORS_ORIGINS: https://control-staging.hubblewave.com,https://staging.hubblewave.com
+
+api:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+
+web:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+ingress:
+  enabled: true
+  api:
+    host: api-staging.hubblewave.com
+    tlsSecret: control-plane-api-tls-staging
+  web:
+    host: control-staging.hubblewave.com
+    tlsSecret: control-plane-web-tls-staging

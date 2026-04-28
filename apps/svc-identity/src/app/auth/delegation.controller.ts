@@ -31,7 +31,6 @@ interface RequestWithUser {
   };
 }
 
-@AuthenticatedOnly()
 @Controller('auth/delegations')
 @UseGuards(JwtAuthGuard)
 export class DelegationController {
@@ -41,6 +40,7 @@ export class DelegationController {
    * Create a new delegation
    */
   @Post()
+  @AuthenticatedOnly()
   @HttpCode(HttpStatus.CREATED)
   async createDelegation(
     @Request() req: RequestWithUser,
@@ -71,6 +71,7 @@ export class DelegationController {
    * Get delegations I've created (as delegator)
    */
   @Get('created')
+  @AuthenticatedOnly()
   async getDelegationsCreated(
     @Request() req: RequestWithUser,
     @Query('includeExpired') includeExpired?: string,
@@ -103,6 +104,7 @@ export class DelegationController {
    * Get delegations I've received (as delegate)
    */
   @Get('received')
+  @AuthenticatedOnly()
   async getDelegationsReceived(@Request() req: RequestWithUser) {
     const delegations = await this.delegationService.getActiveDelegationsForUser(
       req.user.sub,
@@ -130,6 +132,7 @@ export class DelegationController {
    * Get effective permissions (own + delegated)
    */
   @Get('effective-permissions')
+  @AuthenticatedOnly()
   async getEffectivePermissions(@Request() req: RequestWithUser) {
     const result = await this.delegationService.getEffectivePermissions(
       req.user.sub,
@@ -177,6 +180,7 @@ export class DelegationController {
    * Revoke a delegation
    */
   @Delete(':delegationId')
+  @AuthenticatedOnly()
   async revokeDelegation(
     @Request() req: RequestWithUser,
     @Param('delegationId') delegationId: string,
@@ -202,6 +206,7 @@ export class DelegationController {
    * Get delegation by ID
    */
   @Get(':delegationId')
+  @AuthenticatedOnly()
   async getDelegation(
     @Request() req: RequestWithUser,
     @Param('delegationId') delegationId: string,

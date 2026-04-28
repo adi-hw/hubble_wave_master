@@ -20,7 +20,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { GroupType } from '@hubblewave/instance-db';
-import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface UserContext {
   userId: string;
@@ -32,7 +31,6 @@ interface UserContext {
  *
  * Admin endpoints for managing groups, memberships, and role assignments.
  */
-@AuthenticatedOnly()
 @Controller('admin/groups')
 @UseGuards(JwtAuthGuard)
 export class GroupsController {

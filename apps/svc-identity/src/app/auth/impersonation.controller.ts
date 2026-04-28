@@ -21,7 +21,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 import { ImpersonationService } from './impersonation.service';
-import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface RequestWithUser {
   user: {
@@ -38,7 +37,6 @@ interface RequestWithUser {
   };
 }
 
-@AuthenticatedOnly()
 @Controller('auth/impersonation')
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class ImpersonationController {
@@ -80,6 +78,7 @@ export class ImpersonationController {
    * End impersonation session
    */
   @Post('end')
+  @RequirePermission('users.impersonate')
   @HttpCode(HttpStatus.OK)
   async endImpersonation(@Request() req: RequestWithUser) {
     const impersonation = req.user.impersonation;
@@ -108,6 +107,7 @@ export class ImpersonationController {
    * Get current impersonation status
    */
   @Get('status')
+  @RequirePermission('users.impersonate')
   @HttpCode(HttpStatus.OK)
   async getImpersonationStatus(@Request() req: RequestWithUser) {
     const session = await this.impersonationService.getActiveSession(req.user.sub);

@@ -1,92 +1,34 @@
 /**
- * Service Worker Registration
+ * Service Worker Messaging
  *
- * Handles service worker lifecycle including:
- * - Registration
- * - Update detection
- * - Update prompts
+ * The service worker itself is registered by VitePWA via `virtual:pwa-register`.
+ * This module exposes message and lifecycle helpers used by the app shell —
+ * notably `sendMessageToSW` which the auth flow uses to post CLEAR_USER_CACHE
+ * on logout.
  */
 
 export interface ServiceWorkerConfig {
-  onUpdate?: (registration: ServiceWorkerRegistration) => void;
-  onSuccess?: (registration: ServiceWorkerRegistration) => void;
   onOffline?: () => void;
   onOnline?: () => void;
 }
 
-let swRegistration: ServiceWorkerRegistration | null = null;
-
 /**
- * Register the service worker
- */
-export async function registerServiceWorker(
-  config: ServiceWorkerConfig = {}
-): Promise<ServiceWorkerRegistration | undefined> {
-  if (!('serviceWorker' in navigator)) {
-    // Service workers not supported in this browser
-    return undefined;
-  }
-
-  try {
-    const registration = await navigator.serviceWorker.register('/service-worker.js', {
-      scope: '/',
-    });
-
-    swRegistration = registration;
-
-    registration.onupdatefound = () => {
-      const installingWorker = registration.installing;
-      if (!installingWorker) return;
-
-      installingWorker.onstatechange = () => {
-        if (installingWorker.state === 'installed') {
-          if (navigator.serviceWorker.controller) {
-            // New update available - notify via callback
-            config.onUpdate?.(registration);
-          } else {
-            // Content cached for offline use - notify via callback
-            config.onSuccess?.(registration);
-          }
-        }
-      };
-    };
-
-    return registration;
-  } catch {
-    // Service worker registration failed - app continues without SW
-    return undefined;
-  }
-}
-
-/**
- * Unregister all service workers
- */
-export async function unregisterServiceWorker(): Promise<boolean> {
-  if (!('serviceWorker' in navigator)) {
-    return false;
-  }
-
-  try {
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(registrations.map((reg) => reg.unregister()));
-    return true;
-  } catch {
-    // Service worker unregistration failed
-    return false;
-  }
-}
-
-/**
- * Send a message to the service worker
+ * Send a message to the active service worker. Resolves to no-op when no SW
+ * controls the page (e.g. first load before activation, browser without SW).
  */
 export function sendMessageToSW(message: Record<string, unknown>): void {
-  if (swRegistration?.active) {
-    swRegistration.active.postMessage(message);
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return;
+  }
+  const controller = navigator.serviceWorker.controller;
+  if (controller) {
+    controller.postMessage(message);
   }
 }
 
 /**
- * Skip waiting and activate new service worker
+ * Ask the waiting worker to skip waiting and reload the page so the new
+ * version takes over.
  */
 export function skipWaitingAndActivate(): void {
   sendMessageToSW({ type: 'SKIP_WAITING' });
@@ -94,14 +36,7 @@ export function skipWaitingAndActivate(): void {
 }
 
 /**
- * Cache specific URLs
- */
-export function cacheUrls(urls: string[]): void {
-  sendMessageToSW({ type: 'CACHE_URLS', urls });
-}
-
-/**
- * Clear API cache
+ * Clear the API cache. Used by manual "refresh data" actions.
  */
 export function clearApiCache(): void {
   sendMessageToSW({ type: 'CLEAR_CACHE' });

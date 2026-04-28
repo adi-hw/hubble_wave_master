@@ -61,11 +61,17 @@ export const authService = {
     return response.data;
   },
 
-  // Best-effort server-side logout. The control-plane backend does not yet
-  // expose a logout endpoint (tracked in SECRETS_ROTATION.md section 13).
-  // Local state is cleared and the user is redirected regardless of network
-  // outcome so the client never remains authenticated when logout is requested.
+  // Best-effort server-side logout. The control-plane revokes the access
+  // token's `jti` so a stolen bearer token cannot be replayed. The client
+  // unconditionally clears local state and redirects after the call - if the
+  // network errored the worst case is that the token remains valid until
+  // natural expiry, which is no worse than the prior behaviour.
   async logout(): Promise<void> {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Intentionally swallow: see comment above.
+    }
     clearLocalAuth();
     window.location.href = '/login';
   },

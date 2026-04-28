@@ -10,14 +10,18 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
+import { AuditService } from '../audit/audit.service';
 import { LoginDto, RegisterDto, ChangePasswordDto, UpdateProfileDto, VerifyMfaDto } from './auth.dto';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
-import { CurrentUser } from './current-user.decorator';
+import { CurrentUser, CurrentUserData } from './current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -25,6 +29,40 @@ export class AuthController {
   async login(@Body() dto: LoginDto, @Req() req: Request) {
     const ipAddress = req.ip || req.connection.remoteAddress;
     return this.authService.login(dto, ipAddress);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @CurrentUser() user: CurrentUserData,
+    @Req() req: Request,
+  ): Promise<void> {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    const correlationId = req.headers['x-correlation-id'];
+
+    await this.authService.revokeToken({
+      userId: user.id,
+      jti: user.jti,
+      expiresAt: user.tokenExpiresAt,
+      ipAddress,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    });
+
+    await this.auditService.log('auth.logout', {
+      userId: user.id,
+      resourceType: 'auth',
+      resourceId: user.id,
+      result: 'success',
+      ipAddress,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+      requestId: typeof correlationId === 'string' ? correlationId : undefined,
+      details: {
+        actor: user.email,
+        actorType: 'user',
+        jti: user.jti,
+      },
+    });
   }
 
   @Roles('admin')

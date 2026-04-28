@@ -40,7 +40,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run lint
         run: npx nx affected --target=lint --parallel=3
@@ -73,7 +73,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run TypeScript type check
         run: npx nx affected --target=build --parallel=3
@@ -122,7 +122,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run unit tests
         run: npx nx affected --target=test --parallel=3 --coverage
@@ -138,7 +138,7 @@ jobs:
           JWT_EXPIRES_IN: 1h
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: ./coverage/**/lcov.info
           fail_ci_if_error: false
@@ -190,7 +190,7 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Build affected applications
         run: npx nx affected --target=build --parallel=3
@@ -240,7 +240,7 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -267,7 +267,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Build all affected projects
         run: npx nx affected --target=build --parallel=3

@@ -21,6 +21,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
 import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
+
+
 interface UserContext {
   userId: string;
   email?: string;
@@ -31,7 +33,6 @@ interface UserContext {
  *
  * Admin endpoints for managing roles and role assignments.
  */
-@AuthenticatedOnly()
 @Controller('admin/roles')
 @UseGuards(JwtAuthGuard)
 export class RolesController {
@@ -297,6 +298,7 @@ export class RolesController {
    * Get my roles (current user) - primarily for single-instance deployments
    */
   @Get('me/roles')
+  @AuthenticatedOnly()
   async getMyRoles(@Query('userId') userId: string) {
     const assignments = await this.userRoleService.getUserRoles(userId);
     return {
@@ -309,6 +311,7 @@ export class RolesController {
    * Get my permissions (current user)
    */
   @Get('me/permissions')
+  @AuthenticatedOnly()
   async getMyPermissions(@Query('userId') userId: string) {
     const cache = await this.permissionResolver.getUserPermissions(userId);
 
@@ -329,6 +332,7 @@ export class RolesController {
    * Check if I have a specific permission
    */
   @Get('me/check/:permission')
+  @AuthenticatedOnly()
   async checkMyPermission(
     @Query('userId') userId: string,
     @Param('permission') permission: string,

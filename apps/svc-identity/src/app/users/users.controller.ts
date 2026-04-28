@@ -27,7 +27,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserStatus, AuthEvent } from '@hubblewave/instance-db';
 import { UserRoleService } from '../roles/user-role.service';
 import { MembershipService } from '../groups/membership.service';
-import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface UserContext {
   userId: string;
@@ -39,7 +38,6 @@ interface UserContext {
  *
  * Admin endpoints for managing users.
  */
-@AuthenticatedOnly()
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
@@ -59,6 +57,8 @@ export class UsersController {
    * List users with pagination and filters
    */
   @Get()
+  @UseGuards(PermissionGuard)
+  @RequirePermission('users.view')
   async listUsers(
     @Query('q') q?: string,
     @Query('status') status?: UserStatus,
@@ -83,6 +83,8 @@ export class UsersController {
    * Search users (simple endpoint for autocomplete)
    */
   @Get('search')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('users.view')
   async searchUsers(@Query('q') query: string) {
     return this.usersService.searchUsers(query || '');
   }
@@ -95,6 +97,8 @@ export class UsersController {
    * Get a single user by ID
    */
   @Get(':id')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('users.view')
   async getUser(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.getUserById(id);
     return { data: user };
@@ -104,6 +108,8 @@ export class UsersController {
    * Get roles assigned to a user
    */
   @Get(':id/roles')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('users.view')
   async getUserRoles(@Param('id', ParseUUIDPipe) id: string) {
     // Verify user exists
     await this.usersService.getUserById(id);
@@ -126,6 +132,8 @@ export class UsersController {
    * Get groups a user belongs to
    */
   @Get(':id/groups')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('users.view')
   async getUserGroups(@Param('id', ParseUUIDPipe) id: string) {
     // Verify user exists
     await this.usersService.getUserById(id);
@@ -146,6 +154,8 @@ export class UsersController {
    * Get audit log entries for a user
    */
   @Get(':id/audit')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('admin.audit')
   async getUserAuditLog(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,

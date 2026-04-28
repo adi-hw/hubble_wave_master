@@ -1,10 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   assertSecureConfig();
+  assertJwtConfig();
 
   const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
   if (!jwtSecret) {

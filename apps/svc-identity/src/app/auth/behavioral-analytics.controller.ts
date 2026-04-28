@@ -35,7 +35,6 @@ interface RequestWithUser {
   };
 }
 
-@AuthenticatedOnly()
 @Controller('auth/security')
 @UseGuards(JwtAuthGuard)
 export class BehavioralAnalyticsController {
@@ -47,6 +46,7 @@ export class BehavioralAnalyticsController {
    * Get my behavioral profile summary
    */
   @Get('profile')
+  @AuthenticatedOnly()
   async getMyProfile(@Request() req: RequestWithUser) {
     const summary = await this.analyticsService.getProfileSummary(req.user.sub);
 
@@ -158,6 +158,7 @@ export class BehavioralAnalyticsController {
    * Get my security alerts
    */
   @Get('my-alerts')
+  @AuthenticatedOnly()
   async getMyAlerts(
     @Request() req: RequestWithUser,
     @Query('status') status?: string,

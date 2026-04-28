@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 // Create Winston logger that excludes passwords/tokens
 const winstonLogger = WinstonModule.createLogger({
@@ -49,6 +49,7 @@ async function bootstrap() {
   // SECURITY: Validate configuration before starting
   // This will throw in production if insecure defaults are detected
   assertSecureConfig();
+  assertJwtConfig();
 
   // Validate JWT_SECRET is configured - REQUIRED in all environments
   const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;

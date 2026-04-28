@@ -1,0 +1,40 @@
+HubbleWave instance services have been deployed.
+
+Release:        {{ .Release.Name }}
+Namespace:      {{ .Release.Namespace }}
+Environment:    {{ .Values.environment }}
+Customer code:  {{ .Values.customerCode }}
+Instance ID:    {{ .Values.instanceId }}
+Resource tier:  {{ .Values.resourceTier }}
+Image tag:      {{ .Values.image.tag }}
+
+Bundled services:
+{{- range $svc := .Values.services }}
+  - {{ $svc.name }} (port {{ $svc.port }})
+{{- end }}
+
+Verify rollout for the critical services:
+
+  kubectl rollout status deployment/svc-identity   -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/svc-metadata   -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/svc-data       -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/svc-instance-api -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/web-client     -n {{ .Release.Namespace }}
+
+{{- if and .Values.ingress.enabled .Values.ingress.host }}
+
+Public ingress: https://{{ .Values.ingress.host }}/
+{{- else }}
+
+Ingress disabled (or host not set). Reach services in-cluster via:
+  <service>.{{ .Release.Namespace }}.svc.cluster.local
+{{- end }}
+
+Secret management:
+  - secrets.create=true is suitable for the provision-instance pipeline.
+  - For long-lived instances, set secrets.create=false and supply
+    secrets.existingSecret populated by external-secrets / SealedSecret.
+
+Rollback:
+
+  helm rollback {{ .Release.Name }} <revision> --namespace {{ .Release.Namespace }}

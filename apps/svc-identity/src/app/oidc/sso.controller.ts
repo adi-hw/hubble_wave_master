@@ -21,7 +21,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface SsoProviderDto {
   name: string;
@@ -71,7 +70,6 @@ interface TestResult {
   details?: Record<string, unknown>;
 }
 
-@AuthenticatedOnly()
 @Controller('admin/auth/sso')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')

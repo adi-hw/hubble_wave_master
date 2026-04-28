@@ -10,11 +10,12 @@ import helmet from 'helmet';
 import { AppModule } from './app/app.module';
 import { DataSource } from 'typeorm';
 import { VectorStoreService } from '@hubblewave/ai';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   assertSecureConfig();
+  assertJwtConfig();
 
   const app = await NestFactory.create(AppModule);
 

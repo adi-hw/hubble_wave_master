@@ -79,6 +79,11 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
     { slug: 'admin.audit', name: 'View Audit Logs', description: 'Access audit trail', category: 'admin', isDangerous: false },
     { slug: 'admin.integrations', name: 'Manage Integrations', description: 'Configure external integrations', category: 'admin', isDangerous: false },
     { slug: 'admin.backup', name: 'Backup/Restore', description: 'Create and restore backups', category: 'admin', isDangerous: true },
+    { slug: 'admin.policies.view', name: 'View Access Policies', description: 'Inspect row-level and field-level access rules', category: 'admin', isDangerous: false },
+
+    // Delegation
+    { slug: 'delegations.approve', name: 'Approve Delegations', description: 'Approve pending authority delegations on behalf of others', category: 'delegations', isDangerous: false },
+    { slug: 'delegations.admin', name: 'Administer Delegations', description: 'View and manage delegations across all users', category: 'delegations', isDangerous: true },
 
     // Navigation
     { slug: 'navigation.view', name: 'View Navigation', description: 'View navigation configuration', category: 'navigation', isDangerous: false },
@@ -95,17 +100,11 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Check if admin role already exists
-    const existingRole = await queryRunner.query(
-      `SELECT id FROM roles WHERE code = 'admin' LIMIT 1`
-    );
+    // Idempotent seed: insert permissions, ensure admin role exists, and grant
+    // every permission to admin. Re-running this migration is safe and lets
+    // newly added permissions reach existing installations without a follow-up
+    // migration.
 
-    if (existingRole && existingRole.length > 0) {
-      console.log('Admin role already exists, skipping seed');
-      return;
-    }
-
-    // Create all permissions
     for (const perm of this.permissions) {
       await queryRunner.query(
         `INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at, updated_at)
@@ -115,30 +114,36 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
       );
     }
 
-    // Create admin role
-    const roleResult = await queryRunner.query(`
-      INSERT INTO roles (id, code, name, description, color, is_system, is_active, is_default, created_at, updated_at)
-      VALUES (
-        uuid_generate_v4(),
-        'admin',
-        'Administrator',
-        'Full system access with all permissions',
-        '#ef4444',
-        true,
-        true,
-        false,
-        NOW(),
-        NOW()
-      )
-      RETURNING id
-    `);
+    const existingRole = await queryRunner.query(
+      `SELECT id FROM roles WHERE code = 'admin' LIMIT 1`
+    );
 
-    const adminRoleId = roleResult[0]?.id;
-    if (!adminRoleId) {
-      throw new Error('Failed to create admin role');
+    let adminRoleId: string;
+    if (existingRole && existingRole.length > 0) {
+      adminRoleId = existingRole[0].id;
+    } else {
+      const roleResult = await queryRunner.query(`
+        INSERT INTO roles (id, code, name, description, color, is_system, is_active, is_default, created_at, updated_at)
+        VALUES (
+          uuid_generate_v4(),
+          'admin',
+          'Administrator',
+          'Full system access with all permissions',
+          '#ef4444',
+          true,
+          true,
+          false,
+          NOW(),
+          NOW()
+        )
+        RETURNING id
+      `);
+      adminRoleId = roleResult[0]?.id;
+      if (!adminRoleId) {
+        throw new Error('Failed to create admin role');
+      }
     }
 
-    // Assign all permissions to admin role
     const allPermissions = await queryRunner.query(`SELECT id FROM permissions`);
 
     for (const perm of allPermissions) {
@@ -149,8 +154,6 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
         [adminRoleId, perm.id]
       );
     }
-
-    console.log('Admin role created with all permissions');
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

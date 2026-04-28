@@ -10,7 +10,6 @@ import { PoliciesService, PolicyListOptions } from './policies.service';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
-import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 /**
  * PoliciesController
@@ -18,7 +17,6 @@ import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
  * Admin endpoints for viewing access rules (collection and property level policies).
  * All endpoints require admin-level permissions.
  */
-@AuthenticatedOnly()
 @Controller('policies')
 @UseGuards(JwtAuthGuard)
 export class PoliciesController {

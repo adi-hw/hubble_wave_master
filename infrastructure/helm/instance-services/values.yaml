@@ -1,0 +1,194 @@
+# Default values for the HubbleWave instance-services chart.
+# Each entry under `services` is rendered into a Deployment + Service pair.
+# CD substitutes image.tag with the immutable commit SHA.
+
+environment: production
+
+# Per-instance identity. The provision-instance workflow passes these.
+instanceId: ""
+customerCode: ""
+resourceTier: standard
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: hubblewave/hw-platform
+  # tag is set by CD/provision pipeline. An empty tag fails the chart fast.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: true
+  name: instance-services-sa
+  annotations: {}
+
+# Non-secret runtime config shared by every service in the bundle.
+config:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  DB_SSL: "true"
+
+# Connection coordinates for the per-instance datastores. Hosts come from
+# Terraform outputs; the password is supplied via the secret block below.
+database:
+  host: ""
+  port: "5432"
+  user: ""
+  name: ""
+redis:
+  host: ""
+  port: "6379"
+
+# Per-instance secret values. Production should set secrets.create=false and
+# point existingSecret at a Secret materialised by external-secrets.
+secrets:
+  create: true
+  existingSecret: ""
+  jwtSecret: ""
+  jwtAudience: hubblewave-instance
+  jwtIssuer: hubblewave-identity
+  databasePassword: ""
+  redisAuthToken: ""
+  backupSigningKey: ""
+  packInstallToken: ""
+  packSigningPublicKey: ""
+  huggingfaceToken: ""
+
+# Pod-level security defaults applied to every service.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Default resources used when a service entry omits resources.
+defaults:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  readinessProbePath: /api/health
+  livenessProbePath: /api/health
+
+# Services rendered by the chart. Each entry inherits `defaults` for any field
+# it does not override.
+services:
+  - name: svc-identity
+    image: svc-identity
+    port: 3001
+    servicePort: 80
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+  - name: svc-metadata
+    image: svc-metadata
+    port: 3002
+    servicePort: 80
+  - name: svc-data
+    image: svc-data
+    port: 3004
+    servicePort: 80
+    resources:
+      requests:
+        cpu: 200m
+        memory: 384Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+  - name: svc-ava
+    image: svc-ava
+    port: 3005
+    servicePort: 80
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1500m
+        memory: 1.5Gi
+  - name: svc-workflow
+    image: svc-workflow
+    port: 3006
+    servicePort: 80
+  - name: svc-automation
+    image: svc-automation
+    port: 3007
+    servicePort: 80
+  - name: svc-notify
+    image: svc-notify
+    port: 3008
+    servicePort: 80
+  - name: svc-insights
+    image: svc-insights
+    port: 3009
+    servicePort: 80
+  - name: svc-instance-api
+    image: svc-instance-api
+    port: 3010
+    servicePort: 80
+  - name: svc-view-engine
+    image: svc-view-engine
+    port: 3011
+    servicePort: 80
+  - name: web-client
+    image: web-client
+    port: 80
+    servicePort: 80
+    readinessProbePath: /health
+    livenessProbePath: /health
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  host: ""
+  tlsSecret: ""
+  # Path-prefix routes that map onto the bundled services. The default routes
+  # everything under /api/ to svc-instance-api and / to the web-client.
+  routes:
+    - path: /api
+      pathType: Prefix
+      service: svc-instance-api
+      port: 80
+    - path: /
+      pathType: Prefix
+      service: web-client
+      port: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

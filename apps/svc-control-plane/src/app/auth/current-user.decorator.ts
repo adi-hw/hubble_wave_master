@@ -6,6 +6,8 @@ export interface CurrentUserData {
   role: string;
   firstName: string;
   lastName: string;
+  jti?: string;
+  tokenExpiresAt?: Date;
 }
 
 export const CurrentUser = createParamDecorator(

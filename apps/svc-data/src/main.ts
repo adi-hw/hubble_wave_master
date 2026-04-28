@@ -1,12 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   // This will throw in production if insecure defaults are detected
   assertSecureConfig();
+  assertJwtConfig();
 
   // Ensure JWT secret is set from either JWT_SECRET or IDENTITY_JWT_SECRET
   const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;

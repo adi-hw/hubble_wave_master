@@ -29,11 +29,13 @@ Rotation is the only action that actually invalidates the leaked values.
 
 Wave 3 added mandatory `aud` and `iss` claim verification to the identity service. Tokens minted before this rollout do not carry these claims and will fail signature verification once the new strategy is deployed.
 
-- New environment variables (both must be set on every service that signs or verifies platform JWTs):
-  - `JWT_AUDIENCE` - default `hubblewave-instance` if unset
-  - `JWT_ISSUER` - default `hubblewave-identity` if unset
+- New environment variables (both must be set on **every** backend service that signs or verifies platform JWTs - not just `svc-identity`):
+  - `JWT_AUDIENCE` - default `hubblewave-instance` if unset (development only)
+  - `JWT_ISSUER` - default `hubblewave-identity` if unset (development only)
+- Wave 5 adds a build-time `assertJwtConfig()` pre-flight in `libs/shared-types` (`security/jwt-config.ts`), invoked from each service's `main.ts` alongside `assertSecureConfig()`. In production (`NODE_ENV=production`) the pre-flight throws if either variable is unset; in non-prod it logs a warning. The covered services are: `svc-identity`, `svc-metadata`, `svc-data`, `svc-notify`, `svc-control-plane`, `svc-ava`, `svc-workflow`, `svc-automation`, `svc-instance-api`, `svc-insights`, `svc-view-engine`.
+- An optional `JWT_AUDIENCE_EXPECTED` env var, when set on a service, is compared against `JWT_AUDIENCE` and a mismatch throws at startup in any environment. Set this to a single shared deployment-time value across all services to catch "audience=foo on identity but audience=bar on data" misconfigurations before tokens start flowing.
 - The signer (`auth.service.ts`) and the verifier (`jwt.strategy.ts`) read the same env vars and must be deployed in lockstep. If only the verifier rolls out first, all currently-issued tokens immediately stop validating.
-- Operationally this is equivalent to a forced re-login: roll the change during a maintenance window, or schedule it alongside the next `JWT_SECRET` rotation so the user impact is amortized into a single re-auth event.
+- Operationally the migration is equivalent to a **forced re-login** - no in-flight tokens survive. Roll during a maintenance window, or schedule it alongside the next `JWT_SECRET` rotation so the user impact is amortized into a single re-auth event.
 - The verifier also accepts a 30 second `clockTolerance` to absorb skew between the identity service and downstream verifiers; this does not weaken token expiry, only smooths cross-host clock drift.
 
 ## 3. PACK_INSTALL_TOKEN / CONTROL_PLANE_INSTANCE_TOKEN
@@ -99,25 +101,21 @@ Wave 3 added mandatory `aud` and `iss` claim verification to the identity servic
 
 ---
 
-## 13. Control-plane server-side logout endpoint (open work)
+## 13. Control-plane server-side logout endpoint (shipped in Wave 5)
 
 - **Severity:** Medium (token/session lifecycle hygiene)
-- **Source:** Wave 4 audit. The web-control-plane `authService.logout()` clears
-  localStorage and redirects, but there is no `POST /auth/logout` endpoint on
-  `svc-control-plane` to revoke the issued JWT or refresh-token family on the
-  server. As a result, a leaked control-plane access token remains valid until
-  its natural expiry, even after the operator clicks "Sign out".
-- **Action (out of Wave 4 scope, tracked here):** add a `POST /auth/logout`
-  endpoint to `apps/svc-control-plane/src/app/auth/auth.controller.ts` that
-  revokes the current token (and any refresh-token family if/when one is
-  introduced). When that endpoint exists, wire it into
-  `apps/web-control-plane/src/app/services/auth.ts` `logout()` as a best-effort
-  call before clearing local state. The client must continue to clear local
-  state and redirect even if the server call fails, so the user is never left
-  authenticated client-side because the network call errored.
-- **Compensating controls in place today:** `JWT_SECRET` rotation (section 2)
-  invalidates all in-flight tokens platform-wide; this is the only mechanism
-  currently available to forcibly terminate a leaked control-plane session.
+- **Status:** Shipped in Wave 5.
+- **What shipped:**
+  - `POST /auth/logout` on `svc-control-plane` - any authenticated operator/admin/super_admin can call it to revoke the current bearer token. Returns `204 No Content`.
+  - Login now mints a `jti` claim on every access token (`crypto.randomUUID()`), so individual tokens can be surgically revoked without rotating `JWT_SECRET`.
+  - A new `revoked_tokens` table in the control-plane database (migration `1823000000000-revoked-tokens.ts`) stores `{jti, userId, expiresAt, revokedAt, ipAddress, userAgent}`. The `JwtStrategy.validate()` consults this table on every request and rejects tokens whose `jti` appears in it.
+  - The web-control-plane `authService.logout()` now calls `POST /auth/logout` before clearing localStorage, wrapped in a try/catch so a network failure still results in a clean local sign-out.
+  - Logout events emit a `auth.logout` row in `control_plane_audit_log` with actor, IP, UA, and `jti`.
+- **Operational notes:**
+  - Tokens issued **before** this rollout do not carry a `jti` claim. Logout will reject them with a clear `UnauthorizedException` because there is nothing to revoke; operators on legacy tokens must either let the token expire naturally or rotate `JWT_SECRET`. After Wave 5 deploys, the next login mints a `jti`-bearing token and logout works as designed.
+  - `revoked_tokens` rows can be pruned once `expiresAt` has passed; `AuthService.purgeExpiredRevocations()` is provided for a future scheduled job. There is no leak from a row sitting longer than necessary, only mild table bloat.
+  - This implementation uses PostgreSQL (already provisioned for the control-plane) rather than Redis. No new infrastructure dependency; no new env var needed beyond the existing control-plane DB.
+- **Compensating controls (still relevant):** `JWT_SECRET` rotation (section 2) remains the nuclear option for invalidating every token platform-wide simultaneously, e.g. on suspected signing-key compromise.
 
 ---
 
@@ -186,35 +184,28 @@ Operator checklist:
 
 ## Wave 4 Additions
 
-### CI/CD action SHA pinning (operator follow-up)
+### CI/CD action SHA pinning (Wave 5 — shipped)
 
-Wave 4 changed `aquasecurity/trivy-action@master` to
-`aquasecurity/trivy-action@0.28.0` in `.github/workflows/ci.yml` so the
-scanner version is reproducible. The remaining third-party actions in the
-`.github/workflows/` tree are still pinned to floating tags rather than
-commit SHAs. Pin them to immutable SHAs once the operator has run
-`gh api` lookups for each action+tag pair. The complete list:
+All third-party GitHub Actions in `.github/workflows/*.yml` are now
+pinned to 40-character commit SHAs with the human-readable version as a
+trailing comment. First-party `actions/*` (`actions/checkout`,
+`actions/setup-node`, `actions/upload-artifact`, `actions/download-artifact`)
+remain on major-version tags per Wave 1's spec — Microsoft maintains them
+and the floating-tag risk is acceptable.
 
-- `actions/checkout@v4`
-- `actions/setup-node@v4`
-- `docker/setup-buildx-action@v3`
-- `docker/login-action@v3`
-- `docker/metadata-action@v5`
-- `docker/build-push-action@v5`
-- `azure/setup-kubectl@v4`
-- `azure/setup-helm@v4`
-- `azure/k8s-set-context@v4`
-- `slackapi/slack-github-action@v1.25.0`
-- `aquasecurity/trivy-action@0.28.0`
+Pinned in Wave 5: `nrwl/nx-set-shas`, `codecov/codecov-action`,
+`aquasecurity/trivy-action` (and the tag form was corrected from `0.28.0`
+to `v0.28.0`), `hashicorp/setup-terraform`, `aws-actions/configure-aws-credentials`,
+`azure/setup-kubectl`, `azure/setup-helm`, `azure/k8s-set-context`,
+`docker/setup-buildx-action`, `docker/login-action`, `docker/metadata-action`,
+`docker/build-push-action`, `slackapi/slack-github-action`,
+`softprops/action-gh-release`. SHAs were resolved via
+`gh api repos/<owner>/<action>/git/ref/tags/<tag>` (with one level of
+indirection for annotated tags).
 
-For each, run:
-
-```
-gh api repos/<owner>/<action>/git/refs/tags/<tag> --jq '.object.sha'
-```
-
-and replace the tag with the resulting SHA, leaving the tag as a comment
-suffix. SHA pinning is the only defence against upstream tag mutation.
+Operator: when bumping any of these to a newer version, re-run the same
+`gh api` lookup for the new tag and update both the SHA and the trailing
+comment. Never reintroduce a floating tag.
 
 ### ElastiCache Redis AUTH (Wave 4 / item 3)
 
@@ -253,10 +244,10 @@ the vLLM Deployment.
 the image field is now `:WILL_BE_REPLACED_BY_CD`. The CD workflow no
 longer pushes `:latest` for the main branch. Operators must rewrite the
 manifest's image references to an immutable digest
-(`image@sha256:<digest>`) before applying, or migrate to a Helm chart at
-`infrastructure/helm/control-plane/` (the directory referenced in
-`cd.yml` does not yet exist in the working tree - it must be
-materialised before the CD pipeline can succeed).
+(`image@sha256:<digest>`) before applying. Wave 5 materialises the Helm
+charts referenced by `cd.yml` at `infrastructure/helm/control-plane/`
+and `infrastructure/helm/instance-services/`; CD now passes the commit
+SHA into `image.tag` so the digest substitution remains intact.
 
 ### IAM least privilege (Wave 4 / item 1)
 

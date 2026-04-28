@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { ControlPlaneUser, ControlPlaneRole } from '@hubblewave/control-plane-db';
+import { ControlPlaneUser, ControlPlaneRole, RevokedToken } from '@hubblewave/control-plane-db';
 import { LoginDto, RegisterDto, ChangePasswordDto, UpdateProfileDto, VerifyMfaDto } from './auth.dto';
 import { authenticator } from 'otplib';
 import * as crypto from 'crypto';
@@ -20,8 +20,17 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: ControlPlaneRole;
+  jti?: string;
   iat?: number;
   exp?: number;
+}
+
+export interface LogoutContext {
+  userId: string;
+  jti?: string;
+  expiresAt?: Date;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 export interface AuthResponse {
@@ -41,6 +50,8 @@ export class AuthService {
   constructor(
     @InjectRepository(ControlPlaneUser)
     private readonly userRepo: Repository<ControlPlaneUser>,
+    @InjectRepository(RevokedToken)
+    private readonly revokedTokenRepo: Repository<RevokedToken>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
@@ -109,13 +120,14 @@ export class AuthService {
     user.lastLoginIp = ipAddress || null;
     await this.userRepo.save(user);
 
+    const jti = crypto.randomUUID();
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, { jwtid: jti });
 
     return {
       accessToken,
@@ -128,6 +140,61 @@ export class AuthService {
         avatarUrl: user.avatarUrl ?? undefined,
       },
     };
+  }
+
+  /**
+   * Add a token's `jti` to the revocation list. Called from `POST /auth/logout`.
+   * Idempotent - duplicate jti is ignored thanks to the unique index. The row
+   * is retained until the token would have naturally expired, then pruned.
+   */
+  async revokeToken(context: LogoutContext): Promise<void> {
+    if (!context.jti || !context.expiresAt) {
+      // Tokens issued before this rollout do not carry a jti. We cannot
+      // surgically revoke them; the operator must rotate JWT_SECRET to
+      // invalidate the entire signing key. Fail closed by raising so the
+      // controller can return a clear error rather than silently no-op.
+      throw new UnauthorizedException(
+        'Token does not carry a jti claim and cannot be individually revoked. ' +
+        'Re-authenticate to obtain a token issued by the current platform.',
+      );
+    }
+
+    const entity = this.revokedTokenRepo.create({
+      jti: context.jti,
+      userId: context.userId,
+      expiresAt: context.expiresAt,
+      ipAddress: context.ipAddress ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    try {
+      await this.revokedTokenRepo.save(entity);
+    } catch (error: unknown) {
+      // Unique-violation on jti means the token was already revoked - this
+      // is the desired terminal state, not an error. Re-throw any other DB
+      // error so the caller learns persistence actually failed.
+      const code = (error as { code?: string })?.code;
+      if (code !== '23505') {
+        throw error;
+      }
+    }
+  }
+
+  async isTokenRevoked(jti: string): Promise<boolean> {
+    if (!jti) return false;
+    const row = await this.revokedTokenRepo.findOne({ where: { jti } });
+    return !!row;
+  }
+
+  /**
+   * Periodic-cleanup helper. Called by a scheduled job (or manual maintenance)
+   * to drop revocation rows whose underlying token has already expired.
+   */
+  async purgeExpiredRevocations(now: Date = new Date()): Promise<number> {
+    const result = await this.revokedTokenRepo.delete({
+      expiresAt: LessThanOrEqual(now),
+    });
+    return result.affected ?? 0;
   }
 
   async register(dto: RegisterDto, createdBy?: string): Promise<ControlPlaneUser> {

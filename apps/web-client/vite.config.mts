@@ -161,64 +161,18 @@ export default defineConfig(() => ({
     nxViteTsPaths(),
     nxCopyAssetsPlugin(['*.md']),
     VitePWA({
+      // injectManifest compiles src/service-worker.ts as the source of truth.
+      // The hardened SW (auth-gated cache, CLEAR_USER_CACHE, notification URL
+      // validation) runs in production — generateSW would discard it.
+      strategies: 'injectManifest',
       registerType: 'autoUpdate',
+      srcDir: 'src',
+      filename: 'service-worker.ts',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: false, // Use our custom manifest.json
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\./i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /\/api\/(identity|data|metadata)\//i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'local-api-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 5, // 5 minutes
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-              },
-            },
-          },
-          {
-            urlPattern: /\.(woff|woff2|ttf|eot)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'fonts-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-            },
-          },
-        ],
       },
       devOptions: {
         enabled: false, // Disable in dev mode for easier debugging
