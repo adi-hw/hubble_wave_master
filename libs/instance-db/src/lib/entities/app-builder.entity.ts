@@ -12,7 +12,12 @@ import {
 import { User } from './user.entity';
 
 // ============================================================
-// Phase 7: Revolutionary Features Entities
+// App-Builder Entities
+//
+// Sprint recording, story generation, customization registry,
+// upgrade impact, generated documentation, predictive insights,
+// digital twins, self-healing infrastructure, AI reports, NL queries,
+// app-builder components, voice control, predictive UI.
 // ============================================================
 
 // ─────────────────────────────────────────────────────────────────

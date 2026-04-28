@@ -63,7 +63,7 @@ runtime to published artifacts only.
 | Automation Rule visual builder | ❌ Missing — Phase 4 | — |
 | `WorkspacePage` entity (multi-page Workspace) | ❌ Missing — Phase 5.0 | — |
 | Workspace Builder UI | ❌ Missing — Phase 5 | — |
-| `phase7-revolutionary.entity.ts` rename to `app-builder.entity.ts` | ❌ Owed — canon §1 violation | — |
+| `phase7-revolutionary.entity.ts` rename to `app-builder.entity.ts` | ✅ Shipped — Slice D | — |
 | Change Packages | ❌ Missing — Phase 6 | — |
 | Pack-vs-custom record provenance | ❌ Missing — Phase 6 | — |
 | Service Catalog / Portal | Out of scope (Q4) | — |
@@ -794,7 +794,7 @@ pattern. No "we'll add versioning later" exception.
 | C2 | 0 | ✅ Shipped | `c04b35d` |
 | C3 | 0 | ✅ Shipped | `5e0ea21` |
 | C4 | 0 | ✅ Shipped | (in same commit) |
-| D | 0 | ⏳ Queued | — |
+| D | 0 | ✅ Shipped | (this commit) |
 | Phase 1 | 1 | ⏳ Queued | — |
 | Phase 2 | 2 | ⏳ Queued | — |
 | Phase 3a/b/c | 3 | ⏳ Queued | — |

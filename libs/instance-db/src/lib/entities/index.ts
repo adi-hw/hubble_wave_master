@@ -426,7 +426,7 @@ export type {
 } from './integration.entity';
 
 // ─────────────────────────────────────────────────────────────────
-// Phase 7: Revolutionary Features
+// App-Builder
 // ─────────────────────────────────────────────────────────────────
 export {
   // AVA-Powered Agile Development
@@ -475,7 +475,7 @@ export {
   SuggestionStatus,
   PatternType,
   AppStatus,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 export type {
   // Types
   SprintRecordingStatus,
@@ -505,7 +505,7 @@ export type {
   SuggestionType as PredictiveSuggestionType,
   AppDefinition,
   AppComponent,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -705,7 +705,7 @@ import {
   UserBehavior,
   PredictiveSuggestion,
   UserPattern,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 
 /**
  * All instance database entities
@@ -913,7 +913,7 @@ export const instanceEntities = [
   SyncRun,
   ApiRequestLog,
 
-  // Phase 7: Revolutionary Features
+  // App-Builder
   // AVA-Powered Agile Development
   SprintRecording,
   AvaStory,
