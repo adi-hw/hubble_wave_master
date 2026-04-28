@@ -16,6 +16,15 @@ export { RolePermission, UserRole, AssignmentSource } from './role-permission.en
 export { Group, GroupType, GroupMember, GroupRole } from './group.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Application Registry (App Studio scope)
+// ─────────────────────────────────────────────────────────────────
+export {
+  Application,
+  ApplicationRevision,
+} from './application.entity';
+export type { ApplicationStatus, ApplicationRevisionStatus } from './application.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // Schema Engine (Collections & Properties)
 // ─────────────────────────────────────────────────────────────────
 export { CollectionDefinition, OwnerType } from './collection-definition.entity';
@@ -484,6 +493,7 @@ import { Role } from './role.entity';
 import { Permission } from './permission.entity';
 import { RolePermission, UserRole } from './role-permission.entity';
 import { Group, GroupMember, GroupRole } from './group.entity';
+import { Application, ApplicationRevision } from './application.entity';
 import { CollectionDefinition } from './collection-definition.entity';
 import { PropertyDefinition } from './property-definition.entity';
 import { PropertyType, ChoiceList, ChoiceItem } from './property-type.entity';
@@ -682,6 +692,10 @@ export const instanceEntities = [
   Group,
   GroupMember,
   GroupRole,
+
+  // Application Registry
+  Application,
+  ApplicationRevision,
 
   // Schema Engine
   CollectionDefinition,

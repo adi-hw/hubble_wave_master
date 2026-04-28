@@ -37,6 +37,7 @@ import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
 import { SearchModule } from './search/search.module';
 import { LocalizationModule } from './localization/localization.module';
+import { ApplicationModule } from './application/application.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { LocalizationModule } from './localization/localization.module';
     AuthorizationModule.forRoot({
       enableCaching: true,
     }),
+    ApplicationModule,
     PropertyModule,
     AccessModule,
     ThemeModule,
