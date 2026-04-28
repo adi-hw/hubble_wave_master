@@ -791,9 +791,9 @@ pattern. No "we'll add versioning later" exception.
 | A | 0 | ✅ Shipped | `3a52e03` |
 | B | 0 | ✅ Shipped | (after rebase) |
 | C1 | 0 | ✅ Shipped | `0854cc7` |
-| C2 | 0 | ⏳ Queued | — |
-| C3 | 0 | ⏳ Queued | — |
-| C4 | 0 | ⏳ Queued | — |
+| C2 | 0 | ✅ Shipped | `c04b35d` |
+| C3 | 0 | ✅ Shipped | `5e0ea21` |
+| C4 | 0 | ✅ Shipped | (in same commit) |
 | D | 0 | ⏳ Queued | — |
 | Phase 1 | 1 | ⏳ Queued | — |
 | Phase 2 | 2 | ⏳ Queued | — |

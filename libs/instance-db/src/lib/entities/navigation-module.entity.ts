@@ -15,6 +15,7 @@ export type NavigationRevisionStatus = 'draft' | 'published';
 
 @Entity('navigation_modules')
 @Index(['code'], { unique: true })
+@Index(['applicationId'])
 export class NavigationModule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -30,6 +31,13 @@ export class NavigationModule {
 
   @Column({ name: 'metadata', type: 'jsonb', default: () => `'{}'` })
   metadata!: Record<string, unknown>;
+
+  /**
+   * Application this navigation module belongs to (ADR-6). Pre-Slice-C4
+   * rows roll into the `default` Application during backfill.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
