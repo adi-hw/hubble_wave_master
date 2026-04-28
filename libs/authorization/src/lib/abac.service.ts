@@ -40,15 +40,24 @@ export class AbacService {
   constructor() {}
 
   /**
-   * When set to true (via env `ABAC_DEFAULT_DENY=true`) `matches()` returns
-   * false for an absent / undefined policy condition. Default is false to
-   * preserve existing behavior. Production deployments are expected to opt in
-   * so missing policies fail closed; the canon mandates documented opt-in
-   * security defaults rather than silent regressions.
+   * Whether `matches()` should return false when no policy condition is
+   * present. Per HubbleWave canon §10 ("Compliance by Default"), the answer
+   * is yes — production must fail closed. The only override is the dev-time
+   * escape hatch `ABAC_DEFAULT_ALLOW=true`, which is honored only when
+   * `NODE_ENV !== 'production'`. Setting it in production has no effect; the
+   * service still defaults to deny. A loud warning is emitted on every
+   * use of the dev escape hatch so it cannot silently leak into a release.
    */
   private get defaultDeny(): boolean {
-    const flag = process.env['ABAC_DEFAULT_DENY'];
-    return typeof flag === 'string' && flag.toLowerCase() === 'true';
+    if (process.env['NODE_ENV'] !== 'production') {
+      const allow = process.env['ABAC_DEFAULT_ALLOW'];
+      if (typeof allow === 'string' && allow.toLowerCase() === 'true') {
+        // eslint-disable-next-line no-console
+        console.warn('[AbacService] ABAC_DEFAULT_ALLOW=true honored (dev only); production fails closed regardless.');
+        return false;
+      }
+    }
+    return true;
   }
 
   async getPolicies(_resourceType: string, _resource: string, _action: string) {
@@ -56,8 +65,9 @@ export class AbacService {
   }
 
   matches(condition: Condition | undefined, context: Record<string, any>) {
-    // No policy supplied. Default-deny customers want this to fail closed; we
-    // honor that switch here so callers do not have to special-case it.
+    // No policy supplied: fail closed (canon §10). In dev, ABAC_DEFAULT_ALLOW
+    // can flip this to permissive so unauthored policies don't block local
+    // experimentation; production ignores the flag.
     if (!condition) return !this.defaultDeny;
     if (condition.equals) {
       for (const [key, expected] of Object.entries(condition.equals)) {

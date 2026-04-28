@@ -793,6 +793,15 @@ export class CollectionDataService {
 
     const qb = ds.createQueryBuilder().select(selectParts).from(`${schemaName}.${tableNameOnly}`, 't').where('t."id" = :id', { id });
 
+    // Apply row-level security predicates so a caller in tenant A cannot
+    // fetch a record in tenant B by id alone (id is a public bearer token).
+    const rowLevelClause = await this.authz.buildRowLevelClause(context, collection.tableName, 'read', 't');
+    if (rowLevelClause.clauses.length > 0) {
+      rowLevelClause.clauses.forEach((clause, index) => {
+        qb.andWhere(clause, this.prefixParams(rowLevelClause.params, `rls_one_${index}_`));
+      });
+    }
+
     const record = await qb.getRawOne();
 
     if (!record) {
