@@ -398,6 +398,7 @@ export class BehavioralAnalyticsService {
       throw new Error('Alert not found');
     }
 
+    const previousStatus = alert.status;
     alert.status = status;
     if (status === 'acknowledged') {
       alert.acknowledgedAt = new Date();
@@ -410,15 +411,31 @@ export class BehavioralAnalyticsService {
 
     await this.alertRepo.save(alert);
 
+    // The audit entry links the resolver to the alert's investigation context
+    // (the original subject user, alert type, severity, and prior status) so a
+    // reviewer can answer "who closed this alert and what was being closed".
     await this.auditLogRepo.save(
       this.auditLogRepo.create({
         userId: updatedBy,
         action: `security_alert.${status}`,
         collectionCode: 'security_alert',
         recordId: alertId,
-        newValues: { notes, alertType: alert.alertType },
+        oldValues: { status: previousStatus },
+        newValues: {
+          status,
+          notes,
+          alertType: alert.alertType,
+          severity: alert.severity,
+          subjectUserId: alert.userId,
+          resolvedBy: alert.resolvedBy ?? null,
+          resolvedAt: alert.resolvedAt ?? null,
+          acknowledgedBy: alert.acknowledgedBy ?? null,
+          acknowledgedAt: alert.acknowledgedAt ?? null,
+        },
       }),
     );
+
+    this.logger.log(`Security alert ${alertId} (${alert.alertType}/${alert.severity}) transitioned ${previousStatus} -> ${status} by ${updatedBy}`);
 
     return alert;
   }

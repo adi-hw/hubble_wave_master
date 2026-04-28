@@ -8,13 +8,15 @@ export class DashboardsController {
   constructor(private readonly dashboards: DashboardsService) {}
 
   @Get()
-  async list() {
-    return this.dashboards.list();
+  async list(@Req() req?: InstanceRequest) {
+    const context = extractContext(req || {});
+    return this.dashboards.list(context);
   }
 
   @Get(':code')
-  async get(@Param('code') code: string) {
-    return this.dashboards.get(code);
+  async get(@Param('code') code: string, @Req() req?: InstanceRequest) {
+    const context = extractContext(req || {});
+    return this.dashboards.get(context, code);
   }
 
   @Post()

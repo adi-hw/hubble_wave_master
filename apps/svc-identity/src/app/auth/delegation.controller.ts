@@ -210,11 +210,22 @@ export class DelegationController {
       return { found: false };
     }
 
-    // Only delegator, delegate, or admin can view
-    if (
-      delegation.delegatorId !== req.user.sub &&
-      delegation.delegateId !== req.user.sub
-    ) {
+    const isDelegator = delegation.delegatorId === req.user.sub;
+    const isDelegate = delegation.delegateId === req.user.sub;
+
+    // Only delegator or delegate can view
+    if (!isDelegator && !isDelegate) {
+      return { found: false };
+    }
+
+    // Revoked or expired delegations are only visible to the delegator (creator)
+    // who needs them for audit history. Delegates (and any non-owner that slipped
+    // past the check above) get an opaque not-found.
+    const isInactive =
+      delegation.status === 'revoked' ||
+      delegation.status === 'expired' ||
+      (delegation.endsAt && new Date(delegation.endsAt) < new Date());
+    if (isInactive && !isDelegator) {
       return { found: false };
     }
 

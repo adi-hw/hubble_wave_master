@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
@@ -6,8 +6,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { firstValueFrom, timeout, catchError } from 'rxjs';
-import { Instance, InstanceHealth } from '@hubblewave/control-plane-db';
+import { ControlPlaneUser, Instance, InstanceHealth } from '@hubblewave/control-plane-db';
 import { AuditService } from '../audit/audit.service';
+
+/**
+ * Minimum actor shape required to scope health queries.
+ * Operators see only customers they manage; super_admins see everything.
+ */
+export interface HealthActor {
+  id: string;
+  role?: string;
+  customerIds?: string[];
+}
 
 /**
  * Service-level health check result
@@ -76,6 +86,8 @@ export class HealthAggregatorService implements OnModuleInit {
   constructor(
     @InjectRepository(Instance)
     private readonly instanceRepo: Repository<Instance>,
+    @InjectRepository(ControlPlaneUser)
+    private readonly userRepo: Repository<ControlPlaneUser>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
@@ -385,9 +397,11 @@ export class HealthAggregatorService implements OnModuleInit {
   }
 
   /**
-   * Check health for a specific instance (on-demand)
+   * Check health for a specific instance (on-demand). The actor must be a
+   * super_admin or be assigned to the customer that owns the instance, as
+   * the response includes the customer code and operator-only telemetry.
    */
-  async checkInstanceById(instanceId: string): Promise<InstanceHealthResult> {
+  async checkInstanceById(instanceId: string, actor: HealthActor): Promise<InstanceHealthResult> {
     const instance = await this.instanceRepo.findOne({
       where: { id: instanceId, deletedAt: IsNull() },
       relations: ['customer'],
@@ -396,6 +410,8 @@ export class HealthAggregatorService implements OnModuleInit {
     if (!instance) {
       throw new Error(`Instance ${instanceId} not found`);
     }
+
+    await this.assertActorCanManageCustomer(actor, instance.customerId);
 
     const result = await this.checkInstanceHealth(instance);
 
@@ -410,6 +426,35 @@ export class HealthAggregatorService implements OnModuleInit {
     });
 
     return result;
+  }
+
+  /**
+   * Authorization gate for per-instance health lookups. There is no
+   * customer_managers table today, so customer assignments are stored in the
+   * ControlPlaneUser metadata under `assignedCustomerIds`. super_admin and
+   * admin always pass; operators must have the target customer in their
+   * assignment list.
+   */
+  private async assertActorCanManageCustomer(
+    actor: HealthActor,
+    customerId: string,
+  ): Promise<void> {
+    const role = (actor.role || '').toLowerCase();
+    if (role === 'super_admin' || role === 'admin') {
+      return;
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: actor.id } });
+    if (!user) {
+      throw new ForbiddenException('Actor not found in control plane');
+    }
+    const metadata = (user.metadata || {}) as { assignedCustomerIds?: unknown };
+    const assigned = Array.isArray(metadata.assignedCustomerIds)
+      ? metadata.assignedCustomerIds.filter((value): value is string => typeof value === 'string')
+      : [];
+    if (!assigned.includes(customerId)) {
+      throw new ForbiddenException('Actor is not assigned to this customer');
+    }
   }
 
   /**

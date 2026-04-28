@@ -161,11 +161,10 @@ export class NLQueryController {
     @Param('id') queryId: string,
   ) {
     // Ownership check: only the user who saved the query (or admin) may toggle.
-    if (!user.roles?.includes('admin')) {
-      const owned = await this.nlQueryService.getSavedQueries(user.id);
-      if (!owned.some((q) => q.id === queryId)) {
-        throw new ForbiddenException('Not the owner');
-      }
+    const isAdmin = user.roles?.includes('admin') ?? false;
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    if (!existing) {
+      throw new ForbiddenException('Not the owner');
     }
     const query = await this.nlQueryService.toggleFavorite(queryId);
     return { query };
@@ -179,11 +178,10 @@ export class NLQueryController {
     @Param('id') queryId: string,
   ) {
     // Ownership check: only the user who saved the query (or admin) may delete.
-    if (!user.roles?.includes('admin')) {
-      const owned = await this.nlQueryService.getSavedQueries(user.id);
-      if (!owned.some((q) => q.id === queryId)) {
-        throw new ForbiddenException('Not the owner');
-      }
+    const isAdmin = user.roles?.includes('admin') ?? false;
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    if (!existing) {
+      throw new ForbiddenException('Not the owner');
     }
     await this.nlQueryService.deleteSavedQuery(queryId);
     return { success: true };

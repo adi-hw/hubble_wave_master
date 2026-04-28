@@ -65,10 +65,29 @@ export class RefreshTokenService {
     oldToken: string,
     ipAddress?: string,
     userAgent?: string,
+    expectedUserId?: string,
   ): Promise<{ token: string; entity: RefreshToken } | null> {
     const oldRefreshToken = await this.findByToken(oldToken);
 
     if (!oldRefreshToken) {
+      return null;
+    }
+
+    // When the caller knows which user is requesting the rotation (e.g. a
+    // session that already authenticated the user separately), verify that
+    // the token actually belongs to that user. This prevents a stolen-token
+    // confused-deputy scenario where the rotation handler is reached from a
+    // request authenticated as a different user.
+    if (expectedUserId && oldRefreshToken.userId !== expectedUserId) {
+      this.logger.warn('Refresh token rotation rejected: caller userId does not match token owner', {
+        tokenOwnerUserId: oldRefreshToken.userId,
+        callerUserId: expectedUserId,
+      });
+      // Treat the family as compromised: an attacker may be replaying a token
+      // they obtained by other means.
+      if (oldRefreshToken.family) {
+        await this.markFamilyAsCompromised(oldRefreshToken.family, 'ROTATION_OWNER_MISMATCH');
+      }
       return null;
     }
 

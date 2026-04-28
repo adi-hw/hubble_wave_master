@@ -126,15 +126,30 @@ export class TerraformWorkspaceService {
       return `[${items.map(s => JSON.stringify(s)).join(', ')}]`;
     };
 
-    // Build GPU configuration block (only if GPU is enabled)
+    // GPU configuration is wired into the module via input variables. The
+    // HuggingFace token must NEVER appear in main.tf because state backends
+    // historically captured the rendered HCL; we pass it through tfvars.json
+    // and reference it as a sensitive variable instead.
     const gpuConfig = gpuEnabled ? `
   # GPU / vLLM Configuration
   gpu_enabled = ${hclBool(gpuEnabled)}
   gpu_instance_type = ${hclString(gpuInstanceType)}
   vllm_model = ${hclString(vllmModel)}
-  huggingface_token = ${hclString(huggingfaceToken)}
+  huggingface_token = var.huggingface_token
   ava_image_tag = ${hclString(avaImageTag)}
   vllm_image_tag = ${hclString(vllmImageTag)}` : '';
+
+    const variablesTf = `variable "huggingface_token" {
+  description = "HuggingFace access token used by vLLM to fetch gated models"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+`;
+
+    const tfvars = {
+      huggingface_token: huggingfaceToken,
+    };
 
     const mainTf = `module "instance" {
   source = ${hclString(moduleSource)}
@@ -222,6 +237,13 @@ provider "cloudflare" {}
     await this.writeFileIfChanged(join(workspaceDir, 'main.tf'), mainTf);
     await this.writeFileIfChanged(join(workspaceDir, 'providers.tf'), providersTf);
     await this.writeFileIfChanged(join(workspaceDir, 'backend.tf'), backendTf);
+    await this.writeFileIfChanged(join(workspaceDir, 'variables.tf'), variablesTf);
+    // tfvars.json is gitignored at the workspace root; the secret never touches
+    // main.tf and the backend uses encrypt = true (verified in backendTf above).
+    await this.writeFileIfChanged(
+      join(workspaceDir, 'terraform.tfvars.json'),
+      JSON.stringify(tfvars, null, 2),
+    );
 
     return { workspace: workspaceName, directory: workspaceDir, identity };
   }

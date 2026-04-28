@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { isIP } from 'net';
 import { createPublicKey, verify as cryptoVerify } from 'crypto';
 import { PackReleaseRecord, PackReleaseStatus } from '@hubblewave/instance-db';
 import { normalizePublicKey } from '@hubblewave/packs';
+import { validateOutboundUrl } from '@hubblewave/integrations';
 import { PackInstallDto, PackRollbackDto } from './dto/pack-install.dto';
 
 const DEFAULT_HOST_ALLOWLIST = [
@@ -166,34 +166,17 @@ export class PacksService {
   }
 
   /**
-   * Validates the artifactUrl against the configured allowlist and refuses any
-   * literal private-IP host. DNS-based SSRF protection is deferred to the
-   * platform-wide validateOutboundUrl helper (Wave 3).
+   * Validates the artifactUrl using the platform-wide outbound URL helper.
+   * The pack-specific host allowlist is read from PACK_ARTIFACT_HOST_ALLOWLIST
+   * (falling back to the platform default) and passed through to the helper.
    */
   private assertArtifactUrlSafe(artifactUrl: string): void {
-    let parsed: URL;
-    try {
-      parsed = new URL(artifactUrl);
-    } catch {
-      throw new BadRequestException('artifactUrl invalid: not a valid URL');
-    }
-
-    if (parsed.protocol !== 'https:') {
-      throw new BadRequestException('artifactUrl invalid: must use https');
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-    if (!hostname) {
-      throw new BadRequestException('artifactUrl invalid: missing hostname');
-    }
-
-    if (this.isPrivateIpLiteral(hostname)) {
-      throw new BadRequestException('artifactUrl invalid: hostname resolves to private network');
-    }
-
     const allowlist = this.parseHostAllowlist(process.env.PACK_ARTIFACT_HOST_ALLOWLIST);
-    if (!allowlist.some((pattern) => this.hostMatches(hostname, pattern))) {
-      throw new BadRequestException('artifactUrl invalid: hostname not in allowlist');
+    try {
+      validateOutboundUrl(artifactUrl, { allowedHosts: allowlist });
+    } catch (err) {
+      const detail = (err as Error).message.replace(/^Outbound URL invalid:\s*/, '');
+      throw new BadRequestException(`artifactUrl invalid: ${detail}`);
     }
   }
 
@@ -205,58 +188,5 @@ export class PacksService {
       .split(',')
       .map((entry) => entry.trim().toLowerCase())
       .filter((entry) => entry.length > 0);
-  }
-
-  private hostMatches(hostname: string, pattern: string): boolean {
-    if (pattern === hostname) {
-      return true;
-    }
-    if (pattern.startsWith('*.')) {
-      const suffix = pattern.slice(1); // includes the leading dot
-      return hostname.endsWith(suffix) && hostname.length > suffix.length;
-    }
-    return false;
-  }
-
-  private isPrivateIpLiteral(hostname: string): boolean {
-    // URL parser wraps IPv6 literals in brackets but new URL().hostname strips them.
-    const candidate = hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
-    const family = isIP(candidate);
-    if (family === 0) {
-      return false;
-    }
-    if (family === 4) {
-      return this.isPrivateIPv4(candidate);
-    }
-    return this.isPrivateIPv6(candidate);
-  }
-
-  private isPrivateIPv4(ip: string): boolean {
-    const parts = ip.split('.').map((p) => Number(p));
-    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
-      return true; // malformed — treat as unsafe
-    }
-    const [a, b] = parts;
-    if (a === 10) return true;                            // 10.0.0.0/8
-    if (a === 127) return true;                           // 127.0.0.0/8
-    if (a === 169 && b === 254) return true;              // 169.254.0.0/16
-    if (a === 172 && b >= 16 && b <= 31) return true;     // 172.16.0.0/12
-    if (a === 192 && b === 168) return true;              // 192.168.0.0/16
-    return false;
-  }
-
-  private isPrivateIPv6(ip: string): boolean {
-    const lowered = ip.toLowerCase();
-    if (lowered === '::1') return true;                    // loopback
-    if (lowered.startsWith('fe8') || lowered.startsWith('fe9') ||
-        lowered.startsWith('fea') || lowered.startsWith('feb')) {
-      return true;                                         // fe80::/10
-    }
-    if (lowered.startsWith('fc') || lowered.startsWith('fd')) {
-      return true;                                         // fc00::/7 (unique local)
-    }
-    return false;
   }
 }

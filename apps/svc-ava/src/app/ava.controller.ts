@@ -12,9 +12,11 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { Request } from 'express';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -30,6 +32,29 @@ import {
 import { DataSource } from 'typeorm';
 import { JwtAuthGuard, CurrentUser, RequestUser, extractContext, AuthenticatedRequest } from '@hubblewave/auth-guard';
 import { AvaPreviewService } from './ava-preview.service';
+
+/**
+ * Resolve the caller's organization/instance context from the request. Order:
+ *   1. JWT claim (organizationId / instanceSlug populated by identity service)
+ *   2. `X-Instance-Slug` header (set by gateway / web client)
+ * Fails closed when nothing is found — the conversation memory layer requires
+ * an explicit organizationId on every call.
+ */
+function resolveOrganizationId(req: Request): string {
+  const claim = (req as unknown as { user?: Record<string, unknown> }).user;
+  const claimOrgId =
+    (claim?.['organizationId'] as string | undefined) ||
+    (claim?.['instanceSlug'] as string | undefined);
+
+  const headerRaw = req.headers?.['x-instance-slug'];
+  const headerSlug = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;
+
+  const organizationId = (claimOrgId || headerSlug || '').trim();
+  if (!organizationId) {
+    throw new UnauthorizedException('Instance context missing');
+  }
+  return organizationId;
+}
 
 /**
  * Map a server-side error to a client-safe SSE error payload. Known business
@@ -150,9 +175,11 @@ export class AVAController {
   @ApiResponse({ status: 200, description: 'AVA response' })
   async chat(
     @CurrentUser() user: RequestUser,
-    @Body() dto: ChatRequestDto
+    @Body() dto: ChatRequestDto,
+    @Req() req: Request,
   ) {
     const dataSource = this.dataSource;
+    const organizationId = resolveOrganizationId(req);
 
     const context: AVAContext = {
       userId: user.id,
@@ -168,13 +195,16 @@ export class AVAController {
     if (conversationId) {
       history = await this.conversationMemory.getConversationHistory(
         dataSource,
-        conversationId
+        conversationId,
+        organizationId,
+        user.id,
       );
     } else {
       const conversation = await this.conversationMemory.startConversation(
         dataSource,
         user.id,
-        context
+        organizationId,
+        context,
       );
       conversationId = conversation.id;
     }
@@ -185,7 +215,13 @@ export class AVAController {
       content: dto.message,
       timestamp: new Date(),
     };
-    await this.conversationMemory.addMessage(dataSource, conversationId, userMessage);
+    await this.conversationMemory.addMessage(
+      dataSource,
+      conversationId,
+      organizationId,
+      user.id,
+      userMessage,
+    );
 
     // Get AVA response
     const response = await this.avaService.chat(dataSource, dto.message, context, history);
@@ -199,7 +235,13 @@ export class AVAController {
       actions: response.suggestedActions,
       cards: response.cards,
     };
-    await this.conversationMemory.addMessage(dataSource, conversationId, assistantMessage);
+    await this.conversationMemory.addMessage(
+      dataSource,
+      conversationId,
+      organizationId,
+      user.id,
+      assistantMessage,
+    );
 
     return {
       conversationId,
@@ -219,9 +261,11 @@ export class AVAController {
   async chatStream(
     @CurrentUser() user: RequestUser,
     @Body() dto: ChatRequestDto,
+    @Req() req: Request,
     @Res() res: Response
   ) {
     const dataSource = this.dataSource;
+    const organizationId = resolveOrganizationId(req);
 
     const context: AVAContext = {
       userId: user.id,
@@ -237,13 +281,16 @@ export class AVAController {
     if (conversationId) {
       history = await this.conversationMemory.getConversationHistory(
         dataSource,
-        conversationId
+        conversationId,
+        organizationId,
+        user.id,
       );
     } else {
       const conversation = await this.conversationMemory.startConversation(
         dataSource,
         user.id,
-        context
+        organizationId,
+        context,
       );
       conversationId = conversation.id;
     }
@@ -274,17 +321,29 @@ export class AVAController {
       }
 
       // Save messages to conversation history
-      await this.conversationMemory.addMessage(dataSource, conversationId, {
-        role: 'user',
-        content: dto.message,
-        timestamp: new Date(),
-      });
+      await this.conversationMemory.addMessage(
+        dataSource,
+        conversationId,
+        organizationId,
+        user.id,
+        {
+          role: 'user',
+          content: dto.message,
+          timestamp: new Date(),
+        },
+      );
 
-      await this.conversationMemory.addMessage(dataSource, conversationId, {
-        role: 'assistant',
-        content: fullMessage,
-        timestamp: new Date(),
-      });
+      await this.conversationMemory.addMessage(
+        dataSource,
+        conversationId,
+        organizationId,
+        user.id,
+        {
+          role: 'assistant',
+          content: fullMessage,
+          timestamp: new Date(),
+        },
+      );
 
       res.write('data: [DONE]\n\n');
       res.end();
@@ -300,14 +359,17 @@ export class AVAController {
   @ApiResponse({ status: 200, description: 'List of conversations' })
   async getConversations(
     @CurrentUser() user: RequestUser,
-    @Query('limit') limit?: string
+    @Req() req: Request,
+    @Query('limit') limit?: string,
   ) {
     const dataSource = this.dataSource;
+    const organizationId = resolveOrganizationId(req);
 
     const conversations = await this.conversationMemory.getUserConversations(
       dataSource,
       user.id,
-      limit ? parseInt(limit, 10) : 20
+      organizationId,
+      limit ? parseInt(limit, 10) : 20,
     );
 
     return { conversations };
@@ -318,22 +380,21 @@ export class AVAController {
   @ApiResponse({ status: 200, description: 'Conversation details' })
   async getConversation(
     @CurrentUser() user: RequestUser,
-    @Param('id') conversationId: string
+    @Param('id') conversationId: string,
+    @Req() req: Request,
   ) {
     const dataSource = this.dataSource;
+    const organizationId = resolveOrganizationId(req);
 
     const conversation = await this.conversationMemory.getConversation(
       dataSource,
-      conversationId
+      conversationId,
+      organizationId,
+      user.id,
     );
 
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
-    }
-
-    // Ownership check: only the originating user (or admin) may read the conversation.
-    if (conversation.userId !== user.id && !user.roles?.includes('admin')) {
-      throw new ForbiddenException('Not the owner');
     }
 
     return { conversation };
@@ -344,25 +405,29 @@ export class AVAController {
   @ApiResponse({ status: 200, description: 'Conversation deleted' })
   async deleteConversation(
     @CurrentUser() user: RequestUser,
-    @Param('id') conversationId: string
+    @Param('id') conversationId: string,
+    @Req() req: Request,
   ) {
     const dataSource = this.dataSource;
+    const organizationId = resolveOrganizationId(req);
 
     const conversation = await this.conversationMemory.getConversation(
       dataSource,
-      conversationId
+      conversationId,
+      organizationId,
+      user.id,
     );
 
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
     }
 
-    // Ownership check: only the originating user (or admin) may delete the conversation.
-    if (conversation.userId !== user.id && !user.roles?.includes('admin')) {
-      throw new ForbiddenException('Not the owner');
-    }
-
-    await this.conversationMemory.deleteConversation(dataSource, conversationId);
+    await this.conversationMemory.deleteConversation(
+      dataSource,
+      conversationId,
+      organizationId,
+      user.id,
+    );
 
     return { success: true };
   }

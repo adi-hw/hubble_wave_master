@@ -91,7 +91,16 @@ export class PasswordResetService {
       return null;
     }
 
-    return await this.usersRepo.findOne({ where: { id: resetToken.userId } });
+    const user = await this.usersRepo.findOne({ where: { id: resetToken.userId } });
+
+    // Suspended, deleted, or otherwise non-active accounts must not be eligible
+    // for password reset. Returning null mirrors the not-found path so we do
+    // not leak account-status information through the reset flow.
+    if (!user || user.status !== 'active') {
+      return null;
+    }
+
+    return user;
   }
 
   async useResetToken(token: string, newPassword: string): Promise<boolean> {

@@ -5,12 +5,16 @@ import { DataSource, Repository } from 'typeorm';
 import { RequestContext } from '@hubblewave/auth-guard';
 import { AuthorizationService } from '@hubblewave/authorization';
 import {
+  AuditLog,
   CollectionDefinition,
   MetricCadence,
   MetricDefinition,
   MetricPoint,
+  User,
 } from '@hubblewave/instance-db';
 import { MetricPointResult, MetricQueryRange } from './metrics.types';
+
+const MAX_METRIC_POINTS_PER_QUERY = 100_000;
 
 type MetricPeriod = {
   start: Date;
@@ -20,12 +24,6 @@ type MetricPeriod = {
 @Injectable()
 export class MetricsService {
   private readonly logger = new Logger(MetricsService.name);
-  private readonly systemContext: RequestContext = {
-    userId: 'system',
-    roles: ['system'],
-    permissions: [],
-    isAdmin: true,
-  };
 
   constructor(
     @InjectDataSource()
@@ -36,6 +34,10 @@ export class MetricsService {
     private readonly pointRepo: Repository<MetricPoint>,
     @InjectRepository(CollectionDefinition)
     private readonly collectionRepo: Repository<CollectionDefinition>,
+    @InjectRepository(AuditLog)
+    private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly authz: AuthorizationService,
   ) {}
 
@@ -75,11 +77,8 @@ export class MetricsService {
         .where('p.metricCode = :metricCode', { metricCode })
         .andWhere('p.periodStart >= :start', { start })
         .andWhere('p.periodStart < :end', { end })
-        .orderBy('p.periodStart', 'ASC');
-
-      if (limit) {
-        query.take(limit);
-      }
+        .orderBy('p.periodStart', 'ASC')
+        .take(limit ?? MAX_METRIC_POINTS_PER_QUERY);
 
       const points = await query.getMany();
       return points.map((point) => ({
@@ -91,6 +90,7 @@ export class MetricsService {
     }
 
     const periods = this.buildPeriods(start, end, metric.cadence);
+    const effectiveLimit = limit ?? MAX_METRIC_POINTS_PER_QUERY;
     const results: MetricPointResult[] = [];
     for (const period of periods) {
       const value = await this.computeMetricValue(context, metric, period.start, period.end);
@@ -100,7 +100,7 @@ export class MetricsService {
         periodEnd: period.end.toISOString(),
         value,
       });
-      if (limit && results.length >= limit) {
+      if (results.length >= effectiveLimit) {
         break;
       }
     }
@@ -127,6 +127,26 @@ export class MetricsService {
   }
 
   private async rollupMetric(metric: MetricDefinition): Promise<void> {
+    // Rollups run on a schedule with no request actor, so the metric must
+    // declare an owner whose row-level permissions bound the aggregate.
+    // Without this, an admin shortcut would count rows the metric definer
+    // is not permitted to see, leaking facts via aggregate counts.
+    if (!metric.definitionOwnerId) {
+      this.logger.warn(
+        `Metric ${metric.code} has no definitionOwnerId; skipping rollup. ` +
+        `Set definition_owner_id to a real user to enable scheduled rollups.`,
+      );
+      return;
+    }
+
+    const ownerContext = await this.buildOwnerContext(metric.definitionOwnerId);
+    if (!ownerContext) {
+      this.logger.warn(
+        `Metric ${metric.code} owner ${metric.definitionOwnerId} not found or inactive; skipping rollup.`,
+      );
+      return;
+    }
+
     const now = new Date();
     const lastCompleteStart = this.getLastCompletePeriodStart(now, metric.cadence);
     if (!lastCompleteStart) {
@@ -142,14 +162,74 @@ export class MetricsService {
       ? this.addPeriod(latest.periodStart, metric.cadence, 1)
       : lastCompleteStart;
 
+    let pointsWritten = 0;
     while (cursor <= lastCompleteStart) {
       const periodEnd = this.addPeriod(cursor, metric.cadence, 1);
-      const value = await this.computeMetricValue(this.systemContext, metric, cursor, periodEnd);
+      const value = await this.computeMetricValue(ownerContext, metric, cursor, periodEnd);
       await this.upsertPoint(metric.code, cursor, periodEnd, value);
+      pointsWritten++;
       cursor = this.addPeriod(cursor, metric.cadence, 1);
     }
 
     await this.applyRetention(metric);
+    await this.writeRollupAudit(metric, ownerContext, pointsWritten);
+  }
+
+  private async buildOwnerContext(ownerId: string): Promise<RequestContext | null> {
+    const user = await this.userRepo.findOne({ where: { id: ownerId } });
+    if (!user || user.status !== 'active') {
+      return null;
+    }
+
+    // Load the owner's role codes so AuthorizationService can evaluate ACL
+    // rules against their actual entitlements rather than a system shortcut.
+    const roleRows = await this.dataSource.query<{ code: string }[]>(
+      `SELECT r.code AS code
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1
+          AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
+          AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())`,
+      [ownerId],
+    );
+    const roles = (roleRows || []).map((row) => row.code).filter(Boolean);
+
+    return {
+      userId: ownerId,
+      roles,
+      permissions: [],
+      isAdmin: !!user.isAdmin,
+    };
+  }
+
+  private async writeRollupAudit(
+    metric: MetricDefinition,
+    owner: RequestContext,
+    pointsWritten: number,
+  ): Promise<void> {
+    try {
+      await this.auditRepo.save(
+        this.auditRepo.create({
+          userId: owner.userId,
+          action: 'metric.rollup',
+          collectionCode: 'metric_definitions',
+          recordId: metric.id,
+          newValues: {
+            metricCode: metric.code,
+            cadence: metric.cadence,
+            pointsWritten,
+            ownerRoles: owner.roles,
+            ownerIsAdmin: owner.isAdmin,
+          },
+        }),
+      );
+    } catch (error) {
+      // Audit failure must not abort the rollup; we already computed and
+      // persisted points. Surface as warning so monitoring catches it.
+      this.logger.warn(
+        `Failed to write rollup audit for ${metric.code}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private async upsertPoint(
@@ -239,7 +319,9 @@ export class MetricsService {
       throw new BadRequestException('Metric range start must be before end');
     }
 
-    const limit = range.limit && range.limit > 0 ? Math.min(range.limit, 1000) : undefined;
+    const limit = range.limit && range.limit > 0
+      ? Math.min(range.limit, MAX_METRIC_POINTS_PER_QUERY)
+      : undefined;
     return { start, end, limit };
   }
 

@@ -25,6 +25,17 @@ Rotation is the only action that actually invalidates the leaked values.
 - **Action:** Generate a fresh 64-byte secret: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`. Invalidate all in-flight JWTs; force re-login.
 - **Where the new value belongs:** AWS Secrets Manager path `hubblewave/control-plane/jwt-secret` and `hubblewave/instances/<instance-id>/jwt-secret`, surfaced as `JWT_SECRET` / `IDENTITY_JWT_SECRET` env vars.
 
+### 2a. JWT claim migration (audience + issuer)
+
+Wave 3 added mandatory `aud` and `iss` claim verification to the identity service. Tokens minted before this rollout do not carry these claims and will fail signature verification once the new strategy is deployed.
+
+- New environment variables (both must be set on every service that signs or verifies platform JWTs):
+  - `JWT_AUDIENCE` - default `hubblewave-instance` if unset
+  - `JWT_ISSUER` - default `hubblewave-identity` if unset
+- The signer (`auth.service.ts`) and the verifier (`jwt.strategy.ts`) read the same env vars and must be deployed in lockstep. If only the verifier rolls out first, all currently-issued tokens immediately stop validating.
+- Operationally this is equivalent to a forced re-login: roll the change during a maintenance window, or schedule it alongside the next `JWT_SECRET` rotation so the user impact is amortized into a single re-auth event.
+- The verifier also accepts a 30 second `clockTolerance` to absorb skew between the identity service and downstream verifiers; this does not weaken token expiry, only smooths cross-host clock drift.
+
 ## 3. PACK_INSTALL_TOKEN / CONTROL_PLANE_INSTANCE_TOKEN
 
 - **Severity:** High (allows pack installation against control plane)
@@ -59,6 +70,25 @@ Rotation is the only action that actually invalidates the leaked values.
 - **Where it was leaked:** `infrastructure/terraform/environments/production/terraform.tfvars` lines 15 and 17 (both equal to `?HX&sbXegAU)jzTwCM*crWEg?DxP7!&%`)
 - **Action:** Rotate both the application role password and the admin role password on the production control-plane RDS instance (`hubblewave-control-postgres`). Use distinct values for app vs admin. Update all running services with the new application password before retiring the old one.
 - **Where the new value belongs:** AWS Secrets Manager paths `hubblewave/control-plane/db-app-password` and `hubblewave/control-plane/db-admin-password`. Sourced into terraform via `TF_VAR_db_password` and `TF_VAR_db_admin_password`.
+
+## 7a. BACKUP_SIGNING_KEY
+
+- **Severity:** Critical (HMAC key that authenticates backup manifests + Typesense schemas before restore)
+- **Source:** Wave 3 introduces this secret. There is no leaked predecessor; this is a new key class.
+- **Generation:** `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+- **Where the new value belongs:** AWS Secrets Manager path `hubblewave/instances/<instance-id>/backup-signing-key`, sourced as the `BACKUP_SIGNING_KEY` env var on every `svc-insights` pod that runs the backup/restore worker.
+- **Operational notes:**
+  - The backup S3 bucket MUST have server-side encryption (SSE-S3 or SSE-KMS) enabled. The signing key protects integrity; SSE protects confidentiality at rest.
+  - The Terraform state backend block emitted by `terraform.workspace.service.ts` already carries `encrypt = true`; verify the bucket-level default is also set so that any out-of-band tooling (e.g., backup workers writing to a sibling bucket) inherits encryption.
+  - Rotation cadence: every 12 months, or immediately on suspected exposure. After rotation, existing manifests remain restorable only with the prior key — keep the previous value in `BACKUP_SIGNING_KEY_PREVIOUS` for one full retention window before purging.
+
+## 7b. INSTANCE_HUGGINGFACE_TOKEN (control-plane provisioning input)
+
+- **Severity:** Medium
+- **Where it was leaked:** Previously rendered into `main.tf` as plaintext HCL by `terraform.workspace.service.ts`. Wave 3 moves the value to a sibling `terraform.tfvars.json` file passed via `-var-file`, with the variable marked `sensitive = true` in `variables.tf`.
+- **Operational notes:**
+  - `terraform.tfvars.json` is generated per workspace and MUST be excluded from any backup or shared workspace mirror; treat it like a private key file.
+  - The Terraform state backend MUST have encryption-at-rest enabled (S3 SSE on `INSTANCE_TERRAFORM_STATE_BUCKET`). Sensitive variables are masked in plan/apply output but persist into state in the clear.
 
 ## 8. License Key Placeholder (dev instance)
 

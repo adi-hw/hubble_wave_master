@@ -39,12 +39,26 @@ export class AbacService {
   // Stubbed repo removed; ABAC is permissive in this build
   constructor() {}
 
+  /**
+   * When set to true (via env `ABAC_DEFAULT_DENY=true`) `matches()` returns
+   * false for an absent / undefined policy condition. Default is false to
+   * preserve existing behavior. Production deployments are expected to opt in
+   * so missing policies fail closed; the canon mandates documented opt-in
+   * security defaults rather than silent regressions.
+   */
+  private get defaultDeny(): boolean {
+    const flag = process.env['ABAC_DEFAULT_DENY'];
+    return typeof flag === 'string' && flag.toLowerCase() === 'true';
+  }
+
   async getPolicies(_resourceType: string, _resource: string, _action: string) {
     return [];
   }
 
   matches(condition: Condition | undefined, context: Record<string, any>) {
-    if (!condition) return true;
+    // No policy supplied. Default-deny customers want this to fail closed; we
+    // honor that switch here so callers do not have to special-case it.
+    if (!condition) return !this.defaultDeny;
     if (condition.equals) {
       for (const [key, expected] of Object.entries(condition.equals)) {
         if (this.readContext(context, key) !== expected) return false;

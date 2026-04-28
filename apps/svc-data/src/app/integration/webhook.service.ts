@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
-import { isIP } from 'net';
+import { validateOutboundUrl as validateOutboundUrlCentral } from '@hubblewave/integrations';
 import {
   WebhookSubscription,
   WebhookDelivery,
@@ -18,59 +18,17 @@ import {
   WebhookDeliveryStatus,
 } from '@hubblewave/instance-db';
 
-// validateOutboundUrl: inline impl — central helper lands in Wave 3 libs/integrations
+/**
+ * Wraps the central platform-wide URL validator so webhook errors surface as
+ * `BadRequestException` with the existing user-facing message contract.
+ */
 function validateOutboundUrl(rawUrl: string): URL {
-  let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new BadRequestException('Webhook endpointUrl invalid: not a valid URL');
+    return validateOutboundUrlCentral(rawUrl);
+  } catch (err) {
+    const detail = (err as Error).message.replace(/^Outbound URL invalid:\s*/, '');
+    throw new BadRequestException(`Webhook endpointUrl invalid: ${detail}`);
   }
-  if (parsed.protocol !== 'https:') {
-    throw new BadRequestException('Webhook endpointUrl invalid: must use https');
-  }
-  const hostname = (parsed.hostname || '').toLowerCase();
-  if (!hostname) {
-    throw new BadRequestException('Webhook endpointUrl invalid: missing hostname');
-  }
-  if (isPrivateIpLiteral(hostname)) {
-    throw new BadRequestException('Webhook endpointUrl invalid: hostname resolves to private network');
-  }
-  return parsed;
-}
-
-function isPrivateIpLiteral(hostname: string): boolean {
-  const candidate = hostname.startsWith('[') && hostname.endsWith(']')
-    ? hostname.slice(1, -1)
-    : hostname;
-  const family = isIP(candidate);
-  if (family === 0) {
-    return false;
-  }
-  if (family === 4) {
-    const parts = candidate.split('.').map((p) => Number(p));
-    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
-      return true;
-    }
-    const [a, b] = parts;
-    if (a === 10) return true;                          // 10.0.0.0/8
-    if (a === 127) return true;                         // 127.0.0.0/8
-    if (a === 169 && b === 254) return true;            // 169.254.0.0/16
-    if (a === 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
-    if (a === 192 && b === 168) return true;            // 192.168.0.0/16
-    return false;
-  }
-  // IPv6
-  const lowered = candidate.toLowerCase();
-  if (lowered === '::1') return true;
-  if (lowered.startsWith('fe8') || lowered.startsWith('fe9') ||
-      lowered.startsWith('fea') || lowered.startsWith('feb')) {
-    return true;
-  }
-  if (lowered.startsWith('fc') || lowered.startsWith('fd')) {
-    return true;
-  }
-  return false;
 }
 
 /**

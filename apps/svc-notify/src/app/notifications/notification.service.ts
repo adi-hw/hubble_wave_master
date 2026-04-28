@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { In, Repository } from 'typeorm';
+import { createHash } from 'crypto';
+import { In, MoreThan, Repository } from 'typeorm';
 import {
   AuditLog,
   InAppNotification,
@@ -40,10 +41,14 @@ export type SendNotificationRequest = {
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   scheduledFor?: Date;
   actorId?: string | null;
+  correlationId?: string | null;
 };
+
+const IDEMPOTENCY_WINDOW_HOURS_DEFAULT = 24;
 
 @Injectable()
 export class NotificationService {
+  private readonly idempotencyWindowMs: number;
   constructor(
     @InjectRepository(NotificationTemplate)
     private readonly templateRepo: Repository<NotificationTemplate>,
@@ -60,7 +65,13 @@ export class NotificationService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly templateEngine: TemplateEngineService,
-  ) {}
+  ) {
+    const configured = parseInt(process.env.NOTIFY_IDEMPOTENCY_WINDOW_HOURS || '', 10);
+    const hours = Number.isFinite(configured) && configured > 0
+      ? configured
+      : IDEMPOTENCY_WINDOW_HOURS_DEFAULT;
+    this.idempotencyWindowMs = hours * 60 * 60 * 1000;
+  }
 
   async listTemplates() {
     return this.templateRepo.find({ order: { updatedAt: 'DESC' } });
@@ -191,10 +202,24 @@ export class NotificationService {
       }
 
       const rendered = this.renderTemplate(template, request.data || {});
+      const idempotencyKey = this.computeIdempotencyKey({
+        templateCode: template.code,
+        recipientId,
+        context: request.data || {},
+        correlationId: request.correlationId || null,
+      });
+
+      const existing = await this.findRecentByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        results.push(existing);
+        continue;
+      }
+
       const context = {
         ...(request.data || {}),
         _renderedSubject: rendered.subject,
         _renderedBody: rendered.body,
+        _renderedBodyHtml: rendered.bodyHtml,
       };
 
       const queueEntry = this.queueRepo.create({
@@ -205,7 +230,8 @@ export class NotificationService {
         scheduledFor: request.scheduledFor,
         priority: request.priority || 'medium',
         status: 'pending',
-      });
+        idempotencyKey,
+      } as Partial<NotificationQueue>);
 
       const saved = await this.queueRepo.save(queueEntry);
       results.push(saved);
@@ -223,6 +249,33 @@ export class NotificationService {
     }
 
     return results;
+  }
+
+  private computeIdempotencyKey(parts: {
+    templateCode: string;
+    recipientId: string;
+    context: Record<string, unknown>;
+    correlationId: string | null;
+  }): string {
+    const sortedContext = JSON.stringify(parts.context, Object.keys(parts.context).sort());
+    const material = [
+      parts.templateCode,
+      parts.recipientId,
+      sortedContext,
+      parts.correlationId ?? '',
+    ].join('|');
+    return createHash('sha256').update(material).digest('hex');
+  }
+
+  private async findRecentByIdempotencyKey(key: string): Promise<NotificationQueue | null> {
+    const cutoff = new Date(Date.now() - this.idempotencyWindowMs);
+    return this.queueRepo.findOne({
+      where: {
+        idempotencyKey: key,
+        createdAt: MoreThan(cutoff),
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   @Cron(CronExpression.EVERY_10_SECONDS)
@@ -269,30 +322,96 @@ export class NotificationService {
       });
       await this.historyRepo.save(history);
 
-      if (channel === 'in_app') {
-        await this.inAppRepo.save(
-          this.inAppRepo.create({
-            userId: item.recipientId,
-            title: renderedSubject || template?.inAppTitle || 'Notification',
-            body: renderedBody || template?.inAppBody || '',
-            priority: item.priority,
-            read: false,
-          })
-        );
+      try {
+        if (channel === 'in_app') {
+          await this.inAppRepo.save(
+            this.inAppRepo.create({
+              userId: item.recipientId,
+              title: renderedSubject || template?.inAppTitle || 'Notification',
+              body: renderedBody || template?.inAppBody || '',
+              priority: item.priority,
+              read: false,
+            })
+          );
+        }
+        // Email/SMS/push channel adapters call third-party SDKs whose error
+        // payloads can include credentials; the redact helper guarantees we
+        // never persist provider-side secrets in audit/history records.
+      } catch (error) {
+        throw this.redactProviderError(error, channel);
       }
     }
   }
 
+  /**
+   * Strip credential-like keys from an SDK error before re-throwing. Provider
+   * SDKs (SES, SendGrid, Twilio, FCM) sometimes include the full request
+   * envelope — including auth headers and signing keys — on failure. Logging
+   * those values would leak secrets, so we sanitize before propagating.
+   */
+  private redactProviderError(error: unknown, channel: NotificationChannel): Error {
+    const credentialPattern = /auth(?:orization)?|api[_-]?key|password|token|secret/i;
+    const baseMessage = error instanceof Error ? error.message : String(error);
+    const sanitizedMessage = baseMessage.replace(
+      /(auth(?:orization)?|api[_-]?key|password|token|secret)\s*[:=]\s*["']?[^"'\s,}]+["']?/gi,
+      '$1=[REDACTED]',
+    );
+
+    const wrapped = new Error(`[${channel}] ${sanitizedMessage}`);
+    if (error && typeof error === 'object') {
+      const original = error as Record<string, unknown>;
+      const safeMeta: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(original)) {
+        if (key === 'message' || key === 'stack') continue;
+        if (credentialPattern.test(key)) {
+          safeMeta[key] = '[REDACTED]';
+          continue;
+        }
+        if (value && typeof value === 'object') {
+          safeMeta[key] = this.redactObject(value as Record<string, unknown>, credentialPattern);
+        } else {
+          safeMeta[key] = value;
+        }
+      }
+      (wrapped as unknown as { meta: Record<string, unknown> }).meta = safeMeta;
+    }
+    return wrapped;
+  }
+
+  private redactObject(
+    obj: Record<string, unknown>,
+    pattern: RegExp,
+  ): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (pattern.test(key)) {
+        result[key] = '[REDACTED]';
+      } else if (value && typeof value === 'object') {
+        result[key] = this.redactObject(value as Record<string, unknown>, pattern);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
   private renderTemplate(template: NotificationTemplate, data: Record<string, unknown>) {
-    const subject = this.templateEngine.render(
+    // Subjects, SMS, push, in-app, plaintext email never reach an HTML sink, so
+    // they are rendered with the text engine. emailBodyHtml is rendered with
+    // the HTML engine, which escapes interpolated values to prevent injection
+    // when recipient-supplied data flows through.
+    const subject = this.templateEngine.renderText(
       template.emailSubject || template.inAppTitle || template.pushTitle || '',
       data
     );
-    const body = this.templateEngine.render(
+    const body = this.templateEngine.renderText(
       template.emailBodyText || template.inAppBody || template.smsBody || template.pushBody || '',
       data
     );
-    return { subject, body };
+    const bodyHtml = template.emailBodyHtml
+      ? this.templateEngine.renderHtml(template.emailBodyHtml, data)
+      : undefined;
+    return { subject, body, bodyHtml };
   }
 
   private handleDeliveryError(item: NotificationQueue): NotificationQueueStatus {

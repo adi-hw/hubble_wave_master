@@ -224,6 +224,7 @@ export type {
   ReportSorting,
   ReportGrouping,
   ReportDataSource,
+  DashboardScope,
   MetricCadence,
   MetricAggregation,
   MetricSourceType,

@@ -201,6 +201,10 @@ export class InstancesService {
    */
   async provision(id: string, triggeredBy?: string) {
     const instance = await this.findOne(id);
+    // A license must already exist and be unexpired before any state-changing
+    // provisioning operation begins, otherwise we would launch infrastructure
+    // for a customer whose entitlement has lapsed.
+    await this.licensesService.ensureActiveLicenseForCustomer(instance.customerId);
     const { customer, workspace } = await this.ensureWorkspace(instance);
 
     const job = await this.terraformService.create(

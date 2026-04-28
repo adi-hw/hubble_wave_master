@@ -5,6 +5,7 @@ import {
   Get,
   Body,
   Param,
+  Req,
   UseGuards,
   ConflictException,
   Logger,
@@ -17,7 +18,14 @@ import {
   VectorStoreService,
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  JwtAuthGuard,
+  CurrentUser,
+  Roles,
+  RolesGuard,
+  AuthenticatedRequest,
+  extractContext,
+} from '@hubblewave/auth-guard';
 import { RedisService } from '@hubblewave/redis';
 
 // Distributed lock TTL: full reindex/initialize jobs are bounded by this
@@ -157,7 +165,8 @@ export class EmbeddingController {
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexKnowledgeArticle(
     @CurrentUser() _user: any,
-    @Body() dto: IndexKnowledgeArticleDto
+    @Body() dto: IndexKnowledgeArticleDto,
+    @Req() req: AuthenticatedRequest,
   ) {
     // If queue is enabled, add to queue for background processing
     if (this.embeddingQueueService.isQueueEnabled()) {
@@ -178,7 +187,8 @@ export class EmbeddingController {
     // Process synchronously if queue not available
     const result = await this.embeddingService.indexKnowledgeArticle(
       this.dataSource,
-      dto
+      dto,
+      extractContext(req),
     );
 
     return {
@@ -192,7 +202,8 @@ export class EmbeddingController {
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexCatalogItem(
     @CurrentUser() _user: any,
-    @Body() dto: IndexCatalogItemDto
+    @Body() dto: IndexCatalogItemDto,
+    @Req() req: AuthenticatedRequest,
   ) {
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
@@ -205,7 +216,11 @@ export class EmbeddingController {
       return { queued: true, jobId };
     }
 
-    const result = await this.embeddingService.indexCatalogItem(this.dataSource, dto);
+    const result = await this.embeddingService.indexCatalogItem(
+      this.dataSource,
+      dto,
+      extractContext(req),
+    );
 
     return { queued: false, result };
   }
@@ -215,7 +230,8 @@ export class EmbeddingController {
   @ApiResponse({ status: 200, description: 'Indexing result' })
   async indexRecord(
     @CurrentUser() _user: any,
-    @Body() dto: IndexRecordDto
+    @Body() dto: IndexRecordDto,
+    @Req() req: AuthenticatedRequest,
   ) {
     if (this.embeddingQueueService.isQueueEnabled()) {
       const jobId = await this.embeddingQueueService.addJob({
@@ -228,7 +244,11 @@ export class EmbeddingController {
       return { queued: true, jobId };
     }
 
-    const result = await this.embeddingService.indexRecord(this.dataSource, dto);
+    const result = await this.embeddingService.indexRecord(
+      this.dataSource,
+      dto,
+      extractContext(req),
+    );
 
     return { queued: false, result };
   }

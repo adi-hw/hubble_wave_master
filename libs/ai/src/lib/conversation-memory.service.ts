@@ -11,6 +11,7 @@ import { AVAMessage, AVAContext } from './ava.service';
 export interface Conversation {
   id: string;
   userId: string;
+  organizationId: string;
   title?: string;
   status: 'active' | 'completed' | 'abandoned' | 'escalated';
   messages: AVAMessage[];
@@ -62,13 +63,16 @@ export class ConversationMemoryService {
   async startConversation(
     dataSource: DataSource,
     userId: string,
+    organizationId: string,
     context?: Partial<AVAContext>
   ): Promise<Conversation> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
     const now = new Date();
 
     const conversationEntity = conversationRepo.create({
       userId,
+      organizationId,
       status: 'active',
       messageCount: 0,
       lastActivityAt: now,
@@ -80,6 +84,7 @@ export class ConversationMemoryService {
     const conversation: Conversation = {
       id: saved.id,
       userId: saved.userId,
+      organizationId: saved.organizationId ?? organizationId,
       title: saved.title,
       status: saved.status,
       messages: [],
@@ -89,9 +94,9 @@ export class ConversationMemoryService {
       updatedAt: saved.updatedAt,
     };
 
-    // Cache in memory
-    this.conversations.set(saved.id, conversation);
-    this.pruneUserConversations(userId);
+    // Cache in memory keyed by id+org so cross-tenant cache lookups miss.
+    this.conversations.set(this.cacheKey(organizationId, saved.id), conversation);
+    this.pruneUserConversations(organizationId, userId);
 
     return conversation;
   }
@@ -101,18 +106,25 @@ export class ConversationMemoryService {
    */
   async getConversation(
     dataSource: DataSource,
-    conversationId: string
+    conversationId: string,
+    organizationId: string,
+    userId: string,
   ): Promise<Conversation | null> {
-    // Check cache first
-    if (this.conversations.has(conversationId)) {
-      return this.conversations.get(conversationId)!;
+    this.requireOrganizationId(organizationId);
+    const cacheKey = this.cacheKey(organizationId, conversationId);
+    if (this.conversations.has(cacheKey)) {
+      const cached = this.conversations.get(cacheKey)!;
+      if (cached.userId !== userId) {
+        return null;
+      }
+      return cached;
     }
 
     const conversationRepo = this.getConversationRepo(dataSource);
     const messageRepo = this.getMessageRepo(dataSource);
 
     const conversationEntity = await conversationRepo.findOne({
-      where: { id: conversationId },
+      where: { id: conversationId, organizationId, userId },
     });
 
     if (!conversationEntity) {
@@ -136,6 +148,7 @@ export class ConversationMemoryService {
     const conversation: Conversation = {
       id: conversationEntity.id,
       userId: conversationEntity.userId,
+      organizationId: conversationEntity.organizationId ?? organizationId,
       title: conversationEntity.title,
       status: conversationEntity.status,
       messages,
@@ -146,8 +159,7 @@ export class ConversationMemoryService {
       metadata: conversationEntity.sessionMetadata,
     };
 
-    // Cache for future use
-    this.conversations.set(conversationId, conversation);
+    this.conversations.set(cacheKey, conversation);
 
     return conversation;
   }
@@ -158,10 +170,24 @@ export class ConversationMemoryService {
   async addMessage(
     dataSource: DataSource,
     conversationId: string,
+    organizationId: string,
+    userId: string,
     message: AVAMessage
   ): Promise<void> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
     const messageRepo = this.getMessageRepo(dataSource);
+
+    // Verify the conversation exists and belongs to the (org, user) tuple
+    // before any write. This is the single source of truth for "is this
+    // conversation visible to this caller?".
+    const conversationEntity = await conversationRepo.findOne({
+      where: { id: conversationId, organizationId, userId },
+    });
+
+    if (!conversationEntity) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
 
     // Create message entity
     const messageEntity = messageRepo.create({
@@ -171,15 +197,6 @@ export class ConversationMemoryService {
     });
 
     await messageRepo.save(messageEntity);
-
-    // Update conversation
-    const conversationEntity = await conversationRepo.findOne({
-      where: { id: conversationId },
-    });
-
-    if (!conversationEntity) {
-      throw new Error(`Conversation ${conversationId} not found`);
-    }
 
     // Generate title from first user message if not set
     let newTitle = conversationEntity.title;
@@ -196,7 +213,8 @@ export class ConversationMemoryService {
     await conversationRepo.save(conversationEntity);
 
     // Update cache
-    let cachedConversation = this.conversations.get(conversationId);
+    const cacheKey = this.cacheKey(organizationId, conversationId);
+    const cachedConversation = this.conversations.get(cacheKey);
     if (cachedConversation) {
       cachedConversation.messages.push(message);
       cachedConversation.updatedAt = new Date();
@@ -210,7 +228,7 @@ export class ConversationMemoryService {
         cachedConversation.messages = cachedConversation.messages.slice(-this.MAX_MESSAGES_IN_MEMORY);
       }
 
-      this.conversations.set(conversationId, cachedConversation);
+      this.conversations.set(cacheKey, cachedConversation);
     }
   }
 
@@ -220,13 +238,15 @@ export class ConversationMemoryService {
   async getUserConversations(
     dataSource: DataSource,
     userId: string,
+    organizationId: string,
     limit = 20
   ): Promise<ConversationSummary[]> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
     const messageRepo = this.getMessageRepo(dataSource);
 
     const conversations = await conversationRepo.find({
-      where: { userId },
+      where: { userId, organizationId },
       order: { updatedAt: 'DESC' },
       take: limit,
     });
@@ -260,9 +280,16 @@ export class ConversationMemoryService {
   async getConversationHistory(
     dataSource: DataSource,
     conversationId: string,
+    organizationId: string,
+    userId: string,
     limit = 10
   ): Promise<AVAMessage[]> {
-    const conversation = await this.getConversation(dataSource, conversationId);
+    const conversation = await this.getConversation(
+      dataSource,
+      conversationId,
+      organizationId,
+      userId,
+    );
     if (!conversation) return [];
 
     return conversation.messages.slice(-limit);
@@ -274,12 +301,15 @@ export class ConversationMemoryService {
   async updateContext(
     dataSource: DataSource,
     conversationId: string,
+    organizationId: string,
+    userId: string,
     context: Partial<AVAContext>
   ): Promise<void> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
 
     const conversationEntity = await conversationRepo.findOne({
-      where: { id: conversationId },
+      where: { id: conversationId, organizationId, userId },
     });
 
     if (!conversationEntity) return;
@@ -295,11 +325,12 @@ export class ConversationMemoryService {
     await conversationRepo.save(conversationEntity);
 
     // Update cache
-    const cachedConversation = this.conversations.get(conversationId);
+    const cacheKey = this.cacheKey(organizationId, conversationId);
+    const cachedConversation = this.conversations.get(cacheKey);
     if (cachedConversation) {
       cachedConversation.context = { ...cachedConversation.context, ...context };
       cachedConversation.updatedAt = new Date();
-      this.conversations.set(conversationId, cachedConversation);
+      this.conversations.set(cacheKey, cachedConversation);
     }
   }
 
@@ -308,19 +339,31 @@ export class ConversationMemoryService {
    */
   async deleteConversation(
     dataSource: DataSource,
-    conversationId: string
+    conversationId: string,
+    organizationId: string,
+    userId: string,
   ): Promise<void> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
     const messageRepo = this.getMessageRepo(dataSource);
 
-    // Remove from cache
-    this.conversations.delete(conversationId);
+    // Verify ownership and tenant scope before deletion. We do this at the
+    // service so the cache invalidation and cascade match exactly one row.
+    const owned = await conversationRepo.findOne({
+      where: { id: conversationId, organizationId, userId },
+      select: ['id'],
+    });
+    if (!owned) {
+      return;
+    }
+
+    this.conversations.delete(this.cacheKey(organizationId, conversationId));
 
     // Delete messages first (cascade should handle this, but explicit for safety)
     await messageRepo.delete({ conversationId });
 
     // Delete conversation
-    await conversationRepo.delete({ id: conversationId });
+    await conversationRepo.delete({ id: conversationId, organizationId, userId });
   }
 
   /**
@@ -328,14 +371,16 @@ export class ConversationMemoryService {
    */
   async clearUserConversations(
     dataSource: DataSource,
-    userId: string
+    userId: string,
+    organizationId: string,
   ): Promise<number> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
     const messageRepo = this.getMessageRepo(dataSource);
 
     // Get user's conversations
     const conversations = await conversationRepo.find({
-      where: { userId },
+      where: { userId, organizationId },
       select: ['id'],
     });
 
@@ -343,7 +388,7 @@ export class ConversationMemoryService {
 
     // Remove from cache
     for (const id of conversationIds) {
-      this.conversations.delete(id);
+      this.conversations.delete(this.cacheKey(organizationId, id));
     }
 
     // Delete messages for all conversations
@@ -356,7 +401,7 @@ export class ConversationMemoryService {
     }
 
     // Delete conversations
-    const result = await conversationRepo.delete({ userId });
+    const result = await conversationRepo.delete({ userId, organizationId });
 
     return result.affected || 0;
   }
@@ -367,15 +412,18 @@ export class ConversationMemoryService {
   async searchConversations(
     dataSource: DataSource,
     userId: string,
+    organizationId: string,
     query: string,
     limit = 10
   ): Promise<ConversationSummary[]> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
 
     // Search in conversation titles
     const conversations = await conversationRepo
       .createQueryBuilder('c')
       .where('c.user_id = :userId', { userId })
+      .andWhere('c.organization_id = :organizationId', { organizationId })
       .andWhere('(c.title ILIKE :query OR c.context_summary ILIKE :query)', {
         query: `%${query}%`
       })
@@ -399,20 +447,24 @@ export class ConversationMemoryService {
    */
   async completeConversation(
     dataSource: DataSource,
-    conversationId: string
+    conversationId: string,
+    organizationId: string,
+    userId: string,
   ): Promise<void> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
 
     await conversationRepo.update(
-      { id: conversationId },
+      { id: conversationId, organizationId, userId },
       { status: 'completed' }
     );
 
     // Update cache
-    const cachedConversation = this.conversations.get(conversationId);
+    const cacheKey = this.cacheKey(organizationId, conversationId);
+    const cachedConversation = this.conversations.get(cacheKey);
     if (cachedConversation) {
       cachedConversation.status = 'completed';
-      this.conversations.set(conversationId, cachedConversation);
+      this.conversations.set(cacheKey, cachedConversation);
     }
   }
 
@@ -422,13 +474,16 @@ export class ConversationMemoryService {
   async escalateConversation(
     dataSource: DataSource,
     conversationId: string,
+    organizationId: string,
+    userId: string,
     escalateTo: string,
     reason: string
   ): Promise<void> {
+    this.requireOrganizationId(organizationId);
     const conversationRepo = this.getConversationRepo(dataSource);
 
     await conversationRepo.update(
-      { id: conversationId },
+      { id: conversationId, organizationId, userId },
       {
         status: 'escalated',
         escalatedTo: escalateTo,
@@ -437,10 +492,11 @@ export class ConversationMemoryService {
     );
 
     // Update cache
-    const cachedConversation = this.conversations.get(conversationId);
+    const cacheKey = this.cacheKey(organizationId, conversationId);
+    const cachedConversation = this.conversations.get(cacheKey);
     if (cachedConversation) {
       cachedConversation.status = 'escalated';
-      this.conversations.set(conversationId, cachedConversation);
+      this.conversations.set(cacheKey, cachedConversation);
     }
   }
 
@@ -466,14 +522,14 @@ export class ConversationMemoryService {
   }
 
   /**
-   * Prune old conversations from cache for a user
+   * Prune old conversations from cache for a (org, user) tuple.
    */
-  private pruneUserConversations(userId: string): void {
+  private pruneUserConversations(organizationId: string, userId: string): void {
     const userConversations: [string, Conversation][] = [];
 
-    for (const [id, conv] of this.conversations) {
-      if (conv.userId === userId) {
-        userConversations.push([id, conv]);
+    for (const [key, conv] of this.conversations) {
+      if (conv.userId === userId && conv.organizationId === organizationId) {
+        userConversations.push([key, conv]);
       }
     }
 
@@ -486,6 +542,21 @@ export class ConversationMemoryService {
       for (let i = this.MAX_CONVERSATIONS_PER_USER; i < userConversations.length; i++) {
         this.conversations.delete(userConversations[i][0]);
       }
+    }
+  }
+
+  /**
+   * Build a cache key that is impossible to collide across tenants. We never
+   * key purely on conversationId because in any deployment that shares a
+   * process across instances the cached object would be visible to all of them.
+   */
+  private cacheKey(organizationId: string, conversationId: string): string {
+    return `${organizationId}::${conversationId}`;
+  }
+
+  private requireOrganizationId(organizationId: string): void {
+    if (!organizationId || typeof organizationId !== 'string' || !organizationId.trim()) {
+      throw new Error('organizationId is required for conversation memory operations');
     }
   }
 }

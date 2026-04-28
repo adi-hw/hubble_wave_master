@@ -1,13 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
+import { ipInCidr } from './url-validator';
+
+export type WebhookSignatureAlgorithm = 'sha256' | 'sha512';
+
+const SUPPORTED_SIGNATURE_ALGORITHMS: readonly WebhookSignatureAlgorithm[] = ['sha256', 'sha512'];
 
 export interface WebhookConfig {
   id: string;
   name: string;
   secret?: string;
   signatureHeader?: string;
-  signatureAlgorithm?: 'sha256' | 'sha1' | 'md5';
+  /**
+   * HMAC algorithm used to verify inbound webhook signatures. Only modern,
+   * collision-resistant algorithms are accepted; legacy 'sha1' and 'md5'
+   * configurations must be rotated on the sender side and re-registered.
+   */
+  signatureAlgorithm?: WebhookSignatureAlgorithm;
   events: string[];
   targetType: 'process_flow' | 'script' | 'record_operation' | 'custom';
   targetConfig: {
@@ -66,9 +76,21 @@ export class WebhookService {
   }
 
   /**
-   * Register a webhook configuration
+   * Register a webhook configuration. Rejects legacy or unsupported signature
+   * algorithms at registration time; operators must update the sender to a
+   * modern HMAC (sha256 or sha512) before retrying.
    */
   registerWebhook(config: WebhookConfig): string {
+    if (
+      config.signatureAlgorithm !== undefined &&
+      !SUPPORTED_SIGNATURE_ALGORITHMS.includes(config.signatureAlgorithm)
+    ) {
+      throw new Error(
+        `Webhook signature algorithm '${config.signatureAlgorithm}' is not supported. ` +
+          `Use one of: ${SUPPORTED_SIGNATURE_ALGORITHMS.join(', ')}.`,
+      );
+    }
+
     const webhookId = config.id || this.generateWebhookId();
     config.id = webhookId;
     this.webhookConfigs.set(webhookId, config);
@@ -241,13 +263,17 @@ export class WebhookService {
       .update(bodyString)
       .digest('hex');
 
-    // Handle different signature formats
-    const cleanSignature = signature.replace(/^sha256=/, '').replace(/^sha1=/, '');
+    // Strip the algorithm prefix that some senders include (`sha256=...`,
+    // `sha512=...`). Legacy prefixes are not accepted because the underlying
+    // algorithms are no longer supported.
+    const cleanSignature = signature.replace(/^sha256=/, '').replace(/^sha512=/, '');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(cleanSignature),
-      Buffer.from(expectedSignature)
-    );
+    const expected = Buffer.from(expectedSignature, 'utf8');
+    const provided = Buffer.from(cleanSignature, 'utf8');
+    if (expected.length !== provided.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(provided, expected);
   }
 
   /**
@@ -275,15 +301,20 @@ export class WebhookService {
   }
 
   /**
-   * Check if IP is in allowlist
+   * Check if a source IP matches an allowlist entry. Each entry may be:
+   *   - `*` (match-all)
+   *   - a literal IPv4 or IPv6 address
+   *   - a CIDR block (`192.168.1.0/24`, `2001:db8::/32`)
    */
   private isIpAllowed(ip: string, allowedIps: string[]): boolean {
     return allowedIps.some((allowed) => {
-      if (allowed.includes('/')) {
-        // CIDR notation - basic check
-        return ip.startsWith(allowed.split('/')[0].replace(/\.\d+$/, ''));
+      if (allowed === '*') {
+        return true;
       }
-      return ip === allowed || allowed === '*';
+      if (allowed.includes('/')) {
+        return ipInCidr(ip, allowed);
+      }
+      return ip === allowed;
     });
   }
 
@@ -458,17 +489,17 @@ export class WebhookService {
   }
 
   /**
-   * Generate webhook ID
+   * Generate webhook ID using a CSPRNG so identifiers are unguessable.
    */
   private generateWebhookId(): string {
-    return `wh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `wh_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
   }
 
   /**
-   * Generate request ID
+   * Generate request ID using a CSPRNG.
    */
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
   }
 
   /**

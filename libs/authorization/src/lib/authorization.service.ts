@@ -74,7 +74,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(tableName, this.tenantScope(ctx));
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -124,7 +124,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(tableName, this.tenantScope(ctx));
     const predicates: SafePredicate[] = [];
 
     for (const rule of rules) {
@@ -214,7 +214,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const propertyRules = await this.getPropertyRules(tableName);
+    const propertyRules = await this.getPropertyRules(tableName, this.tenantScope(ctx));
 
     return fields.map((field) => {
       const fieldRules = propertyRules.filter(
@@ -323,7 +323,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(tableName, this.tenantScope(ctx));
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -370,12 +370,15 @@ export class AuthorizationService {
     };
   }
 
-  private async getCollectionRules(collectionId: string): Promise<CollectionAccessRuleData[]> {
+  private async getCollectionRules(
+    collectionId: string,
+    tenantScope: string,
+  ): Promise<CollectionAccessRuleData[]> {
     if (!this.collectionAclRepo) {
       return [];
     }
 
-    const cacheKey = `auth:collection-rules:${collectionId}`;
+    const cacheKey = `auth:${tenantScope}:collection-rules:${collectionId}`;
 
     if (this.cache) {
       const cached = await this.cache.get<CollectionAccessRuleData[]>(cacheKey);
@@ -396,12 +399,15 @@ export class AuthorizationService {
     return rules;
   }
 
-  private async getPropertyRules(collectionId: string): Promise<PropertyAccessRuleData[]> {
+  private async getPropertyRules(
+    collectionId: string,
+    tenantScope: string,
+  ): Promise<PropertyAccessRuleData[]> {
     if (!this.propertyAclRepo) {
       return [];
     }
 
-    const cacheKey = `auth:property-rules:${collectionId}`;
+    const cacheKey = `auth:${tenantScope}:property-rules:${collectionId}`;
 
     if (this.cache) {
       const cached = await this.cache.get<PropertyAccessRuleData[]>(cacheKey);
@@ -420,6 +426,21 @@ export class AuthorizationService {
     }
 
     return rules;
+  }
+
+  /**
+   * Resolve a tenant scope token from the request context. ACL caches must be
+   * keyed under this token so a rule fetched on instance A is never served to
+   * a request from instance B in shared-process deployments. Falls back to a
+   * sentinel that is unique per service when no organization is on the
+   * context (better than collisions across tenants).
+   */
+  private tenantScope(ctx: RequestContext): string {
+    const fromAttributes = ctx.attributes?.['organizationId'] || ctx.attributes?.['instanceSlug'];
+    if (typeof fromAttributes === 'string' && fromAttributes.trim()) {
+      return fromAttributes.trim();
+    }
+    return process.env['INSTANCE_ID'] || 'unscoped';
   }
 
   private checkPrincipalMatch(
@@ -587,6 +608,33 @@ export class AuthorizationService {
     return this.policyCompiler.compile(condition, user);
   }
 
+  /**
+   * Resolve the predicate's runtime value. Array context refs (roles, groups,
+   * sites) yield string[]; scalar refs (userId) yield string. Callers MUST
+   * inspect the operator before binding so we never bind a string[] into a
+   * scalar comparison or vice versa.
+   */
+  private resolvePredicateValue(
+    pred: SafePredicate,
+    ctx: RequestContext,
+  ): string | string[] | number | boolean | null | undefined {
+    if (!pred.contextRef) {
+      return pred.value ?? null;
+    }
+    switch (pred.contextRef) {
+      case 'userId':
+        return ctx.userId;
+      case 'roles':
+        return Array.isArray(ctx.roles) ? ctx.roles : [];
+      case 'groups':
+        return (ctx.attributes?.['groupIds'] as string[] | undefined) ?? [];
+      case 'sites':
+        return (ctx.attributes?.['siteIds'] as string[] | undefined) ?? [];
+      default:
+        return undefined;
+    }
+  }
+
   private buildPredicateClauseInternal(
     predicates: SafePredicate[],
     ctx: RequestContext,
@@ -599,66 +647,67 @@ export class AuthorizationService {
     for (const pred of predicates) {
       const field = `${tableAlias}."${pred.field}"`;
       const paramName = `rls_p${paramIndex++}`;
-
-      let value = pred.value;
-      if (pred.contextRef) {
-        switch (pred.contextRef) {
-          case 'userId':
-            value = ctx.userId;
-            break;
-          case 'roles':
-            value = ctx.roles as unknown as string;
-            break;
-          case 'groups':
-            value = (ctx.attributes?.['groupIds'] || []) as unknown as string;
-            break;
-          case 'sites':
-            value = (ctx.attributes?.['siteIds'] || []) as unknown as string;
-            break;
-        }
-      }
+      const value = this.resolvePredicateValue(pred, ctx);
 
       switch (pred.operator) {
         case 'eq':
-          clauses.push(`${field} = :${paramName}`);
-          params[paramName] = value;
+        case 'neq': {
+          // Array values do not legally bind to scalar comparisons. Refuse
+          // rather than coerce so a misconfigured policy fails closed.
+          if (Array.isArray(value)) {
+            this.logger.warn(
+              `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for scalar operator`,
+            );
+            paramIndex--;
+            continue;
+          }
+          clauses.push(`${field} ${pred.operator === 'eq' ? '=' : '!='} :${paramName}`);
+          params[paramName] = value ?? null;
           break;
-        case 'neq':
-          clauses.push(`${field} != :${paramName}`);
-          params[paramName] = value;
-          break;
+        }
         case 'in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} = ANY(:${paramName})`);
-            params[paramName] = value;
+        case 'not_in': {
+          // Postgres ANY/ALL bind to array params. Coerce scalars into
+          // single-element arrays so a literal-value `in` policy still works.
+          const arr = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
+          if (arr.length === 0) {
+            paramIndex--;
+            continue;
           }
+          clauses.push(
+            pred.operator === 'in'
+              ? `${field} = ANY(:${paramName})`
+              : `${field} != ALL(:${paramName})`,
+          );
+          params[paramName] = arr;
           break;
-        case 'not_in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} != ALL(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
+        }
         case 'gt':
-          clauses.push(`${field} > :${paramName}`);
-          params[paramName] = value;
-          break;
         case 'gte':
-          clauses.push(`${field} >= :${paramName}`);
-          params[paramName] = value;
-          break;
         case 'lt':
-          clauses.push(`${field} < :${paramName}`);
+        case 'lte': {
+          if (Array.isArray(value)) {
+            this.logger.warn(
+              `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for range operator`,
+            );
+            paramIndex--;
+            continue;
+          }
+          const opSql =
+            pred.operator === 'gt' ? '>' :
+            pred.operator === 'gte' ? '>=' :
+            pred.operator === 'lt' ? '<' :
+            '<=';
+          clauses.push(`${field} ${opSql} :${paramName}`);
           params[paramName] = value;
           break;
-        case 'lte':
-          clauses.push(`${field} <= :${paramName}`);
-          params[paramName] = value;
-          break;
+        }
         case 'is_null':
+          paramIndex--;
           clauses.push(`${field} IS NULL`);
           break;
         case 'is_not_null':
+          paramIndex--;
           clauses.push(`${field} IS NOT NULL`);
           break;
       }

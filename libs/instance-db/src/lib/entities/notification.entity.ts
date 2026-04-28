@@ -193,6 +193,15 @@ export class NotificationQueue {
   @Column({ type: 'text', name: 'last_error', nullable: true })
   lastError?: string;
 
+  /**
+   * Deterministic hash of (templateCode, recipientId, sortedContext, correlationId).
+   * Used to suppress duplicate queue entries when an upstream caller retries the
+   * same logical send (e.g. an automation rule executing twice during failover).
+   */
+  @Index('IDX_notification_queue_idempotency_key')
+  @Column({ type: 'varchar', length: 64, name: 'idempotency_key', nullable: true })
+  idempotencyKey?: string;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 

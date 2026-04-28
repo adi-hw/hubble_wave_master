@@ -122,8 +122,8 @@ export class AVAController {
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
   ) {
-    resolveInstanceContext(req);
-    return this.avaService.getConversations(req.user.sub, {
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getConversations(req.user.sub, instance.organizationId, {
       status,
       limit: limit ? parseInt(String(limit)) : undefined,
       offset: offset ? parseInt(String(offset)) : undefined,
@@ -135,8 +135,8 @@ export class AVAController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    resolveInstanceContext(req);
-    return this.avaService.getConversation(id, req.user.sub);
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getConversation(id, req.user.sub, instance.organizationId);
   }
 
   @Get('conversations/:id/messages')
@@ -146,8 +146,8 @@ export class AVAController {
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
   ) {
-    resolveInstanceContext(req);
-    return this.avaService.getMessages(id, {
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getMessagesForConversation(id, req.user.sub, instance.organizationId, {
       limit: limit ? parseInt(String(limit)) : undefined,
       offset: offset ? parseInt(String(offset)) : undefined,
     });
@@ -159,8 +159,8 @@ export class AVAController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    resolveInstanceContext(req);
-    await this.avaService.endConversation(id, req.user.sub);
+    const instance = resolveInstanceContext(req);
+    await this.avaService.endConversation(id, req.user.sub, instance.organizationId);
   }
 
   @Post('messages/:id/feedback')
