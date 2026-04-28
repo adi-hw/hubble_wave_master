@@ -97,6 +97,13 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
 
     // API
     { slug: 'api.access', name: 'API Access', description: 'Access API Explorer', category: 'api', isDangerous: false },
+
+    // Notifications. Direct-send via POST /notifications/send is privileged
+    // because the recipient sees an "official system" notification — a
+    // phishing vector if held by anyone other than admins. Workflow,
+    // automation, and AVA paths originate notifications server-side
+    // through NotificationService directly and do not consume this slug.
+    { slug: 'notifications.send.direct', name: 'Send Direct Notifications', description: 'Send notifications directly to any recipient via the admin API (workflows do not need this)', category: 'admin', isDangerous: true },
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {

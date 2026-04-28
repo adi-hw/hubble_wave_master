@@ -17,6 +17,7 @@ import { NotificationOutboxProcessor } from './notification-outbox-processor.ser
 import { NotificationTemplatesController } from './notification-templates.controller';
 import { NotificationsController } from './notifications.controller';
 import { InAppNotificationsController } from './in-app-notifications.controller';
+import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers';
 
 @Module({
   imports: [
@@ -41,6 +42,8 @@ import { InAppNotificationsController } from './in-app-notifications.controller'
     InAppNotificationService,
     TemplateEngineService,
     NotificationOutboxProcessor,
+    SmtpEmailProvider,
+    ChannelProviderRegistry,
   ],
 })
 export class NotificationsModule {}

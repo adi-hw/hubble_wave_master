@@ -15,6 +15,7 @@ import {
   UserNotificationPreferences,
 } from '@hubblewave/instance-db';
 import { TemplateEngineService } from './template-engine.service';
+import { ChannelProviderRegistry } from './channel-providers';
 
 export type NotificationTemplateInput = {
   name: string;
@@ -65,6 +66,7 @@ export class NotificationService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly templateEngine: TemplateEngineService,
+    private readonly providers: ChannelProviderRegistry,
   ) {
     const configured = parseInt(process.env.NOTIFY_IDEMPOTENCY_WINDOW_HOURS || '', 10);
     const hours = Number.isFinite(configured) && configured > 0
@@ -287,19 +289,46 @@ export class NotificationService {
     });
 
     for (const item of pending) {
-      try {
-        await this.deliver(item);
+      const outcome = await this.deliver(item);
+      item.processedAt = new Date();
+      if (outcome.failedChannels.length === 0) {
+        // Every channel reported success.
         item.status = 'sent';
-        item.processedAt = new Date();
-      } catch (error) {
+        item.lastError = null as unknown as string;
+      } else if (outcome.sentChannels.length === 0) {
+        // No channel made it through. Either retry-eligible or terminal,
+        // depending on the existing retry/backoff helper.
         item.status = this.handleDeliveryError(item);
-        item.lastError = (error as Error).message;
+        item.lastError = outcome.failedChannels[0]?.error ?? 'delivery failed';
+      } else {
+        // Mixed outcome: at least one channel delivered, at least one
+        // failed. Record as 'failed' with summary so the operator can
+        // see partial state in the queue dashboard. The history rows
+        // carry the per-channel truth.
+        item.status = 'failed';
+        item.lastError = outcome.failedChannels
+          .map((f) => `${f.channel}: ${f.error}`)
+          .join('; ');
       }
       await this.queueRepo.save(item);
     }
   }
 
-  private async deliver(item: NotificationQueue) {
+  /**
+   * Attempt delivery on every channel attached to `item`. Records one
+   * NotificationHistory row per channel reflecting the actual outcome:
+   * `sentAt`+`deliveredAt` on success, `failedAt`+`errorMessage` on
+   * failure. Returns aggregate channel outcomes so processQueue can
+   * decide the queue-level status. NEVER reports success without a
+   * provider actually accepting the payload — that was the audit
+   * finding that motivated this rewrite.
+   */
+  private async deliver(
+    item: NotificationQueue,
+  ): Promise<{
+    sentChannels: NotificationChannel[];
+    failedChannels: { channel: NotificationChannel; error: string }[];
+  }> {
     const template = item.templateId
       ? await this.templateRepo.findOne({ where: { id: item.templateId } })
       : null;
@@ -312,15 +341,27 @@ export class NotificationService {
       typeof context['_renderedBody'] === 'string'
         ? (context['_renderedBody'] as string)
         : undefined;
+    const renderedBodyHtml =
+      typeof context['_renderedBodyHtml'] === 'string'
+        ? (context['_renderedBodyHtml'] as string)
+        : undefined;
+
+    // Recipient lookup — providers need email/phone for the channels they
+    // serve. Failure to find the recipient is itself a per-channel
+    // failure (the in_app channel only needs the userId).
+    const recipient = await this.userRepo.findOne({
+      where: { id: item.recipientId },
+    });
+
+    const sentChannels: NotificationChannel[] = [];
+    const failedChannels: { channel: NotificationChannel; error: string }[] = [];
 
     for (const channel of item.channels || []) {
       const history = this.historyRepo.create({
         notificationQueueId: item.id,
         channel,
         recipientId: item.recipientId,
-        sentAt: new Date(),
       });
-      await this.historyRepo.save(history);
 
       try {
         if (channel === 'in_app') {
@@ -333,14 +374,46 @@ export class NotificationService {
               read: false,
             })
           );
+          history.providerId = 'in_app';
+        } else {
+          const provider = this.providers.for(channel);
+          if (!provider) {
+            // Fail closed. Earlier code silently fell through here and
+            // the queue item was still marked `sent` — that was the
+            // canonical silent-drop bug.
+            throw new Error(
+              `No provider configured for channel '${channel}'. ` +
+                `Configure the channel's adapter (e.g. SMTP_HOST for email) ` +
+                `or remove the channel from the template's supportedChannels.`,
+            );
+          }
+          const result = await provider.send({
+            recipientId: item.recipientId,
+            recipientEmail: recipient?.email ?? null,
+            recipientPhone:
+              (recipient as unknown as { phone?: string })?.phone ?? null,
+            subject: renderedSubject || template?.emailSubject,
+            body: renderedBody || template?.emailBodyText || template?.smsBody,
+            bodyHtml: renderedBodyHtml || template?.emailBodyHtml,
+          });
+          if (result.providerId) history.providerId = result.providerId;
+          if (result.providerResponse)
+            history.providerResponse = result.providerResponse;
         }
-        // Email/SMS/push channel adapters call third-party SDKs whose error
-        // payloads can include credentials; the redact helper guarantees we
-        // never persist provider-side secrets in audit/history records.
+        history.sentAt = new Date();
+        history.deliveredAt = history.sentAt;
+        await this.historyRepo.save(history);
+        sentChannels.push(channel);
       } catch (error) {
-        throw this.redactProviderError(error, channel);
+        const sanitized = this.redactProviderError(error, channel);
+        history.failedAt = new Date();
+        history.errorMessage = sanitized.message;
+        await this.historyRepo.save(history);
+        failedChannels.push({ channel, error: sanitized.message });
       }
     }
+
+    return { sentChannels, failedChannels };
   }
 
   /**
