@@ -163,12 +163,20 @@ export class PropertyController {
   @RequirePermission('property.update')
   async update(
     @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePropertyDto,
     @Req() request: Request,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
+    }
+    // IDOR protection: confirm the property belongs to the collection in the
+    // route before mutating. Without this an attacker who guesses an id from
+    // another collection can update fields they shouldn't see.
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
     }
     const context = {
       ipAddress: request.ip,
@@ -181,12 +189,18 @@ export class PropertyController {
   @RequirePermission('property.delete')
   async delete(
     @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
     @Query('force') force?: string,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
+    }
+    // IDOR protection: same as update — block cross-collection mutation.
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
     }
     const context = {
       ipAddress: request.ip,

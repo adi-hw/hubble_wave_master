@@ -25,14 +25,18 @@ export interface AuthUser {
 
 export interface AuthResponse {
   accessToken: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
   user: AuthUser;
 }
 
 const TOKEN_KEY = 'control_plane_token';
+const REFRESH_KEY = 'control_plane_refresh';
 const USER_KEY = 'control_plane_user';
 
 function clearLocalAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(USER_KEY);
 }
 
@@ -52,13 +56,47 @@ function isAuthUser(value: unknown): value is AuthUser {
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>('/auth/login', credentials);
-    const { accessToken, user } = response.data;
+    const { accessToken, refreshToken, user } = response.data;
 
-    // Store token and user
+    // Store tokens and user
     localStorage.setItem(TOKEN_KEY, accessToken);
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
 
     return response.data;
+  },
+
+  /**
+   * Exchange the stored refresh token for a fresh access+refresh pair.
+   * Throws if no refresh token is stored or the server rejects it. The
+   * 401 interceptor in api.ts calls this; on failure it falls back to
+   * clearing local state and redirecting to /login.
+   */
+  async refresh(): Promise<string> {
+    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+    const response = await api.post<AuthResponse>(
+      '/auth/refresh',
+      { refreshToken },
+      // Mark the refresh request itself so the 401 interceptor never
+      // recursively tries to refresh the refresh call.
+      { headers: { 'X-Skip-Auth-Refresh': 'true' } },
+    );
+    const { accessToken, refreshToken: rotated, user } = response.data;
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    if (rotated) localStorage.setItem(REFRESH_KEY, rotated);
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    return accessToken;
+  },
+
+  getRefreshToken(): string | null {
+    return localStorage.getItem(REFRESH_KEY);
+  },
+
+  clearLocal(): void {
+    clearLocalAuth();
   },
 
   // Best-effort server-side logout. The control-plane revokes the access

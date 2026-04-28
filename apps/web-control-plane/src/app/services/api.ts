@@ -44,6 +44,8 @@ function assertControlPlaneOrigin(rawUrl: string): void {
 
 assertControlPlaneOrigin(API_BASE_URL);
 
+const API_BASE_PARSED = new URL(API_BASE_URL, window.location.origin);
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -52,12 +54,41 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor for auth tokens
+/**
+ * Resolve the actual host the request will hit. Axios merges baseURL + url
+ * itself only after the interceptor runs, so we recompute here using the
+ * same precedence rules: an absolute `config.url` wins over `baseURL`.
+ */
+function resolvedRequestOrigin(config: { baseURL?: string; url?: string }): string | null {
+  const url = config.url ?? '';
+  const baseURL = config.baseURL ?? API_BASE_URL;
+  try {
+    return new URL(url, baseURL).origin;
+  } catch {
+    return null;
+  }
+}
+
+// Request interceptor: only attach the admin Bearer token when the request
+// actually targets the configured control-plane origin. A misuse of `api`
+// (or `axios.request({...})` against an absolute third-party URL through
+// this same instance) MUST NOT leak the admin JWT off-origin. Anything
+// outside the control-plane origin gets the Authorization header stripped.
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('control_plane_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const requestOrigin = resolvedRequestOrigin(config);
+    const sameOrigin = requestOrigin === API_BASE_PARSED.origin;
+    if (sameOrigin) {
+      const token = localStorage.getItem('control_plane_token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } else {
+      // Defensive: if a caller manually set Authorization on a cross-origin
+      // request, scrub it. The interceptor is the last line before egress.
+      if (config.headers && 'Authorization' in config.headers) {
+        delete (config.headers as Record<string, unknown>)['Authorization'];
+      }
     }
     return config;
   },
@@ -69,21 +100,85 @@ api.interceptors.request.use(
 // gives a fresh module instance.
 let logoutInFlight = false;
 
-// Response interceptor for error handling
+// Single in-flight refresh promise: when several requests 401 simultaneously
+// we must NOT call /auth/refresh once per request — that would burn through
+// the refresh-token rotation chain and trigger the reuse-detection family
+// revoke. Instead the first 401 starts the refresh and every later 401 in
+// the burst awaits the same promise.
+let refreshInFlight: Promise<string> | null = null;
+
+function refreshAccessToken(): Promise<string> {
+  if (!refreshInFlight) {
+    const refreshToken = localStorage.getItem('control_plane_refresh');
+    if (!refreshToken) {
+      return Promise.reject(new Error('No refresh token available'));
+    }
+    refreshInFlight = api
+      .post<{ accessToken: string; refreshToken: string }>(
+        '/auth/refresh',
+        { refreshToken },
+        { headers: { 'X-Skip-Auth-Refresh': 'true' } },
+      )
+      .then((res) => {
+        const { accessToken, refreshToken: rotated } = res.data;
+        localStorage.setItem('control_plane_token', accessToken);
+        if (rotated) localStorage.setItem('control_plane_refresh', rotated);
+        return accessToken;
+      })
+      .finally(() => {
+        // Always clear so a subsequent 401 (e.g., refresh token also
+        // expired in the meantime) can attempt a fresh refresh once
+        // before the user is bounced.
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+function bounceToLogin(): void {
+  if (logoutInFlight) return;
+  logoutInFlight = true;
+  localStorage.removeItem('control_plane_token');
+  localStorage.removeItem('control_plane_refresh');
+  localStorage.removeItem('control_plane_user');
+  window.location.href = '/login';
+}
+
+// Response interceptor: silent refresh on 401 before falling back to logout.
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Only redirect on 401 if we're not on the login page and not trying to login
-    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      if (!logoutInFlight) {
-        logoutInFlight = true;
-        localStorage.removeItem('control_plane_token');
-        localStorage.removeItem('control_plane_user');
-        window.location.href = '/login';
+  async (error) => {
+    const status = error.response?.status;
+    const original = error.config as
+      | (typeof error.config & { _retried?: boolean; headers?: Record<string, string> })
+      | undefined;
+
+    if (
+      status !== 401 ||
+      !original ||
+      original._retried ||
+      original.url?.includes('/auth/login') ||
+      original.url?.includes('/auth/refresh') ||
+      original.headers?.['X-Skip-Auth-Refresh'] === 'true'
+    ) {
+      if (status === 401 && !original?.url?.includes('/auth/login')) {
+        // Refresh attempted and failed (or no refresh token at all): bounce.
+        bounceToLogin();
       }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
+
+    try {
+      const newAccessToken = await refreshAccessToken();
+      original._retried = true;
+      original.headers = original.headers ?? {};
+      original.headers['Authorization'] = `Bearer ${newAccessToken}`;
+      return api.request(original);
+    } catch (refreshErr) {
+      bounceToLogin();
+      return Promise.reject(refreshErr);
+    }
+  },
 );
 
 // Types

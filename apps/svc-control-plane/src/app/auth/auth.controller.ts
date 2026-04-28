@@ -28,7 +28,27 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Req() req: Request) {
     const ipAddress = req.ip || req.connection.remoteAddress;
-    return this.authService.login(dto, ipAddress);
+    const ua = req.headers['user-agent'];
+    return this.authService.login(
+      dto,
+      ipAddress,
+      typeof ua === 'string' ? ua : undefined,
+    );
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(
+    @Body() body: { refreshToken?: string },
+    @Req() req: Request,
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const ua = req.headers['user-agent'];
+    return this.authService.refresh(body?.refreshToken ?? '', {
+      ipAddress,
+      userAgent: typeof ua === 'string' ? ua : undefined,
+    });
   }
 
   @Post('logout')
@@ -45,6 +65,7 @@ export class AuthController {
       userId: user.id,
       jti: user.jti,
       expiresAt: user.tokenExpiresAt,
+      family: user.family ?? null,
       ipAddress,
       userAgent: typeof userAgent === 'string' ? userAgent : undefined,
     });

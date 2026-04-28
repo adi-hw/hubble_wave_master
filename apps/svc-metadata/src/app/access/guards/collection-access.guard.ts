@@ -15,14 +15,21 @@ import { Request } from 'express';
  * specific permission required for that operation.
  *
  * Permission semantics:
- *   - system.admin and collection.admin grant every operation.
+ *   - system.admin grants every operation AND bypasses per-collection
+ *     access rules. This is the cross-instance platform superuser.
+ *   - The `admin` role grants every operation AND bypasses per-collection
+ *     access rules within the instance — the tenant admin.
+ *   - collection.admin satisfies the operation gate for any HTTP verb but
+ *     STILL passes through AccessRuleService for the requested
+ *     collectionId. It is operation-agnostic, NOT collection-agnostic.
  *   - collection.read  -> GET only
  *   - collection.create -> POST only
  *   - collection.update -> PUT / PATCH only
  *   - collection.delete -> DELETE only
  *
- * A user holding `collection.read` MUST NOT be able to create, update, or
- * delete collections, and vice versa.
+ * A user holding `collection.read` MUST NOT create / update / delete, and
+ * a user holding `collection.admin` MUST NOT mutate collections they have
+ * not been granted access to via AccessRuleService.
  */
 @Injectable()
 export class CollectionAccessGuard implements CanActivate {
@@ -51,19 +58,27 @@ export class CollectionAccessGuard implements CanActivate {
 
     const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
 
-    // Only system.admin and collection.admin are operation-agnostic.
-    const hasBlanketPermission =
-      permissions.includes('system.admin') || permissions.includes('collection.admin');
+    // Only system.admin (platform superuser) and the admin role bypass
+    // the per-collection access-rule check below. collection.admin is
+    // intentionally NOT in this set — it is operation-agnostic, not
+    // collection-agnostic, and is checked against AccessRuleService
+    // alongside every other collection permission.
+    const hasBlanketBypass =
+      isAdminRole || permissions.includes('system.admin');
 
-    if (isAdminRole || hasBlanketPermission) {
+    if (hasBlanketBypass) {
       return true;
     }
+
+    // collection.admin satisfies any operation gate but does not skip the
+    // per-collection rule evaluation.
+    const hasOperationAgnostic = permissions.includes('collection.admin');
 
     const collectionId = request.params['collectionId'] || request.params['id'];
 
     // Global (no :collectionId) endpoints: enforce the operation's permission directly.
     if (!collectionId) {
-      if (!permissions.includes(requiredPermission)) {
+      if (!hasOperationAgnostic && !permissions.includes(requiredPermission)) {
         throw new ForbiddenException(
           `Permission '${requiredPermission}' required for this operation`,
         );
@@ -71,9 +86,9 @@ export class CollectionAccessGuard implements CanActivate {
       return true;
     }
 
-    // Record-scoped endpoints: the user must hold the operation permission AND
-    // pass the per-collection access rules.
-    if (!permissions.includes(requiredPermission)) {
+    // Record-scoped endpoints: the user must hold the operation permission
+    // (or collection.admin) AND pass the per-collection access rules.
+    if (!hasOperationAgnostic && !permissions.includes(requiredPermission)) {
       throw new ForbiddenException(
         `Permission '${requiredPermission}' required for this operation`,
       );

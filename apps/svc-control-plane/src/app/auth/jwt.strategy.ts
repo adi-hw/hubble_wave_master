@@ -26,7 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload & { fam?: string }) {
     if (payload.jti && (await this.authService.isTokenRevoked(payload.jti))) {
       throw new UnauthorizedException('Token has been revoked');
     }
@@ -44,6 +44,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       firstName: user.firstName,
       lastName: user.lastName,
       jti: payload.jti,
+      family: payload.fam ?? null,
       tokenExpiresAt: payload.exp ? new Date(payload.exp * 1000) : undefined,
     };
   }

@@ -519,11 +519,15 @@ export class AVAController {
       };
     }
 
+    // Do NOT forward dto.approved or dto.confirmationRequired — those are
+    // client-trusted flags and would let an attacker bypass the preview
+    // gate by setting them in the request body. The executor derives
+    // approval strictly from the preview row's ownership + status + the
+    // action+params hash matching what was previewed.
     const result = await this.actionExecutor.execute(dataSource, {
       action: dto.action,
       context,
       previewId: dto.previewId,
-      confirmationRequired: dto.approved ?? dto.confirmationRequired ?? false,
       reason: dto.reason,
       requestContext: extractContext(req),
       ipAddress: req.ip,

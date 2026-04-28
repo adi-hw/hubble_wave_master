@@ -233,18 +233,23 @@ export class ActionExecutorService {
       };
     }
 
-    // If confirmation required but not confirmed, return early
-    if (permissionCheck.requiresConfirmation && !request.confirmationRequired) {
+    const auditRepo = dataSource.getRepository(AVAAuditTrail);
+    let audit = null as AVAAuditTrail | null;
+
+    // Confirmation gate: actions flagged as requiring confirmation MUST be
+    // accompanied by a server-resolvable previewId. The client-provided
+    // `confirmationRequired` flag is ignored — confirmation is proven by
+    // the preview row's ownership + status + params hash matching the
+    // submitted action below. Without a previewId, fail closed even if
+    // the client claimed confirmation.
+    if (permissionCheck.requiresConfirmation && !request.previewId) {
       return {
         success: false,
-        message: 'This action requires confirmation before execution.',
+        message: 'This action requires preview approval before execution.',
         error: 'CONFIRMATION_REQUIRED',
         requiresConfirmation: true,
       };
     }
-
-    const auditRepo = dataSource.getRepository(AVAAuditTrail);
-    let audit = null as AVAAuditTrail | null;
 
     if (request.previewId) {
       audit = await auditRepo.findOne({ where: { id: request.previewId } });

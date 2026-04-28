@@ -48,6 +48,7 @@ export class MagicLinkService {
     redirectUrl?: string,
   ): Promise<MagicLinkResult> {
     const normalizedEmail = email.toLowerCase().trim();
+    const safeRedirectUrl = this.validateRedirectUrl(redirectUrl);
 
     // Rate limiting check
     await this.checkRateLimit(normalizedEmail);
@@ -71,7 +72,8 @@ export class MagicLinkService {
       { usedAt: new Date() },
     );
 
-    // Create new token
+    // Create new token. Persist only the validated redirect URL so a
+    // subsequent allowlist change cannot leave a malicious URL in the DB.
     const token = this.tokenRepo.create({
       email: normalizedEmail,
       userId: user?.id || null,
@@ -79,7 +81,7 @@ export class MagicLinkService {
       expiresAt,
       ipAddress,
       userAgent,
-      redirectUrl,
+      redirectUrl: safeRedirectUrl ?? null,
     });
 
     await this.tokenRepo.save(token);
@@ -193,10 +195,86 @@ export class MagicLinkService {
 
     this.logger.log(`Magic link verified for user ${user.id}`);
 
+    // Defense in depth: re-validate at return time so a previously stored
+    // value is dropped if the allowlist tightened since the link was issued.
     return {
       user,
-      redirectUrl: token.redirectUrl || undefined,
+      redirectUrl: this.validateRedirectUrl(token.redirectUrl) ?? undefined,
     };
+  }
+
+  /**
+   * Validate a caller-supplied `redirectUrl` against an allowlist. Returns
+   * the normalized URL on success; throws BadRequestException on mismatch.
+   *
+   * Accepts:
+   *   - null / undefined / empty string -> returns undefined (no redirect).
+   *   - Relative path beginning with `/` and free of `..`, `\` and NUL.
+   *   - Absolute URL whose origin matches an entry in
+   *     MAGIC_LINK_REDIRECT_ALLOWLIST (CSV) or, if that env var is unset,
+   *     CORS_ORIGINS. Wildcards `*.example.com` are supported.
+   *
+   * Anything else (including `javascript:`, `data:`, IPv4/IPv6 literals,
+   * untrusted hosts) is rejected so the magic-link flow cannot be turned
+   * into an open redirect that bounces users to a phishing landing page.
+   */
+  private validateRedirectUrl(redirectUrl: string | null | undefined): string | undefined {
+    if (!redirectUrl) return undefined;
+    const value = redirectUrl.trim();
+    if (!value) return undefined;
+    if (value.includes('\0') || value.includes('\\') || value.includes('..')) {
+      throw new BadRequestException('redirectUrl contains forbidden characters');
+    }
+
+    // Relative path: must start with '/' but NOT '//' (which is a
+    // protocol-relative URL and resolves cross-origin).
+    if (value.startsWith('/') && !value.startsWith('//')) {
+      return value;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new BadRequestException('redirectUrl is not a valid URL');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new BadRequestException('redirectUrl protocol must be http or https');
+    }
+
+    const allowlistRaw =
+      process.env['MAGIC_LINK_REDIRECT_ALLOWLIST'] ??
+      process.env['CORS_ORIGINS'] ??
+      '';
+    const entries = allowlistRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (entries.length === 0) {
+      // Allowlist not configured: refuse absolute URLs entirely so
+      // production cannot accidentally accept arbitrary hosts.
+      throw new BadRequestException('redirectUrl host not in allowlist');
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const matches = entries.some((entry) => {
+      const entryHost = (() => {
+        try {
+          return new URL(entry).hostname.toLowerCase();
+        } catch {
+          return entry.toLowerCase();
+        }
+      })();
+      if (entryHost.startsWith('*.')) {
+        const suffix = entryHost.slice(2);
+        return host === suffix || host.endsWith('.' + suffix);
+      }
+      return host === entryHost;
+    });
+    if (!matches) {
+      throw new BadRequestException('redirectUrl host not in allowlist');
+    }
+    return parsed.toString();
   }
 
   /**

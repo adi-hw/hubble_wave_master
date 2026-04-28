@@ -11,7 +11,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { ControlPlaneUser, ControlPlaneRole, RevokedToken } from '@hubblewave/control-plane-db';
+import {
+  ControlPlaneUser,
+  ControlPlaneRole,
+  RevokedToken,
+  RefreshToken,
+} from '@hubblewave/control-plane-db';
 import { LoginDto, RegisterDto, ChangePasswordDto, UpdateProfileDto, VerifyMfaDto } from './auth.dto';
 import { authenticator } from 'otplib';
 import * as crypto from 'crypto';
@@ -29,12 +34,15 @@ export interface LogoutContext {
   userId: string;
   jti?: string;
   expiresAt?: Date;
+  family?: string | null;
   ipAddress?: string;
   userAgent?: string;
 }
 
 export interface AuthResponse {
   accessToken: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
   user: {
     id: string;
     email: string;
@@ -45,6 +53,14 @@ export interface AuthResponse {
   };
 }
 
+export interface RefreshContext {
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+const REFRESH_TOKEN_TTL_DAYS = 14;
+const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -52,6 +68,8 @@ export class AuthService {
     private readonly userRepo: Repository<ControlPlaneUser>,
     @InjectRepository(RevokedToken)
     private readonly revokedTokenRepo: Repository<RevokedToken>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepo: Repository<RefreshToken>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
@@ -99,7 +117,11 @@ export class AuthService {
     return user;
   }
 
-  async login(dto: LoginDto, ipAddress?: string): Promise<AuthResponse> {
+  async login(
+    dto: LoginDto,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<AuthResponse> {
     const user = await this.validateUser(dto.email, dto.password);
 
     if (!user) {
@@ -120,17 +142,15 @@ export class AuthService {
     user.lastLoginIp = ipAddress || null;
     await this.userRepo.save(user);
 
-    const jti = crypto.randomUUID();
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    const accessToken = this.jwtService.sign(payload, { jwtid: jti });
+    const family = crypto.randomUUID();
+    const { accessToken } = this.signAccessToken(user, family);
+    const { token: refreshToken, expiresAt: refreshExpiresAt } =
+      await this.issueRefreshToken(user.id, family, ipAddress, userAgent);
 
     return {
       accessToken,
+      refreshToken,
+      refreshExpiresAt: refreshExpiresAt.toISOString(),
       user: {
         id: user.id,
         email: user.email,
@@ -140,6 +160,138 @@ export class AuthService {
         avatarUrl: user.avatarUrl ?? undefined,
       },
     };
+  }
+
+  /**
+   * Mint a new short-lived access token for `user` carrying the refresh
+   * family id under a custom `fam` claim. JwtStrategy.validate() surfaces
+   * `fam` so the logout flow can revoke the entire family along with the
+   * specific access-token jti.
+   */
+  private signAccessToken(user: ControlPlaneUser, family: string): { accessToken: string; jti: string } {
+    const jti = crypto.randomUUID();
+    const payload: JwtPayload & { fam: string } = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      fam: family,
+    };
+    const accessToken = this.jwtService.sign(payload, { jwtid: jti });
+    return { accessToken, jti };
+  }
+
+  /**
+   * Issue a refresh token for `userId` in the given `family`. Returns the
+   * raw token (only handed to the client) and the `expiresAt` boundary.
+   */
+  private async issueRefreshToken(
+    userId: string,
+    family: string,
+    ipAddress?: string,
+    userAgent?: string,
+    replacedBy?: string,
+  ): Promise<{ token: string; expiresAt: Date; row: RefreshToken }> {
+    const raw = crypto.randomBytes(48).toString('base64url');
+    const tokenHash = this.hashRefreshToken(raw);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    const row = this.refreshTokenRepo.create({
+      tokenHash,
+      family,
+      userId,
+      expiresAt,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      replacedBy: replacedBy ?? null,
+    });
+    await this.refreshTokenRepo.save(row);
+    return { token: raw, expiresAt, row };
+  }
+
+  private hashRefreshToken(raw: string): string {
+    return crypto.createHash('sha256').update(raw).digest('hex');
+  }
+
+  /**
+   * Exchange a valid refresh token for a fresh access+refresh pair. The
+   * presented refresh row is rotated: revoked, linked to its successor.
+   * Reuse of an already-revoked refresh token in any family triggers a
+   * wholesale family revocation — that is the canonical token-theft
+   * signal and must lock the session out.
+   */
+  async refresh(
+    rawToken: string,
+    ctx: RefreshContext = {},
+  ): Promise<AuthResponse> {
+    if (!rawToken) {
+      throw new UnauthorizedException('Refresh token missing');
+    }
+    const tokenHash = this.hashRefreshToken(rawToken);
+    const row = await this.refreshTokenRepo.findOne({ where: { tokenHash } });
+    if (!row) {
+      throw new UnauthorizedException('Refresh token invalid');
+    }
+
+    if (row.revokedAt) {
+      // Replay of a revoked refresh token = theft signal. Revoke the entire
+      // family and force re-authentication.
+      await this.revokeFamily(row.family, 'reuse_detected');
+      throw new UnauthorizedException('Refresh token reuse detected; session terminated');
+    }
+
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id: row.userId, status: 'active' },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User no longer active');
+    }
+
+    // Mint successor before flipping the parent row, so any failure leaves
+    // the parent intact and the session recoverable.
+    const successor = await this.issueRefreshToken(
+      user.id,
+      row.family,
+      ctx.ipAddress,
+      ctx.userAgent,
+    );
+
+    row.revokedAt = new Date();
+    row.revokeReason = 'rotated';
+    row.replacedBy = successor.row.id;
+    await this.refreshTokenRepo.save(row);
+
+    const { accessToken } = this.signAccessToken(user, row.family);
+
+    return {
+      accessToken,
+      refreshToken: successor.token,
+      refreshExpiresAt: successor.expiresAt.toISOString(),
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        role: user.role,
+        avatarUrl: user.avatarUrl ?? undefined,
+      },
+    };
+  }
+
+  /**
+   * Revoke every refresh token in the given family. Idempotent — already-
+   * revoked rows are left alone so the audit timestamp stays accurate.
+   */
+  async revokeFamily(family: string, reason: string): Promise<void> {
+    if (!family) return;
+    await this.refreshTokenRepo
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revokedAt: () => 'NOW()', revokeReason: reason })
+      .where('family = :family AND revoked_at IS NULL', { family })
+      .execute();
   }
 
   /**
@@ -177,6 +329,12 @@ export class AuthService {
       if (code !== '23505') {
         throw error;
       }
+    }
+
+    // Also revoke the refresh-token family so the silent-refresh path
+    // cannot mint a new access token after explicit logout.
+    if (context.family) {
+      await this.revokeFamily(context.family, 'logout');
     }
   }
 

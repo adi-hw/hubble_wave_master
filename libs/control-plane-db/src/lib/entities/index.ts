@@ -29,6 +29,7 @@ export { InstanceMetrics } from './instance-metrics.entity';
 export { TerraformJob, TerraformJobStatus, TerraformOperation, TerraformOutputLine, TerraformPlan, TerraformResourceChange } from './terraform-job.entity';     
 export { GlobalSettings } from './global-settings.entity';
 export { RevokedToken } from './revoked-token.entity';
+export { RefreshToken } from './refresh-token.entity';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -45,6 +46,7 @@ import { InstanceMetrics } from './instance-metrics.entity';
 import { TerraformJob } from './terraform-job.entity';
 import { GlobalSettings } from './global-settings.entity';
 import { RevokedToken } from './revoked-token.entity';
+import { RefreshToken } from './refresh-token.entity';
 
 export const controlPlaneEntities = [
   Customer,
@@ -59,4 +61,5 @@ export const controlPlaneEntities = [
   TerraformJob,
   GlobalSettings,
   RevokedToken,
+  RefreshToken,
 ];

@@ -4,7 +4,7 @@ import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ControlPlaneUser, RevokedToken } from '@hubblewave/control-plane-db';
+import { ControlPlaneUser, RevokedToken, RefreshToken } from '@hubblewave/control-plane-db';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
@@ -13,7 +13,7 @@ import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ControlPlaneUser, RevokedToken]),
+    TypeOrmModule.forFeature([ControlPlaneUser, RevokedToken, RefreshToken]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

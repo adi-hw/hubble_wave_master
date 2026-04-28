@@ -7,6 +7,7 @@ export interface CurrentUserData {
   firstName: string;
   lastName: string;
   jti?: string;
+  family?: string | null;
   tokenExpiresAt?: Date;
 }
 
