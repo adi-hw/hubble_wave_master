@@ -790,7 +790,7 @@ pattern. No "we'll add versioning later" exception.
 |---|---|---|---|
 | A | 0 | ✅ Shipped | `3a52e03` |
 | B | 0 | ✅ Shipped | (after rebase) |
-| C1 | 0 | 🔧 In progress | — |
+| C1 | 0 | ✅ Shipped | `0854cc7` |
 | C2 | 0 | ⏳ Queued | — |
 | C3 | 0 | ⏳ Queued | — |
 | C4 | 0 | ⏳ Queued | — |
