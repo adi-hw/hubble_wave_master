@@ -40,6 +40,13 @@ import {
   AuditExplorerPage,
 } from '../features/admin';
 
+// App Studio — Application registry (Phase 0 Slice B)
+import {
+  AppStudioHome,
+  ApplicationDetailPage,
+  CollectionShortcut,
+} from '../features/admin/applications';
+
 
 
 // Data pages (Schema Engine runtime)
@@ -121,6 +128,46 @@ export function App() {
             element={
               <ProtectedRoute roles="admin">
                 <AdminDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* App Studio — Application registry */}
+          <Route
+            path="/studio/apps"
+            element={
+              <ProtectedRoute roles="admin">
+                <AppStudioHome />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/apps/:id"
+            element={
+              <ProtectedRoute roles="admin">
+                <ApplicationDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Naming-shortcut routes — /studio/c/<code>/<tab> resolves to
+              the existing collection-management routes. The shortcut is
+              the canonical user-facing URL; the underlying id-based
+              routes remain for the existing pages until Phase 1's
+              tabbed Table Builder collapses them into one destination. */}
+          <Route
+            path="/studio/c/:code"
+            element={
+              <ProtectedRoute roles="admin">
+                <CollectionShortcut />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/c/:code/:tab"
+            element={
+              <ProtectedRoute roles="admin">
+                <CollectionShortcut />
               </ProtectedRoute>
             }
           />

@@ -64,7 +64,12 @@ export default defineConfig(() => ({
         rewrite: (path) => path.replace(/^\/api\/admin/, '/api/admin'),
       },
       // Direct API routes (for pages using simple /api/... paths)
-      // Collections & Properties & Themes → svc-metadata
+      // Applications, Collections, Properties, Themes → svc-metadata
+      '/api/applications': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
+      },
       '/api/collections': {
         target: 'http://localhost:3003',
         changeOrigin: true,
