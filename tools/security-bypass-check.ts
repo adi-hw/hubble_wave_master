@@ -17,10 +17,12 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-data/src/app/integration/oauth2.controller.ts',
   'apps/svc-identity/src/app/health.controller.ts',
   'apps/svc-identity/src/app/auth/auth.controller.ts',
+  'apps/svc-identity/src/app/auth/magic-link.controller.ts',
   'apps/svc-identity/src/app/auth/password-reset.controller.ts',
   'apps/svc-identity/src/app/auth/email-verification.controller.ts',
   'apps/svc-identity/src/app/auth/sso/sso.controller.ts',
   'apps/svc-identity/src/app/auth/sso/sso-config.controller.ts',
+  'apps/svc-identity/src/app/oidc/oidc.controller.ts',
 ]);
 
 const BANNED_PATTERNS: Array<{
@@ -127,12 +129,26 @@ function checkBannedPatterns(violations: Violation[]) {
   }
 }
 
+// Match a literal string containing an http(s):// URL when used in code
+// (assignments, fetch calls, axios.get, new URL, etc). Excludes URLs that
+// appear only inside line/block comments or docstrings.
+const HARDCODED_URL_PATTERN = /(?:^|[^\/\*])(?:['"`])https?:\/\/[^\s'"`]+['"`]/m;
+
+function stripCommentsAndStrings(source: string): string {
+  // Remove block comments
+  let out = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Remove single-line comments
+  out = out.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  return out;
+}
+
 function checkAvaExternalUrls(violations: Violation[]) {
   const avaRoot = join(APP_ROOT, 'svc-ava', 'src');
   const files = walk(avaRoot);
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
-    if (!/https?:\/\//.test(content)) {
+    const codeOnly = stripCommentsAndStrings(content);
+    if (!HARDCODED_URL_PATTERN.test(codeOnly)) {
       continue;
     }
     const rel = toRelative(file);

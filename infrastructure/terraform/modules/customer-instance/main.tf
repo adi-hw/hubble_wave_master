@@ -142,6 +142,13 @@ resource "random_password" "jwt_secret" {
   special = false
 }
 
+# ElastiCache Redis AUTH token. Constraints: 16-128 chars, no special
+# characters that conflict with Redis AUTH wire format.
+resource "random_password" "redis_auth" {
+  length  = 32
+  special = false
+}
+
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
@@ -253,17 +260,29 @@ resource "aws_security_group" "redis" {
   tags = local.aws_tags
 }
 
-resource "aws_elasticache_cluster" "instance" {
-  cluster_id           = local.redis_identifier
+resource "aws_elasticache_replication_group" "instance" {
+  replication_group_id = local.redis_identifier
+  description          = "HubbleWave instance Redis - ${local.instance_name}"
+
   engine               = "redis"
   engine_version       = var.redis_engine_version
   node_type            = local.tier_config.redis_node
-  num_cache_nodes      = 1
   port                 = 6379
   parameter_group_name = "default.redis7"
 
+  num_cache_clusters         = var.environment == "production" ? 2 : 1
+  multi_az_enabled           = var.environment == "production"
+  automatic_failover_enabled = var.environment == "production"
+
   subnet_group_name  = aws_elasticache_subnet_group.instance.name
   security_group_ids = [aws_security_group.redis.id]
+
+  # Encryption + auth. AUTH token requires transit encryption; both must be
+  # enabled together for ElastiCache to accept the auth_token argument.
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  auth_token                 = random_password.redis_auth.result
+  auth_token_update_strategy = "ROTATE"
 
   snapshot_retention_limit = var.environment == "production" ? 7 : 0
   snapshot_window          = "02:00-03:00"
@@ -284,8 +303,12 @@ locals {
   db_port = aws_db_instance.instance.port
   db_name = aws_db_instance.instance.db_name
 
-  redis_host = aws_elasticache_cluster.instance.cache_nodes[0].address
-  redis_port = aws_elasticache_cluster.instance.port
+  # Replication group exposes a primary endpoint and (when failover is
+  # enabled) a reader endpoint. The primary endpoint is the canonical
+  # write endpoint; clients should connect there.
+  redis_host       = aws_elasticache_replication_group.instance.primary_endpoint_address
+  redis_port       = aws_elasticache_replication_group.instance.port
+  redis_auth_token = random_password.redis_auth.result
 
   database_secret_payload = {
     DB_HOST     = local.db_host
@@ -296,10 +319,16 @@ locals {
     DB_URL      = "postgresql://${aws_db_instance.instance.username}:${random_password.db_admin_password.result}@${local.db_host}:${local.db_port}/${local.db_name}?sslmode=require"
   }
 
+  # rediss:// scheme indicates TLS. AUTH token is embedded in the URL via
+  # the userless `:<token>@host` syntax that redis-cli and node-redis both
+  # accept. The plaintext token is also exposed as REDIS_AUTH_TOKEN so
+  # clients that build their own connection options can read it directly.
   redis_secret_payload = {
-    REDIS_HOST = local.redis_host
-    REDIS_PORT = tostring(local.redis_port)
-    REDIS_URL  = "redis://${local.redis_host}:${local.redis_port}/0"
+    REDIS_HOST       = local.redis_host
+    REDIS_PORT       = tostring(local.redis_port)
+    REDIS_AUTH_TOKEN = local.redis_auth_token
+    REDIS_TLS        = "true"
+    REDIS_URL        = "rediss://:${local.redis_auth_token}@${local.redis_host}:${local.redis_port}/0"
   }
 
   instance_config_payload = {
@@ -413,10 +442,11 @@ resource "kubernetes_secret_v1" "redis" {
   type = "Opaque"
 
   data = {
-    REDIS_HOST = local.redis_secret_data.REDIS_HOST
-    REDIS_PORT = local.redis_secret_data.REDIS_PORT
-    REDIS_URL  = local.redis_secret_data.REDIS_URL
-    REDIS_TLS  = "false"
+    REDIS_HOST       = local.redis_secret_data.REDIS_HOST
+    REDIS_PORT       = local.redis_secret_data.REDIS_PORT
+    REDIS_AUTH_TOKEN = local.redis_secret_data.REDIS_AUTH_TOKEN
+    REDIS_URL        = local.redis_secret_data.REDIS_URL
+    REDIS_TLS        = local.redis_secret_data.REDIS_TLS
   }
 
   depends_on = [module.eks]
@@ -783,7 +813,7 @@ resource "kubernetes_deployment_v1" "api" {
 
   depends_on = [
     aws_db_instance.instance,
-    aws_elasticache_cluster.instance,
+    aws_elasticache_replication_group.instance,
     kubernetes_secret_v1.database,
     kubernetes_secret_v1.redis,
     kubernetes_secret_v1.instance_config,
@@ -1013,6 +1043,152 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "api" {
   }
 
   depends_on = [helm_release.metrics_server]
+}
+
+# -----------------------------------------------------------------------------
+# Default-Deny NetworkPolicy
+#
+# Defense in depth: every workload in the customer EKS cluster begins from
+# a default-deny posture. The ingress controller, in-cluster DNS, and
+# explicit allow policies are layered on top. Any pod added in the future
+# that does not have an explicit allow policy receives no ingress and no
+# egress, eliminating accidental exposure.
+# -----------------------------------------------------------------------------
+
+resource "kubernetes_network_policy_v1" "default_deny" {
+  provider = kubernetes.instance
+
+  metadata {
+    name      = "default-deny"
+    namespace = "default"
+    labels    = local.common_labels
+    annotations = {
+      "hubblewave.com/policy-intent" = "Deny all traffic by default; explicit allow policies open required paths."
+    }
+  }
+
+  spec {
+    pod_selector {}
+    policy_types = ["Ingress", "Egress"]
+  }
+
+  depends_on = [module.eks]
+}
+
+resource "kubernetes_network_policy_v1" "allow_dns_egress" {
+  provider = kubernetes.instance
+
+  metadata {
+    name      = "allow-dns-egress"
+    namespace = "default"
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {}
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "kube-system"
+          }
+        }
+      }
+      ports {
+        protocol = "UDP"
+        port     = "53"
+      }
+      ports {
+        protocol = "TCP"
+        port     = "53"
+      }
+    }
+  }
+
+  depends_on = [module.eks]
+}
+
+resource "kubernetes_network_policy_v1" "allow_internal_default_namespace" {
+  provider = kubernetes.instance
+
+  metadata {
+    name      = "allow-internal-default-namespace"
+    namespace = "default"
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {}
+    policy_types = ["Ingress", "Egress"]
+
+    ingress {
+      from {
+        pod_selector {}
+      }
+    }
+
+    egress {
+      to {
+        pod_selector {}
+      }
+    }
+  }
+
+  depends_on = [module.eks]
+}
+
+# Allow workloads to reach the in-VPC RDS, ElastiCache, and via the NAT
+# gateway, AWS service endpoints (S3, Secrets Manager, ECR) and
+# HuggingFace for model downloads. Cilium / aws-vpc-cni network policies
+# enforce CIDR-scoped egress; we keep the rule at the VPC CIDR plus
+# 0.0.0.0/0 on TCP 443 for AWS API endpoints. Tighten to the AWS service
+# IP ranges via a follow-up if required.
+resource "kubernetes_network_policy_v1" "allow_egress_external" {
+  provider = kubernetes.instance
+
+  metadata {
+    name      = "allow-egress-external"
+    namespace = "default"
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {}
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        ip_block {
+          cidr = local.vpc_cidr
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "5432"
+      }
+      ports {
+        protocol = "TCP"
+        port     = "6379"
+      }
+    }
+
+    egress {
+      to {
+        ip_block {
+          cidr   = "0.0.0.0/0"
+          except = ["169.254.169.254/32"]
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "443"
+      }
+    }
+  }
+
+  depends_on = [module.eks]
 }
 
 # -----------------------------------------------------------------------------

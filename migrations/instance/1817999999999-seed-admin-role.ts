@@ -107,21 +107,12 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
 
     // Create all permissions
     for (const perm of this.permissions) {
-      await queryRunner.query(`
-        INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at, updated_at)
-        VALUES (
-          uuid_generate_v4(),
-          '${perm.slug}',
-          '${perm.name}',
-          '${perm.description}',
-          '${perm.category}',
-          ${perm.isDangerous},
-          true,
-          NOW(),
-          NOW()
-        )
-        ON CONFLICT (code) DO NOTHING
-      `);
+      await queryRunner.query(
+        `INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at, updated_at)
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, true, NOW(), NOW())
+         ON CONFLICT (code) DO NOTHING`,
+        [perm.slug, perm.name, perm.description, perm.category, perm.isDangerous]
+      );
     }
 
     // Create admin role
@@ -151,11 +142,12 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
     const allPermissions = await queryRunner.query(`SELECT id FROM permissions`);
 
     for (const perm of allPermissions) {
-      await queryRunner.query(`
-        INSERT INTO role_permissions (id, role_id, permission_id, created_at)
-        VALUES (uuid_generate_v4(), '${adminRoleId}', '${perm.id}', NOW())
-        ON CONFLICT DO NOTHING
-      `);
+      await queryRunner.query(
+        `INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+         VALUES (uuid_generate_v4(), $1, $2, NOW())
+         ON CONFLICT DO NOTHING`,
+        [adminRoleId, perm.id]
+      );
     }
 
     console.log('Admin role created with all permissions');
@@ -172,7 +164,10 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
     await queryRunner.query(`DELETE FROM roles WHERE code = 'admin'`);
 
     // Remove seeded permissions
-    const slugs = this.permissions.map(p => `'${p.slug}'`).join(',');
-    await queryRunner.query(`DELETE FROM permissions WHERE code IN (${slugs})`);
+    const slugs = this.permissions.map(p => p.slug);
+    await queryRunner.query(
+      `DELETE FROM permissions WHERE code = ANY($1::text[])`,
+      [slugs]
+    );
   }
 }

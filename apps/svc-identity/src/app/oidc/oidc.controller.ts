@@ -1,8 +1,10 @@
 import { Controller, Get, Param, UnauthorizedException } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
 
 /**
  * SSO authentication controller. Returns appropriate errors when SSO is not configured.
  */
+@Public()
 @Controller('auth/sso')
 export class OidcController {
   @Get(':providerId/login')

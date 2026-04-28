@@ -1,12 +1,12 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { AuthUser } from '../services/auth';
+import { AuthRole } from '../services/auth';
 import { colors } from '../theme/theme';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: AuthUser['role'];
+  requiredRole?: AuthRole | AuthRole[];
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {

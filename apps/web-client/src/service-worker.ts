@@ -134,8 +134,16 @@ async function networkFirstStrategy(
   try {
     const networkResponse = await fetch(request);
 
-    // Cache successful API responses for specified patterns
-    if (networkResponse.ok && shouldCacheApiResponse(request.url)) {
+    // Cache successful API responses for specified patterns. Only cache when
+    // the request carried an Authorization header — otherwise the response is
+    // either anonymous (no need to cache per-user) or unauthenticated, and
+    // caching it would let a logged-out user read prior content. The session
+    // logout flow additionally posts CLEAR_USER_CACHE to wipe any residue.
+    if (
+      networkResponse.ok &&
+      shouldCacheApiResponse(request.url) &&
+      requestHasAuthorization(request)
+    ) {
       const cache = await caches.open(cacheName);
       cache.put(request, networkResponse.clone());
     }
@@ -189,6 +197,38 @@ function shouldCacheApiResponse(url: string): boolean {
   return CACHEABLE_API_PATTERNS.some((pattern) => pattern.test(url));
 }
 
+/**
+ * Determine whether a request was sent with an Authorization header. Used to
+ * avoid populating the API cache from anonymous requests that should never
+ * persist user-specific responses.
+ */
+function requestHasAuthorization(request: Request): boolean {
+  return request.headers.has('Authorization');
+}
+
+/**
+ * Validate notification target URLs before opening them. Mirrors the
+ * validateInternalUrl policy in src/lib/safe-navigate.ts so push payloads
+ * cannot redirect users to attacker-controlled origins.
+ */
+function isSafeInternalNotificationUrl(url: unknown): url is string {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.includes('\\') || trimmed.includes('\0') || trimmed.includes('..')) return false;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.hostname === self.location.hostname;
+    } catch {
+      return false;
+    }
+  }
+  if (!trimmed.startsWith('/')) return false;
+  if (trimmed.startsWith('//')) return false;
+  return true;
+}
+
 // Background sync for pending changes
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-pending-changes') {
@@ -240,7 +280,14 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   if (event.action === 'view' && event.notification.data?.url) {
-    event.waitUntil(self.clients.openWindow(event.notification.data.url));
+    const targetUrl = event.notification.data.url;
+    if (isSafeInternalNotificationUrl(targetUrl)) {
+      event.waitUntil(self.clients.openWindow(targetUrl));
+    } else {
+      // Refuse to follow notification payloads that point off-origin or
+      // contain traversal markers — open the app root instead.
+      event.waitUntil(self.clients.openWindow('/'));
+    }
   } else if (!event.action) {
     // Default click action - open the app
     event.waitUntil(
@@ -270,5 +317,17 @@ self.addEventListener('message', (event) => {
 
   if (event.data?.type === 'CLEAR_CACHE') {
     caches.delete(API_CACHE_NAME);
+  }
+
+  // CLEAR_USER_CACHE is dispatched by the auth logout flow before local state
+  // is wiped. It removes any per-user API responses cached by the SW so the
+  // next session cannot read prior data from disk.
+  if (event.data?.type === 'CLEAR_USER_CACHE') {
+    event.waitUntil(
+      Promise.all([
+        caches.delete(API_CACHE_NAME),
+        caches.delete(CACHE_NAME),
+      ])
+    );
   }
 });

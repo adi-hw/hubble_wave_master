@@ -5,6 +5,25 @@
     <title>HubbleWave</title>
     <base href="/" />
 
+    <!--
+      Content Security Policy
+      ----------------------
+      default-src 'self'                      All resource fetches default to same-origin.
+      script-src  'self' 'wasm-unsafe-eval'   App scripts only; wasm allowed for libs that compile WebAssembly (e.g. PDF/MUI tooling). No 'unsafe-inline' / 'unsafe-eval'.
+      style-src   'self' 'unsafe-inline' https://fonts.googleapis.com
+                                              MUI/Emotion injects runtime <style> tags that require 'unsafe-inline'. The Google Fonts stylesheet is fetched cross-origin.
+      img-src     'self' data: https:         App icons, embedded data URIs, and HTTPS images (avatars, doc previews).
+      font-src    'self' data: https://fonts.gstatic.com
+                                              Local fonts plus Google web font binaries.
+      connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com
+                                              All API traffic goes through the same-origin reverse proxy. External APIs require an explicit policy update.
+      frame-ancestors 'none'                  No framing of the app (clickjacking).
+      base-uri    'self'                      Block <base> hijacking.
+      form-action 'self'                      Forms only submit to same-origin.
+      object-src  'none'                      No plugins.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+
     <!-- Viewport & Mobile -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />

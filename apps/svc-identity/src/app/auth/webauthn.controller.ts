@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { WebAuthnService } from './webauthn.service';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface RequestWithUser {
   user: {
@@ -31,6 +32,7 @@ interface RequestWithUser {
   };
 }
 
+@AuthenticatedOnly()
 @Controller('auth/webauthn')
 export class WebAuthnController {
   constructor(private readonly webAuthnService: WebAuthnService) {}

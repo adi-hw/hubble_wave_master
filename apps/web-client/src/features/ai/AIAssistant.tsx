@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { validateInternalUrl } from '../../lib/safe-navigate';
 
 // AVA Branding
 const AVA_BRANDING = {
@@ -211,7 +212,15 @@ export function AIAssistant({
 
   const handleActionClick = (action: MessageAction) => {
     if (action.type === 'navigate') {
-      window.location.href = action.target;
+      // Validate that the AI-suggested target is an internal, same-origin path
+      // before navigating; otherwise refuse to follow the link.
+      const safeTarget = validateInternalUrl(action.target);
+      if (safeTarget !== null) {
+        window.location.href = safeTarget;
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[AIAssistant] Refused unsafe navigation target', { target: action.target });
+      }
     }
     // Other action types would be handled here
   };

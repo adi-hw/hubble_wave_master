@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { UiService } from './ui.service';
 import { Request } from 'express';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 @ApiTags('UI')
+@AuthenticatedOnly()
 @Controller()
 export class UiController {
   constructor(private readonly uiService: UiService) {}

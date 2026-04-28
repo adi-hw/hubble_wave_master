@@ -145,18 +145,29 @@ output "db_username" {
 # -----------------------------------------------------------------------------
 
 output "redis_cluster_id" {
-  description = "ElastiCache cluster identifier"
-  value       = aws_elasticache_cluster.instance.cluster_id
+  description = "ElastiCache replication group identifier"
+  value       = aws_elasticache_replication_group.instance.replication_group_id
 }
 
 output "redis_endpoint" {
-  description = "ElastiCache cluster endpoint"
-  value       = aws_elasticache_cluster.instance.cache_nodes[0].address
+  description = "ElastiCache primary endpoint (write address)"
+  value       = aws_elasticache_replication_group.instance.primary_endpoint_address
+}
+
+output "redis_reader_endpoint" {
+  description = "ElastiCache reader endpoint (multi-AZ read replicas)"
+  value       = aws_elasticache_replication_group.instance.reader_endpoint_address
 }
 
 output "redis_port" {
   description = "ElastiCache port"
-  value       = aws_elasticache_cluster.instance.port
+  value       = aws_elasticache_replication_group.instance.port
+}
+
+output "redis_auth_token" {
+  description = "ElastiCache AUTH token (TLS-only, sensitive)"
+  value       = random_password.redis_auth.result
+  sensitive   = true
 }
 
 # -----------------------------------------------------------------------------
@@ -356,8 +367,8 @@ output "instance_metadata" {
     control_plane_access_role = aws_iam_role.control_plane_access.arn
     db_instance_id            = aws_db_instance.instance.id
     db_endpoint               = aws_db_instance.instance.endpoint
-    redis_cluster_id          = aws_elasticache_cluster.instance.cluster_id
-    redis_endpoint            = aws_elasticache_cluster.instance.cache_nodes[0].address
+    redis_cluster_id          = aws_elasticache_replication_group.instance.replication_group_id
+    redis_endpoint            = aws_elasticache_replication_group.instance.primary_endpoint_address
     s3_bucket                 = aws_s3_bucket.instance.id
     instance_domain           = local.instance_domain
     control_plane_url         = local.control_plane_url

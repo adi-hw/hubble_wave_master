@@ -111,6 +111,16 @@ resource "kubernetes_deployment_v1" "vllm" {
       spec {
         service_account_name = kubernetes_service_account_v1.workload.metadata[0].name
 
+        # Pod-level security context. fsGroup ensures the PVC is writeable
+        # by the non-root UID/GID we set on the init container. The vLLM
+        # main container runs with the same UID for consistency.
+        security_context {
+          fs_group        = 1000
+          run_as_non_root = true
+          run_as_user     = 1000
+          run_as_group    = 1000
+        }
+
         # Schedule exclusively on GPU nodes
         node_selector = {
           "hubblewave.com/node-type" = "gpu"
@@ -123,7 +133,11 @@ resource "kubernetes_deployment_v1" "vllm" {
           effect   = "NoSchedule"
         }
 
-        # Init container to download model from Hugging Face
+        # Init container to download model from Hugging Face. The vllm-openai
+        # image runs as root by default, but the model download only needs
+        # write access to the mounted PVC. We drop privileges and run as a
+        # non-root user (UID 1000); the PVC fsGroup is set on the pod spec
+        # so the volume is owned by the same group.
         init_container {
           name  = "model-downloader"
           image = "vllm/vllm-openai:${var.vllm_image_tag}"
@@ -151,14 +165,33 @@ print('Model download complete')
             EOF
           ]
 
+          security_context {
+            run_as_non_root             = true
+            run_as_user                 = 1000
+            run_as_group                = 1000
+            allow_privilege_escalation  = false
+            read_only_root_filesystem   = false
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
+
           env {
             name  = "HF_HOME"
             value = "/models"
           }
 
-          env {
-            name  = "HF_TOKEN"
-            value = var.huggingface_token
+          dynamic "env" {
+            for_each = length(var.huggingface_token) > 0 ? [1] : []
+            content {
+              name = "HF_TOKEN"
+              value_from {
+                secret_key_ref {
+                  name = kubernetes_secret_v1.huggingface[0].metadata[0].name
+                  key  = "HF_TOKEN"
+                }
+              }
+            }
           }
 
           volume_mount {
@@ -181,6 +214,23 @@ print('Model download complete')
         container {
           name  = "vllm"
           image = "vllm/vllm-openai:${var.vllm_image_tag}"
+
+          # Drop capabilities and disallow privilege escalation. The CUDA
+          # runtime requires access to /dev/shm (mounted as tmpfs above)
+          # and the GPU device files (provided by the NVIDIA device
+          # plugin), neither of which require Linux capabilities.
+          # read_only_root_filesystem is intentionally false because the
+          # vLLM image writes ephemeral compilation artefacts under /root
+          # (Triton kernel cache) at startup.
+          security_context {
+            run_as_non_root            = true
+            run_as_user                = 1000
+            run_as_group               = 1000
+            allow_privilege_escalation = false
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
 
           args = [
             "--model", "/models/${local.vllm_model_path}",

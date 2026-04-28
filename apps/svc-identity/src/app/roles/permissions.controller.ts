@@ -23,6 +23,7 @@ import { RequirePermission } from './decorators/permission.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface UserContext {
   id: string;
@@ -58,6 +59,7 @@ interface UpdatePermissionDto {
  *
  * Admin endpoints for managing permissions.
  */
+@AuthenticatedOnly()
 @Controller('admin/permissions')
 @UseGuards(JwtAuthGuard)
 export class PermissionsController {

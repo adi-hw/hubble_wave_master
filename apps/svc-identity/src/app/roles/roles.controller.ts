@@ -19,6 +19,7 @@ import { RequirePermission } from './decorators/permission.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface UserContext {
   userId: string;
@@ -30,6 +31,7 @@ interface UserContext {
  *
  * Admin endpoints for managing roles and role assignments.
  */
+@AuthenticatedOnly()
 @Controller('admin/roles')
 @UseGuards(JwtAuthGuard)
 export class RolesController {

@@ -11,7 +11,7 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { EmailVerificationService } from './email-verification.service';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { Public } from './decorators/public.decorator';
+import { Public, AuthenticatedOnly } from './decorators/public.decorator';
 
 interface AuthenticatedUser {
   id: string;
@@ -53,6 +53,7 @@ export class EmailVerificationController {
    * Resend verification email (authenticated)
    * POST /auth/email/resend
    */
+  @AuthenticatedOnly()
   @UseGuards(JwtAuthGuard)
   @Post('resend')
   @Throttle({ default: { limit: 3, ttl: 60000 } })
@@ -73,6 +74,7 @@ export class EmailVerificationController {
    * Get email verification status (authenticated)
    * GET /auth/email/status
    */
+  @AuthenticatedOnly()
   @UseGuards(JwtAuthGuard)
   @Get('status')
   async getVerificationStatus(

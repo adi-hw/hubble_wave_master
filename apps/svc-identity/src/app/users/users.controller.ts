@@ -27,6 +27,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserStatus, AuthEvent } from '@hubblewave/instance-db';
 import { UserRoleService } from '../roles/user-role.service';
 import { MembershipService } from '../groups/membership.service';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface UserContext {
   userId: string;
@@ -38,6 +39,7 @@ interface UserContext {
  *
  * Admin endpoints for managing users.
  */
+@AuthenticatedOnly()
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {

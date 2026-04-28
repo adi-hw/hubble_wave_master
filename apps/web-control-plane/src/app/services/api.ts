@@ -2,6 +2,48 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_CONTROL_PLANE_API_URL || 'http://localhost:3100/api';
 
+// Cookies are sent with every request because the control-plane backend
+// authenticates admin sessions over a same-origin path. Validate the
+// configured base URL at module init so a misconfigured deploy can never
+// leak admin cookies to a non-control-plane host.
+function assertControlPlaneOrigin(rawUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl, window.location.origin);
+  } catch {
+    throw new Error(
+      `[control-plane] VITE_CONTROL_PLANE_API_URL is not a valid URL: ${rawUrl}`,
+    );
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const isLocal =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.endsWith('.localhost');
+  const isControlPlaneHost =
+    host === 'control.hubblewave.com' ||
+    host.startsWith('control.') ||
+    host.endsWith('.control.hubblewave.com');
+
+  if (!isLocal && !isControlPlaneHost) {
+    throw new Error(
+      `[control-plane] Refusing to send credentialed requests to '${host}'. ` +
+        `withCredentials requires an origin matching control.<domain>. ` +
+        `Set VITE_CONTROL_PLANE_API_URL to a control-plane host.`,
+    );
+  }
+
+  if (!isLocal && parsed.protocol !== 'https:') {
+    throw new Error(
+      `[control-plane] Credentialed requests must use https; got ${parsed.protocol}`,
+    );
+  }
+}
+
+assertControlPlaneOrigin(API_BASE_URL);
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -22,16 +64,23 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Module-level guard so a burst of in-flight requests that all 401 at once
+// triggers exactly one redirect. Never reset; the page reload after redirect
+// gives a fresh module instance.
+let logoutInFlight = false;
+
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     // Only redirect on 401 if we're not on the login page and not trying to login
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      // Handle unauthorized - redirect to login
-      localStorage.removeItem('control_plane_token');
-      localStorage.removeItem('control_plane_user');
-      window.location.href = '/login';
+      if (!logoutInFlight) {
+        logoutInFlight = true;
+        localStorage.removeItem('control_plane_token');
+        localStorage.removeItem('control_plane_user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

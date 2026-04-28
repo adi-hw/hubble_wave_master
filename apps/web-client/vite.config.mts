@@ -12,8 +12,17 @@ export default defineConfig(() => ({
     port: 4200,
     // Allow access from any host (localhost, acme.localhost, etc.)
     host: true,
-    // Proxy API requests through dev server to avoid cross-origin cookie issues
-    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ava=3004
+    // Proxy API requests through dev server to avoid cross-origin cookie issues.
+    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ava=3004.
+    //
+    // Cookie Path/Domain rewrite rationale (dev-only):
+    // The identity and auth services set their cookies with service-scoped
+    // paths (e.g. Path=/api/identity, Path=/api/auth) and a backend-specific
+    // Domain. In dev the entire app runs on a single origin (localhost:4200)
+    // and React-Router pages need to read XSRF-TOKEN from any path, so we
+    // strip Domain= and widen Path to '/'. Production deployments terminate
+    // each service behind its own ingress route — they keep their natural
+    // service-scoped cookie paths and this rewrite is irrelevant.
     proxy: {
       // Service-prefixed routes (primary pattern)
       '/api/identity': {

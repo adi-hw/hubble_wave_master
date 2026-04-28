@@ -5,12 +5,21 @@ export interface LoginCredentials {
   password: string;
 }
 
+export type AuthRole = 'super_admin' | 'admin' | 'operator' | 'viewer';
+
+const VALID_ROLES: ReadonlySet<AuthRole> = new Set([
+  'super_admin',
+  'admin',
+  'operator',
+  'viewer',
+]);
+
 export interface AuthUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'operator' | 'viewer';
+  role: AuthRole;
   avatarUrl?: string;
 }
 
@@ -21,6 +30,24 @@ export interface AuthResponse {
 
 const TOKEN_KEY = 'control_plane_token';
 const USER_KEY = 'control_plane_user';
+
+function clearLocalAuth(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+function isAuthUser(value: unknown): value is AuthUser {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.email === 'string' &&
+    typeof v.firstName === 'string' &&
+    typeof v.lastName === 'string' &&
+    typeof v.role === 'string' &&
+    VALID_ROLES.has(v.role as AuthRole)
+  );
+}
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
@@ -34,9 +61,12 @@ export const authService = {
     return response.data;
   },
 
-  logout(): void {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+  // Best-effort server-side logout. The control-plane backend does not yet
+  // expose a logout endpoint (tracked in SECRETS_ROTATION.md section 13).
+  // Local state is cleared and the user is redirected regardless of network
+  // outcome so the client never remains authenticated when logout is requested.
+  async logout(): Promise<void> {
+    clearLocalAuth();
     window.location.href = '/login';
   },
 
@@ -48,8 +78,14 @@ export const authService = {
     const userStr = localStorage.getItem(USER_KEY);
     if (!userStr) return null;
     try {
-      return JSON.parse(userStr);
+      const parsed = JSON.parse(userStr);
+      if (!isAuthUser(parsed)) {
+        clearLocalAuth();
+        return null;
+      }
+      return parsed;
     } catch {
+      clearLocalAuth();
       return null;
     }
   },
@@ -74,16 +110,22 @@ export const authService = {
     await api.post('/auth/change-password', { currentPassword, newPassword });
   },
 
-  hasRole(requiredRole: AuthUser['role']): boolean {
+  hasRole(requiredRole: AuthRole | AuthRole[]): boolean {
     const user = this.getUser();
     if (!user) return false;
 
-    const roleHierarchy: Record<AuthUser['role'], number> = {
+    const roleHierarchy: Record<AuthRole, number> = {
       super_admin: 4,
       admin: 3,
       operator: 2,
       viewer: 1,
     };
+
+    if (Array.isArray(requiredRole)) {
+      return requiredRole.some(
+        (role) => roleHierarchy[user.role] >= roleHierarchy[role],
+      );
+    }
 
     return roleHierarchy[user.role] >= roleHierarchy[requiredRole];
   },

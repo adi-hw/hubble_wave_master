@@ -19,6 +19,7 @@ import { ApiKeyService } from './api-key.service';
 import { Roles } from '../decorators/roles.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
+import { AuthenticatedOnly } from '../decorators/public.decorator';
 
 // DTOs with validation
 class CreateApiKeyDto {
@@ -46,6 +47,7 @@ class UpdateApiKeyScopesDto {
 }
 
 @ApiTags('API Keys')
+@AuthenticatedOnly()
 @Controller('api-keys')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()

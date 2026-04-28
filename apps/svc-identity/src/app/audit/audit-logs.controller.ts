@@ -10,6 +10,7 @@ import { AuthEvent } from '@hubblewave/instance-db';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface AuditLogsQuery {
   q?: string;
@@ -26,6 +27,7 @@ interface AuditLogsQuery {
  *
  * Provides endpoints for viewing system audit logs.
  */
+@AuthenticatedOnly()
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard)
 export class AuditLogsController {

@@ -3,7 +3,9 @@ import { ConfigServiceLocal } from './config.service';
 type ConfigScope = string;
 type ConfigType = string;
 import { AbacResource } from '../abac/abac.guard';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
+@AuthenticatedOnly()
 @Controller('config')
 export class ConfigController {
   constructor(private readonly configService: ConfigServiceLocal) {}

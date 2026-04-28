@@ -60,6 +60,10 @@ libs/**/.env
 **/secrets.json
 **/credentials.json
 
+# Local Claude Code settings (machine-local, never committed)
+.claude/settings.local.json
+.claude/*.local.md
+
 # Terraform
 .terraform/
 *.tfstate

@@ -3,6 +3,7 @@ import { NavigationResolutionService } from './navigation-resolution.service';
 import { NavigationPreferenceService } from './navigation-preference.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ResolvedNavigation, NavProfileSummary, SwitchProfileRequest, ToggleFavoriteRequest, RecordNavigationRequest } from './dto/navigation.dto';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface CurrentUserPayload {
   userId: string;
@@ -12,6 +13,7 @@ interface CurrentUserPayload {
   permissions: string[];
 }
 
+@AuthenticatedOnly()
 @Controller('navigation')
 export class NavigationController {
   constructor(

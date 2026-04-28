@@ -45,12 +45,13 @@ const DEFAULT_PERMISSIONS = [
 ];
 
 async function seed() {
+  const dbPassword = requireEnv('DB_PASSWORD');
   const dataSource = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
     username: process.env.DB_USER || 'hubblewave',
-    password: process.env.DB_PASSWORD || 'hubblewave',
+    password: dbPassword,
     database: process.env.DB_NAME || 'hubblewave',
     synchronize: false,
   });

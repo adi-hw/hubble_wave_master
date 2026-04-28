@@ -19,8 +19,12 @@ export function LoginPage() {
     try {
       await login(email, password);
     } catch (err: unknown) {
-      console.error('Login error:', err);
       const axiosError = err as { response?: { data?: { message?: string } }; message?: string; code?: string };
+      // Log only a sanitized message — never the raw error object, which can
+      // contain the request config (Authorization header) or response body
+      // (server-side stack traces, account hints) on some failure modes.
+      const safeMessage = axiosError.code || axiosError.message || 'Login failed';
+      console.error('Login error:', safeMessage);
 
       if (axiosError.code === 'ERR_NETWORK' || axiosError.message === 'Network Error') {
         setError('Unable to connect to the server. Please ensure the backend is running on port 3100.');

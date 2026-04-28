@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, ShieldAlert, DatabaseBackup, AlertTriangle } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, TenantInstance } from '../services/api';
+import { TypedConfirmDialog } from '../components/TypedConfirmDialog';
 
 type ActionState = 'idle' | 'running' | 'success' | 'error';
 
@@ -12,6 +13,7 @@ export function RecoveryPage() {
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState<ActionState>('idle');
   const [message, setMessage] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
 
   const selectedInstance = useMemo(
     () => instances.find((instance) => instance.id === selectedId) || null,
@@ -56,7 +58,7 @@ export function RecoveryPage() {
     }
   };
 
-  const handleRestore = async () => {
+  const handleRestoreRequest = () => {
     if (!selectedId) {
       setMessage('Select an instance to restore');
       setActionState('error');
@@ -67,6 +69,13 @@ export function RecoveryPage() {
       setActionState('error');
       return;
     }
+    setMessage(null);
+    setActionState('idle');
+    setRestoreDialogOpen(true);
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!selectedId || !backupId.trim()) return;
     setActionState('running');
     setMessage(null);
     try {
@@ -76,9 +85,11 @@ export function RecoveryPage() {
       });
       setActionState('success');
       setMessage('Restore triggered successfully.');
+      setRestoreDialogOpen(false);
     } catch (error: any) {
       setActionState('error');
       setMessage(error.response?.data?.message || error.message || 'Restore trigger failed.');
+      setRestoreDialogOpen(false);
     }
   };
 
@@ -231,7 +242,7 @@ export function RecoveryPage() {
           />
           <button
             type="button"
-            onClick={handleRestore}
+            onClick={handleRestoreRequest}
             disabled={actionState === 'running' || !selectedId}
             className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-white transition-opacity disabled:opacity-50 w-full"
             style={{ backgroundColor: colors.warning.base }}
@@ -241,6 +252,35 @@ export function RecoveryPage() {
           </button>
         </div>
       </div>
+
+      <TypedConfirmDialog
+        open={restoreDialogOpen}
+        title="Restore instance"
+        description={
+          selectedInstance ? (
+            <>
+              <p className="mb-2">
+                Restoring backup <code>{backupId.trim()}</code> will overwrite all current
+                data on{' '}
+                <strong>{selectedInstance.domain || selectedInstance.id}</strong>{' '}
+                ({selectedInstance.environment}).
+              </p>
+              <p>This action cannot be undone.</p>
+            </>
+          ) : (
+            <p>Confirm the restore operation.</p>
+          )
+        }
+        confirmationValue={selectedId}
+        confirmationLabel="To confirm, type the instance ID"
+        confirmButtonLabel="Restore instance"
+        busy={actionState === 'running'}
+        onCancel={() => {
+          if (actionState === 'running') return;
+          setRestoreDialogOpen(false);
+        }}
+        onConfirm={() => handleRestoreConfirm()}
+      />
     </div>
   );
 }

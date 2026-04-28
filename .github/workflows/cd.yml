@@ -99,10 +99,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          # Image tags are intentionally immutable. We do NOT push :latest -
+          # downstream deployments must reference an exact commit SHA or, ideally,
+          # an image digest (image@sha256:...). The deploy step below resolves
+          # the digest via `docker buildx imagetools inspect` after push.
           tags: |
             type=ref,event=branch
             type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

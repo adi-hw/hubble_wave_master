@@ -50,6 +50,29 @@ const UserPreferencesContext = createContext<UserPreferencesContextValue | undef
 
 const LOCAL_STORAGE_KEY = 'hw-user-preferences';
 
+/**
+ * Parse the localStorage preferences blob and validate it's a non-array
+ * object. Returns null on any shape mismatch and removes the corrupt entry so
+ * subsequent reads start clean. JSON.parse can produce arrays, primitives, or
+ * null — none of which are valid preference shapes — and a malicious browser
+ * extension could inject any of them.
+ */
+function readStoredPreferences(): Record<string, unknown> | null {
+  const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    return null;
+  }
+}
+
 // Create full preferences from defaults (adds missing id/userId/etc for local use)
 const createDefaultPrefs = (): UserPreferences => ({
   id: '',
@@ -76,18 +99,11 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
 
       if (!token) {
         // Not logged in - use local storage or defaults
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            // Merge with defaults to ensure all fields exist
-            setPreferences({ ...createDefaultPrefs(), ...parsed });
-          } catch {
-            // Invalid stored data, use defaults
-            setPreferences(createDefaultPrefs());
-          }
+        const parsed = readStoredPreferences();
+        if (parsed) {
+          // Merge with defaults to ensure all fields exist
+          setPreferences({ ...createDefaultPrefs(), ...parsed });
         } else {
-          // No stored data, use defaults
           setPreferences(createDefaultPrefs());
         }
         setLoading(false);
@@ -101,19 +117,12 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(prefs));
       } catch {
         // Server unavailable - use local storage as fallback
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setPreferences({ ...createDefaultPrefs(), ...parsed });
-          } catch {
-            // Use defaults as last resort
-            setPreferences(createDefaultPrefs());
-            setError('Failed to load preferences');
-          }
+        const parsed = readStoredPreferences();
+        if (parsed) {
+          setPreferences({ ...createDefaultPrefs(), ...parsed });
         } else {
-          // Use defaults as last resort
           setPreferences(createDefaultPrefs());
+          setError('Failed to load preferences');
         }
       } finally {
         setLoading(false);

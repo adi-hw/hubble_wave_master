@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Req, Get, Logger, UnauthorizedExcept
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
-import { Public } from './decorators/public.decorator';
+import { Public, AuthenticatedOnly } from './decorators/public.decorator';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthenticatedRequest, PublicRequest } from '@hubblewave/auth-guard';
@@ -134,6 +134,7 @@ export class AuthController {
     }
   }
 
+  @AuthenticatedOnly()
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
@@ -157,6 +158,7 @@ export class AuthController {
     return response;
   }
 
+  @AuthenticatedOnly()
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 attempts per minute
@@ -184,6 +186,7 @@ export class AuthController {
     );
   }
 
+  @AuthenticatedOnly()
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @SkipThrottle() // Profile endpoint called frequently after login

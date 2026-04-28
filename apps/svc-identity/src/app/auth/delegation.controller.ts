@@ -22,6 +22,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 import { DelegationService, CreateDelegationDto } from './delegation.service';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface RequestWithUser {
   user: {
@@ -30,6 +31,7 @@ interface RequestWithUser {
   };
 }
 
+@AuthenticatedOnly()
 @Controller('auth/delegations')
 @UseGuards(JwtAuthGuard)
 export class DelegationController {

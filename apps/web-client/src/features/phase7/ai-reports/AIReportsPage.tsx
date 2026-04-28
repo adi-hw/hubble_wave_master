@@ -346,7 +346,22 @@ export const AIReportsPage: React.FC = () => {
                 ) : selectedReport.content ? (
                   <div
                     className="prose max-w-none text-foreground dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedReport.content) }}
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(selectedReport.content, {
+                        // Strict allow-list mirrors the sanitizer used by
+                        // svc-ava when generating report HTML, so this
+                        // viewer cannot render anything richer than the
+                        // backend approves.
+                        ALLOWED_TAGS: [
+                          'p', 'span', 'strong', 'em',
+                          'ul', 'ol', 'li',
+                          'h1', 'h2', 'h3',
+                          'table', 'tr', 'td', 'th',
+                          'br',
+                        ],
+                        ALLOWED_ATTR: ['class'],
+                      }),
+                    }}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">

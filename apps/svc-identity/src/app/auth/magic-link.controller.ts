@@ -20,6 +20,7 @@ import { JwtService } from '@nestjs/jwt';
 import { MagicLinkService } from './magic-link.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { AuthEventsService } from './auth-events.service';
+import { Public } from './decorators/public.decorator';
 
 interface RequestWithUser {
   ip?: string;
@@ -32,6 +33,7 @@ interface EmailServiceInterface {
   sendMagicLink(email: string, link: string, expiresAt: Date): Promise<void>;
 }
 
+@Public()
 @Controller('auth/magic-link')
 export class MagicLinkController {
   constructor(

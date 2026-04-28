@@ -12,6 +12,7 @@ import { AuditLog, buildAuditLogHash, buildAuditLogHashPayload } from '@hubblewa
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface AuditEventQuery {
   q?: string;
@@ -25,6 +26,7 @@ interface AuditEventQuery {
   pageSize?: string;
 }
 
+@AuthenticatedOnly()
 @Controller('audit/events')
 @UseGuards(JwtAuthGuard)
 export class AuditEventsController {

@@ -12,6 +12,15 @@ export class CreateInlineEditingTestTable1800000000001 implements MigrationInter
   name = 'CreateInlineEditingTestTable1800000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Test fixtures must not run in production unless explicitly opted in.
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.HW_INCLUDE_TEST_FIXTURES !== 'true'
+    ) {
+      console.log('Skipping inline_editing_test fixture in production (set HW_INCLUDE_TEST_FIXTURES=true to override)');
+      return;
+    }
+
     // =========================================================================
     // STEP 1: Create the physical table
     // =========================================================================

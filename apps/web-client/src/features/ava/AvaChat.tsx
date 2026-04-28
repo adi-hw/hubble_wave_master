@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { safeNavigate } from '../../lib/safe-navigate';
 import { GlassButton } from '../../components/ui/glass/GlassButton';
 import { GlassAvatar } from '../../components/ui/glass/GlassAvatar';
 import { GlassModal } from '../../components/ui/glass/GlassModal';
@@ -296,10 +297,13 @@ export const AvaChat: React.FC<AvaChatProps> = ({
       }
 
       const result = await response.json();
+      // AVA action results may include a follow-up redirect target. Both the
+      // server-supplied redirectUrl and the action target are validated as
+      // same-origin internal paths to prevent open-redirect abuse.
       if (result?.redirectUrl) {
-        navigate(result.redirectUrl);
+        safeNavigate(result.redirectUrl, navigate);
       } else if (action.type === 'navigate') {
-        navigate(action.target);
+        safeNavigate(action.target, navigate);
       }
 
       if (previewOpen) {
