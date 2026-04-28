@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException, ForbiddenException, SetMetadata, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AbacService } from './abac.service';
+import { IS_PUBLIC_KEY, IS_AUTHENTICATED_ONLY_KEY } from '../auth/decorators/public.decorator';
 
 export const ABAC_RESOURCE_KEY = 'abac_resource';
 export const SKIP_ABAC_KEY = 'skip_abac';
@@ -26,6 +27,16 @@ export class AbacGuard implements CanActivate {
     const handler = context.getHandler();
     const cls = context.getClass();
 
+    // Auto-skip when the endpoint is explicitly @Public() (no caller identity
+    // exists yet, so there is nothing for ABAC to evaluate against — login,
+    // magic-link, refresh, etc.) or @AuthenticatedOnly() (the route's
+    // authorization is intentionally "any authenticated user, no resource-
+    // level decision" — /auth/me, /auth/logout, change-password). Either
+    // marker is treated as the explicit ABAC opt-out alongside @SkipAbac().
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler, cls]);
+    if (isPublic) return true;
+    const isAuthenticatedOnly = this.reflector.getAllAndOverride<boolean>(IS_AUTHENTICATED_ONLY_KEY, [handler, cls]);
+    if (isAuthenticatedOnly) return true;
     const skip = this.reflector.getAllAndOverride<boolean>(SKIP_ABAC_KEY, [handler, cls]);
     if (skip) return true;
 
@@ -38,11 +49,12 @@ export class AbacGuard implements CanActivate {
 
     if (!meta) {
       // Fail closed: an endpoint protected by AbacGuard must declare either an
-      // @AbacResource(...) policy target or opt out explicitly via @SkipAbac().
-      // Silently allowing endpoints with no metadata creates an authorization
-      // hole that scales with every new route added.
+      // @AbacResource(...) policy target or opt out explicitly via @Public,
+      // @AuthenticatedOnly, or @SkipAbac. Silently allowing endpoints with no
+      // metadata creates an authorization hole that scales with every new
+      // route added.
       this.logger.warn(
-        `ABAC denied: route ${cls?.name ?? '<class>'}.${handler?.name ?? '<handler>'} has no @AbacResource or @SkipAbac metadata`,
+        `ABAC denied: route ${cls?.name ?? '<class>'}.${handler?.name ?? '<handler>'} has no @AbacResource or opt-out metadata`,
       );
       throw new ForbiddenException('ABAC policy not configured for this endpoint');
     }

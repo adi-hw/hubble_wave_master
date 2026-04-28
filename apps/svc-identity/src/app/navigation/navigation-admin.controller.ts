@@ -4,10 +4,12 @@ import { Repository } from 'typeorm';
 import { NavProfile, NavNode, NavPatch } from '@hubblewave/instance-db';
 import { JwtAuthGuard, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { CreateNavProfileDto, UpdateNavProfileDto, CreateNavNodeDto, UpdateNavNodeDto } from './dto/navigation.dto';
+import { SkipAbac } from '../abac/abac.guard';
 
 @Controller('admin/navigation')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
+@SkipAbac()
 export class NavigationAdminController {
   constructor(
     @InjectRepository(NavProfile)
