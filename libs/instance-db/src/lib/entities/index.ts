@@ -261,6 +261,7 @@ export type {
 // ─────────────────────────────────────────────────────────────────
 export {
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
@@ -275,6 +276,8 @@ export type {
   AutomationAction,
   ClientScriptTrigger,
   ClientScriptAction,
+  AutomationRuleStatus,
+  AutomationRuleRevisionStatus,
 } from './automation.entity';
 
 // ─────────────────────────────────────────────────────────────────
@@ -302,6 +305,7 @@ export type {
 // ─────────────────────────────────────────────────────────────────
 export {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -317,6 +321,8 @@ export type {
   ApprovalStatus,
   ApproverType,
   ApprovalType,
+  ProcessFlowDefinitionStatus,
+  ProcessFlowDefinitionRevisionStatus,
 } from './process-flow.entity';
 
 // ─────────────────────────────────────────────────────────────────
@@ -620,12 +626,14 @@ import {
 } from './advanced-auth.entity';
 import {
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
 } from './automation.entity';
 import {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -854,12 +862,14 @@ export const instanceEntities = [
 
   // Automation (Phase 3)
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
 
   // Process Flows (Phase 4)
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,

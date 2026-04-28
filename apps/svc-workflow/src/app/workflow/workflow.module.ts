@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -33,6 +34,7 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
   imports: [
     TypeOrmModule.forFeature([
       ProcessFlowDefinition,
+      ProcessFlowDefinitionRevision,
       ProcessFlowInstance,
       ProcessFlowExecutionHistory,
       Approval,

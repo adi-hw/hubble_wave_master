@@ -68,6 +68,21 @@ export class WorkflowDefinitionsController {
     return this.definitions.duplicate(id, body.code, this.toActor(user));
   }
 
+  @Post(':id/publish')
+  async publish(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
+    return this.definitions.publish(id, user?.id);
+  }
+
+  @Post(':id/deprecate')
+  async deprecate(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
+    return this.definitions.deprecate(id, user?.id);
+  }
+
+  @Get(':id/revisions')
+  async listRevisions(@Param('id') id: string) {
+    return this.definitions.listRevisions(id);
+  }
+
   private toActor(user?: RequestUser) {
     if (!user) return undefined;
     return {

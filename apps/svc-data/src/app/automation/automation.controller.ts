@@ -102,6 +102,27 @@ export class AutomationController {
     return this.automationService.toggleAutomation(id, user?.id);
   }
 
+  @Post('automations/:id/publish')
+  async publishAutomation(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.automationService.publishAutomation(id, user?.id);
+  }
+
+  @Post('automations/:id/deprecate')
+  async deprecateAutomation(
+    @CurrentUser() user: RequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.automationService.deprecateAutomation(id, user?.id);
+  }
+
+  @Get('automations/:id/revisions')
+  async listAutomationRevisions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.automationService.listRevisions(id);
+  }
+
   @Put('collections/:collectionId/automations/reorder')
   async reorderAutomations(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,

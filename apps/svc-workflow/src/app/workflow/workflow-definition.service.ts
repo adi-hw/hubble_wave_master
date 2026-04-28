@@ -1,7 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ProcessFlowDefinition, ProcessFlowRunAs, User } from '@hubblewave/instance-db';
+import { DataSource, Repository } from 'typeorm';
+import {
+  ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
+  ProcessFlowRunAs,
+  User,
+} from '@hubblewave/instance-db';
 import {
   CreateWorkflowDefinitionRequest,
   UpdateWorkflowDefinitionRequest,
@@ -26,9 +31,12 @@ export class WorkflowDefinitionService {
   constructor(
     @InjectRepository(ProcessFlowDefinition)
     private readonly definitionRepo: Repository<ProcessFlowDefinition>,
+    @InjectRepository(ProcessFlowDefinitionRevision)
+    private readonly revisionRepo: Repository<ProcessFlowDefinitionRevision>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly auditService: WorkflowAuditService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(query: WorkflowListQuery) {
@@ -71,11 +79,14 @@ export class WorkflowDefinitionService {
     await this.validateCanvasApprovers(request.canvas);
     const resolvedRunAs = this.resolveRunAs(request.runAs, actorObj);
 
+    const applicationId = await this.resolveApplicationId(request.collectionId);
+
     const definition = this.definitionRepo.create({
       code: request.code,
       name: request.name.trim(),
       description: request.description?.trim() || undefined,
       collectionId: request.collectionId || undefined,
+      applicationId,
       triggerType: request.triggerType || 'manual',
       triggerConditions: request.triggerConditions || undefined,
       triggerSchedule: request.triggerSchedule || undefined,
@@ -86,11 +97,26 @@ export class WorkflowDefinitionService {
       canvas: this.normalizeCanvas(request.canvas),
       version: 1,
       isActive: false,
+      status: 'draft',
       createdBy: actorObj.id || undefined,
       updatedBy: actorObj.id || undefined,
     } as Partial<ProcessFlowDefinition>);
 
     const saved = await this.definitionRepo.save(definition);
+
+    // Seed revision 1 (draft) so currentRevisionId is non-null from creation.
+    const savedRevision = await this.revisionRepo.save(
+      this.revisionRepo.create({
+        processFlowId: saved.id,
+        revision: 1,
+        status: 'draft',
+        payload: this.snapshot(saved),
+        createdBy: actorObj.id ?? null,
+      }),
+    );
+    saved.currentRevisionId = savedRevision.id;
+    await this.definitionRepo.save(saved);
+
     await this.auditService.record({
       actorId: actorObj.id,
       action: 'workflow.create',
@@ -132,7 +158,25 @@ export class WorkflowDefinitionService {
     definition.version = definition.version + 1;
     definition.updatedBy = actorObj.id || undefined;
 
+    // Per ADR-5 every edit returns the parent to draft and appends a
+    // new draft revision. Publishing the new revision flips both back.
+    definition.status = 'draft';
+
     const saved = await this.definitionRepo.save(definition);
+
+    const nextRev = await this.nextRevisionNumber(saved.id);
+    const savedRevision = await this.revisionRepo.save(
+      this.revisionRepo.create({
+        processFlowId: saved.id,
+        revision: nextRev,
+        status: 'draft',
+        payload: this.snapshot(saved),
+        createdBy: actorObj.id ?? null,
+      }),
+    );
+    saved.currentRevisionId = savedRevision.id;
+    await this.definitionRepo.save(saved);
+
     await this.auditService.record({
       actorId: actorObj.id,
       action: 'workflow.update',
@@ -141,6 +185,82 @@ export class WorkflowDefinitionService {
       newValues: this.auditValues(saved),
     });
     return saved;
+  }
+
+  /**
+   * Publish the current draft revision of a workflow. Sets the revision
+   * status to `published`, stamps publishedBy/publishedAt, and bumps
+   * the parent ProcessFlowDefinition to `published`.
+   *
+   * Note: lifecycle status is orthogonal to operational `is_active`.
+   * Publishing a flow does NOT auto-activate it; a separate `activate`
+   * call is required for runtime triggers to fire.
+   */
+  async publish(id: string, actorId?: string) {
+    const definition = await this.getById(id);
+    const previous = this.auditValues(definition);
+
+    if (!definition.currentRevisionId) {
+      throw new NotFoundException(
+        `Workflow ${id} has no current revision to publish`,
+      );
+    }
+    const revision = await this.revisionRepo.findOne({
+      where: { id: definition.currentRevisionId },
+    });
+    if (!revision) {
+      throw new NotFoundException(
+        `Current revision ${definition.currentRevisionId} missing`,
+      );
+    }
+
+    if (revision.status !== 'published') {
+      revision.status = 'published';
+      revision.publishedBy = actorId ?? null;
+      revision.publishedAt = new Date();
+      await this.revisionRepo.save(revision);
+    }
+
+    if (definition.status !== 'published') {
+      definition.status = 'published';
+      definition.publishedAt = new Date();
+      definition.updatedBy = actorId || undefined;
+      await this.definitionRepo.save(definition);
+    }
+
+    await this.auditService.record({
+      actorId,
+      action: 'workflow.publish',
+      recordId: definition.id,
+      oldValues: previous,
+      newValues: this.auditValues(definition),
+    });
+    return definition;
+  }
+
+  /** Soft-deprecate a workflow definition. */
+  async deprecate(id: string, actorId?: string) {
+    const definition = await this.getById(id);
+    const previous = this.auditValues(definition);
+    definition.status = 'deprecated';
+    definition.updatedBy = actorId || undefined;
+    const saved = await this.definitionRepo.save(definition);
+    await this.auditService.record({
+      actorId,
+      action: 'workflow.deprecate',
+      recordId: saved.id,
+      oldValues: previous,
+      newValues: this.auditValues(saved),
+    });
+    return saved;
+  }
+
+  /** List revisions for a workflow definition, newest first. */
+  listRevisions(id: string) {
+    return this.revisionRepo.find({
+      where: { processFlowId: id },
+      order: { revision: 'DESC' },
+    });
   }
 
   async delete(id: string, actorId?: string) {
@@ -220,6 +340,7 @@ export class WorkflowDefinitionService {
       name: `${source.name} Copy`,
       description: source.description,
       collectionId: source.collectionId,
+      applicationId: source.applicationId,
       triggerType: source.triggerType,
       triggerConditions: source.triggerConditions,
       triggerSchedule: source.triggerSchedule,
@@ -230,11 +351,26 @@ export class WorkflowDefinitionService {
       canvas: source.canvas,
       version: 1,
       isActive: false,
+      status: 'draft',
       createdBy: actorObj.id || undefined,
       updatedBy: actorObj.id || undefined,
     } as Partial<ProcessFlowDefinition>);
 
     const saved = await this.definitionRepo.save(copy);
+
+    // Seed revision 1 (draft) for the duplicated workflow as well.
+    const savedRevision = await this.revisionRepo.save(
+      this.revisionRepo.create({
+        processFlowId: saved.id,
+        revision: 1,
+        status: 'draft',
+        payload: this.snapshot(saved),
+        createdBy: actorObj.id ?? null,
+      }),
+    );
+    saved.currentRevisionId = savedRevision.id;
+    await this.definitionRepo.save(saved);
+
     await this.auditService.record({
       actorId: actorObj.id,
       action: 'workflow.duplicate',
@@ -243,6 +379,64 @@ export class WorkflowDefinitionService {
     });
 
     return saved;
+  }
+
+  /**
+   * Resolve the Application a workflow should belong to. When bound to
+   * a collection, inherit that collection's applicationId; otherwise
+   * fall back to the `default` Application created in Slice A.
+   */
+  private async resolveApplicationId(collectionId?: string | null): Promise<string> {
+    if (collectionId) {
+      const result: Array<{ application_id: string | null }> = await this.dataSource.query(
+        `SELECT application_id FROM collection_definitions WHERE id = $1 LIMIT 1`,
+        [collectionId],
+      );
+      const fromCollection = result[0]?.application_id;
+      if (fromCollection) {
+        return fromCollection;
+      }
+    }
+    const fallback: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT id FROM applications WHERE code = 'default' LIMIT 1`,
+    );
+    if (fallback.length === 0) {
+      throw new NotFoundException(
+        'Default Application missing — applications-registry migration must run first.',
+      );
+    }
+    return fallback[0].id;
+  }
+
+  /** Authoring snapshot persisted on every ProcessFlowDefinitionRevision row. */
+  private snapshot(d: ProcessFlowDefinition): Record<string, unknown> {
+    return {
+      name: d.name,
+      code: d.code,
+      description: d.description,
+      collectionId: d.collectionId,
+      applicationId: d.applicationId,
+      version: d.version,
+      isActive: d.isActive,
+      canvas: d.canvas,
+      triggerType: d.triggerType,
+      triggerConditions: d.triggerConditions,
+      triggerSchedule: d.triggerSchedule,
+      triggerFilter: d.triggerFilter,
+      runAs: d.runAs,
+      timeoutMinutes: d.timeoutMinutes,
+      maxRetries: d.maxRetries,
+    };
+  }
+
+  private async nextRevisionNumber(processFlowId: string): Promise<number> {
+    const result: Array<{ max: number | string | null }> = await this.revisionRepo
+      .createQueryBuilder('rev')
+      .select('MAX(rev.revision)', 'max')
+      .where('rev.process_flow_id = :processFlowId', { processFlowId })
+      .getRawMany();
+    const current = Number(result[0]?.max ?? 0);
+    return Number.isFinite(current) ? current + 1 : 1;
   }
 
   private normalizeActor(actor?: WorkflowDefinitionActor | string): WorkflowDefinitionActor {
