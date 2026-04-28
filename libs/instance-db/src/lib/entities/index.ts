@@ -129,6 +129,7 @@ export { ModuleEntity, ModuleSecurity, ModuleType, ModuleTargetConfig } from './
 // Forms
 // ─────────────────────────────────────────────────────────────────
 export { FormDefinition, FormVersion } from './form.entity';
+export type { FormDefinitionStatus, FormVersionStatus } from './form.entity';
 
 // ─────────────────────────────────────────────────────────────────
 // Views
