@@ -457,9 +457,11 @@ export class ActionExecutorService {
         const definition = await collectionRepo.findOne({
           where: [{ code: collection }, { tableName: collection }],
         });
-        const target = definition?.tableName || collection;
+        if (!definition) {
+          return { allowed: false, reason: `Collection ${collection} not found` };
+        }
         const operation = action.type === 'create' ? 'create' : 'update';
-        await this.authorizationService.ensureTableAccess(requestContext, target, operation);
+        await this.authorizationService.ensureCollectionAccess(requestContext, definition.id, operation);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Authorization check failed';
         return { allowed: false, reason: message };

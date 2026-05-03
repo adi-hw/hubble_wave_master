@@ -25,7 +25,9 @@ const AUTHZ_USAGE_PATTERNS = [
   /\bauthz\./,
   /AuthorizationService/,
   /ensureTableAccess\(/,
+  /ensureCollectionAccess\(/,
   /buildRowLevelClause\(/,
+  /buildCollectionRowLevelClause\(/,
 ];
 
 function walk(dir: string, files: string[] = []) {

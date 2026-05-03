@@ -119,10 +119,10 @@ export class DataService {
     const skip = (page - 1) * limit;
 
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
-    const readableProperties = await this.authz.filterReadableFields(ctx, model.storageTable, allProperties);
+    const readableProperties = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allProperties);
     if (!readableProperties.length) {
       throw new ForbiddenException('No readable properties on this collection');
     }
@@ -139,7 +139,7 @@ export class DataService {
     });
 
     // SECURITY: Use safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'read', 't');
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'read', 't');
     const ds = this.dataSource;
 
     // Build count query with safe parameterized RLS
@@ -167,7 +167,7 @@ export class DataService {
     qb.offset(skip).limit(limit);
 
     const rows = await qb.getRawMany();
-    const masked = await Promise.all(rows.map((row: unknown) => this.authz.maskRecord(ctx, model.storageTable, row as Record<string, unknown>, readableProperties as AuthorizedPropertyMeta[])));
+    const masked = await Promise.all(rows.map((row: unknown) => this.authz.maskCollectionRecord(ctx, row as Record<string, unknown>, readableProperties as AuthorizedPropertyMeta[])));
 
     return {
       data: masked,
@@ -184,10 +184,10 @@ export class DataService {
   // Get single record
   async getOne(ctx: RequestContext, collectionCode: string, id: string) {
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
-    const readableProperties = await this.authz.filterReadableFields(ctx, model.storageTable, allProperties);
+    const readableProperties = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allProperties);
     if (!readableProperties.length) {
       throw new ForbiddenException('No readable properties on this collection');
     }
@@ -204,7 +204,7 @@ export class DataService {
     });
 
     // SECURITY: Use safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'read', 't');
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'read', 't');
     const ds = this.dataSource;
     const qb = ds.createQueryBuilder().select(selectParts).from(this.buildPhysicalTableForQb(model), 't');
     qb.where('t.id = :id', { id });
@@ -215,7 +215,7 @@ export class DataService {
     if (!result[0]) throw new NotFoundException();
 
     return {
-      record: await this.authz.maskRecord(ctx, model.storageTable, result[0], readableProperties as AuthorizedPropertyMeta[]),
+      record: await this.authz.maskCollectionRecord(ctx, result[0], readableProperties as AuthorizedPropertyMeta[]),
       properties: readableProperties,
     };
   }
@@ -223,10 +223,10 @@ export class DataService {
   // Create record
   async create(ctx: RequestContext, collectionCode: string, payload: Record<string, any>) {
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'create');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'create');
 
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
-    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const columns: string[] = [];
@@ -289,10 +289,10 @@ export class DataService {
   // Update record
   async update(ctx: RequestContext, collectionCode: string, id: string, payload: Record<string, any>) {
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'update');
 
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
-    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const ds = this.dataSource;
@@ -353,7 +353,7 @@ export class DataService {
     qb.set(updateValues);
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'update', this.buildPhysicalTableForQb(model));
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'update', this.buildPhysicalTableForQb(model));
     rlsClauses.forEach((clause) => qb.andWhere(clause));
     qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
 
@@ -365,7 +365,7 @@ export class DataService {
   // Delete record
   async delete(ctx: RequestContext, collectionCode: string, id: string) {
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'delete');
 
     const ds = this.dataSource;
 
@@ -376,7 +376,7 @@ export class DataService {
       .where('id = :id', { id });
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'delete', this.buildPhysicalTableForQb(model));
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'delete', this.buildPhysicalTableForQb(model));
     rlsClauses.forEach((clause) => qb.andWhere(clause));
     qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
 
@@ -402,10 +402,10 @@ export class DataService {
     }
 
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'update');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'update');
 
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
-    const writableProperties = await this.authz.filterWritableFields(ctx, model.storageTable, allProperties);
+    const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
     const ds = this.dataSource;
@@ -446,7 +446,7 @@ export class DataService {
     qb.set(updateValues);
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'update', this.buildPhysicalTableForQb(model));
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'update', this.buildPhysicalTableForQb(model));
     rlsClauses.forEach((clause) => qb.andWhere(clause));
     qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
 
@@ -471,7 +471,7 @@ export class DataService {
     }
 
     const model = await this.modelRegistry.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'delete');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'delete');
 
     const ds = this.dataSource;
 
@@ -482,7 +482,7 @@ export class DataService {
       .whereInIds(ids);
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(ctx, model.storageTable, 'delete', this.buildPhysicalTableForQb(model));
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'delete', this.buildPhysicalTableForQb(model));
     rlsClauses.forEach((clause) => qb.andWhere(clause));
     qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
 

@@ -5,6 +5,8 @@ import NodeCache from 'node-cache';
 
 /** Return type for getCollection method */
 export interface CollectionInfo {
+  /** Stable collection UUID — required for authorization lookups. */
+  collectionId: string;
   collectionCode: string;
   label: string;
   storageTable: string;
@@ -130,13 +132,21 @@ export class ModelRegistryService implements OnModuleDestroy {
     const collectionRepo = ds.getRepository(CollectionDefinition);
     const collection = await collectionRepo.findOne({ where: { tableName: collectionCode, isActive: true } });
 
+    if (!collection) {
+      throw new NotFoundException(
+        `Collection '${collectionCode}' has no CollectionDefinition row. ` +
+          'Authorization requires a stable collection identity — register the collection before exposing the table.',
+      );
+    }
+
     const collectionInfo: CollectionInfo = {
+      collectionId: collection.id,
       collectionCode,
-      label: collection?.name || this.formatCollectionName(collectionCode),
+      label: collection.name || this.formatCollectionName(collectionCode),
       storageTable: collectionCode,
       storageSchema: 'public',
-      category: collection?.category || 'application',
-      isSystem: collection?.isSystem ?? false,
+      category: collection.category || 'application',
+      isSystem: collection.isSystem ?? false,
     };
 
     this.cache.set(cacheKey, collectionInfo);

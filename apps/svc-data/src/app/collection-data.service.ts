@@ -889,7 +889,7 @@ export class CollectionDataService {
     const collection = await this.getCollection(collectionCode);
 
     // Check table-level access
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     // Run before-query automations. Plan §9.1 exposes `before_query`
     // as a gate primarily for Abort (e.g. block list reads on
@@ -903,9 +903,9 @@ export class CollectionDataService {
     const allProperties = await this.getProperties(collection.id);
 
     // Filter to readable properties based on property ACLs
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -973,7 +973,7 @@ export class CollectionDataService {
     const countQb = ds.createQueryBuilder().select('COUNT(*)', 'total').from(`${schemaName}.${tableNameOnly}`, 't');
 
     // Apply row-level security predicates
-    const rowLevelClause = await this.authz.buildRowLevelClause(context, collection.tableName, 'read', 't');
+    const rowLevelClause = await this.authz.buildCollectionRowLevelClause(context, collection.id, 'read', 't');
     if (rowLevelClause.clauses.length > 0) {
       rowLevelClause.clauses.forEach((clause, index) => {
         countQb.andWhere(clause, this.prefixParams(rowLevelClause.params, `rls_${index}_`));
@@ -1131,12 +1131,12 @@ export class CollectionDataService {
   async getOne(ctx: RequestContext, collectionCode: string, id: string): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     const allProperties = await this.getProperties(collection.id);
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -1219,12 +1219,12 @@ export class CollectionDataService {
   ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'create');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'create');
 
     const allProperties = await this.getProperties(collection.id);
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -1446,16 +1446,16 @@ export class CollectionDataService {
   ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'update');
 
     // Get existing record
     const existingResult = await this.getOne(context, collectionCode, id);
     const existingRecord = existingResult.record;
 
     const allProperties = await this.getProperties(collection.id);
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -1669,7 +1669,7 @@ export class CollectionDataService {
   async delete(ctx: RequestContext, collectionCode: string, id: string): Promise<{ success: boolean }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'delete');
 
     // Verify record exists
     const existingResult = await this.getOne(context, collectionCode, id);
@@ -1759,12 +1759,12 @@ export class CollectionDataService {
 
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'update');
 
     const allProperties = await this.getProperties(collection.id);
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -1841,7 +1841,7 @@ export class CollectionDataService {
 
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'delete');
 
     // Filter ids through row-level access for the 'delete' operation.
     const authorizedIds = await this.filterIdsByRowLevel(context, collection.tableName, ids, 'delete');
@@ -1995,7 +1995,7 @@ export class CollectionDataService {
   ): Promise<{ id: string; label: string }[]> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     const properties = await this.getProperties(collection.id);
     const displayProp = properties.find((p) => p.code === displayProperty);
@@ -2041,15 +2041,15 @@ export class CollectionDataService {
     const collection = await this.getCollection(collectionCode);
 
     // Check table-level access
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     // Get all properties
     const allProperties = await this.getProperties(collection.id);
 
     // Filter to readable properties based on property ACLs
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,
@@ -2257,15 +2257,15 @@ export class CollectionDataService {
     const collection = await this.getCollection(collectionCode);
 
     // Check table-level access
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     // Get all properties
     const allProperties = await this.getProperties(collection.id);
 
     // Filter to readable properties based on property ACLs
-    const authorizedFields = await this.authz.getAuthorizedFields(
+    const authorizedFields = await this.authz.getAuthorizedFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       allProperties.map((p) => ({
         code: p.code,
         storagePath: `column:${this.getStorageColumn(p)}`,

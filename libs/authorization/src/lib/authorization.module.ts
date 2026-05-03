@@ -1,14 +1,16 @@
 import { Module, DynamicModule, Provider, Type } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import {
   CollectionAccessRule,
+  CollectionDefinition,
   PropertyAccessRule,
   PropertyDefinition,
 } from '@hubblewave/instance-db';
 import {
   AuthorizationService,
   COLLECTION_ACL_REPOSITORY,
+  COLLECTION_DEFINITION_REPOSITORY,
   PROPERTY_ACL_REPOSITORY,
 } from './authorization.service';
 import { AbacService } from './abac.service';
@@ -77,6 +79,14 @@ export class AuthorizationModule {
         useValue: null,
       });
     }
+
+    // CollectionDefinition lookup repository (used by deprecated *Table methods
+    // to resolve tableName -> collectionId; the *Collection methods do not
+    // need it).
+    providers.push({
+      provide: COLLECTION_DEFINITION_REPOSITORY,
+      useValue: null,
+    });
 
     const imports: any[] = [];
 
@@ -181,6 +191,7 @@ export class AuthorizationModule {
       imports: [
         TypeOrmModule.forFeature([
           CollectionAccessRule,
+          CollectionDefinition,
           PropertyAccessRule,
           PropertyDefinition,
         ]),
@@ -202,6 +213,10 @@ export class AuthorizationModule {
         {
           provide: PROPERTY_ACL_REPOSITORY,
           useExisting: PropertyAclRepository,
+        },
+        {
+          provide: COLLECTION_DEFINITION_REPOSITORY,
+          useExisting: getRepositoryToken(CollectionDefinition),
         },
       ],
       exports: [
