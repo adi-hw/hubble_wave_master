@@ -143,11 +143,11 @@ export class GridQueryService {
 
     // Get table metadata
     const model = await this.modelRegistry.getCollection(collection);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     // Get readable fields
     const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
-    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
+    const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     if (!readableFields.length) {
       throw new ForbiddenException('No readable properties on this collection');
@@ -166,9 +166,9 @@ export class GridQueryService {
     this.buildReferenceJoins(qb, readableFields);
 
     // Apply RLS
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
       ctx,
-      model.storageTable,
+      model.collectionId,
       'read',
       't',
     );
@@ -195,7 +195,7 @@ export class GridQueryService {
     // Mask sensitive data
     const maskedRows = await Promise.all(
       rows.map((row) =>
-        this.authz.maskRecord(ctx, model.storageTable, row, readableFields as AuthorizedPropertyMeta[]),
+        this.authz.maskCollectionRecord(ctx, row, readableFields as AuthorizedPropertyMeta[]),
       ),
     );
 
@@ -218,11 +218,11 @@ export class GridQueryService {
 
     // Get table metadata
     const model = await this.modelRegistry.getCollection(collection);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     // Get readable fields for filtering
     const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
-    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
+    const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     // Build count query
     const qb = this.dataSource
@@ -231,9 +231,9 @@ export class GridQueryService {
       .from(this.buildPhysicalTableForQb(model), 't');
 
     // Apply RLS
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
       ctx,
-      model.storageTable,
+      model.collectionId,
       'read',
       't',
     );
@@ -268,10 +268,10 @@ export class GridQueryService {
 
     // Get table metadata
     const model = await this.modelRegistry.getCollection(collection);
-    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+    await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
-    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
+    const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     // Track reference properties that need LEFT JOINs for display values
     const referenceJoins: Array<{
@@ -380,9 +380,9 @@ export class GridQueryService {
     qb.groupBy(allGroupByColumns.join(', '));
 
     // Apply RLS
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
       ctx,
-      model.storageTable,
+      model.collectionId,
       'read',
       't',
     );

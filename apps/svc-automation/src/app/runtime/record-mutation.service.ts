@@ -46,11 +46,11 @@ export class RecordMutationService {
   }): Promise<Record<string, unknown>> {
     const { collection, properties } = await this.getCollectionWithProperties(params.collectionCode);
     const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'create');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'create');
 
-    const writable = await this.authz.filterWritableFields(
+    const writable = await this.authz.filterWritableFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       this.toPropertyMeta(properties),
     );
     const writableCodes = new Set(writable.map((p) => p.code));
@@ -119,16 +119,16 @@ export class RecordMutationService {
   }): Promise<Record<string, unknown>> {
     const { collection, properties } = await this.getCollectionWithProperties(params.collectionCode);
     const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'update');
 
     const previousRecord = await this.getRecordById(collection.code, params.recordId);
     if (!previousRecord) {
       throw new Error(`Record '${params.recordId}' not found`);
     }
 
-    const writable = await this.authz.filterWritableFields(
+    const writable = await this.authz.filterWritableFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       this.toPropertyMeta(properties),
     );
     const writableCodes = new Set(writable.map((p) => p.code));
@@ -194,7 +194,7 @@ export class RecordMutationService {
   }): Promise<Record<string, unknown>> {
     const { collection } = await this.getCollectionWithProperties(params.collectionCode);
     const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'delete');
 
     const record = await this.getRecordById(collection.code, params.recordId);
     if (!record) {

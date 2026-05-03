@@ -437,7 +437,7 @@ export class SearchQueryService {
       }
 
       try {
-        await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+        await this.authz.ensureCollectionAccess(context, collection.id, 'read');
       } catch {
         continue;
       }
@@ -457,7 +457,7 @@ export class SearchQueryService {
         .from(`${schemaName}.${tableName}`, 't')
         .where('t."id" = ANY(:ids)', { ids });
 
-      const rowLevel = await this.authz.buildRowLevelClause(context, collection.tableName, 'read', 't');
+      const rowLevel = await this.authz.buildCollectionRowLevelClause(context, collection.id, 'read', 't');
       if (rowLevel.clauses.length > 0) {
         rowLevel.clauses.forEach((clause, index) => {
           qb.andWhere(clause, this.prefixParams(rowLevel.params, `rls_${index}_`));

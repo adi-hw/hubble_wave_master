@@ -266,7 +266,7 @@ export class ViewService {
       isSystem: prop.isSystem,
     }));
 
-    const authorized = await this.authz.getAuthorizedFields(ctx, collection.tableName, metas);
+    const authorized = await this.authz.getAuthorizedFieldsForCollection(ctx, collection.id, metas);
     return authorized.reduce<Record<string, FieldPermission>>((acc, field) => {
       acc[field.code] = {
         canRead: field.canRead,

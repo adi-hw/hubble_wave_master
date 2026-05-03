@@ -203,7 +203,7 @@ export class MetricsService {
         return false;
       }
       try {
-        await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+        await this.authz.ensureCollectionAccess(context, collection.id, 'read');
         return true;
       } catch {
         return false;
@@ -348,8 +348,8 @@ export class MetricsService {
       throw new BadRequestException(`Metric ${metric.code} missing property_code`);
     }
 
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
-    const rowLevel = await this.authz.buildRowLevelClause(context, collection.tableName, 'read', 't');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
+    const rowLevel = await this.authz.buildCollectionRowLevelClause(context, collection.id, 'read', 't');
 
     const aggregate = this.buildAggregationExpression(metric.aggregation, valueColumn);
     const qb = this.dataSource

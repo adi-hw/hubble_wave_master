@@ -858,13 +858,13 @@ export class ConnectorService {
         if (!updateAllowed) {
           return { action: 'skipped' };
         }
-        await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+        await this.authz.ensureCollectionAccess(context, collection.id, 'update');
         await this.updateRecord(collection, properties, existingId, values);
         return { action: 'updated' };
       }
     }
 
-    await this.authz.ensureTableAccess(context, collection.tableName, 'create');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'create');
     await this.createRecord(collection, properties, values);
     return { action: 'created' };
   }
