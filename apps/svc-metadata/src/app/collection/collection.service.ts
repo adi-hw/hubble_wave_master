@@ -538,14 +538,15 @@ export class CollectionService {
       // 2. Create storage table if requested
       let storageCreated = false;
       if (createStorage) {
-        try {
-          await this.storageService.createStorageTable(queryRunner, storageSchema, storageTable);
-          storageCreated = true;
-        } catch (error) {
-          this.logger.warn(`Storage creation failed: ${(error as Error).message}`);
-          warnings.push(`Storage table creation failed: ${(error as Error).message}`);
-          // Continue without storage - user can create manually
-        }
+        await queryRunner.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1))',
+          [`collection-schema:${dto.code}`],
+        );
+
+        // Failure here aborts the outer transaction so no CollectionDefinition
+        // row is committed without its backing physical table.
+        await this.storageService.createStorageTable(queryRunner, storageSchema, storageTable);
+        storageCreated = true;
       }
 
       // 3. Create collection record. application_id is NOT NULL post Slice A
