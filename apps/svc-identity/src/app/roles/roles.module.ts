@@ -1,5 +1,9 @@
 import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
-import { InstanceDbModule } from '@hubblewave/instance-db';
+import {
+  IdentityCacheInvalidationSubscriber,
+  InstanceDbModule,
+} from '@hubblewave/instance-db';
+import { EventBusModule, EventBusService } from '@hubblewave/event-bus';
 import { PermissionResolverService } from './permission-resolver.service';
 import { RoleService } from './role.service';
 import { UserRoleService } from './user-role.service';
@@ -10,7 +14,7 @@ import { PermissionGuard } from './guards/permission.guard';
 
 @Global()
 @Module({
-  imports: [InstanceDbModule],
+  imports: [InstanceDbModule, EventBusModule.forRoot()],
   controllers: [RolesController, PermissionsController],
   providers: [
     PermissionResolverService,
@@ -30,9 +34,17 @@ import { PermissionGuard } from './guards/permission.guard';
 export class RolesModule implements OnModuleInit {
   private readonly logger = new Logger(RolesModule.name);
 
-  constructor(private readonly permissionSeeder: PermissionSeederService) {}
+  constructor(
+    private readonly permissionSeeder: PermissionSeederService,
+    private readonly eventBus: EventBusService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
+    // Bind the cross-service event publisher into the TypeORM subscriber.
+    // Subscribers run outside Nest's DI graph, so we hand them a reference
+    // explicitly once the bus is available.
+    IdentityCacheInvalidationSubscriber.setPublisher(this.eventBus);
+
     try {
       this.logger.log('Initializing roles module - seeding permissions and roles...');
       await this.permissionSeeder.seed();

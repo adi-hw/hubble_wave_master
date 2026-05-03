@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { instanceEntities } from './entities/index';
 import { AuditLogSubscriber } from './subscribers/audit-log.subscriber';
+import { IdentityCacheInvalidationSubscriber } from './subscribers/identity-cache-invalidation.subscriber';
 import { InstanceDbService } from './instance-db.service';
 
 /**
@@ -41,7 +42,7 @@ import { InstanceDbService } from './instance-db.service';
         synchronize: false, // Always use migrations in production
         migrationsRun: configService.get('RUN_MIGRATIONS', 'true') === 'true',
         migrations: ['dist/migrations/instance/*.js'],
-        subscribers: [AuditLogSubscriber],
+        subscribers: [AuditLogSubscriber, IdentityCacheInvalidationSubscriber],
         logging: configService.get('DB_LOGGING', 'false') === 'true',
         ssl: configService.get('DB_SSL', 'false') === 'true' 
           ? { rejectUnauthorized: false } 
