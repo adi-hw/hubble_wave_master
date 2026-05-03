@@ -564,13 +564,14 @@ export class AuthorizationService {
 
   private async getCollectionRules(
     collectionId: string,
-    tenantScope: string,
   ): Promise<CollectionAccessRuleData[]> {
     if (!this.collectionAclRepo) {
       return [];
     }
 
-    const cacheKey = `auth:${tenantScope}:collection-rules:${collectionId}`;
+    // Canon §5: one instance per customer — no tenant scoping needed in the
+    // cache key. The process IS the tenant.
+    const cacheKey = `auth:collection-rules:${collectionId}`;
 
     if (this.cache) {
       const cached = await this.cache.get<CollectionAccessRuleData[]>(cacheKey);
@@ -593,13 +594,12 @@ export class AuthorizationService {
 
   private async getPropertyRules(
     collectionId: string,
-    tenantScope: string,
   ): Promise<PropertyAccessRuleData[]> {
     if (!this.propertyAclRepo) {
       return [];
     }
 
-    const cacheKey = `auth:${tenantScope}:property-rules:${collectionId}`;
+    const cacheKey = `auth:property-rules:${collectionId}`;
 
     if (this.cache) {
       const cached = await this.cache.get<PropertyAccessRuleData[]>(cacheKey);
@@ -618,21 +618,6 @@ export class AuthorizationService {
     }
 
     return rules;
-  }
-
-  /**
-   * Resolve a tenant scope token from the request context. ACL caches must be
-   * keyed under this token so a rule fetched on instance A is never served to
-   * a request from instance B in shared-process deployments. Falls back to a
-   * sentinel that is unique per service when no organization is on the
-   * context (better than collisions across tenants).
-   */
-  private tenantScope(ctx: RequestContext): string {
-    const fromAttributes = ctx.attributes?.['organizationId'] || ctx.attributes?.['instanceSlug'];
-    if (typeof fromAttributes === 'string' && fromAttributes.trim()) {
-      return fromAttributes.trim();
-    }
-    return process.env['INSTANCE_ID'] || 'unscoped';
   }
 
   private checkPrincipalMatch(
