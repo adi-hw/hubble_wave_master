@@ -26,6 +26,7 @@
     "docker:reset": "docker-compose down -v && docker-compose up -d",
     "migration:generate:instance": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:generate -d scripts/datasource-instance.ts",
     "migration:run:instance": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:run -d scripts/datasource-instance.ts",
+    "migrate:run:instance:job": "nx build svc-migrations && node dist/apps/svc-migrations/main.js",
     "migration:revert:instance": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:revert -d scripts/datasource-instance.ts",
     "migration:generate:control-plane": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:generate -d scripts/datasource-control-plane.ts",
     "migration:run:control-plane": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:run -d scripts/datasource-control-plane.ts",

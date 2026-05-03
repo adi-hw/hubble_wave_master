@@ -74,7 +74,9 @@ import { InstanceDbService } from './instance-db.service';
           database: configService.get<string>('DB_NAME', 'hubblewave'),
           entities: instanceEntities,
           synchronize: false, // Always use migrations in production
-          migrationsRun: configService.get('RUN_MIGRATIONS', 'true') === 'true',
+          // W1.3: migrations now run from the dedicated svc-migrations job
+          // with pg_advisory_lock; app pods boot read-only by default.
+          migrationsRun: configService.get('RUN_MIGRATIONS', 'false') === 'true',
           migrations: ['dist/migrations/instance/*.js'],
           subscribers: [AuditLogSubscriber],
           logging: configService.get('DB_LOGGING', 'false') === 'true',
