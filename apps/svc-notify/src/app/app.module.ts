@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import { AuthorizationModule } from '@hubblewave/authorization';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { HealthController } from './health.controller';
@@ -12,6 +12,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ConfigModule.forRoot({ isGlobal: true }),
     InstanceDbModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     AuthorizationModule.forInstance(),
     ScheduleModule.forRoot(),
     NotificationsModule,

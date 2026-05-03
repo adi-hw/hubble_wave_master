@@ -1,10 +1,16 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
+import { Public } from '@hubblewave/auth-guard';
 import { PackInstallGuard } from './pack-install.guard';
 import { PacksService } from './packs.service';
 import { PackCatalogInstallRequest, PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './packs.dto';
 import { PackCatalogService } from './pack-catalog.service';
 
+// PackInstallGuard handles authentication for control-plane pack tokens AND
+// falls back to JwtAuthGuard for user requests. Marking the controller as
+// @Public() opts out of the global JwtAuthGuard so the pack-token branch can
+// run; PackInstallGuard remains the sole authoritative gate for these routes.
+@Public()
 @Controller('packs')
 @UseGuards(PackInstallGuard)
 export class PacksController {

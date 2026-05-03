@@ -7,7 +7,7 @@ import { Repository } from 'typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { InstanceDbModule, CollectionAccessRule, PropertyAccessRule, PackReleaseRecord } from '@hubblewave/instance-db';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -32,6 +32,7 @@ import { IdentityModule } from './identity/identity.module';
     }),
     InstanceDbModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule, PackReleaseRecord]),
     AuthorizationModule.forRoot({
       enableCaching: true,

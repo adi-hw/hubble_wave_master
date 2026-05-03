@@ -1,12 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LLMService } from '@hubblewave/ai';
+import { Public } from '@hubblewave/auth-guard';
 
 @ApiTags('Health')
 @Controller('api/health')
 export class HealthController {
   constructor(private readonly llmService: LLMService) {}
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Health check' })
   async check() {
