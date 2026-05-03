@@ -284,6 +284,32 @@ export class AutomationRuntimeService {
                 workflow: result.output,
               },
             });
+          } else if (result.type === 'fire_event') {
+            // FireEvent / log_event — publishes a custom event onto
+            // the platform event bus so downstream consumers (other
+            // automations, integrations, audit) can react. The
+            // event name is operator-supplied; we wrap it under the
+            // automation.* namespace at the outbox boundary so the
+            // origin is unambiguous.
+            const fired = result.output as { event?: string; data?: Record<string, unknown> };
+            const eventName = (fired?.event ?? '').trim();
+            if (!eventName) {
+              warnings.push({
+                property: 'event',
+                message: 'FireEvent action requires a non-empty event name',
+              });
+            } else {
+              await this.outboxPublisher.publishEvent({
+                eventType: `automation.event.${eventName}`,
+                payload: {
+                  automationId: automation.id,
+                  collectionCode,
+                  recordId: context.record.id,
+                  event: eventName,
+                  data: fired?.data ?? {},
+                },
+              });
+            }
           } else if (result.type === 'abort') {
             aborted = true;
             abortMessage = result.message;
@@ -485,9 +511,15 @@ export class AutomationRuntimeService {
     // process with its own DataSource, so there is no shared connection that
     // could leak rules between customers. The query intentionally has no
     // tenant filter — the connection itself enforces the boundary.
+    //
+    // Lifecycle gate (Phase 4 §9.1 / mirrors Phase 3.4 ProcessFlow): the
+    // runtime requires status='published' AND isActive=true. svc-data
+    // creates new rules at status='draft' but isActive=true by default,
+    // so without the published predicate a draft rule would fire on
+    // the next outbox event before its author published it.
     const repo: Repository<AutomationRule> = this.dataSource.getRepository(AutomationRule);
     return repo.find({
-      where: { collectionId, isActive: true },
+      where: { collectionId, isActive: true, status: 'published' },
       order: { executionOrder: 'ASC' },
     });
   }

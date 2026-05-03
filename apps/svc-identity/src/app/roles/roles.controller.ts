@@ -20,6 +20,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
 import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
+import { SkipAbac } from '../abac/abac.guard';
 
 
 
@@ -35,6 +36,7 @@ interface UserContext {
  */
 @Controller('admin/roles')
 @UseGuards(JwtAuthGuard)
+@SkipAbac()
 export class RolesController {
   constructor(
     private readonly roleService: RoleService,
@@ -46,7 +48,7 @@ export class RolesController {
    * List all roles with optional filters
    */
   @Get()
-  @RequirePermission('roles.view')
+  @RequirePermission(['roles.view', 'metadata.forms.edit'], 'any')
   @UseGuards(PermissionGuard)
   async listRoles(
     @Query('search') search?: string,

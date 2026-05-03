@@ -1,15 +1,18 @@
 import authenticatedClient from './api';
 
+export type AutomationRuleStatus = 'draft' | 'published' | 'deprecated';
+
 export interface Automation {
   id: string;
   collectionId: string;
   name: string;
   description?: string;
-  triggerTiming: 'before_insert' | 'before_update' | 'before_delete' | 'after_insert' | 'after_update' | 'after_delete' | 'manual' | 'schedule';
-  triggerOnInsert: boolean;
-  triggerOnUpdate: boolean;
-  triggerOnDelete: boolean;
-  triggerOnQuery: boolean;
+  triggerTiming: 'before' | 'after' | 'async' | 'before_insert' | 'before_update' | 'before_delete' | 'after_insert' | 'after_update' | 'after_delete' | 'manual' | 'schedule';
+  triggerOperations?: Array<'insert' | 'update' | 'delete' | 'query'>;
+  triggerOnInsert?: boolean;
+  triggerOnUpdate?: boolean;
+  triggerOnDelete?: boolean;
+  triggerOnQuery?: boolean;
   conditionType: 'always' | 'condition' | 'script';
   condition?: Record<string, unknown>;
   conditionScript?: string;
@@ -18,6 +21,8 @@ export interface Automation {
   script?: string;
   flowId?: string;
   isActive: boolean;
+  status: AutomationRuleStatus;
+  publishedAt?: string | null;
   executionOrder: number;
   abortOnError: boolean;
   watchProperties?: string[];
@@ -102,6 +107,16 @@ export const automationApi = {
 
   toggleActive: async (id: string) => {
     const response = await authenticatedClient.post<Automation>(`/automations/${id}/toggle`);
+    return response.data;
+  },
+
+  publishAutomation: async (id: string) => {
+    const response = await authenticatedClient.post<Automation>(`/automations/${id}/publish`);
+    return response.data;
+  },
+
+  deprecateAutomation: async (id: string) => {
+    const response = await authenticatedClient.post<Automation>(`/automations/${id}/deprecate`);
     return response.data;
   },
 

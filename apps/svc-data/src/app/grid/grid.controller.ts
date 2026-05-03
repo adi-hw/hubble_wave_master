@@ -74,6 +74,14 @@ class GridCountDto implements GridCountRequest {
   globalFilter?: string;
 }
 
+class GridAggregateDto {
+  collection!: string;
+  column?: string;
+  function!: 'count' | 'sum' | 'avg' | 'min' | 'max';
+  filters?: GridQueryDto['filters'];
+  globalFilter?: string;
+}
+
 // =============================================================================
 // CONTROLLER
 // =============================================================================
@@ -144,6 +152,27 @@ export class GridController {
     });
 
     return { count };
+  }
+
+  /**
+   * Phase 5 §10.2 — single scalar aggregate (count / sum / avg / min /
+   * max) for the workspace MetricsPanel. Runs through the same RLS
+   * pipeline as `/grid/count` and `/grid/query`.
+   */
+  @Post('aggregate')
+  @HttpCode(HttpStatus.OK)
+  async aggregate(
+    @Req() req: InstanceRequest,
+    @Body() dto: GridAggregateDto,
+  ): Promise<{ value: number | null }> {
+    const ctx: RequestContext = req.context;
+    return this.gridQueryService.aggregate(ctx, {
+      collection: dto.collection,
+      column: dto.column,
+      function: dto.function,
+      filters: dto.filters,
+      globalFilter: dto.globalFilter,
+    });
   }
 
   /**

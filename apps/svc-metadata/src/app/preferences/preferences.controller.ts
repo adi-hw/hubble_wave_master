@@ -34,7 +34,7 @@ export class PreferencesController {
    * Get current user's preferences
    */
   @Get('me')
-  async getPreferences(@CurrentUser('id') userId: string) {
+  async getPreferences(@CurrentUser('userId') userId: string) {
     return this.preferencesService.getPreferences(userId);
   }
 
@@ -44,7 +44,7 @@ export class PreferencesController {
    */
   @Put('me')
   async updatePreferences(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Body() dto: UpdateUserPreferencesDto,
   ) {
     return this.preferencesService.updatePreferences(userId, dto);
@@ -56,7 +56,7 @@ export class PreferencesController {
    */
   @Patch('me')
   async patchPreferences(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Body() dto: Partial<UpdateUserPreferencesDto>,
   ) {
     return this.preferencesService.patchPreferences(userId, dto);
@@ -67,7 +67,7 @@ export class PreferencesController {
    * Reset preferences to defaults
    */
   @Post('me/reset')
-  async resetPreferences(@CurrentUser('id') userId: string) {
+  async resetPreferences(@CurrentUser('userId') userId: string) {
     return this.preferencesService.resetPreferences(userId);
   }
 
@@ -80,7 +80,7 @@ export class PreferencesController {
    * Get pinned navigation items
    */
   @Get('me/pinned')
-  async getPinnedNavigation(@CurrentUser('id') userId: string) {
+  async getPinnedNavigation(@CurrentUser('userId') userId: string) {
     const items = await this.preferencesService.getPinnedNavigation(userId);
     return { data: items };
   }
@@ -91,7 +91,7 @@ export class PreferencesController {
    */
   @Post('me/pinned')
   async addPinnedItem(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Body() dto: AddPinnedItemDto,
   ) {
     const items = await this.preferencesService.addPinnedItem(userId, dto);
@@ -104,7 +104,7 @@ export class PreferencesController {
    */
   @Put('me/pinned/:id')
   async updatePinnedItem(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Param('id', ParseUUIDPipe) itemId: string,
     @Body() dto: UpdatePinnedItemDto,
   ) {
@@ -118,7 +118,7 @@ export class PreferencesController {
    */
   @Delete('me/pinned/:id')
   async removePinnedItem(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Param('id', ParseUUIDPipe) itemId: string,
   ) {
     const items = await this.preferencesService.removePinnedItem(userId, itemId);
@@ -131,7 +131,7 @@ export class PreferencesController {
    */
   @Post('me/pinned/reorder')
   async reorderPinnedItems(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Body() dto: ReorderPinnedItemsDto,
   ) {
     const items = await this.preferencesService.reorderPinnedItems(userId, dto.order);
@@ -148,7 +148,7 @@ export class PreferencesController {
    */
   @Put('me/density/:mode')
   async setDensityMode(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Param('mode') mode: 'compact' | 'comfortable' | 'spacious',
   ) {
     return this.preferencesService.setDensityMode(userId, mode);
@@ -160,7 +160,7 @@ export class PreferencesController {
    */
   @Put('me/sidebar/position/:position')
   async setSidebarPosition(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Param('position') position: 'left' | 'right',
   ) {
     return this.preferencesService.setSidebarPosition(userId, position);
@@ -171,7 +171,7 @@ export class PreferencesController {
    * Toggle sidebar collapsed state
    */
   @Post('me/sidebar/toggle')
-  async toggleSidebarCollapsed(@CurrentUser('id') userId: string) {
+  async toggleSidebarCollapsed(@CurrentUser('userId') userId: string) {
     return this.preferencesService.toggleSidebarCollapsed(userId);
   }
 
@@ -185,7 +185,7 @@ export class PreferencesController {
    */
   @Post('me/sync')
   async syncPreferences(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('userId') userId: string,
     @Body() dto: SyncPreferencesDto,
   ) {
     return this.preferencesService.syncPreferences(
@@ -200,7 +200,7 @@ export class PreferencesController {
    * Get preference version for sync check
    */
   @Get('me/version')
-  async getPreferenceVersion(@CurrentUser('id') userId: string) {
+  async getPreferenceVersion(@CurrentUser('userId') userId: string) {
     return this.preferencesService.getPreferenceVersion(userId);
   }
 }

@@ -4,6 +4,7 @@ import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/author
 import { RequestContext } from '@hubblewave/auth-guard';
 import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
 import { ModelRegistryService } from './model-registry.service';
+import { HierarchicalService } from './formula/hierarchical.service';
 
 
 @Injectable()
@@ -12,7 +13,37 @@ export class DataService {
     private readonly modelRegistry: ModelRegistryService,
     private readonly dataSource: DataSource,
     private readonly authz: AuthorizationService,
+    private readonly hierarchicalService: HierarchicalService,
   ) {}
+
+  /**
+   * Find a property whose typeCode marks it as hierarchical. The
+   * property's config is expected to declare `parentColumn` and
+   * `pathColumn` (column names on the storage table) — admins set
+   * these when defining the property in App Studio. If neither is
+   * set, hierarchical maintenance is skipped.
+   */
+  private findHierarchicalProperty(
+    properties: ReadonlyArray<{ code: string; storagePath: string; typeCode?: string; config?: Record<string, unknown> | null }>,
+    payload: Record<string, unknown>,
+  ): {
+    parentColumn: string;
+    pathColumn: string;
+    incomingParentId: string | null;
+  } | null {
+    for (const property of properties) {
+      if (property.typeCode !== 'hierarchical') continue;
+      if (!(property.code in payload)) continue;
+      const config = property.config as Record<string, unknown> | null;
+      const parentColumn = (config?.parentColumn as string | undefined) ?? null;
+      const pathColumn = (config?.pathColumn as string | undefined) ?? null;
+      if (!parentColumn || !pathColumn) continue;
+      const raw = payload[property.code];
+      const incomingParentId = raw == null ? null : String(raw);
+      return { parentColumn, pathColumn, incomingParentId };
+    }
+    return null;
+  }
 
   private ensureSafeIdentifier(value: string, label: string) {
     if (!value || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
@@ -233,7 +264,26 @@ export class DataService {
     const sql = `INSERT INTO ${physicalTable} (${columns.join(', ')}) VALUES (${values.join(', ')}) RETURNING id`;
     const ds = this.dataSource;
     const result = await ds.query(sql, params);
-    return this.getOne(ctx, collectionCode, result[0].id);
+    const newId = result[0].id;
+
+    // Hierarchical executor — populate the materialized path column
+    // for new records. Cycle detection is unnecessary on insert
+    // because no descendants exist yet.
+    const hierarchical = this.findHierarchicalProperty(allProperties, payload);
+    if (hierarchical) {
+      const tableName = this.ensureSafeIdentifier(model.storageTable, 'table');
+      const path = await this.hierarchicalService.computePath(
+        { tableName, parentColumn: hierarchical.parentColumn, pathColumn: hierarchical.pathColumn },
+        newId,
+        hierarchical.incomingParentId,
+      );
+      await ds.query(
+        `UPDATE ${physicalTable} SET "${hierarchical.pathColumn}" = $1 WHERE id = $2`,
+        [path, newId],
+      );
+    }
+
+    return this.getOne(ctx, collectionCode, newId);
   }
 
   // Update record
@@ -274,6 +324,30 @@ export class DataService {
 
     if (Object.keys(updateValues).length === 0) {
       throw new BadRequestException('No valid properties provided to update');
+    }
+
+    // Hierarchical executor — when the parent column is being changed,
+    // assert the new parent doesn't introduce a cycle, then update the
+    // path column for self plus all descendants. Done before the main
+    // UPDATE so that any cycle aborts the request with a clean error
+    // rather than half-applying the change.
+    const hierarchical = this.findHierarchicalProperty(allProperties, payload);
+    if (hierarchical) {
+      const tableName = this.ensureSafeIdentifier(model.storageTable, 'table');
+      const ctxObj = {
+        tableName,
+        parentColumn: hierarchical.parentColumn,
+        pathColumn: hierarchical.pathColumn,
+      };
+      await this.hierarchicalService.assertNoCycle(ctxObj, id, hierarchical.incomingParentId);
+      await this.hierarchicalService.reparent(ctxObj, id, hierarchical.incomingParentId);
+      // Drop the parent column from updateValues — reparent has already
+      // persisted it together with the path column. Leaving it would
+      // double-write but harmless; explicit deletion is cleaner.
+      delete updateValues[hierarchical.parentColumn];
+      if (Object.keys(updateValues).length === 0) {
+        return this.getOne(ctx, collectionCode, id);
+      }
     }
 
     qb.set(updateValues);

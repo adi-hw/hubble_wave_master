@@ -18,6 +18,14 @@ export type SchemaPlan = {
   schema: string;
   generatedAt: string;
   operations: SchemaOperation[];
+  issues: SchemaPlanIssue[];
+};
+
+export type SchemaPlanIssue = {
+  severity: 'warning' | 'blocking';
+  collectionCode: string;
+  propertyCode?: string;
+  message: string;
 };
 
 export type SchemaOperation =
@@ -60,14 +68,33 @@ export class SchemaDiffService {
     private readonly collectionStorage: CollectionStorageService,
   ) {}
 
-  async buildPlan(options?: { collectionCodes?: string[]; schema?: string }): Promise<SchemaPlan> {
+  async buildPlan(options?: {
+    collectionCodes?: string[];
+    schema?: string;
+    includeDraft?: boolean;
+  }): Promise<SchemaPlan> {
     const schema = options?.schema || 'public';
-    const collections = await this.loadPublishedCollections(options?.collectionCodes);
-    const properties = await this.loadPublishedProperties(collections.map((c) => c.id));
-    const propertiesByCollection = this.groupProperties(properties);
+    const collections = await this.loadCollections(
+      options?.collectionCodes,
+      options?.includeDraft === true,
+    );
+    // Effective properties per collection — own + inherited from
+    // extendsCollectionId chain. Per ADR-8 each child collection
+    // physically materializes its parents' columns into its own
+    // table at deploy time, so the diff loop must see ancestor
+    // columns when iterating a child. This implements §6.4's
+    // "cascades parent column changes to all child tables" promise:
+    // editing a parent's properties produces add_column ops on
+    // every child table in the same SchemaPlan transaction.
+    const includeDraft = options?.includeDraft === true;
+    const propertiesByCollection = await this.loadEffectivePropertiesByCollection(
+      collections,
+      includeDraft,
+    );
     const propertyTypeMap = await this.loadPropertyTypes();
 
     const operations: SchemaOperation[] = [];
+    const issues: SchemaPlanIssue[] = [];
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -103,10 +130,15 @@ export class SchemaDiffService {
             continue;
           }
 
-          if (property.isRequired && !property.defaultValue) {
-            throw new BadRequestException(
-              `Property ${collection.code}.${property.code} is required without a default value`
-            );
+          if (tableExists && property.isRequired && !property.defaultValue) {
+            issues.push({
+              severity: 'blocking',
+              collectionCode: collection.code,
+              propertyCode: property.code,
+              message:
+                `Property ${collection.code}.${property.code} is required without a default value. ` +
+                'Add a default value or make it optional before deploying this column.',
+            });
           }
 
           const columnType = this.resolveColumnType(property, propertyTypeMap);
@@ -153,14 +185,23 @@ export class SchemaDiffService {
       schema,
       generatedAt: new Date().toISOString(),
       operations,
+      issues,
     };
   }
 
-  private async loadPublishedCollections(collectionCodes?: string[]): Promise<CollectionDefinition[]> {
+  private async loadCollections(
+    collectionCodes?: string[],
+    includeDraft = false,
+  ): Promise<CollectionDefinition[]> {
     const qb = this.collectionRepo.createQueryBuilder('c')
       .where('c.is_active = true')
-      .andWhere("COALESCE(c.metadata->>'status','published') = 'published'")
       .orderBy('c.code', 'ASC');
+
+    if (includeDraft) {
+      qb.andWhere("c.status IN ('draft', 'published')");
+    } else {
+      qb.andWhere("c.status = 'published'");
+    }
 
     if (collectionCodes && collectionCodes.length > 0) {
       qb.andWhere('c.code IN (:...codes)', { codes: collectionCodes });
@@ -169,17 +210,26 @@ export class SchemaDiffService {
     return qb.getMany();
   }
 
-  private async loadPublishedProperties(collectionIds: string[]): Promise<PropertyDefinition[]> {
+  private async loadProperties(
+    collectionIds: string[],
+    includeDraft = false,
+  ): Promise<PropertyDefinition[]> {
     if (collectionIds.length === 0) {
       return [];
     }
-    return this.propertyRepo.createQueryBuilder('p')
+    const qb = this.propertyRepo.createQueryBuilder('p')
       .where('p.collection_id IN (:...collectionIds)', { collectionIds })
       .andWhere('p.is_active = true')
-      .andWhere("COALESCE(p.metadata->>'status','published') = 'published'")
       .orderBy('p.collection_id', 'ASC')
-      .addOrderBy('p.code', 'ASC')
-      .getMany();
+      .addOrderBy('p.code', 'ASC');
+
+    if (includeDraft) {
+      qb.andWhere("p.status IN ('draft', 'published')");
+    } else {
+      qb.andWhere("p.status = 'published'");
+    }
+
+    return qb.getMany();
   }
 
   private groupProperties(properties: PropertyDefinition[]): Map<string, PropertyDefinition[]> {
@@ -190,6 +240,60 @@ export class SchemaDiffService {
       map.set(property.collectionId, entry);
     }
     return map;
+  }
+
+  /**
+   * Returns a map of collectionId → effective property list (own +
+   * inherited via extendsCollectionId, transitively). Order preserves
+   * own properties first, then ancestor properties walking upward.
+   * Deduplicates by columnName so a child overriding a parent column
+   * keeps only one entry (the child's wins).
+   */
+  private async loadEffectivePropertiesByCollection(
+    collections: CollectionDefinition[],
+    includeDraft = false,
+  ): Promise<Map<string, PropertyDefinition[]>> {
+    const allCollections = await this.collectionRepo.find();
+    const idToCollection = new Map<string, CollectionDefinition>(
+      allCollections.map((c) => [c.id, c]),
+    );
+
+    const chainOf = (id: string): string[] => {
+      const chain: string[] = [];
+      const seen = new Set<string>();
+      let cursor: CollectionDefinition | undefined = idToCollection.get(id);
+      while (cursor && !seen.has(cursor.id)) {
+        chain.push(cursor.id);
+        seen.add(cursor.id);
+        const parentId = (cursor as unknown as { extendsCollectionId?: string | null })
+          .extendsCollectionId;
+        if (!parentId) break;
+        cursor = idToCollection.get(parentId);
+      }
+      return chain;
+    };
+
+    const relevantIds = new Set<string>();
+    for (const c of collections) for (const id of chainOf(c.id)) relevantIds.add(id);
+    const allProperties = await this.loadProperties([...relevantIds], includeDraft);
+    const byOwner = this.groupProperties(allProperties);
+
+    const result = new Map<string, PropertyDefinition[]>();
+    for (const c of collections) {
+      const merged: PropertyDefinition[] = [];
+      const seen = new Set<string>();
+      for (const id of chainOf(c.id)) {
+        const props = byOwner.get(id) ?? [];
+        for (const p of props) {
+          const key = (p.columnName ?? p.code ?? '').toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(p);
+        }
+      }
+      result.set(c.id, merged);
+    }
+    return result;
   }
 
   private async loadPropertyTypes(): Promise<Map<string, PropertyType>> {
@@ -213,7 +317,41 @@ export class SchemaDiffService {
     if (!baseType) {
       throw new BadRequestException(`Property type ${propertyType.code} has no base type`);
     }
-    return baseType.toUpperCase();
+
+    const typeCode = propertyType.code.toLowerCase();
+    if (typeCode === 'integer' || typeCode === 'duration') {
+      return 'INTEGER';
+    }
+    if (typeCode === 'currency' || typeCode === 'decimal' || typeCode === 'percentage') {
+      return 'NUMERIC';
+    }
+
+    switch (baseType.toLowerCase()) {
+      case 'string':
+      case 'text':
+        return 'TEXT';
+      case 'number':
+        return 'NUMERIC';
+      case 'boolean':
+        return 'BOOLEAN';
+      case 'uuid':
+        return 'UUID';
+      case 'date':
+        return 'DATE';
+      case 'datetime':
+        return 'TIMESTAMPTZ';
+      case 'time':
+        return 'TIME';
+      case 'object':
+      case 'array':
+      case 'json':
+      case 'jsonb':
+        return 'JSONB';
+      default:
+        throw new BadRequestException(
+          `Unsupported base type ${baseType} for property type ${propertyType.code}`,
+        );
+    }
   }
 
   private async loadIndexes(

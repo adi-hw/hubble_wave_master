@@ -36,6 +36,15 @@
       "@hubblewave/shared-types": [
         "libs/shared-types/src/index.ts"
       ],
+      "@hubblewave/shared-types/action-contract": [
+        "libs/shared-types/src/lib/action-contract.ts"
+      ],
+      "@hubblewave/shared-types/condition-evaluator": [
+        "libs/shared-types/src/lib/condition-evaluator.ts"
+      ],
+      "@hubblewave/shared-types/widget-contract": [
+        "libs/shared-types/src/lib/widget-contract.ts"
+      ],
       "@hubblewave/authorization": [
         "libs/authorization/src/index.ts"
       ],
@@ -59,6 +68,9 @@
       ],
       "@hubblewave/ui": [
         "libs/ui/src/index.ts"
+      ],
+      "@hubblewave/ui-components": [
+        "libs/ui-components/src/index.ts"
       ],
       "@hubblewave/schema-engine": [
         "libs/schema-engine/src/index.ts"

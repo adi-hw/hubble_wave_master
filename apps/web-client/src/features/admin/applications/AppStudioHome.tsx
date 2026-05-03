@@ -108,7 +108,7 @@ export const AppStudioHome: React.FC = () => {
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Applications are the unit of metadata grouping inside this instance.
-              Each Collection, Form, Workflow, and Workspace lives under exactly one
+              Each Collection, Form, Process Flow, and Workspace lives under exactly one
               Application.
             </p>
           </div>
@@ -170,7 +170,7 @@ export const AppStudioHome: React.FC = () => {
             description={
               search
                 ? 'Try a different search term, or clear the filter.'
-                : 'Create your first Application to start grouping Collections, Forms, and Workflows.'
+                : 'Create your first Application to start grouping Collections, Forms, and Process Flows.'
             }
             actionLabel={search ? undefined : 'Create Application'}
             onAction={search ? undefined : () => setCreateOpen(true)}

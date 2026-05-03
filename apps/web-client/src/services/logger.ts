@@ -79,7 +79,7 @@ export const logger = {
     if (!shouldLog('warn')) return;
     const entry = createLogEntry('warn', message, context, data);
     if (config.enableConsole) {
-      // eslint-disable-next-line no-console
+       
       console.warn(formatMessage(context, message), data ?? '');
     }
     config.onLog?.(entry);
@@ -89,7 +89,7 @@ export const logger = {
     if (!shouldLog('error')) return;
     const entry = createLogEntry('error', message, context, error);
     if (config.enableConsole) {
-      // eslint-disable-next-line no-console
+       
       console.error(formatMessage(context, message), error ?? '');
     }
     config.onLog?.(entry);

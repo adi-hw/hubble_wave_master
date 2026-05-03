@@ -260,7 +260,7 @@ export const NotificationCenterPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-subtle rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg">
             <Bell className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -417,7 +417,7 @@ const NotificationItem: React.FC<{
               {!notification.read && (
                 <button
                   onClick={onMarkAsRead}
-                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary-subtle rounded-md transition-colors"
+                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
                   title="Mark as read"
                 >
                   <Check className="h-4 w-4" />

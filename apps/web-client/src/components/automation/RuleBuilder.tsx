@@ -16,7 +16,7 @@ import { AutomationConditionBuilder } from './AutomationConditionBuilder';
 import { ActionBuilder, AutomationActionConfig } from './ActionBuilder';
 
 export type TriggerTiming = 'before' | 'after' | 'async';
-export type TriggerOperation = 'insert' | 'update' | 'delete';
+export type TriggerOperation = 'insert' | 'update' | 'delete' | 'query';
 
 export interface RuleConfig {
   id?: string;

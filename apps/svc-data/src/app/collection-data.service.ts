@@ -18,6 +18,9 @@ import { SelectQueryBuilder, ObjectLiteral, DataSource } from 'typeorm';
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
 import { EventOutboxService } from './events/event-outbox.service';
+import { AutomationExecutorService } from './automation/automation-executor.service';
+import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
+import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
 import { PropertyValidationResult, ValidationContext } from './validation/validation.types';
 import { DefaultValueContext } from './defaults/default-value.types';
 
@@ -164,8 +167,328 @@ export class CollectionDataService {
 
     private readonly validationService: ValidationService,
     private readonly defaultValueService: DefaultValueService,
-    private readonly outboxService: EventOutboxService
+    private readonly outboxService: EventOutboxService,
+    private readonly automationExecutor: AutomationExecutorService,
+    private readonly computedDispatcher: ComputedPropertyDispatcher,
   ) {}
+
+  /**
+   * Plan §6.5 — apply computed-property executors after a save, then
+   * write back any column values the dispatcher resolved (formula /
+   * lookup outputs). Hierarchical reparent + rollup outbox enqueue
+   * happen inside the dispatcher and don't need a write-back here.
+   *
+   * The write-back is a focused UPDATE on only the changed computed
+   * columns — it doesn't re-trigger automations or validators (the
+   * computed values came from sandboxed evaluation against
+   * already-validated source columns).
+   */
+  private async runComputedDispatch(
+    ctx: RequestContext,
+    collection: { id: string; code: string; tableName: string },
+    properties: PropertyDefinition[],
+    recordId: string,
+    record: Record<string, unknown>,
+    operation: 'create' | 'update',
+    priorRecord?: Record<string, unknown> | null,
+  ): Promise<Record<string, unknown>> {
+    const merged = await this.computedDispatcher.applyOnSave({
+      ctx: { userId: ctx.userId ?? 'system', username: ctx.username, permissions: ctx.permissions, roles: ctx.roles },
+      collectionCode: collection.code,
+      tableName: collection.tableName,
+      properties,
+      recordId,
+      record,
+      priorRecord,
+      operation,
+    });
+
+    // Build a write-back payload of only the columns the dispatcher
+    // changed. Skip anything the dispatcher didn't touch and skip the
+    // primary key.
+    const writeBack: Record<string, unknown> = {};
+    for (const property of properties) {
+      const code = property.propertyType?.code;
+      if (code !== 'formula' && code !== 'lookup') continue;
+      const column = this.getStorageColumn(property);
+      if (!column) continue;
+      if (record[property.code] !== merged[property.code]) {
+        writeBack[column] = merged[property.code];
+      }
+    }
+    if (Object.keys(writeBack).length === 0) {
+      return merged;
+    }
+
+    const setClauses = Object.keys(writeBack)
+      .map((col, idx) => `"${col}" = $${idx + 1}`)
+      .join(', ');
+    const values = Object.values(writeBack);
+    const sql = `UPDATE "${collection.tableName}" SET ${setClauses} WHERE id = $${values.length + 1}`;
+    await this.dataSource.query(sql, [...values, recordId]);
+    return merged;
+  }
+
+  /**
+   * Run before-trigger Automation Rules synchronously inside the data
+   * pipeline. Rules can mutate the pending payload (SetField), abort
+   * the request (Abort → throws BadRequestException), or surface
+   * field-level errors that the caller treats as validation failures.
+   * Side-effect actions (CreateRecord / CallFlow / FireEvent /
+   * SendNotification) are queued; the caller drains the queue post-
+   * commit via `drainQueuedActions`.
+   */
+  private async runBeforeAutomations(
+    ctx: RequestContext,
+    collection: CollectionDefinition,
+    operation: 'insert' | 'update' | 'delete',
+    record: Record<string, unknown>,
+    previousRecord: Record<string, unknown> | undefined,
+    parentAutomationContext?: { depth?: number; executionChain?: string[] },
+  ): Promise<{
+    modifiedRecord: Record<string, unknown>;
+    asyncQueue: Array<{
+      action: { type: string; config: Record<string, unknown> };
+      output?: unknown;
+      executeAfterCommit: boolean;
+    }>;
+  }> {
+    const result = await this.automationExecutor.executeAutomations(
+      collection.id,
+      'before',
+      operation,
+      record,
+      previousRecord,
+      { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      parentAutomationContext,
+    );
+    if (result.aborted) {
+      throw new BadRequestException({
+        message: result.abortMessage ?? 'Operation aborted by Automation Rule',
+        code: 'AUTOMATION_ABORT',
+      });
+    }
+    if (result.errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Validation failed',
+        errors: result.errors.map((e) => `${e.property}: ${e.message}`),
+        details: result.errors,
+      });
+    }
+    return {
+      modifiedRecord: result.modifiedRecord,
+      asyncQueue: result.asyncQueue.map((q) => ({
+        action: { type: q.action.type, config: q.action.config },
+        output: q.output,
+        executeAfterCommit: q.executeAfterCommit,
+      })),
+    };
+  }
+
+  /**
+   * Drain the asyncQueue produced by a before-trigger automation pass.
+   * Each queued action is forwarded to its appropriate consumer via
+   * the same outbox event types svc-automation already publishes for
+   * after-triggers — so the catalog's CreateRecord / CallFlow /
+   * FireEvent / SendNotification produce real downstream effects
+   * regardless of whether they were attached to a before- or after-
+   * trigger rule. CreateRecord on a parent record's before-pass
+   * recurses through `this.create` so the new record's own
+   * automations and validation run normally.
+   */
+  private async drainQueuedActions(
+    ctx: RequestContext,
+    parentCollection: CollectionDefinition,
+    parentRecordId: string | undefined,
+    asyncQueue: Array<{
+      action: { type: string; config: Record<string, unknown> };
+      output?: unknown;
+      executeAfterCommit: boolean;
+    }>,
+    parentAutomationContext: { depth: number; executionChain: string[] },
+  ): Promise<void> {
+    for (const queued of asyncQueue) {
+      try {
+        const { type, config } = queued.action;
+        // Normalize to the canonical catalog code so any alias the
+        // UI persists (e.g. `start_workflow` for CallFlow) routes
+        // through one branch. Without this, the executor's raw
+        // action.type (the UI's snake_case code) misses the
+        // dispatcher's canonical+alias match list — adding a new
+        // alias would otherwise require touching both the dispatcher
+        // AND this drain.
+        const canonical = AUTOMATION_CODE_ALIASES[type] ?? type;
+        // Resolved output is preferred over raw config: handlers
+        // resolve `@record.id` / `@output.x` bindings into output at
+        // queue time, so reading from output produces evaluated
+        // values (literal placeholder strings would otherwise leak
+        // through to consumers).
+        const out = (queued.output ?? {}) as Record<string, unknown>;
+
+        if (canonical === 'CreateRecord') {
+          const targetCollection = (out.collection ??
+            config.collectionCode ??
+            config.collection) as string | undefined;
+          const values = (out.values ?? config.values ?? config.data ?? {}) as Record<string, unknown>;
+          if (!targetCollection) {
+            this.logger.warn(`CreateRecord action missing collectionCode; skipped`);
+            continue;
+          }
+          // Recursive create — propagate the executor's depth and
+          // executionChain so the inner pass enforces MAX_DEPTH and
+          // sees prior automation ids. Without this, each recursive
+          // create reset depth=1 and could recurse to request/DB
+          // failure.
+          await this.createInternal(ctx, targetCollection, values, {
+            depth: parentAutomationContext.depth,
+            executionChain: parentAutomationContext.executionChain,
+          });
+        } else if (canonical === 'FireEvent') {
+          const event = (out.event ?? config.event ?? config.eventType) as string | undefined;
+          if (!event) continue;
+          await this.outboxService.enqueueAutomationEvent({
+            event,
+            data: (out.data ?? config.data ?? {}) as Record<string, unknown>,
+            collectionCode: parentCollection.code,
+            recordId: parentRecordId,
+            userId: ctx.userId ?? null,
+          });
+        } else if (canonical === 'CallFlow') {
+          const flowCode = (out.workflowId ??
+            config.flowCode ??
+            config.workflowId) as string | undefined;
+          if (!flowCode) continue;
+          await this.outboxService.enqueueWorkflowStart({
+            workflowId: flowCode,
+            inputs: (out.inputs ?? config.inputs ?? {}) as Record<string, unknown>,
+            collectionCode: parentCollection.code,
+            recordId: parentRecordId,
+            userId: ctx.userId ?? null,
+          });
+        } else if (canonical === 'SendNotification') {
+          const recipients =
+            (out.recipients as string[] | undefined) ??
+            (config.recipients as string[] | undefined) ??
+            (config.recipientUserId ? [config.recipientUserId as string] : []);
+          await this.outboxService.enqueueNotificationRequest({
+            templateCode: (out.templateCode ?? config.templateCode ?? config.template) as string | undefined,
+            templateId: (out.templateId ?? config.templateId) as string | undefined,
+            recipients,
+            channels: (out.channels ?? config.channels) as string[] | undefined,
+            data: (out.data ?? config.data ?? {}) as Record<string, unknown>,
+            collectionCode: parentCollection.code,
+            recordId: parentRecordId,
+            userId: ctx.userId ?? null,
+          });
+        }
+      } catch (err) {
+        // A queued action failure shouldn't undo the parent write
+        // that already committed. Log loudly; the execution log
+        // already captured per-action status.
+        const msg = err instanceof Error ? err.message : 'unknown';
+        this.logger.error(`Queued automation action ${queued.action.type} failed: ${msg}`);
+      }
+    }
+  }
+
+  /**
+   * Run before-query automations. The "record" the rule sees is the
+   * QueryOptions payload (filters, viewId, page) so a rule can
+   * inspect what the caller is about to read. modifiedRecord is
+   * not consumed here — query rules are read-only gates and do not
+   * mutate the QueryOptions payload. Abort throws 400; non-abort
+   * errors throw 400 too so the read fails closed.
+   */
+  private async runBeforeQueryAutomations(
+    ctx: RequestContext,
+    collection: CollectionDefinition,
+    options: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.automationExecutor.executeAutomations(
+      collection.id,
+      'before',
+      'query',
+      options,
+      undefined,
+      { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+    );
+    if (result.aborted) {
+      throw new BadRequestException({
+        message: result.abortMessage ?? 'Query aborted by Automation Rule',
+        code: 'AUTOMATION_ABORT',
+      });
+    }
+    if (result.errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Query rejected by Automation Rule',
+        errors: result.errors.map((e) => `${e.property}: ${e.message}`),
+        details: result.errors,
+      });
+    }
+    // Side-effect actions on before_query rules (FireEvent for audit,
+    // CreateRecord for log entries) drain immediately. Query has no
+    // commit boundary, so the drain runs before the SQL select.
+    if (result.asyncQueue.length > 0) {
+      await this.drainQueuedActions(
+        ctx,
+        collection,
+        undefined,
+        result.asyncQueue.map((q) => ({
+          action: { type: q.action.type, config: q.action.config },
+          output: q.output,
+          executeAfterCommit: q.executeAfterCommit,
+        })),
+        { depth: 1, executionChain: [] },
+      );
+    }
+  }
+
+  private hasAutomationChanges(
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+  ): boolean {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async runAfterAutomations(
+    ctx: RequestContext,
+    collection: CollectionDefinition,
+    operation: 'insert' | 'update' | 'delete',
+    record: Record<string, unknown>,
+    previousRecord: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    // After-trigger rules run post-commit. Their write actions
+    // (CreateRecord, side-effect notifications) are queued via the
+    // executor's asyncQueue and processed by svc-automation's outbox
+    // consumer; this call surfaces synchronous errors only as warnings
+    // so a downstream automation failure cannot retroactively fail
+    // the user's already-committed write.
+    try {
+      const result = await this.automationExecutor.executeAutomations(
+        collection.id,
+        'after',
+        operation,
+        record,
+        previousRecord,
+        { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      );
+      if (result.errors.length > 0 || result.warnings.length > 0) {
+        this.logger.warn(
+          `After-automation issues for ${collection.code}: ` +
+            JSON.stringify({ errors: result.errors, warnings: result.warnings }),
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      this.logger.error(`After-automation execution failed for ${collection.code}: ${msg}`);
+    }
+  }
 
   private readonly instanceId = process.env.INSTANCE_ID || 'default-instance';
 
@@ -270,7 +593,7 @@ export class CollectionDataService {
     // Look up collection codes for all referenced collections.
     // Per HubbleWave canon §5 (one instance per customer), the collection
     // metadata repository is scoped to this customer's instance database at
-    // the connection level — there is no cross-instance tenant id to filter.
+    // the connection level — there is no cross-instance scope to filter.
     const idToCodeMap = new Map<string, string>();
     if (refCollectionIds.size > 0) {
       const refCollections = await this.collectionRepo().find({
@@ -368,6 +691,35 @@ export class CollectionDataService {
     }
 
     return violations;
+  }
+
+  /**
+   * List audit-log entries scoped to a single record. Used by the
+   * Phase 5 ActivityFeedPanel; ordered newest-first. Result includes
+   * `userId` / `action` / `oldValues` / `newValues` / `createdAt` so
+   * the panel can render "who changed what when" without further
+   * lookups. Caller authz: the panel mounts only inside a workspace
+   * runtime, which already gates the parent record by the
+   * collection's read ACL.
+   */
+  async listAuditLog(
+    ctx: RequestContext,
+    collectionCode: string,
+    recordId: string,
+    options: { limit?: number } = {},
+  ): Promise<{ entries: AuditLog[] }> {
+    const context = this.withContext(ctx);
+    const collection = await this.getCollection(collectionCode);
+    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+
+    const repo = this.dataSource.getRepository(AuditLog);
+    const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
+    const entries = await repo.find({
+      where: { collectionCode, recordId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return { entries };
   }
 
   private async writeAuditLog(params: {
@@ -539,6 +891,14 @@ export class CollectionDataService {
     // Check table-level access
     await this.authz.ensureTableAccess(context, collection.tableName, 'read');
 
+    // Run before-query automations. Plan §9.1 exposes `before_query`
+    // as a gate primarily for Abort (e.g. block list reads on
+    // archived collections, or enforce row-level read constraints
+    // beyond ACLs). modifiedRecord output isn't consumed here — there
+    // is no record to mutate — but Abort and add_error throw
+    // BadRequestException so the read fails closed.
+    await this.runBeforeQueryAutomations(ctx, collection, options as unknown as Record<string, unknown>);
+
     // Get all properties
     const allProperties = await this.getProperties(collection.id);
 
@@ -553,11 +913,20 @@ export class CollectionDataService {
       }))
     );
     const readableCodes = new Set(authorizedFields.filter((f) => f.canRead).map((f) => f.code));
-    const properties = allProperties.filter((p) => readableCodes.has(p.code));
+    let properties = allProperties.filter((p) => readableCodes.has(p.code));
 
     if (properties.length === 0) {
       throw new ForbiddenException('No readable properties on this collection');
     }
+
+    const actualColumns = await this.getActualColumnNames(collection.tableName);
+    if (!actualColumns.has('id')) {
+      throw new BadRequestException(
+        `Storage table '${collection.tableName}' for collection '${collection.code}' has not been deployed. ` +
+        'Deploy the schema before loading records.',
+      );
+    }
+    properties = properties.filter((p) => actualColumns.has(this.getStorageColumn(p)));
 
     // Pagination
     const page = Math.max(1, options.page || 1);
@@ -775,11 +1144,20 @@ export class CollectionDataService {
       }))
     );
     const readableCodes = new Set(authorizedFields.filter((f) => f.canRead).map((f) => f.code));
-    const properties = allProperties.filter((p) => readableCodes.has(p.code));
+    let properties = allProperties.filter((p) => readableCodes.has(p.code));
 
     if (properties.length === 0) {
       throw new ForbiddenException('No readable properties on this collection');
     }
+
+    const actualColumns = await this.getActualColumnNames(collection.tableName);
+    if (!actualColumns.has('id')) {
+      throw new BadRequestException(
+        `Storage table '${collection.tableName}' for collection '${collection.code}' has not been deployed. ` +
+        'Deploy the schema before loading records.',
+      );
+    }
+    properties = properties.filter((p) => actualColumns.has(this.getStorageColumn(p)));
 
     const selectParts: string[] = ['t."id"', 't."created_at"', 't."updated_at"'];
     properties.forEach((prop) => {
@@ -793,8 +1171,9 @@ export class CollectionDataService {
 
     const qb = ds.createQueryBuilder().select(selectParts).from(`${schemaName}.${tableNameOnly}`, 't').where('t."id" = :id', { id });
 
-    // Apply row-level security predicates so a caller in tenant A cannot
-    // fetch a record in tenant B by id alone (id is a public bearer token).
+    // Apply row-level security predicates so a caller restricted to one
+    // access scope cannot fetch a record outside that scope by id alone
+    // (id is a public bearer token).
     const rowLevelClause = await this.authz.buildRowLevelClause(context, collection.tableName, 'read', 't');
     if (rowLevelClause.clauses.length > 0) {
       rowLevelClause.clauses.forEach((clause, index) => {
@@ -816,6 +1195,27 @@ export class CollectionDataService {
     ctx: RequestContext,
     collectionCode: string,
     data: Record<string, unknown>
+  ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
+    return this.createInternal(ctx, collectionCode, data, {
+      depth: 0,
+      executionChain: [],
+    });
+  }
+
+  /**
+   * Internal create with automation-recursion bookkeeping. Public
+   * `create` calls in at depth=0; drainQueuedActions calls in at the
+   * parent's depth+1 so a chain of CreateRecord rules cannot recurse
+   * without bound. The executor's MAX_DEPTH (5) is checked through
+   * the parentContext we forward; once exceeded, executeAutomations
+   * skips the entire automation pass for the recursive insert and
+   * the SQL write proceeds as a plain create.
+   */
+  private async createInternal(
+    ctx: RequestContext,
+    collectionCode: string,
+    data: Record<string, unknown>,
+    parentAutomationContext: { depth: number; executionChain: string[] },
   ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
@@ -850,7 +1250,7 @@ export class CollectionDataService {
     };
 
     // Apply default values first
-    let processedData = await this.defaultValueService.applyDefaults(
+    const processedData = await this.defaultValueService.applyDefaults(
       data,
       allProperties,
       defaultValueContext
@@ -898,10 +1298,64 @@ export class CollectionDataService {
       });
     }
 
+    // Run before-insert automations: rules may SetField (mutate the
+    // pending payload) or Abort (throw 400). The executor sees the
+    // post-defaults, post-validation state. parentAutomationContext
+    // forwards depth + executionChain so a chain of recursive
+    // CreateRecord drains hits MAX_DEPTH instead of looping forever.
+    const beforeInsertResult = await this.runBeforeAutomations(
+      ctx,
+      collection,
+      'insert',
+      processedData,
+      undefined,
+      parentAutomationContext,
+    );
+    const automatedData = beforeInsertResult.modifiedRecord;
+
+    // Re-validate AFTER automations: a SetField rule could have written
+    // a value that fails property validation (type mismatch, range,
+    // pattern) or violates a uniqueness constraint. Without this
+    // pass, the rule's mutation lands in the database despite breaking
+    // the property contract.
+    if (this.hasAutomationChanges(processedData, automatedData)) {
+      const postRuleValidation = await this.validationService.validateRecord(
+        automatedData,
+        allProperties,
+        { ...validationContext, record: automatedData },
+      );
+      if (!postRuleValidation.isValid) {
+        const errors = this.validationService.getErrorMessages(postRuleValidation);
+        this.logger.warn(
+          `Post-automation validation failed in ${collectionCode}: ${errors.join(', ')}`,
+        );
+        throw new BadRequestException({
+          message: 'Automation rule wrote a value that fails property validation',
+          errors,
+          details: postRuleValidation.properties.filter((p) => !p.isValid),
+        });
+      }
+      const postRuleUnique = await this.validateUniqueConstraints(
+        collection,
+        allProperties,
+        automatedData,
+      );
+      if (postRuleUnique.length > 0) {
+        const errors = postRuleUnique.flatMap((issue) =>
+          issue.errors.map((error) => error.message).filter(Boolean),
+        );
+        throw new BadRequestException({
+          message: 'Automation rule wrote a value that violates a uniqueness constraint',
+          errors,
+          details: postRuleUnique,
+        });
+      }
+    }
+
     // Build insert data
     const insertData: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(processedData)) {
+    for (const [key, value] of Object.entries(automatedData)) {
       if (!writableCodes.has(key)) continue;
       const prop = allProperties.find((p) => p.code === key);
       if (!prop) continue;
@@ -944,6 +1398,34 @@ export class CollectionDataService {
         userId: context.userId,
       });
 
+      // Drain the before-pass asyncQueue now that the parent has
+      // committed. CreateRecord, FireEvent, CallFlow, SendNotification
+      // attached to before-rules produce their downstream effects
+      // here. After-trigger rules then run with the parent record
+      // visible. The bumped depth bounds recursive CreateRecord
+      // chains: drainQueuedActions → createInternal → executor sees
+      // depth+1 → after MAX_DEPTH levels the executor skips its
+      // automation pass.
+      await this.drainQueuedActions(ctx, collection, newId, beforeInsertResult.asyncQueue, {
+        depth: parentAutomationContext.depth + 1,
+        executionChain: parentAutomationContext.executionChain,
+      });
+
+      await this.runAfterAutomations(ctx, collection, 'insert', createdRecord.record, undefined);
+
+      // Plan §6.5 — formulas + lookups recompute and persist; rollups
+      // enqueue a debounced parent-recompute via the outbox;
+      // hierarchical maintains the path column. After every save.
+      const mergedRecord = await this.runComputedDispatch(
+        ctx,
+        collection,
+        allProperties,
+        newId,
+        createdRecord.record,
+        'create',
+      );
+      createdRecord.record = mergedRecord;
+
       return createdRecord;
     }
 
@@ -952,7 +1434,15 @@ export class CollectionDataService {
     ctx: RequestContext,
     collectionCode: string,
     id: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    // Forward executor depth + executionChain so a CreateRecord rule
+    // in a before-update pass triggers a downstream update without
+    // resetting the recursion-depth gate. Defaults to depth=0 for
+    // direct caller invocations from controllers.
+    parentAutomationContext: { depth: number; executionChain: string[] } = {
+      depth: 0,
+      executionChain: [],
+    },
   ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
@@ -1030,10 +1520,80 @@ export class CollectionDataService {
       }
     }
 
+    // Run before-update automations against the merged record so the
+    // rule sees the post-change state. SetField rules add to / override
+    // entries in `data`; Abort rules raise BadRequestException.
+    // parentAutomationContext propagates depth + executionChain so a
+    // chain of recursive updates hits MAX_DEPTH instead of looping.
+    const beforeUpdateResult = await this.runBeforeAutomations(
+      ctx,
+      collection,
+      'update',
+      mergedData,
+      existingRecord,
+      parentAutomationContext,
+    );
+    const automatedMerged = beforeUpdateResult.modifiedRecord;
+    // The executor returns the post-rule merged state. Diff against
+    // the pre-rule merged state to capture any SetField mutations and
+    // fold them into the data the writer persists.
+    const automatedData: Record<string, unknown> = { ...data };
+    for (const [key, value] of Object.entries(automatedMerged)) {
+      if (mergedData[key] !== value) {
+        automatedData[key] = value;
+      }
+    }
+
+    // Re-validate post-automation. A SetField rule writing an invalid
+    // or non-unique value would otherwise persist despite breaking
+    // the contract. Only run when the rule actually mutated.
+    if (this.hasAutomationChanges(mergedData, automatedMerged)) {
+      const propsToReValidate = allProperties.filter(
+        (p) => automatedData[p.code] !== undefined,
+      );
+      if (propsToReValidate.length > 0) {
+        const postRuleValidation = await this.validationService.validateRecord(
+          automatedMerged,
+          propsToReValidate,
+          { ...validationContext, record: automatedMerged },
+        );
+        if (!postRuleValidation.isValid) {
+          const errors = this.validationService.getErrorMessages(postRuleValidation);
+          this.logger.warn(
+            `Post-automation validation failed for update in ${collectionCode}/${id}: ${errors.join(', ')}`,
+          );
+          throw new BadRequestException({
+            message: 'Automation rule wrote a value that fails property validation',
+            errors,
+            details: postRuleValidation.properties.filter((p) => !p.isValid),
+          });
+        }
+        const uniqueRule = propsToReValidate.filter((p) => p.isUnique);
+        if (uniqueRule.length > 0) {
+          const postRuleUnique = await this.validateUniqueConstraints(
+            collection,
+            uniqueRule,
+            automatedMerged,
+            id,
+          );
+          if (postRuleUnique.length > 0) {
+            const errors = postRuleUnique.flatMap((issue) =>
+              issue.errors.map((error) => error.message).filter(Boolean),
+            );
+            throw new BadRequestException({
+              message: 'Automation rule wrote a value that violates a uniqueness constraint',
+              errors,
+              details: postRuleUnique,
+            });
+          }
+        }
+      }
+    }
+
     // Build update data
     const updateData: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(data)) {
+    for (const [key, value] of Object.entries(automatedData)) {
       if (!writableCodes.has(key)) continue;
       const prop = allProperties.find((p) => p.code === key);
       if (!prop) continue;
@@ -1077,6 +1637,31 @@ export class CollectionDataService {
         userId: context.userId,
       });
 
+      // Mirror the createInternal pattern (line ~1409): bump depth so
+      // a CreateRecord queued by a before-update can recurse without
+      // bypassing MAX_DEPTH. Inherit executionChain from the parent
+      // so the executor sees the full run history.
+      await this.drainQueuedActions(ctx, collection, id, beforeUpdateResult.asyncQueue, {
+        depth: parentAutomationContext.depth + 1,
+        executionChain: parentAutomationContext.executionChain,
+      });
+
+      await this.runAfterAutomations(ctx, collection, 'update', updatedRecord.record, existingRecord);
+
+      // Plan §6.5 — same dispatch as on create. The previous record
+      // is passed so the hierarchical executor can short-circuit
+      // when the parent reference hasn't changed.
+      const mergedRecord = await this.runComputedDispatch(
+        ctx,
+        collection,
+        updatedRecord.fields,
+        id,
+        updatedRecord.record,
+        'update',
+        existingRecord,
+      );
+      updatedRecord.record = mergedRecord;
+
       return updatedRecord;
     }
 
@@ -1088,6 +1673,20 @@ export class CollectionDataService {
 
     // Verify record exists
     const existingResult = await this.getOne(context, collectionCode, id);
+
+    // Before-delete automations: rules can Abort the delete (e.g. a
+    // policy that forbids removing records past a retention threshold).
+    // SetField mutations on a delete are dropped — there is no record
+    // post-delete for them to apply to. Side-effect actions
+    // (CreateRecord, FireEvent, CallFlow) ARE drained after the
+    // delete commits.
+    const beforeDeleteResult = await this.runBeforeAutomations(
+      ctx,
+      collection,
+      'delete',
+      existingResult.record,
+      existingResult.record,
+    );
 
     const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
@@ -1114,6 +1713,34 @@ export class CollectionDataService {
         previousRecord: existingResult.record,
         changedProperties: Object.keys(existingResult.record || {}),
         userId: context.userId,
+      });
+
+      await this.drainQueuedActions(ctx, collection, id, beforeDeleteResult.asyncQueue, {
+        depth: 1,
+        executionChain: [],
+      });
+
+      await this.runAfterAutomations(
+        ctx,
+        collection,
+        'delete',
+        existingResult.record,
+        existingResult.record,
+      );
+
+      // Plan §6.5 — recompute parent rollups whose source was this
+      // collection. The deleted child contributed to the parent's
+      // aggregate; without this enqueue the parent rollup keeps the
+      // stale value.
+      await this.computedDispatcher.applyOnDelete({
+        ctx: {
+          userId: ctx.userId ?? 'system',
+          username: ctx.username,
+          permissions: ctx.permissions,
+          roles: ctx.roles,
+        },
+        collectionCode: collection.code,
+        deletedRecord: existingResult.record,
       });
 
       return { success: true };
@@ -1146,66 +1773,58 @@ export class CollectionDataService {
     );
     const writableCodes = new Set(authorizedFields.filter((f) => f.canWrite).map((f) => f.code));
 
-    const updateData: Record<string, unknown> = {};
-
+    // Filter incoming data to writable properties only — the same
+    // silent drop the bulk path has always applied.
+    const filteredData: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
-      if (!writableCodes.has(key)) continue;
-      const prop = allProperties.find((p) => p.code === key);
-      if (!prop) continue;
-
-      const col = this.getStorageColumn(prop);
-      updateData[col] = value;
+      if (writableCodes.has(key)) {
+        filteredData[key] = value;
+      }
     }
 
-    if (Object.keys(updateData).length === 0) {
+    if (Object.keys(filteredData).length === 0) {
       throw new BadRequestException('No valid properties to update');
     }
-
-    updateData['updated_at'] = new Date();
 
     // Filter ids through row-level access for the 'update' operation. Each row
     // selected by the caller must independently satisfy RLS predicates.
     const authorizedIds = await this.filterIdsByRowLevel(context, collection.tableName, ids, 'update');
-    const skippedIds = ids.filter((id) => !authorizedIds.includes(id));
+    const accessSkippedIds = ids.filter((id) => !authorizedIds.includes(id));
     if (authorizedIds.length === 0) {
       throw new ForbiddenException('No accessible records in selection');
     }
 
-    const ds = this.dataSource;
-    const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
+    // Iterate authorized ids and route each through the single-record
+    // `update` pipeline. A bulk SQL UPDATE would silently bypass
+    // before/after automations, computed dispatch, and the queued-
+    // action drain — plan §6.5 / ADR-4 require these on every
+    // mutation path. Per-record cost is the trade-off for correctness;
+    // chunk at the caller for very large bulks.
+    const updatedIds: string[] = [];
+    const failureSkippedIds: string[] = [];
+    for (const id of authorizedIds) {
+      try {
+        await this.update(ctx, collectionCode, id, filteredData);
+        updatedIds.push(id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`bulkUpdate: record ${id} skipped — ${msg}`);
+        failureSkippedIds.push(id);
+      }
+    }
 
-    const properties = await this.getProperties(collection.id);
-    const beforeRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
-
-    const result = await ds.createQueryBuilder().update(tableName).set(updateData).whereInIds(authorizedIds).execute();
+    const skippedIds = [...accessSkippedIds, ...failureSkippedIds];
 
     await this.writeAuditLog({
       userId: context.userId,
       action: 'bulk_update',
       collectionCode: collection.code,
-      newValues: { ids: authorizedIds, data, skippedIds },
+      newValues: { ids: updatedIds, data, accessSkippedIds, failureSkippedIds },
     });
 
-    const afterRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
-
-    const beforeMap = new Map(beforeRecords.map((record) => [record.id as string, record]));
-    for (const record of afterRecords) {
-      const recordId = record.id as string;
-      const previousRecord = beforeMap.get(recordId) || null;
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.updated',
-        collectionCode: collection.code,
-        recordId,
-        record,
-        previousRecord,
-        changedProperties: this.calculateChangedProperties(previousRecord || {}, record),
-        userId: context.userId,
-      });
-    }
-
     return {
-      success: true,
-      updatedCount: result.affected || 0,
+      success: failureSkippedIds.length === 0,
+      updatedCount: updatedIds.length,
       skippedCount: skippedIds.length,
       skippedIds,
     };
@@ -1256,6 +1875,21 @@ export class CollectionDataService {
         previousRecord: record,
         changedProperties: Object.keys(record || {}),
         userId: context.userId,
+      });
+
+      // Plan §6.5 — recompute parent rollups for each deleted child.
+      // The processor coalesces by `(parentId, rollupPropertyId)`,
+      // so deleting N children of one parent results in one parent
+      // recompute, not N. See `applyOnDelete` for the per-row path.
+      await this.computedDispatcher.applyOnDelete({
+        ctx: {
+          userId: ctx.userId ?? 'system',
+          username: ctx.username,
+          permissions: ctx.permissions,
+          roles: ctx.roles,
+        },
+        collectionCode: collection.code,
+        deletedRecord: record,
       });
     }
 

@@ -6,9 +6,10 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react';
 import { automationApi, Automation } from '../../services/automationApi';
+import { useStudioCollectionId } from '../../app/app-studio/table-builder';
 
 interface ToggleSwitchProps {
   checked: boolean;
@@ -45,7 +46,7 @@ const getStatusBadgeClass = (status: string): string => {
 };
 
 export const AutomationsListPage: React.FC = () => {
-  const { id: collectionId } = useParams<{ id: string }>();
+  const collectionId = useStudioCollectionId();
   const navigate = useNavigate();
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);

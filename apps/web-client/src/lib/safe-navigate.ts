@@ -69,7 +69,7 @@ export function safeNavigate(
 ): boolean {
   const safe = validateInternalUrl(target);
   if (safe === null) {
-    // eslint-disable-next-line no-console
+     
     console.warn('[safeNavigate] Refused unsafe navigation target', { target });
     return false;
   }

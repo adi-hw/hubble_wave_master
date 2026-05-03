@@ -110,6 +110,57 @@ export class RecordMutationService {
     return record;
   }
 
+  async deleteRecord(params: {
+    collectionCode: string;
+    recordId: string;
+    actorId?: string | null;
+  }): Promise<{ deleted: boolean }> {
+    const { collection } = await this.getCollectionWithProperties(params.collectionCode);
+    const context = await this.buildRequestContext(params.actorId ?? null);
+    await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
+
+    const previousRecord = await this.getRecordById(collection.code, params.recordId);
+    if (!previousRecord) {
+      throw new Error(`Record '${params.recordId}' not found`);
+    }
+
+    const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(
+      collection.tableName,
+      'table',
+    )}`;
+    const result = await this.dataSource
+      .createQueryBuilder()
+      .delete()
+      .from(tableName)
+      .where('id = :id', { id: params.recordId })
+      .execute();
+
+    const deleted = (result.affected ?? 0) > 0;
+
+    if (deleted) {
+      await this.writeAuditLog({
+        userId: params.actorId ?? null,
+        action: 'delete',
+        collectionCode: collection.code,
+        recordId: params.recordId,
+        oldValues: previousRecord,
+      });
+      await this.outboxPublisher.publish({
+        eventType: 'record.deleted',
+        collectionCode: collection.code,
+        recordId: params.recordId,
+        payload: {
+          collectionCode: collection.code,
+          recordId: params.recordId,
+          previousRecord,
+          userId: params.actorId ?? null,
+        },
+      });
+    }
+
+    return { deleted };
+  }
+
   async updateRecord(params: {
     collectionCode: string;
     recordId: string;

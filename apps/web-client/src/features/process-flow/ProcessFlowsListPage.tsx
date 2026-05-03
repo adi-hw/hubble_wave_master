@@ -26,7 +26,7 @@ import { GlassButton } from '../../components/ui/glass/GlassButton';
 import { GlassInput } from '../../components/ui/glass/GlassInput';
 import { GlassModal } from '../../components/ui/glass/GlassModal';
 import { Badge } from '../../components/ui/Badge';
-import authenticatedClient from '../../services/api';
+import { processFlowsService } from '../../services/process-flows.service';
 
 interface ProcessFlowDefinition {
   id: string;
@@ -34,7 +34,16 @@ interface ProcessFlowDefinition {
   name: string;
   description?: string;
   isActive: boolean;
-  triggerType: 'record_created' | 'record_updated' | 'property_changed' | 'scheduled' | 'manual';
+  triggerType:
+    | 'record_created'
+    | 'record_updated'
+    | 'property_changed'
+    | 'scheduled'
+    | 'manual'
+    | 'ava_initiated'
+    | 'metric_threshold'
+    | 'service_catalog'
+    | 'webhook';
   collectionId?: string;
   collectionCode?: string;
   executionCount: number;
@@ -51,12 +60,17 @@ const triggerTypeLabels: Record<string, { label: string; color: string }> = {
   property_changed: { label: 'Property Change', color: 'bg-accent text-accent-foreground' },
   scheduled: { label: 'Scheduled', color: 'bg-warning-subtle text-warning-text' },
   manual: { label: 'Manual', color: 'bg-muted text-muted-foreground' },
+  ava_initiated: { label: 'AVA', color: 'bg-purple-100 text-purple-800' },
+  metric_threshold: { label: 'Metric', color: 'bg-cyan-100 text-cyan-800' },
+  service_catalog: { label: 'Catalog', color: 'bg-emerald-100 text-emerald-800' },
+  webhook: { label: 'Webhook', color: 'bg-amber-100 text-amber-800' },
 };
 
 export const ProcessFlowsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [processFlows, setProcessFlows] = useState<ProcessFlowDefinition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [selectedProcessFlow, setSelectedProcessFlow] = useState<ProcessFlowDefinition | null>(null);
@@ -69,16 +83,20 @@ export const ProcessFlowsListPage: React.FC = () => {
   const fetchProcessFlows = async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      const filters: { active?: boolean } = {};
       if (activeFilter !== 'all') {
-        params.active = activeFilter === 'active' ? 'true' : 'false';
+        filters.active = activeFilter === 'active';
       }
 
-      const response = await authenticatedClient.get('/workflows/definitions', { params });
-      const data = response.data;
-      setProcessFlows(Array.isArray(data) ? data : data.items || []);
-    } catch {
-      // Fetch failed - list remains empty
+      // The service-side type omits a few list-only stat fields the
+      // server still returns (executionCount, lastExecutedAt, etc.); a
+      // narrow cast bridges the typed list call without redefining
+      // the entire shape here.
+      const data = (await processFlowsService.list(filters)) as unknown as ProcessFlowDefinition[];
+      setProcessFlows(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load process flows';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -86,33 +104,30 @@ export const ProcessFlowsListPage: React.FC = () => {
 
   const handleToggleActive = async (processFlow: ProcessFlowDefinition) => {
     try {
-      const endpoint = processFlow.isActive
-        ? `/workflows/definitions/${processFlow.id}/deactivate`
-        : `/workflows/definitions/${processFlow.id}/activate`;
-
-      await authenticatedClient.post(endpoint);
-
+      if (processFlow.isActive) {
+        await processFlowsService.deactivate(processFlow.id);
+      } else {
+        await processFlowsService.activate(processFlow.id);
+      }
       setProcessFlows(
         processFlows.map((pf) =>
           pf.id === processFlow.id ? { ...pf, isActive: !pf.isActive } : pf
         )
       );
-    } catch {
-      // Toggle failed - state unchanged
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to toggle process flow';
+      setError(msg);
     }
   };
 
   const handleDuplicate = async (processFlow: ProcessFlowDefinition) => {
     try {
       const newCode = `${processFlow.code}_copy_${Date.now()}`;
-      const response = await authenticatedClient.post(
-        `/workflows/definitions/${processFlow.id}/duplicate`,
-        { code: newCode }
-      );
-
-      setProcessFlows([...processFlows, response.data]);
-    } catch {
-      // Duplicate failed
+      const created = (await processFlowsService.duplicate(processFlow.id, newCode)) as unknown as ProcessFlowDefinition;
+      setProcessFlows([...processFlows, created]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to duplicate process flow';
+      setError(msg);
     }
   };
 
@@ -120,13 +135,13 @@ export const ProcessFlowsListPage: React.FC = () => {
     if (!selectedProcessFlow) return;
 
     try {
-      await authenticatedClient.delete(`/workflows/definitions/${selectedProcessFlow.id}`);
-
+      await processFlowsService.delete(selectedProcessFlow.id);
       setProcessFlows(processFlows.filter((pf) => pf.id !== selectedProcessFlow.id));
       setShowDeleteModal(false);
       setSelectedProcessFlow(null);
-    } catch {
-      // Delete failed - process flow remains in list
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete process flow';
+      setError(msg);
     }
   };
 
@@ -147,6 +162,22 @@ export const ProcessFlowsListPage: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error ? (
+        <div
+          role="alert"
+          className="mb-4 flex items-start justify-between gap-3 rounded border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive-text"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-destructive-text hover:opacity-80"
+            aria-label="Dismiss error"
+          >
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -154,7 +185,7 @@ export const ProcessFlowsListPage: React.FC = () => {
             Process Flows
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Automate business processes with visual process flows
+            Model multi-step business processes as executable flows
           </p>
         </div>
         <GlassButton
@@ -200,7 +231,7 @@ export const ProcessFlowsListPage: React.FC = () => {
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="h-48 bg-muted rounded-xl animate-pulse"
+              className="h-48 animate-pulse rounded-lg bg-muted"
             />
           ))}
         </div>
@@ -213,7 +244,7 @@ export const ProcessFlowsListPage: React.FC = () => {
           <p className="text-sm text-muted-foreground mb-6">
             {searchQuery
               ? 'Try adjusting your search criteria'
-              : 'Process flows help automate repetitive tasks and business processes'}
+              : 'Process Flows model structured, multi-step business processes — create one to get started.'}
           </p>
           {!searchQuery && (
             <GlassButton
@@ -356,7 +387,7 @@ export const ProcessFlowsListPage: React.FC = () => {
           <div className="flex items-center gap-3 p-4 bg-danger-subtle rounded-lg mb-4">
             <AlertTriangle className="h-5 w-5 text-danger-text" />
             <p className="text-sm text-danger-text">
-              This action cannot be undone. All process flow instances and history will be deleted.
+              This action cannot be undone. All execution history and logs will be permanently removed.
             </p>
           </div>
           <p className="text-sm text-muted-foreground mb-4">

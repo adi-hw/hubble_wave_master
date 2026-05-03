@@ -155,6 +155,22 @@ export function DataGrid<T extends Record<string, unknown>>({
     [columns, hiddenColumns]
   );
 
+  const displayData = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!searchable || onSearch || !query) return data;
+
+    return data.filter((row) =>
+      visibleColumns.some((column) => {
+        const value = getCellValue(row, column);
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'object') {
+          return JSON.stringify(value).toLowerCase().includes(query);
+        }
+        return String(value).toLowerCase().includes(query);
+      })
+    );
+  }, [data, getCellValue, onSearch, searchQuery, searchable, visibleColumns]);
+
   // Handle sort
   const handleSort = useCallback(
     (columnId: string) => {
@@ -180,12 +196,12 @@ export function DataGrid<T extends Record<string, unknown>>({
   const handleSelectAll = useCallback(() => {
     if (!onSelectionChange) return;
 
-    if (selectedRows.length === data.length) {
+    if (selectedRows.length === displayData.length) {
       onSelectionChange([]);
     } else {
-      onSelectionChange(data.map(getRowKey));
+      onSelectionChange(displayData.map(getRowKey));
     }
-  }, [data, selectedRows, onSelectionChange, getRowKey]);
+  }, [displayData, selectedRows, onSelectionChange, getRowKey]);
 
   const handleSelectRow = useCallback(
     (row: T) => {
@@ -329,7 +345,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   const showingFrom = pagination ? (pagination.page - 1) * pagination.pageSize + 1 : 1;
   const showingTo = pagination
     ? Math.min(pagination.page * pagination.pageSize, pagination.total)
-    : data.length;
+    : displayData.length;
 
   return (
     <div
@@ -486,7 +502,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                 >
                   <input
                     type="checkbox"
-                    checked={data.length > 0 && selectedRows.length === data.length}
+                    checked={displayData.length > 0 && selectedRows.length === displayData.length}
                     onChange={handleSelectAll}
                     className="w-4 h-4 rounded accent-primary"
                     aria-label="Select all rows"
@@ -524,7 +540,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                   </p>
                 </td>
               </tr>
-            ) : data.length === 0 ? (
+            ) : displayData.length === 0 ? (
               <tr role="row">
                 <td
                   colSpan={visibleColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
@@ -535,7 +551,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                 </td>
               </tr>
             ) : (
-              data.map((row, rowIndex) => {
+              displayData.map((row, rowIndex) => {
                 const key = getRowKey(row);
                 const isSelected = selectedRows.includes(key);
 

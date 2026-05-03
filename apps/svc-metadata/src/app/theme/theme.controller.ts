@@ -16,13 +16,13 @@ export class ThemeController {
   // "preferences" being matched as :id and failing ParseUUIDPipe
   @UseGuards(JwtAuthGuard)
   @Get('preferences/me')
-  async getPref(@CurrentUser('id') userId: string) {
+  async getPref(@CurrentUser('userId') userId: string) {
     return this.themeService.getPreference(userId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('preferences/me')
-  async updatePref(@CurrentUser('id') userId: string, @Body() dto: UpdatePreferenceDto) {
+  async updatePref(@CurrentUser('userId') userId: string, @Body() dto: UpdatePreferenceDto) {
     return this.themeService.updatePreference(userId, dto);
   }
 
@@ -33,7 +33,7 @@ export class ThemeController {
 
   @Roles('admin')
   @Post()
-  async create(@Body() dto: CreateThemeDto, @CurrentUser('id') userId: string) {
+  async create(@Body() dto: CreateThemeDto, @CurrentUser('userId') userId: string) {
     return this.themeService.create(dto, userId);
   }
 

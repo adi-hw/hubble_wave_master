@@ -19,14 +19,18 @@ export class MetricsController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('limit') limit?: string,
+    @Query('direction') direction?: string,
     @Req() req?: InstanceRequest,
   ) {
     const context = extractContext(req || {});
     const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    const dir: 'asc' | 'desc' | undefined =
+      direction === 'desc' ? 'desc' : direction === 'asc' ? 'asc' : undefined;
     return this.metricsService.getMetricPoints(context, code, {
       start,
       end,
       limit: Number.isFinite(parsedLimit ?? NaN) ? parsedLimit : undefined,
+      direction: dir,
     });
   }
 }

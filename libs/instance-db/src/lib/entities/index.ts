@@ -44,6 +44,7 @@ export {
 export type {
   PropertyDefinitionStatus,
   PropertyDefinitionRevisionStatus,
+  PropertyBehavioralAttributes,
 } from './property-definition.entity';
 export { PropertyType, PropertyTypeCategory, ChoiceList, ChoiceItem } from './property-type.entity';
 export {
@@ -199,6 +200,68 @@ export {
 export { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.entity';
 
 export { InstanceEventOutbox, OutboxStatus } from './event-outbox.entity';
+
+export { DependentReviewQueueEntry } from './dependent-review-queue.entity';
+export type {
+  DependentReviewStatus,
+  DependentReviewChangeKind,
+  DependentReviewClassification,
+} from './dependent-review-queue.entity';
+
+export { DisplayRule, DisplayRuleRevision } from './display-rule.entity';
+export type {
+  DisplayRuleStatus,
+  DisplayRuleRevisionStatus,
+  DisplayActionKind,
+  DisplayAction,
+} from './display-rule.entity';
+
+export { Connector } from './connector.entity';
+export type { ConnectorKind, ConnectorStatus } from './connector.entity';
+
+export {
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+} from './decision-table.entity';
+export type {
+  DecisionTableStatus,
+  DecisionInputType,
+  DecisionRowOperator,
+  DecisionRowCondition,
+  DecisionTableRevisionStatus,
+} from './decision-table.entity';
+
+export {
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+} from './guided-process.entity';
+export type {
+  GuidedProcessStatus,
+  GuidedActivityKind,
+  GuidedProcessRevisionStatus,
+} from './guided-process.entity';
+
+export {
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+} from './workspace.entity';
+export type {
+  WorkspaceStatus,
+  WorkspacePageKind,
+  WorkspaceVariantScope,
+  PanelLayout,
+} from './workspace.entity';
+
+export { ChangePackage } from './change-package.entity';
+export type {
+  ChangePackageStatus,
+  MetadataChange,
+} from './change-package.entity';
 
 // ─────────────────────────────────────────────────────────────────
 // AVA (AI Virtual Assistant) - Phase 6 Enhanced
@@ -584,6 +647,27 @@ import {
 } from './modelops.entity';
 import { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.entity';
 import { InstanceEventOutbox } from './event-outbox.entity';
+import { DependentReviewQueueEntry } from './dependent-review-queue.entity';
+import { DisplayRule, DisplayRuleRevision } from './display-rule.entity';
+import { Connector } from './connector.entity';
+import {
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+} from './decision-table.entity';
+import {
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+} from './guided-process.entity';
+import {
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+} from './workspace.entity';
+import { ChangePackage } from './change-package.entity';
 import {
   AVAAuditTrail,
   AVAPermissionConfig,
@@ -821,6 +905,36 @@ export const instanceEntities = [
 
   // Event Stream
   InstanceEventOutbox,
+
+  // ADR-17 publish-impact review queue
+  DependentReviewQueueEntry,
+
+  // Phase 2 §7.3 Display Rules
+  DisplayRule,
+  DisplayRuleRevision,
+
+  // Phase 3 §8.1.10 Connector framework
+  Connector,
+
+  // Phase 3 §8.2 Decision Tables (ADR-14 typed-IO model)
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+
+  // Phase 3 §8.3 Guided Processes (Playbooks)
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+
+  // Phase 5 Workspaces (ADR-15)
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+
+  // Phase 6 Change Packages (§11.1)
+  ChangePackage,
 
   // AVA (AI Virtual Assistant) - Phase 6 Enhanced
   AVAAuditTrail,

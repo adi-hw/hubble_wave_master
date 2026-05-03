@@ -194,7 +194,7 @@ export const WebhooksPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-subtle rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg">
             <Webhook className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -240,7 +240,7 @@ export const WebhooksPage: React.FC = () => {
                     onClick={() => setSelectedWebhook(webhook)}
                     className={`w-full p-3 rounded-lg text-left transition-colors ${
                       selectedWebhook?.id === webhook.id
-                        ? 'bg-primary-subtle border border-primary'
+                        ? 'bg-primary/10 border border-primary'
                         : 'hover:bg-muted border border-transparent'
                     }`}
                   >
@@ -361,7 +361,7 @@ export const WebhooksPage: React.FC = () => {
                     </label>
                     <div className="flex flex-wrap gap-1">
                       {selectedWebhook.events.map((event) => (
-                        <Badge key={event} className="bg-primary-subtle text-primary">
+                        <Badge key={event} className="bg-primary/10 text-primary">
                           {event}
                         </Badge>
                       ))}
@@ -503,7 +503,7 @@ export const WebhooksPage: React.FC = () => {
                       key={event.value}
                       className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
                         formData.events.includes(event.value)
-                          ? 'bg-primary-subtle border border-primary'
+                          ? 'bg-primary/10 border border-primary'
                           : 'bg-muted border border-transparent hover:bg-muted'
                       }`}
                     >

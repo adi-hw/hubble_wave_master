@@ -303,6 +303,9 @@ export class ConditionEvaluatorService {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
+    if (value === '@instanceCode') {
+      return process.env.INSTANCE_CODE ?? 'default';
+    }
     if (value.startsWith('@now.addDays(')) {
       const match = value.match(/@now\.addDays\((-?\d+)\)/);
       if (match) {

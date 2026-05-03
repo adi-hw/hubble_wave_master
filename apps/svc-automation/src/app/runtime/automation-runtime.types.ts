@@ -66,6 +66,7 @@ export interface ActionResult {
     | 'create_record'
     | 'send_notification'
     | 'start_workflow'
+    | 'fire_event'
     | 'abort'
     | 'add_error'
     | 'add_warning'

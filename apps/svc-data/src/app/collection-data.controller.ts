@@ -252,6 +252,23 @@ export class CollectionDataController {
   }
 
   /**
+   * Phase 5 §10.2 — list audit-log entries for a single record.
+   * Backs the Workspace ActivityFeedPanel.
+   */
+  @Get(':collectionCode/data/:id/audit-log')
+  async listAuditLog(
+    @Param('collectionCode') collectionCode: string,
+    @Param('id') id: string,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const ctx = this.buildContext(user);
+    return this.collectionData.listAuditLog(ctx, collectionCode, id, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  /**
    * Create a new record
    */
   @Post(':collectionCode/data')

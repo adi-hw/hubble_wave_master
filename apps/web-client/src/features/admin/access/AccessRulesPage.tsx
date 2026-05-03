@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { accessApi, CollectionAccessRule, CreateRuleDto } from '../../../services/accessApi';
 import { ConditionBuilder } from '../../../components/access/ConditionBuilder';
+import { useStudioCollectionId } from '../../../app/app-studio/table-builder';
 
 export const AccessRulesPage: React.FC = () => {
-  const { id: collectionId } = useParams<{ id: string }>();
+  const collectionId = useStudioCollectionId();
   const navigate = useNavigate();
   const [rules, setRules] = useState<CollectionAccessRule[]>([]);
   const [loading, setLoading] = useState(true);

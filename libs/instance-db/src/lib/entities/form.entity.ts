@@ -90,6 +90,10 @@ export class FormDefinition {
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt?: Date | null;
 
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

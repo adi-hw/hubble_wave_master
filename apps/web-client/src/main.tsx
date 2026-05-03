@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 /// <reference types="vite-plugin-pwa/client" />
 import { StrictMode } from 'react';
 import * as ReactDOM from 'react-dom/client';

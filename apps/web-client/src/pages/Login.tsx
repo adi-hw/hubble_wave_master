@@ -159,6 +159,10 @@ export const Login = () => {
   const { login, requestPasswordReset, auth } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const getRequestedPath = () => {
+    const from = (location.state as { from?: string | { pathname?: string } } | null)?.from;
+    return typeof from === 'string' ? from : from?.pathname;
+  };
 
   // Fetch SSO configuration on mount
   useEffect(() => {
@@ -181,7 +185,7 @@ export const Login = () => {
   // link, so it must pass open-redirect validation before being used.
   useEffect(() => {
     if (auth.isAuthenticated && !auth.loading) {
-      const requested = (location.state as any)?.from?.pathname;
+      const requested = getRequestedPath();
       const target = validateInternalUrl(requested) ?? '/';
       navigate(target, { replace: true });
     }
@@ -212,7 +216,7 @@ export const Login = () => {
         setView('expired-password');
         setError('');
       } else if (result.success) {
-        const requested = (location.state as any)?.from?.pathname;
+        const requested = getRequestedPath();
         const target = validateInternalUrl(requested) ?? '/';
         navigate(target, { replace: true });
       } else if (result.error) {

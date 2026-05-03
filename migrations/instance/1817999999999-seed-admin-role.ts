@@ -114,8 +114,8 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
 
     for (const perm of this.permissions) {
       await queryRunner.query(
-        `INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at, updated_at)
-         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, true, NOW(), NOW())
+        `INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at)
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, true, NOW())
          ON CONFLICT (code) DO NOTHING`,
         [perm.slug, perm.name, perm.description, perm.category, perm.isDangerous]
       );

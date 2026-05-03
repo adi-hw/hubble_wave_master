@@ -670,13 +670,13 @@ export const FormLayoutDesigner: React.FC<FormLayoutDesignerProps> = ({
                   <button
                     onClick={() => setShowPalette(!showPalette)}
                     className="h-10 px-3 flex items-center gap-2 transition-colors min-h-[44px] border-b border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    aria-label={showPalette ? 'Hide field palette' : 'Show field palette'}
+                    aria-label={showPalette ? 'Hide Property palette' : 'Show Property palette'}
                     aria-expanded={showPalette}
                   >
                     {showPalette ? (
                       <>
                         <ChevronLeft className="h-4 w-4" />
-                        <span className="text-xs font-medium">Fields</span>
+                        <span className="text-xs font-medium">Properties</span>
                       </>
                     ) : (
                       <ChevronRight className="h-4 w-4" />

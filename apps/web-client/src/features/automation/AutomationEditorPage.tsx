@@ -27,7 +27,12 @@ interface CollectionProperty {
 export const AutomationEditorPage: React.FC = () => {
   const { id: collectionId, automationId } = useParams<{ id: string; automationId: string }>();
   const navigate = useNavigate();
-  const isNew = automationId === 'new';
+  // The `/automations/new` route is a literal segment with no
+  // `:automationId` param; only `/automations/:automationId` populates
+  // the param. Without this the page rendered as "edit" mode and
+  // handleSave skipped both create and update because automationId
+  // was undefined.
+  const isNew = !automationId || automationId === 'new';
 
   const [loading, setLoading] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
@@ -71,14 +76,27 @@ export const AutomationEditorPage: React.FC = () => {
   };
 
   const convertToRuleConfig = (automation: Automation): Partial<RuleConfig> => {
-    // Parse trigger timing and operations from the automation
+    // Canonical schema is `triggerTiming` ∈ {before,after,async} +
+    // `triggerOperations: TriggerOperation[]`. Older rows used the
+    // combined `before_insert`-style timing plus per-operation
+    // booleans; split on `_` so legacy data still loads correctly.
     const timingParts = automation.triggerTiming?.split('_') ?? ['after'];
     const timing = timingParts[0] as TriggerTiming;
 
-    const operations: TriggerOperation[] = [];
-    if (automation.triggerOnInsert) operations.push('insert');
-    if (automation.triggerOnUpdate) operations.push('update');
-    if (automation.triggerOnDelete) operations.push('delete');
+    const operations: TriggerOperation[] = automation.triggerOperations
+      ? [...automation.triggerOperations]
+      : [];
+    if (operations.length === 0) {
+      // Legacy boolean-flag fallback.
+      if (automation.triggerOnInsert) operations.push('insert');
+      if (automation.triggerOnUpdate) operations.push('update');
+      if (automation.triggerOnDelete) operations.push('delete');
+      // If timing was combined (e.g. `before_insert`), pull the
+      // operation suffix as a last resort.
+      if (operations.length === 0 && timingParts[1]) {
+        operations.push(timingParts[1] as TriggerOperation);
+      }
+    }
 
     // Map condition to the correct type if it exists
     const condition = automation.condition as Record<string, unknown> | undefined;
@@ -131,19 +149,24 @@ export const AutomationEditorPage: React.FC = () => {
       if (!collectionId) return;
 
       try {
-        // Convert RuleConfig back to API format
-        const triggerTiming = `${rule.triggerTiming}_${rule.triggerOperations[0] ?? 'insert'}`;
-
+        // Persist as the canonical schema: triggerTiming ∈
+        // {before,after,async} and triggerOperations as an array of
+        // {insert,update,delete,query}. Both runtime paths (svc-data's
+        // sync executor and svc-automation's outbox consumer) gate on
+        // these fields. The earlier combined `before_insert` shape
+        // matched neither, so editor-saved rules were invisible to
+        // the engine.
         const payload: CreateAutomationDto = {
           name: rule.name,
           code: `AUT_${Date.now()}`,
           collectionId,
           description: rule.description,
-          triggerTiming: triggerTiming as Automation['triggerTiming'],
+          triggerTiming: rule.triggerTiming as Automation['triggerTiming'],
+          triggerOperations: rule.triggerOperations,
           triggerOnInsert: rule.triggerOperations.includes('insert'),
           triggerOnUpdate: rule.triggerOperations.includes('update'),
           triggerOnDelete: rule.triggerOperations.includes('delete'),
-          triggerOnQuery: false,
+          triggerOnQuery: rule.triggerOperations.includes('query'),
           watchProperties: rule.watchProperties,
           conditionType: rule.conditionType,
           condition: rule.condition as unknown as Record<string, unknown>,

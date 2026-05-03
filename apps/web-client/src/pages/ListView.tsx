@@ -1568,12 +1568,14 @@ export function ListView() {
         {
           id: 'view',
           label: 'View',
-          onClick: (row: ListViewRecord) => navigate(`/studio/collections/${row.id}`),
+          onClick: (row: ListViewRecord) =>
+            navigate(`/studio/c/${row.code as string}/data`),
         },
         {
           id: 'edit',
           label: 'Edit',
-          onClick: (row: ListViewRecord) => navigate(`/studio/collections/${row.id}`),
+          onClick: (row: ListViewRecord) =>
+            navigate(`/studio/c/${row.code as string}/data`),
         },
       ];
     } else if (isUsers) {
@@ -1686,7 +1688,8 @@ export function ListView() {
     (row: Record<string, unknown>) => {
       const id = row.id as string;
       if (isCollections) {
-        navigate(`/studio/collections/${id}`);
+        const code = row.code as string | undefined;
+        navigate(code ? `/studio/c/${code}/data` : `/studio/collections/${id}`);
       } else if (isUsers) {
         navigate(`/studio/users/${id}`);
       } else {

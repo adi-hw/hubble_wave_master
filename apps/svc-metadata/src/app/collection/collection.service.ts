@@ -30,6 +30,8 @@ import {
 } from '@hubblewave/instance-db';
 import { CollectionStorageService } from './collection-storage.service';
 import { CollectionAvaService } from './collection-ava.service';
+import { PublishImpactService } from '../publish-impact/publish-impact.service';
+import { DependentReviewQueueService } from '../publish-impact/dependent-review-queue.service';
 
 // ============================================================================
 // DTOs (Data Transfer Objects)
@@ -83,7 +85,11 @@ export interface CreateCollectionDto {
    */
   applicationId?: string;
 
-  /** Legacy alias for applicationId — kept for back-compat with old clients. */
+  /**
+   * Alias for `applicationId` accepted on incoming DTOs only. The
+   * service normalizes it to `applicationId` immediately; downstream
+   * code reads from `applicationId`.
+   */
   moduleId?: string;
 
   /** ID of collection this extends */
@@ -205,7 +211,9 @@ export class CollectionService {
     private readonly propertyTypeRepo: Repository<PropertyType>,
     private readonly dataSource: DataSource,
     private readonly storageService: CollectionStorageService,
-    private readonly avaService: CollectionAvaService
+    private readonly avaService: CollectionAvaService,
+    private readonly publishImpactService: PublishImpactService,
+    private readonly dependentQueueService: DependentReviewQueueService,
   ) {}
 
   // --------------------------------------------------------------------------
@@ -229,7 +237,7 @@ export class CollectionService {
     const qb = this.collectionRepo.createQueryBuilder('c');
 
     if (options.moduleId) {
-      qb.andWhere('c.application_id = :moduleId', { moduleId: options.moduleId });
+      qb.andWhere('c.applicationId = :moduleId', { moduleId: options.moduleId });
     }
 
     if (options.category) {
@@ -237,11 +245,11 @@ export class CollectionService {
     }
 
     if (!options.includeSystem) {
-      qb.andWhere('c.is_system = false');
+      qb.andWhere('c.isSystem = false');
     }
 
     if (options.ownerType) {
-      qb.andWhere('c.owner_type = :ownerType', { ownerType: options.ownerType });
+      qb.andWhere('c.ownerType = :ownerType', { ownerType: options.ownerType });
     }
 
     if (options.search) {
@@ -251,10 +259,7 @@ export class CollectionService {
       );
     }
     if (options.status) {
-      qb.andWhere(
-        "COALESCE(c.metadata->>'status','published') = :status",
-        { status: options.status }
-      );
+      qb.andWhere('c.status = :status', { status: options.status });
     }
 
     // Count total before pagination
@@ -283,9 +288,9 @@ export class CollectionService {
     // Get property counts for each collection
     const propertyCountsResult = await this.propertyRepo
       .createQueryBuilder('p')
-      .select('p.collection_id', 'collectionId')
+      .select('p.collectionId', 'collectionId')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('p.collection_id')
+      .groupBy('p.collectionId')
       .getRawMany();
 
     const propertyCountMap = new Map<string, number>();
@@ -572,7 +577,7 @@ export class CollectionService {
         defaultAccess: 'read',
         createdBy: userId,
         updatedBy: userId,
-        metadata: this.mergeMetadata(dto.metadata, 'draft'),
+        metadata: this.mergeMetadata(dto.metadata),
         status: 'draft',
       });
 
@@ -681,7 +686,6 @@ export class CollectionService {
           if (key === 'metadata') {
             (collection as unknown as Record<string, unknown>)[key] = this.mergeMetadata(
               value as Record<string, unknown>,
-              'draft',
               collection.metadata,
             );
           } else {
@@ -823,6 +827,22 @@ export class CollectionService {
     _userId?: string,
     _context?: { ipAddress?: string; userAgent?: string }
   ): Promise<CollectionDefinition> {
+    // ADR-17: capture the impact report before mutating state. After
+    // publish flips revisions to 'published', the diff against the
+    // newly-published state is empty — so we snapshot the dependents
+    // first, then enqueue them post-commit if any non-cosmetic
+    // changes shipped.
+    const impactReport = await this.publishImpactService
+      .previewCollectionPublish(collectionId)
+      .catch((err) => {
+        this.logger.warn(
+          `publish-impact preview failed for ${collectionId}: ${
+            err instanceof Error ? err.message : String(err)
+          }. Continuing without queue capture.`,
+        );
+        return null;
+      });
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.startTransaction();
 
@@ -854,7 +874,6 @@ export class CollectionService {
 
       collection.metadata = this.mergeMetadata(
         collection.metadata,
-        'published',
         collection.metadata,
       );
       collection.status = 'published';
@@ -870,7 +889,6 @@ export class CollectionService {
       for (const property of properties) {
         property.metadata = this.mergeMetadata(
           property.metadata,
-          'published',
           property.metadata,
         );
         property.status = 'published';
@@ -901,6 +919,23 @@ export class CollectionService {
       });
 
       await queryRunner.commitTransaction();
+
+      // Post-commit: enqueue dependents flagged by the publish-impact
+      // analyzers. Done outside the transaction so a queue write
+      // failure cannot roll back a successful publish — the queue is
+      // a follow-up surface, not part of the publish atomic unit.
+      if (impactReport && impactReport.classification !== 'no_changes') {
+        try {
+          await this.dependentQueueService.enqueueFromImpactReport(impactReport, _userId);
+        } catch (err) {
+          this.logger.warn(
+            `Failed to enqueue dependents for ${collectionId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+
       return saved;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -933,7 +968,7 @@ export class CollectionService {
       }
 
       const previousState = this.toAuditState(collection);
-      collection.metadata = this.mergeMetadata(collection.metadata, 'deprecated', collection.metadata);
+      collection.metadata = this.mergeMetadata(collection.metadata, collection.metadata);
       collection.status = 'deprecated';
       collection.updatedBy = _userId;
       const saved = await queryRunner.manager.save(CollectionDefinition, collection);
@@ -1034,11 +1069,11 @@ export class CollectionService {
     const map: Record<string, string> = {
       label: 'c.name',
       code: 'c.code',
-      ownerType: 'c.owner_type',
+      ownerType: 'c.ownerType',
       category: 'c.category',
-      tableName: 'c.table_name',
-      createdAt: 'c.created_at',
-      updatedAt: 'c.updated_at',
+      tableName: 'c.tableName',
+      createdAt: 'c.createdAt',
+      updatedAt: 'c.updatedAt',
     };
     return map[field] || 'c.name';
   }
@@ -1071,20 +1106,33 @@ export class CollectionService {
     };
   }
 
+  /**
+   * Merge user-supplied metadata onto the existing JSONB blob. The
+   * `status` lifecycle column is the typed source of truth and never
+   * appears in the JSONB payload; this helper strips it defensively
+   * in case any input carries it.
+   */
   private mergeMetadata(
     incoming: Record<string, unknown> | undefined,
-    status: 'draft' | 'published' | 'deprecated',
     existing: Record<string, unknown> = {},
   ): Record<string, unknown> {
-    return {
-      ...existing,
-      ...incoming,
-      status,
-    };
+    const merged: Record<string, unknown> = { ...existing, ...incoming };
+    delete (merged as { status?: unknown }).status;
+    return merged;
   }
 
   /**
-   * Helper: Create default system properties
+   * Helper: Create default system properties.
+   *
+   * Resolves PropertyType records by code (seeded by
+   * `1787000010002-seed-platform-collections`) so each row gets a
+   * proper propertyTypeId. Uses canonical entity field names —
+   * `name`, `position`, `isReadonly`, `columnName` — instead of the
+   * older alias shape, dropping the previously suppressed cast.
+   * If a PropertyType lookup fails, the create throws rather than
+   * silently writing a row with a null FK; system properties are
+   * load-bearing (forms, runtime queries reference them) and a
+   * partial seed is worse than a failed create.
    */
   private async createDefaultProperties(
     queryRunner: QueryRunner,
@@ -1092,76 +1140,95 @@ export class CollectionService {
     applicationId: string | null,
     userId?: string,
   ): Promise<number> {
-    const defaults = [
+    const defaults: Array<{
+      code: string;
+      name: string;
+      typeCode: string;
+      isReadonly: boolean;
+      isRequired: boolean;
+      position: number;
+      columnName: string;
+    }> = [
       {
         code: 'id',
-        label: 'ID',
-        type: 'uuid',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'ID',
+        typeCode: 'uuid',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 0,
+        position: 0,
+        columnName: 'id',
       },
       {
         code: 'created_at',
-        label: 'Created At',
-        type: 'datetime',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Created At',
+        typeCode: 'datetime',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 900,
+        position: 900,
+        columnName: 'created_at',
       },
       {
         code: 'updated_at',
-        label: 'Updated At',
-        type: 'datetime',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Updated At',
+        typeCode: 'datetime',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 901,
+        position: 901,
+        columnName: 'updated_at',
       },
       {
         code: 'created_by',
-        label: 'Created By',
-        type: 'user_reference',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Created By',
+        typeCode: 'user',
+        isReadonly: true,
         isRequired: false,
-        displayOrder: 902,
+        position: 902,
+        columnName: 'created_by',
       },
       {
         code: 'updated_by',
-        label: 'Updated By',
-        type: 'user_reference',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Updated By',
+        typeCode: 'user',
+        isReadonly: true,
         isRequired: false,
-        displayOrder: 903,
+        position: 903,
+        columnName: 'updated_by',
       },
     ];
 
+    const typeCodes = Array.from(new Set(defaults.map((d) => d.typeCode)));
+    const types = await queryRunner.manager.find(PropertyType, {
+      where: typeCodes.map((c) => ({ code: c })),
+    });
+    const typeIdByCode = new Map<string, string>(types.map((t) => [t.code, t.id]));
+    const missing = typeCodes.filter((c) => !typeIdByCode.has(c));
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot seed default properties — PropertyType codes not found: ${missing.join(
+          ', ',
+        )}. Run migration 1787000010002-seed-platform-collections first.`,
+      );
+    }
+
     let count = 0;
     for (const p of defaults) {
-      // The defaults block above was authored against an older entity
-      // shape (label, type, displayOrder, isReadOnly). The current
-      // PropertyDefinition uses (name, propertyTypeId, position, isReadonly).
-      // The cast preserves pre-existing runtime behavior; cleaning up the
-      // shape mismatch is out of scope for Slice C1.
       const prop = queryRunner.manager.create(PropertyDefinition, {
         collectionId,
         applicationId,
         code: p.code,
-        label: p.label,
-        type: p.type,
-        isSystem: p.isSystem,
-        isReadOnly: p.isReadOnly,
+        name: p.name,
+        propertyTypeId: typeIdByCode.get(p.typeCode),
+        columnName: p.columnName,
+        isSystem: true,
+        isReadonly: p.isReadonly,
         isRequired: p.isRequired,
-        displayOrder: p.displayOrder,
+        position: p.position,
+        ownerType: 'system',
+        isActive: true,
         createdBy: userId,
-        updatedBy: userId,
-        metadata: this.mergeMetadata({}, 'draft'),
+        metadata: this.mergeMetadata({}),
         status: 'draft',
-      } as unknown as Partial<PropertyDefinition>);
+      });
 
       const savedProp = await queryRunner.manager.save(PropertyDefinition, prop);
 

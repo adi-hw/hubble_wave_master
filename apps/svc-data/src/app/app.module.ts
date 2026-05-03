@@ -34,6 +34,7 @@ import { ValidationModule } from './validation/validation.module';
 import { DefaultsModule } from './defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
 import { FormulaModule } from './formula/formula.module';
+import { ComputedModule } from './computed/computed.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -53,6 +54,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DefaultsModule,
     GridModule,
     FormulaModule,
+    ComputedModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [

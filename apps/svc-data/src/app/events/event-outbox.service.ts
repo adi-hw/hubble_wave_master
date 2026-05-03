@@ -73,4 +73,73 @@ export class EventOutboxService {
     });
     await repo.save(entry);
   }
+
+  /**
+   * Notification-outbox contract per `NotificationOutboxProcessor`:
+   * payload keys are `templateCode` / `templateId`, `recipients`,
+   * `data`, plus optional `channels` / `triggeredBy` / `correlationId`
+   * at the root. Wrapping under `payload.record` (as enqueueRecordEvent
+   * does) would fail the consumer's payload validation.
+   */
+  async enqueueNotificationRequest(payload: {
+    templateCode?: string;
+    templateId?: string;
+    recipients: string[];
+    channels?: string[];
+    data?: Record<string, unknown>;
+    collectionCode?: string;
+    recordId?: string;
+    userId?: string | null;
+  }): Promise<void> {
+    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+    const entry = repo.create({
+      eventType: 'automation.notification.requested',
+      collectionCode: payload.collectionCode ?? null,
+      recordId: payload.recordId ?? null,
+      payload: {
+        templateCode: payload.templateCode,
+        templateId: payload.templateId,
+        recipients: payload.recipients,
+        channels: payload.channels,
+        data: payload.data ?? {},
+        triggeredBy: payload.userId ?? null,
+        occurredAt: new Date().toISOString(),
+      },
+      status: 'pending',
+      attempts: 0,
+    });
+    await repo.save(entry);
+  }
+
+  /**
+   * Free-form automation event published by FireEvent. Distinct from
+   * `enqueueRecordEvent` because no record write occurred — there is
+   * no companion `search.index` event and no record-shaped `record`
+   * field. Consumer is whoever subscribes to `automation.event.${name}`.
+   */
+  async enqueueAutomationEvent(payload: {
+    event: string;
+    data?: Record<string, unknown>;
+    collectionCode?: string;
+    recordId?: string;
+    userId?: string | null;
+  }): Promise<void> {
+    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+    const entry = repo.create({
+      eventType: `automation.event.${payload.event}`,
+      collectionCode: payload.collectionCode ?? null,
+      recordId: payload.recordId ?? null,
+      payload: {
+        event: payload.event,
+        data: payload.data ?? {},
+        collectionCode: payload.collectionCode,
+        recordId: payload.recordId,
+        userId: payload.userId ?? null,
+        occurredAt: new Date().toISOString(),
+      },
+      status: 'pending',
+      attempts: 0,
+    });
+    await repo.save(entry);
+  }
 }

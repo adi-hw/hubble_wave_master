@@ -99,7 +99,7 @@ const BLOCKED_PATTERNS = [
   /\btypeof\b/i,
   /\binstanceof\b/i,
   /\bwith\b/i,
-  /\[\s*['\"`].*['\"`]\s*\]/,
+  /\[\s*['"`].*['"`]\s*\]/,
   /\bfetch\b/i,
   /\bXMLHttpRequest\b/i,
   /\bWebSocket\b/i,

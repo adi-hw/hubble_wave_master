@@ -5,6 +5,14 @@ import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 import { nxCopyAssetsPlugin } from '@nx/vite/plugins/nx-copy-assets.plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const rewriteDevSetCookieHeader = (setCookie: string | string[] | undefined) => {
+  if (!setCookie) return setCookie;
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return cookies.map((cookie) =>
+    cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
+  );
+};
+
 export default defineConfig(() => ({
   root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/apps/web-client',
@@ -31,11 +39,7 @@ export default defineConfig(() => ({
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
-            if (setCookie) {
-              proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
-                cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
-              );
-            }
+            proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
       },
@@ -93,7 +97,8 @@ export default defineConfig(() => ({
       '/api/navigation/resolve': {
         target: 'http://localhost:3006',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api'),
+        rewrite: (path) =>
+          path.replace(/^\/api\/navigation\/resolve/, '/api/view-engine/navigation/resolve'),
       },
       '/api/navigation': {
         target: 'http://localhost:3003',
@@ -103,7 +108,6 @@ export default defineConfig(() => ({
       '/api/view-engine': {
         target: 'http://localhost:3006',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/view-engine/, '/api'),
       },
       // User management & Auth → svc-identity
       '/api/tenant-users': {
@@ -116,11 +120,7 @@ export default defineConfig(() => ({
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
-            if (setCookie) {
-              proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
-                cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
-              );
-            }
+            proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
       },
@@ -140,7 +140,10 @@ export default defineConfig(() => ({
         rewrite: (path) => path.replace(/^\/api\/workflows/, '/api/workflows'),
       },
       '/api/insights': {
-        target: 'http://localhost:3007',
+        // svc-insights runs on INSIGHTS_PORT (3009 per .env). Earlier
+        // mis-target sent these to 3007 (WORKFLOW_PORT) so workspace
+        // analytics calls landed on the wrong service in dev.
+        target: 'http://localhost:3009',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/insights/, '/api/insights'),
       },
@@ -156,6 +159,9 @@ export default defineConfig(() => ({
         rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
     },
+  },
+  define: {
+    'process.env': {},
   },
   preview: {
     port: 4200,

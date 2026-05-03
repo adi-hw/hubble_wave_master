@@ -7,13 +7,23 @@ import {
   DefaultValueType,
   AuditLog,
   CollectionDefinition,
+  PropertyType,
+  type PropertyBehavioralAttributes,
 } from '@hubblewave/instance-db';
 
 export interface CreatePropertyDto {
   code: string;
   name?: string;
   description?: string;
-  propertyTypeId: string;
+  /**
+   * One of propertyTypeId (UUID FK) or propertyTypeCode (stable code
+   * like 'text', 'choice', 'reference') must be provided. The service
+   * resolves propertyTypeCode → propertyTypeId when only the code is
+   * supplied, which lets the frontend speak in property-type codes
+   * without caching the UUID lookup.
+   */
+  propertyTypeId?: string;
+  propertyTypeCode?: string;
   columnName?: string;
   config?: Record<string, unknown>;
   isRequired?: boolean;
@@ -35,6 +45,7 @@ export interface CreatePropertyDto {
   isSearchable?: boolean;
   isSortable?: boolean;
   isFilterable?: boolean;
+  behavioralAttributes?: PropertyBehavioralAttributes;
   metadata?: Record<string, unknown>;
 }
 
@@ -67,12 +78,43 @@ export class PropertyService {
     private readonly auditRepo: Repository<AuditLog>,
     @InjectRepository(CollectionDefinition)
     private readonly collectionRepo: Repository<CollectionDefinition>,
+    @InjectRepository(PropertyType)
+    private readonly propertyTypeRepo: Repository<PropertyType>,
   ) {}
 
   /**
    * Verify a referenced collection exists in this instance. Reference
    * collections must be present before a property can point at them.
    */
+  /**
+   * Resolve the property type to use. Caller may pass either
+   * propertyTypeId (canonical FK) or propertyTypeCode (stable
+   * developer-facing code). At least one must be provided.
+   */
+  private async resolvePropertyTypeId(dto: {
+    propertyTypeId?: string;
+    propertyTypeCode?: string;
+  }): Promise<string> {
+    if (dto.propertyTypeId) {
+      return dto.propertyTypeId;
+    }
+    if (!dto.propertyTypeCode) {
+      throw new BadRequestException(
+        'One of propertyTypeId or propertyTypeCode is required',
+      );
+    }
+    const type = await this.propertyTypeRepo.findOne({
+      where: { code: dto.propertyTypeCode },
+      select: ['id'],
+    });
+    if (!type) {
+      throw new BadRequestException(
+        `Unknown property type code: ${dto.propertyTypeCode}`,
+      );
+    }
+    return type.id;
+  }
+
   private async assertReferenceCollectionExists(referenceCollectionId: string): Promise<void> {
     const exists = await this.collectionRepo.findOne({
       where: { id: referenceCollectionId },
@@ -119,15 +161,15 @@ export class PropertyService {
       .orderBy('property.position', 'ASC');
 
     if (!includeSystem) {
-      query.andWhere('property.is_system = :isSystem', { isSystem: false });
+      query.andWhere('property.isSystem = :isSystem', { isSystem: false });
     }
 
     if (!includeInactive) {
-      query.andWhere('property.is_active = :isActive', { isActive: true });
+      query.andWhere('property.isActive = :isActive', { isActive: true });
     }
 
     if (propertyTypeId) {
-      query.andWhere('property.property_type_id = :propertyTypeId', { propertyTypeId });
+      query.andWhere('property.propertyTypeId = :propertyTypeId', { propertyTypeId });
     }
 
     const [data, total] = await query.getManyAndCount();
@@ -209,6 +251,7 @@ export class PropertyService {
       await this.assertReferenceCollectionExists(dto.referenceCollectionId);
     }
 
+    const propertyTypeId = await this.resolvePropertyTypeId(dto);
     const applicationId = await this.getCollectionApplicationId(collectionId);
     const maxPosition = await this.getMaxPosition(collectionId);
 
@@ -218,7 +261,7 @@ export class PropertyService {
       code: dto.code,
       name: dto.name || dto.code,
       description: dto.description,
-      propertyTypeId: dto.propertyTypeId,
+      propertyTypeId,
       columnName: dto.columnName || this.generateColumnName(dto.code),
       config: dto.config || {},
       isRequired: dto.isRequired ?? false,
@@ -240,6 +283,7 @@ export class PropertyService {
       isSearchable: dto.isSearchable ?? false,
       isSortable: dto.isSortable ?? true,
       isFilterable: dto.isFilterable ?? true,
+      behavioralAttributes: dto.behavioralAttributes || {},
       metadata: this.mergeMetadata(dto.metadata, 'draft'),
       ownerType: 'custom',
       isSystem: false,
@@ -390,6 +434,7 @@ export class PropertyService {
           isSearchable: dto.isSearchable ?? false,
           isSortable: dto.isSortable ?? true,
           isFilterable: dto.isFilterable ?? true,
+          behavioralAttributes: dto.behavioralAttributes || {},
           metadata: this.mergeMetadata(dto.metadata, 'draft'),
           ownerType: 'custom',
           isSystem: false,
@@ -510,6 +555,9 @@ export class PropertyService {
     if (dto.isSearchable !== undefined) updateData.isSearchable = dto.isSearchable;
     if (dto.isSortable !== undefined) updateData.isSortable = dto.isSortable;
     if (dto.isFilterable !== undefined) updateData.isFilterable = dto.isFilterable;
+    if (dto.behavioralAttributes !== undefined) {
+      updateData.behavioralAttributes = dto.behavioralAttributes;
+    }
     if (dto.metadata !== undefined) {
       updateData.metadata = this.mergeMetadata(dto.metadata, 'draft', existing.metadata);
     }
@@ -723,6 +771,7 @@ export class PropertyService {
       status: property.status,
       propertyTypeId: property.propertyTypeId,
       isActive: property.isActive,
+      behavioralAttributes: property.behavioralAttributes,
       metadata: property.metadata,
     };
   }
@@ -766,6 +815,7 @@ export class PropertyService {
       maskingStrategy: p.maskingStrategy,
       maskValue: p.maskValue,
       requiresBreakGlass: p.requiresBreakGlass,
+      behavioralAttributes: p.behavioralAttributes,
       metadata: p.metadata,
     };
   }

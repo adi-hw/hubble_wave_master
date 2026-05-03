@@ -140,7 +140,8 @@ function addRgbTokens(tokens: TokenMap): void {
     const parsed = toRgbChannels(raw);
     if (!parsed) return;
 
-    let { r, g, b, a } = parsed;
+    let { r, g, b } = parsed;
+    const { a } = parsed;
     if (typeof a === 'number' && a < 1) {
       const isBackgroundToken = key.startsWith('bg-') || key.startsWith('glass-') || key.startsWith('diff-');
       if (isBackgroundToken && base) {

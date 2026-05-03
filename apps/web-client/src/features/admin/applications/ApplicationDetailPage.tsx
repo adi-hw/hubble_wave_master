@@ -22,6 +22,7 @@ import {
   ApplicationStatus,
   applicationsApi,
 } from '../../../lib/applications';
+import { schemaService, type CollectionDefinition } from '../../../services/schema';
 
 const STATUS_TONE: Record<ApplicationStatus, string> = {
   draft: 'bg-amber-100 text-amber-800 border-amber-200',
@@ -29,12 +30,22 @@ const STATUS_TONE: Record<ApplicationStatus, string> = {
   deprecated: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
+const COLLECTION_STATUS_TONE: Record<string, string> = {
+  draft: 'bg-amber-100 text-amber-800 border-amber-200',
+  published: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  deprecated: 'bg-slate-100 text-slate-600 border-slate-200',
+};
+
+const collectionLabel = (collection: CollectionDefinition): string =>
+  collection.label ?? collection.name ?? collection.code;
+
 export const ApplicationDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [application, setApplication] = useState<Application | null>(null);
   const [revisions, setRevisions] = useState<ApplicationRevision[]>([]);
+  const [collections, setCollections] = useState<CollectionDefinition[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<null | 'publish' | 'deprecate' | 'save'>(null);
@@ -45,12 +56,22 @@ export const ApplicationDetailPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [app, revs] = await Promise.all([
+      const [app, revs, appCollections] = await Promise.all([
         applicationsApi.getById(id),
         applicationsApi.listRevisions(id),
+        schemaService.getCollections({
+          includeSystem: true,
+          moduleId: id,
+          limit: 500,
+        }),
       ]);
       setApplication(app);
       setRevisions(revs);
+      setCollections(
+        appCollections
+          .filter((collection) => !collection.applicationId || collection.applicationId === id)
+          .sort((a, b) => collectionLabel(a).localeCompare(collectionLabel(b))),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load Application';
       setError(message);
@@ -250,11 +271,42 @@ export const ApplicationDetailPage: React.FC = () => {
             <Database size={18} className="text-primary" />
             Collections in this Application
           </h2>
-          <p className="text-sm text-muted-foreground">
-            The Table Builder lands in Phase 1 of the App Studio plan. Until then,
-            collections under this Application are managed via the existing Studio
-            collection pages.
-          </p>
+          {collections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No Collections are assigned to this Application yet.
+            </p>
+          ) : (
+            <div className="mt-3 divide-y divide-border rounded-md border border-border">
+              {collections.map((collection) => {
+                const tone =
+                  COLLECTION_STATUS_TONE[collection.status] ?? COLLECTION_STATUS_TONE.draft;
+                return (
+                  <Link
+                    key={collection.id}
+                    to={`/studio/c/${collection.code}/data`}
+                    className="flex flex-col gap-2 px-3 py-3 transition-colors hover:bg-muted/60 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {collectionLabel(collection)}
+                      </span>
+                      <span className="block truncate font-mono text-xs text-muted-foreground">
+                        {collection.code}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}
+                      >
+                        {collection.status}
+                      </span>
+                      <ChevronRight size={14} className="text-muted-foreground" />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate('/studio/collections')}>
               Open Collections

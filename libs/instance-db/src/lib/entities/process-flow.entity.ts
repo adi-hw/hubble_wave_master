@@ -34,7 +34,34 @@ export type ProcessFlowDefinitionRevisionStatus = 'draft' | 'published';
 // PROCESS FLOW DEFINITION
 // ═══════════════════════════════════════════════════════════════════
 
-export type TriggerType = 'record_created' | 'record_updated' | 'property_changed' | 'scheduled' | 'manual';
+/**
+ * Plan §8.1.9 — supported trigger sources for a Process Flow.
+ *
+ * - `record_created` / `record_updated` / `property_changed` — data
+ *   pipeline triggers; the engine subscribes to the event-outbox.
+ * - `scheduled` — cron-style trigger fired by `ScheduledJob`.
+ * - `manual` — user-initiated via the API or canvas Run button.
+ * - `ava_initiated` — AVA tool-call dispatch (Phase 5+ AI surfaces).
+ * - `metric_threshold` — `svc-insights` metric crosses a threshold.
+ * - `service_catalog` — record submitted via the Service Catalog
+ *   public form (interface ready for the deferred Service Catalog
+ *   phase).
+ * - `webhook` — REST call into the existing
+ *   `libs/integrations/webhook.service.ts` subscriber pattern. Do
+ *   NOT create a parallel registry; the webhook subscriber routes
+ *   inbound calls to a flow with `triggerType='webhook'` matched by
+ *   the flow's `triggerConditions.webhookCode`.
+ */
+export type TriggerType =
+  | 'record_created'
+  | 'record_updated'
+  | 'property_changed'
+  | 'scheduled'
+  | 'manual'
+  | 'ava_initiated'
+  | 'metric_threshold'
+  | 'service_catalog'
+  | 'webhook';
 export type ProcessFlowRunAs = 'system' | 'triggering_user' | 'specified_user';
 
 export interface ProcessFlowNode {
@@ -157,6 +184,10 @@ export class ProcessFlowDefinition {
 
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt?: Date | null;
+
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
 
   @OneToMany(() => ProcessFlowInstance, (instance) => instance.processFlow)
   instances?: ProcessFlowInstance[];

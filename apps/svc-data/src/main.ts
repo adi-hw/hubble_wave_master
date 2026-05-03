@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
@@ -40,6 +41,9 @@ async function bootstrap() {
   // Support *.localhost patterns for instance subdomains in development
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   // Enable CORS
@@ -72,7 +76,7 @@ async function bootstrap() {
       'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/data';
   app.setGlobalPrefix(globalPrefix);
   const port =
     process.env.PORT ||

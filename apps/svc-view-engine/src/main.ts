@@ -1,11 +1,4 @@
-/**
- * View Engine Service
- * HubbleWave Platform - Phase 2
- *
- * Service responsible for view definitions, data transformation,
- * and view-specific query optimization.
- */
-
+import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
@@ -37,6 +30,9 @@ async function bootstrap() {
 
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   app.enableCors({
@@ -68,7 +64,7 @@ async function bootstrap() {
       'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/view-engine';
   app.setGlobalPrefix(globalPrefix);
 
   const port =

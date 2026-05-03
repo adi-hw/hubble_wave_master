@@ -138,6 +138,14 @@ export class CollectionDefinition {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
+  /**
+   * ADR-7 provenance. `pack:<id>` rows are protected on pack upgrade;
+   * `custom` rows survive untouched. Studio shell renders a
+   * provenance badge per artifact.
+   */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
+
   // ─────────────────────────────────────────────────────────────────
   // Display
   // ─────────────────────────────────────────────────────────────────

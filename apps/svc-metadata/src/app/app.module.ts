@@ -38,6 +38,12 @@ import { SchemaDeployService } from './schema/schema-deploy.service';
 import { SearchModule } from './search/search.module';
 import { LocalizationModule } from './localization/localization.module';
 import { ApplicationModule } from './application/application.module';
+import { PublishImpactModule } from './publish-impact/publish-impact.module';
+import { DisplayRuleModule } from './display-rules/display-rule.module';
+import { DecisionTableModule } from './decision-tables/decision-table.module';
+import { GuidedProcessModule } from './guided-processes/guided-process.module';
+import { WorkspaceModule } from './workspaces/workspace.module';
+import { ChangePackageModule } from './change-packages/change-package.module';
 
 @Module({
   imports: [
@@ -51,6 +57,12 @@ import { ApplicationModule } from './application/application.module';
     ApplicationModule,
     PropertyModule,
     AccessModule,
+    PublishImpactModule,
+    DisplayRuleModule,
+    DecisionTableModule,
+    GuidedProcessModule,
+    WorkspaceModule,
+    ChangePackageModule,
     ThemeModule,
     PreferencesModule,
     ViewModule,

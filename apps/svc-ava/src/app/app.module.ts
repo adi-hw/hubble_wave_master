@@ -5,6 +5,7 @@ import { AIModule } from '@hubblewave/ai';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { AuthGuardModule } from '@hubblewave/auth-guard';
 import { AuthorizationModule } from '@hubblewave/authorization';
+import { RedisModule } from '@hubblewave/redis';
 import { ChatController } from './chat.controller';
 import { EmbeddingController } from './embedding.controller';
 import { AVAController } from './ava.controller';
@@ -43,6 +44,7 @@ import {
     AIModule,
     AuthGuardModule,
     AuthorizationModule.forInstance(),
+    RedisModule.forRoot(),
     SearchModule,
     AvaToolsModule,
     DatasetModule,

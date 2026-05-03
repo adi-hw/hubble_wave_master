@@ -2,11 +2,59 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
+  ProcessFlowConnection,
   ProcessFlowDefinition,
   ProcessFlowDefinitionRevision,
   ProcessFlowRunAs,
   User,
 } from '@hubblewave/instance-db';
+import { BUILT_IN_ACTIONS } from '@hubblewave/shared-types';
+import { ProcessFlowEngineService } from '@hubblewave/automation';
+
+// Engine-specific node types that are NOT executable actions —
+// they have dedicated branches in the runtime engine (approval
+// lifecycle, wait timers, condition evaluation, start/end markers,
+// sub-flow invocation). Every other catalog code falls into the
+// generic action dispatcher.
+// Engine node types are the ones the engine state machine handles
+// directly (lifecycle, wait timers, condition evaluation, start/end
+// markers, sub-flow invocation). The `create_approval` and
+// `approval` aliases preserve the simpler one-step "node pauses
+// itself" approval semantics; the explicit two-step
+// `CreateApproval` + `WaitForApproval` pattern is the canonical
+// shape going forward.
+//
+// `CreateApproval` (canonical PascalCase from BUILT_IN_ACTIONS) is
+// deliberately NOT in this set — it routes through the catalog
+// dispatcher so it returns `{ approvalId }` to stepOutputs, which
+// downstream `WaitForApproval` nodes bind to. The pause-until-resolved
+// semantics are split into the explicit two-step pattern.
+const ENGINE_NODE_TYPES: ReadonlySet<string> = new Set([
+  'start',
+  'end',
+  'condition',
+  'wait',
+  'approval',
+  'create_approval',
+  'subflow',
+]);
+
+const SNAKE_CASE_ACTION_ALIASES: ReadonlyArray<string> = [
+  'update_record',
+  'create_record',
+  'delete_record',
+  'send_email',
+  'send_notification',
+  'set_field_value',
+  'http_request',
+  'make_decision',
+  'lookup_record',
+];
+
+const ACTION_NODE_TYPES: ReadonlySet<string> = new Set([
+  ...BUILT_IN_ACTIONS.map((a) => a.code).filter((code) => !ENGINE_NODE_TYPES.has(code)),
+  ...SNAKE_CASE_ACTION_ALIASES,
+]);
 import {
   CreateWorkflowDefinitionRequest,
   UpdateWorkflowDefinitionRequest,
@@ -18,6 +66,27 @@ import { WorkflowAuditService } from './workflow-audit.service';
 // 'system' execution bypasses the invoking user's authorization, so creators
 // must hold an explicit privilege to assign it.
 const SYSTEM_RUN_AS_PERMISSIONS = new Set(['system.admin', 'workflow.run-as-system']);
+
+export interface TestRunStep {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  actionType: string | null;
+  resolvedConfig: Record<string, unknown>;
+  wouldExecute: string;
+}
+
+export interface TestRunResult {
+  flowId: string;
+  flowCode: string;
+  mode: 'dry_run' | 'wet_run';
+  steps: TestRunStep[];
+  warning?: string;
+  /** Set on wet-run only — the engine instance id created by the test. */
+  instanceId?: string;
+  /** Set on wet-run only — the instance's initial state. */
+  instanceState?: string;
+}
 
 export interface WorkflowDefinitionActor {
   id?: string;
@@ -37,7 +106,201 @@ export class WorkflowDefinitionService {
     private readonly userRepo: Repository<User>,
     private readonly auditService: WorkflowAuditService,
     private readonly dataSource: DataSource,
+    private readonly engine: ProcessFlowEngineService,
   ) {}
+
+  /**
+   * Plan §8.1.8 — flow test runner.
+   *
+   * Two modes:
+   *
+   *  - **dry-run** (default): walks the canvas locally without the
+   *    engine. Each action's `actionConfig` is interpolated against
+   *    the mock input and returned in the trace; no SQL writes, no
+   *    automation triggers, no instance row. Useful for verifying a
+   *    flow's binding shape without exercising side effects.
+   *
+   *  - **wet-run** (`dryRun: false`): provisions a real instance via
+   *    the engine using the same path manual triggers use. The
+   *    instance ID is returned alongside the trace so the canvas-side
+   *    log can correlate with the engine's `processFlow.step_completed`
+   *    events. Wet-run honors the flow's runAs setting AND the
+   *    caller's `metadata.flows.edit` gate (controller-level), so a
+   *    delegated flow editor cannot escalate by test-running a
+   *    `runAs:'system'` flow they wouldn't otherwise be permitted to
+   *    invoke. The actor's id is recorded as the workflow starter.
+   */
+  async testRun(
+    id: string,
+    options: { input: Record<string, unknown>; recordId?: string; dryRun: boolean },
+    actor: WorkflowDefinitionActor | undefined,
+  ): Promise<TestRunResult> {
+    const definition = await this.getById(id);
+
+    const nodes = definition.canvas?.nodes ?? [];
+    const connections = definition.canvas?.connections ?? [];
+    const startNode = nodes.find((n) => (n as { type?: string }).type === 'start') ?? nodes[0];
+
+    if (!startNode) {
+      return {
+        flowId: id,
+        flowCode: definition.code,
+        mode: options.dryRun ? 'dry_run' : 'wet_run',
+        steps: [],
+        warning: 'Flow has no start node — nothing to simulate.',
+      };
+    }
+
+    const trace = this.buildDryRunTrace(nodes, connections, startNode.id, options, actor);
+
+    if (options.dryRun) {
+      return {
+        flowId: id,
+        flowCode: definition.code,
+        mode: 'dry_run',
+        steps: trace,
+      };
+    }
+
+    // Wet run — refuse to dispatch a flow that isn't in a runnable
+    // state. Without this the engine would emit a clear error from
+    // its own status gate, but failing fast at the test runner
+    // surface gives a better author-side message.
+    if (!definition.isActive || definition.status !== 'published') {
+      return {
+        flowId: id,
+        flowCode: definition.code,
+        mode: 'wet_run',
+        steps: trace,
+        warning: `Cannot wet-run: flow is ${definition.status}${definition.isActive ? '' : ', inactive'}. Publish + activate before running with real side effects.`,
+      };
+    }
+
+    const instance = await this.engine.startProcessFlow(
+      definition.code,
+      options.input,
+      actor?.id,
+      options.recordId,
+    );
+
+    return {
+      flowId: id,
+      flowCode: definition.code,
+      mode: 'wet_run',
+      steps: trace,
+      instanceId: instance.id,
+      instanceState: instance.state,
+    };
+  }
+
+  private buildDryRunTrace(
+    nodes: ProcessFlowDefinition['canvas']['nodes'],
+    connections: ProcessFlowDefinition['canvas']['connections'],
+    startNodeId: string,
+    options: { input: Record<string, unknown>; recordId?: string; dryRun: boolean },
+    actor: WorkflowDefinitionActor | undefined,
+  ): TestRunStep[] {
+    // Plan §8.1.4 — dry-run scope must mirror the engine's
+    // ProcessFlowContext shape so picker-authored bindings resolve
+    // to the same values in test as in real execution. Engine
+    // injects: input, variables, stepOutputs, userId, triggeredBy,
+    // trigger (alias of input), user (`{id, email, username}`),
+    // system (`{now, today, instanceCode}`). The dry-run trace
+    // doesn't have step outputs (we never execute actions), but it
+    // CAN seed the rest from the mock input + the platform env.
+    //
+    // The actor identity (caller's user id) flows through both
+    // dry-run and wet-run identically — wet-run passes `actor?.id`
+    // into `engine.startProcessFlow`, and dry-run seeds the same id
+    // into `userId` / `triggeredBy` / `user.id`. A flow that binds
+    // `{{user.id}}` resolves to the SAME value in both modes for
+    // the same caller.
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const callerId = actor?.id ?? 'test-user';
+    const dryRunScope: Record<string, unknown> = {
+      input: options.input,
+      // `record` mirrors `input` so authored flows can bind
+      // `{{record.x}}` consistently with the record-scoped event
+      // shape exposed by the runtime context.
+      record: options.input,
+      variables: {},
+      stepOutputs: {},
+      userId: callerId,
+      triggeredBy: callerId,
+      trigger: options.input,
+      user: { id: callerId, email: undefined, username: undefined },
+      system: {
+        now: now.toISOString(),
+        today: today.toISOString().slice(0, 10),
+        instanceCode: process.env.INSTANCE_CODE ?? 'default',
+      },
+    };
+
+    const trace: TestRunStep[] = [];
+    const visited = new Set<string>();
+    let cursor: string | undefined = startNodeId;
+    while (cursor && !visited.has(cursor)) {
+      visited.add(cursor);
+      const node = nodes.find((n) => n.id === cursor);
+      if (!node) break;
+      const nodeType = (node as { type?: string }).type ?? 'unknown';
+      const interpolated = this.interpolateNodeConfig(node.config ?? {}, dryRunScope);
+      trace.push({
+        nodeId: node.id,
+        nodeName: node.name ?? '',
+        nodeType,
+        actionType: ((node.config as { actionType?: string } | undefined)?.actionType) ?? null,
+        resolvedConfig: interpolated,
+        wouldExecute: options.dryRun ? 'simulated (no DB writes)' : 'dispatched via engine',
+      });
+      const nextEdge = connections.find((c) => c.fromNode === cursor);
+      cursor = nextEdge?.toNode;
+    }
+    return trace;
+  }
+
+  /**
+   * Recursive interpolation for the trace runner. Distinct from the
+   * engine's `interpolateObject` (which lives in `libs/automation`)
+   * — duplicated minimally here so the test runner doesn't need the
+   * full engine import surface. Bindings: `{{path.to.value}}` resolves
+   * against the supplied scope; everything else passes through.
+   */
+  private interpolateNodeConfig(
+    config: Record<string, unknown>,
+    scope: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return this.interpolateAny(config, scope) as Record<string, unknown>;
+  }
+
+  private interpolateAny(value: unknown, scope: Record<string, unknown>): unknown {
+    if (typeof value === 'string') {
+      return value.replace(/\{\{([\w.]+)\}\}/g, (_, path: string) => {
+        const resolved = this.resolvePath(scope, path);
+        if (resolved === undefined || resolved === null) return `{{${path}}}`;
+        return typeof resolved === 'object' ? JSON.stringify(resolved) : String(resolved);
+      });
+    }
+    if (Array.isArray(value)) return value.map((v) => this.interpolateAny(v, scope));
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) out[k] = this.interpolateAny(v, scope);
+      return out;
+    }
+    return value;
+  }
+
+  private resolvePath(scope: Record<string, unknown>, path: string): unknown {
+    const parts = path.split('.');
+    let current: unknown = scope;
+    for (const part of parts) {
+      if (current === null || current === undefined) return undefined;
+      if (typeof current !== 'object') return undefined;
+      current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+  }
 
   async list(query: WorkflowListQuery) {
     const qb = this.definitionRepo.createQueryBuilder('definition');
@@ -77,6 +340,7 @@ export class WorkflowDefinitionService {
     }
 
     await this.validateCanvasApprovers(request.canvas);
+    this.assertNodeCountWithinLimit(request.canvas);
     const resolvedRunAs = this.resolveRunAs(request.runAs, actorObj);
 
     const applicationId = await this.resolveApplicationId(request.collectionId);
@@ -136,6 +400,7 @@ export class WorkflowDefinitionService {
 
     if (request.canvas) {
       await this.validateCanvasApprovers(request.canvas);
+      this.assertNodeCountWithinLimit(request.canvas);
     }
 
     const previous = this.auditValues(definition);
@@ -161,6 +426,11 @@ export class WorkflowDefinitionService {
     // Per ADR-5 every edit returns the parent to draft and appends a
     // new draft revision. Publishing the new revision flips both back.
     definition.status = 'draft';
+    // Runtime lookup is `code + isActive` only — leaving isActive=true
+    // here would let the engine execute the unreviewed draft canvas
+    // on the next matching event. Force operators to re-publish AND
+    // re-activate so a new pair of permission checks gates the change.
+    definition.isActive = false;
 
     const saved = await this.definitionRepo.save(definition);
 
@@ -243,6 +513,9 @@ export class WorkflowDefinitionService {
     const definition = await this.getById(id);
     const previous = this.auditValues(definition);
     definition.status = 'deprecated';
+    // Deprecation is end-of-life; the runtime must stop matching this
+    // flow even if a prior activate() left isActive=true.
+    definition.isActive = false;
     definition.updatedBy = actorId || undefined;
     const saved = await this.definitionRepo.save(definition);
     await this.auditService.record({
@@ -282,6 +555,15 @@ export class WorkflowDefinitionService {
 
   async activate(id: string, actorId?: string) {
     const definition = await this.getById(id);
+    // Activation puts a flow into the runtime trigger pool. Only published
+    // revisions have passed publish-time validation (canvas wiring,
+    // approver existence, action contracts). Allowing draft activation
+    // would let a malformed flow fire on the first matching record event.
+    if (definition.status !== 'published') {
+      throw new BadRequestException(
+        `Process Flow ${definition.code} is in status "${definition.status}". Publish before activating.`,
+      );
+    }
     if (!definition.isActive) {
       const previous = this.auditValues(definition);
       definition.isActive = true;
@@ -480,6 +762,47 @@ export class WorkflowDefinitionService {
     return requested;
   }
 
+  /**
+   * Plan §8.1.7 — guardrail on the number of nodes per flow. Authors
+   * past this point lose the visual canvas (it stops being readable)
+   * and the engine's recursion-prevention guard becomes the only thing
+   * standing between a runaway flow and a runaway worker queue. Default
+   * 50; configurable via `FLOW_MAX_NODES` env var.
+   */
+  private readonly defaultMaxNodes = 50;
+
+  private assertNodeCountWithinLimit(
+    canvas: ProcessFlowDefinition['canvas'] | undefined,
+  ): void {
+    const limit = this.resolveMaxNodes();
+    const count = canvas?.nodes?.length ?? 0;
+    if (count > limit) {
+      throw new BadRequestException(
+        `Process Flow has ${count} nodes; the per-flow limit is ${limit}. Split into sub-flows or raise FLOW_MAX_NODES.`,
+      );
+    }
+  }
+
+  private resolveMaxNodes(): number {
+    const raw = process.env.FLOW_MAX_NODES;
+    if (!raw) return this.defaultMaxNodes;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return this.defaultMaxNodes;
+    return Math.floor(parsed);
+  }
+
+  /**
+   * Authoring soft-warning threshold (75% of FLOW_MAX_NODES, plan §8.1.7
+   * specifies "admin warning at 40" with a default cap of 50). Surfaced
+   * by the publish-preview endpoint so the editor can show a banner
+   * before the hard limit fires.
+   */
+  warnNodeCountBand(count: number): { warn: boolean; limit: number; threshold: number } {
+    const limit = this.resolveMaxNodes();
+    const threshold = Math.floor(limit * 0.8);
+    return { warn: count >= threshold, limit, threshold };
+  }
+
   private async validateCanvasApprovers(
     canvas: ProcessFlowDefinition['canvas'] | undefined,
   ): Promise<void> {
@@ -530,8 +853,13 @@ export class WorkflowDefinitionService {
       }
 
       const nodeType = (node as ProcessFlowDefinition['canvas']['nodes'][number]).type as string;
-      const actionTypes = ['update_record', 'create_record', 'send_email', 'send_notification'];
-      if (actionTypes.includes(nodeType)) {
+      // Any catalog-typed node (legacy snake_case OR canonical
+      // PascalCase from BUILT_IN_ACTIONS) is wrapped into an action
+      // node so the engine dispatches it through WorkflowActionService.
+      // Without this branch the engine's default switch logs a
+      // warning and silently skips the node — flow stalls without
+      // an error trail.
+      if (ACTION_NODE_TYPES.has(nodeType)) {
         return {
           ...node,
           type: 'action',
@@ -577,9 +905,27 @@ export class WorkflowDefinitionService {
       return node;
     });
 
+    const connections = (canvas.connections || []).map((conn, index) => {
+      if (!conn || typeof conn !== 'object') return conn;
+      // The visual designer historically wrote { from, to } but the
+      // runtime engine (process-flow-engine.findNextNode) and the
+      // canonical ProcessFlowConnection contract use { fromNode, toNode }.
+      // Translate at the wire boundary so authored flows can advance
+      // past Start.
+      const c = conn as Partial<ProcessFlowConnection> & { from?: string; to?: string };
+      const fromNode = c.fromNode ?? c.from;
+      const toNode = c.toNode ?? c.to;
+      return {
+        ...conn,
+        id: c.id ?? `conn_${index}_${fromNode}_${toNode}`,
+        fromNode,
+        toNode,
+      } as ProcessFlowConnection;
+    });
+
     return {
       nodes,
-      connections: canvas.connections || [],
+      connections,
     } as ProcessFlowDefinition['canvas'];
   }
 

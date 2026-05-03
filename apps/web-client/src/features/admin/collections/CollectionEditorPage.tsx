@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useStudioCollectionId } from '../../../app/app-studio/table-builder';
 import {
   ArrowLeft,
   Save,
@@ -100,7 +101,7 @@ const colorOptions = [
 
 export const CollectionEditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const id = useStudioCollectionId();
   const isNew = id === 'new';
 
   const [loading, setLoading] = useState(!isNew);

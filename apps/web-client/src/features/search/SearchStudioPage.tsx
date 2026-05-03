@@ -100,7 +100,7 @@ export function SearchStudioPage() {
       setCollections(
         collectionData.map((collection) => ({
           code: collection.code,
-          label: collection.label,
+          label: collection.label ?? collection.name ?? collection.code,
         })),
       );
       setExperiences(experienceData);

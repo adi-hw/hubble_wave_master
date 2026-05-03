@@ -61,8 +61,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
         const inner = input.slice(1, -1);
         // Determine logic by finding top-level separator
         let depth = 0;
-        let andPositions: number[] = [];
-        let orPositions: number[] = [];
+        const andPositions: number[] = [];
+        const orPositions: number[] = [];
 
         for (let i = 0; i < inner.length; i++) {
           if (inner[i] === '(') depth++;
@@ -134,8 +134,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
 
     // Check for top-level AND/OR separators
     let depth = 0;
-    let andPositions: number[] = [];
-    let orPositions: number[] = [];
+    const andPositions: number[] = [];
+    const orPositions: number[] = [];
 
     for (let i = 0; i < str.length; i++) {
       if (str[i] === '(') depth++;

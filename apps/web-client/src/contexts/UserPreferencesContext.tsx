@@ -183,13 +183,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.updatePreferences(dto);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      throw err;
-    }
+    const updated = await preferencesService.updatePreferences(dto);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   // Patch preferences (partial update)
@@ -205,13 +201,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.patchPreferences(dto);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      throw err;
-    }
+    const updated = await preferencesService.patchPreferences(dto);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   // Reset preferences
@@ -224,13 +216,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const reset = await preferencesService.resetPreferences();
-      setPreferences(reset);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reset));
-    } catch (err) {
-      throw err;
-    }
+    const reset = await preferencesService.resetPreferences();
+    setPreferences(reset);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reset));
   }, []);
 
   // Pinned navigation operations
@@ -238,48 +226,32 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.addPinnedItem(dto);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      throw err;
-    }
+    const items = await preferencesService.addPinnedItem(dto);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const updatePinnedItem = useCallback(async (itemId: string, dto: { label?: string; icon?: string; position?: number }) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.updatePinnedItem(itemId, dto);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      throw err;
-    }
+    const items = await preferencesService.updatePinnedItem(itemId, dto);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const removePinnedItem = useCallback(async (itemId: string) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.removePinnedItem(itemId);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      throw err;
-    }
+    const items = await preferencesService.removePinnedItem(itemId);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const reorderPinnedItems = useCallback(async (order: string[]) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.reorderPinnedItems(order);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      throw err;
-    }
+    const items = await preferencesService.reorderPinnedItems(order);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   // Quick actions
@@ -295,13 +267,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.setDensityMode(mode);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      throw err;
-    }
+    const updated = await preferencesService.setDensityMode(mode);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const setSidebarPosition = useCallback(async (position: SidebarPosition) => {
@@ -316,13 +284,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.setSidebarPosition(position);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      throw err;
-    }
+    const updated = await preferencesService.setSidebarPosition(position);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const toggleSidebarCollapsed = useCallback(async () => {

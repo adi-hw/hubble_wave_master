@@ -538,18 +538,14 @@ export const SSOConfigPage: React.FC = () => {
             setSelectedConfig(null);
           }}
           onSave={async (data) => {
-            try {
-              if (selectedConfig) {
-                await identityApi.put(`/admin/auth/sso/${selectedConfig.id}`, data);
-              } else {
-                await identityApi.post('/admin/auth/sso', data);
-              }
-              fetchConfigs();
-              setShowAddModal(false);
-              setSelectedConfig(null);
-            } catch (err) {
-              throw err;
+            if (selectedConfig) {
+              await identityApi.put(`/admin/auth/sso/${selectedConfig.id}`, data);
+            } else {
+              await identityApi.post('/admin/auth/sso', data);
             }
+            fetchConfigs();
+            setShowAddModal(false);
+            setSelectedConfig(null);
           }}
         />
       )}

@@ -67,12 +67,13 @@ export async function updateDashboard(
 
 export async function getMetricPoints(
   code: string,
-  params?: { start?: string; end?: string; limit?: number },
+  params?: { start?: string; end?: string; limit?: number; direction?: 'asc' | 'desc' },
 ): Promise<MetricPoint[]> {
   const query = new URLSearchParams();
   if (params?.start) query.set('start', params.start);
   if (params?.end) query.set('end', params.end);
   if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.direction) query.set('direction', params.direction);
   const suffix = query.toString() ? `?${query.toString()}` : '';
   const response = await insightsApi.get(`/metrics/${encodeURIComponent(code)}/points${suffix}`);
   return Array.isArray(response.data) ? (response.data as MetricPoint[]) : [];

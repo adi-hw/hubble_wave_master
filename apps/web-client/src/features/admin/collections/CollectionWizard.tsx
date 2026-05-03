@@ -102,7 +102,12 @@ export const CollectionWizard: React.FC = () => {
       };
 
       const response = await metadataApi.post('/collections', payload);
-      navigate(`/studio/collections/${response.data.id}`);
+      const created = response.data as { id: string; code?: string };
+      navigate(
+        created.code
+          ? `/studio/c/${created.code}/data`
+          : `/studio/collections/${created.id}`,
+      );
     } catch {
       // Collection creation failed - show error message
       alert('Failed to create collection. Please check the inputs.');

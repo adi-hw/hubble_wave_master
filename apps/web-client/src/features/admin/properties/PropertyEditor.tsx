@@ -5,7 +5,7 @@
  * Dialog for creating and editing property definitions.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader2, X, AlertCircle } from 'lucide-react';
 import { TypeSelector } from './TypeSelector';
 import { PropertyDefinition, propertyApi, CreatePropertyDto } from '../../../services/propertyApi';
@@ -16,6 +16,20 @@ interface PropertyEditorProps {
   property?: PropertyDefinition;
   onClose: () => void;
   onSave: () => void;
+}
+
+interface PropertyFormData extends Partial<CreatePropertyDto> {
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  behavioralAttributes?: Record<string, unknown>;
+  defaultValueType?: string;
+  displayFormat?: string;
+}
+
+interface ChoiceOption {
+  value: string;
+  label: string;
+  color?: string;
 }
 
 interface ToggleSwitchProps {
@@ -57,7 +71,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
 
-  const [formData, setFormData] = useState<Partial<CreatePropertyDto>>({
+  const [formData, setFormData] = useState<PropertyFormData>({
     label: '',
     code: '',
     dataType: 'text',
@@ -66,6 +80,10 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     description: '',
     showInGrid: true,
   });
+  const [newChoiceValue, setNewChoiceValue] = useState('');
+  const [newChoiceLabel, setNewChoiceLabel] = useState('');
+  const newChoiceValueRef = useRef<HTMLInputElement | null>(null);
+  const newChoiceLabelRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -113,10 +131,86 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     }
   };
 
+  const setValidationValue = (key: string, value: unknown) => {
+    setFormData((prev) => ({
+      ...prev,
+      validationRules: {
+        ...((prev.validationRules as Record<string, unknown> | undefined) ?? {}),
+        [key]: value === '' ? undefined : value,
+      },
+    }));
+  };
+
+  const setBehavioralAttribute = (key: string, value: unknown) => {
+    setFormData((prev) => ({
+      ...prev,
+      behavioralAttributes: {
+        ...(prev.behavioralAttributes ?? {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const dataType = String(formData.dataType ?? '');
+  const isChoiceType = ['choice', 'multi_choice', 'tags'].includes(dataType);
+  const config = formData.config ?? {};
+  const validationRules = (formData.validationRules as Record<string, unknown> | undefined) ?? {};
+  const behavioralAttributes = formData.behavioralAttributes ?? {};
+  const choiceOptions = (
+    Array.isArray(config.options)
+      ? config.options
+      : Array.isArray(config.choices)
+      ? config.choices
+      : []
+  ) as ChoiceOption[];
+
+  const setChoiceOptions = (next: ChoiceOption[]) => {
+    setFormData((prev) => ({
+      ...prev,
+      config: {
+        ...(prev.config ?? {}),
+        options: next,
+        choices: next,
+      },
+    }));
+  };
+
+  const addChoice = () => {
+    const value = (newChoiceValueRef.current?.value ?? newChoiceValue).trim();
+    if (!value) return;
+    const label = (newChoiceLabelRef.current?.value ?? newChoiceLabel).trim();
+    if (choiceOptions.some((choice) => choice.value === value)) return;
+    setChoiceOptions([
+      ...choiceOptions,
+      {
+        value,
+        label: label || value,
+      },
+    ]);
+    setNewChoiceValue('');
+    setNewChoiceLabel('');
+  };
+
   const handleSave = async () => {
     setLoading(true);
     setError(null);
     try {
+      const pendingChoiceValue = (newChoiceValueRef.current?.value ?? newChoiceValue).trim();
+      const pendingChoiceLabel = (newChoiceLabelRef.current?.value ?? newChoiceLabel).trim();
+      const nextChoiceOptions =
+        isChoiceType && pendingChoiceValue && !choiceOptions.some((choice) => choice.value === pendingChoiceValue)
+          ? [
+              ...choiceOptions,
+              {
+                value: pendingChoiceValue,
+                label: pendingChoiceLabel || pendingChoiceValue,
+              },
+            ]
+          : choiceOptions;
+      const advancedConfig = {
+        ...(formData.config ?? {}),
+        ...(isChoiceType ? { options: nextChoiceOptions, choices: nextChoiceOptions } : {}),
+      };
       if (property) {
         await propertyApi.update(collectionId, property.id, {
           label: formData.label,
@@ -124,9 +218,20 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
           isRequired: formData.isRequired,
           isUnique: formData.isUnique,
           showInGrid: formData.showInGrid,
+          config: advancedConfig,
+          validationRules: formData.validationRules,
+          defaultValue: formData.defaultValue,
+          defaultValueType: formData.defaultValueType,
+          placeholder: formData.placeholder,
+          helpText: formData.helpText,
+          displayFormat: formData.displayFormat,
+          behavioralAttributes: formData.behavioralAttributes,
         });
       } else {
-        await propertyApi.create(collectionId, formData as CreatePropertyDto);
+        await propertyApi.create(collectionId, {
+          ...formData,
+          config: advancedConfig,
+        } as CreatePropertyDto);
       }
       onSave();
       onClose();
@@ -308,7 +413,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     label="Unique"
                   />
                   <ToggleSwitch
-                    checked={formData.showInGrid || false}
+                    checked={(formData.showInGrid as boolean | undefined) ?? false}
                     onChange={(checked) =>
                       setFormData((prev) => ({ ...prev, showInGrid: checked }))
                     }
@@ -316,6 +421,230 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {(property || activeStep === 1) && (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              {isChoiceType ? (
+                <section className="rounded border border-border bg-muted/30 p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-foreground">Choice list</h3>
+                  <div className="space-y-2">
+                    {choiceOptions.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No options configured.</p>
+                    ) : null}
+                    {choiceOptions.map((choice, index) => (
+                      <div
+                        key={`${choice.value}-${index}`}
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_88px_auto]"
+                      >
+                        <input
+                          value={choice.value}
+                          onChange={(e) =>
+                            setChoiceOptions(
+                              choiceOptions.map((item, idx) =>
+                                idx === index ? { ...item, value: e.target.value } : item,
+                              ),
+                            )
+                          }
+                          className="rounded border border-border bg-card px-2 py-1 text-sm"
+                          placeholder="open"
+                        />
+                        <input
+                          value={choice.label}
+                          onChange={(e) =>
+                            setChoiceOptions(
+                              choiceOptions.map((item, idx) =>
+                                idx === index ? { ...item, label: e.target.value } : item,
+                              ),
+                            )
+                          }
+                          className="rounded border border-border bg-card px-2 py-1 text-sm"
+                          placeholder="Open"
+                        />
+                        <input
+                          value={choice.color ?? ''}
+                          onChange={(e) =>
+                            setChoiceOptions(
+                              choiceOptions.map((item, idx) =>
+                                idx === index ? { ...item, color: e.target.value } : item,
+                              ),
+                            )
+                          }
+                          className="rounded border border-border bg-card px-2 py-1 text-sm"
+                          placeholder="#3b82f6"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setChoiceOptions(choiceOptions.filter((_, idx) => idx !== index))
+                          }
+                          className="rounded border border-border px-2 text-xs text-muted-foreground hover:bg-hover"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <form
+                      className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-[1fr_1fr_auto]"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        addChoice();
+                      }}
+                    >
+                      <input
+                        ref={newChoiceValueRef}
+                        value={newChoiceValue}
+                        onChange={(e) => setNewChoiceValue(e.target.value)}
+                        className="rounded border border-border bg-card px-2 py-1 text-sm"
+                        placeholder="value"
+                      />
+                      <input
+                        ref={newChoiceLabelRef}
+                        value={newChoiceLabel}
+                        onChange={(e) => setNewChoiceLabel(e.target.value)}
+                        className="rounded border border-border bg-card px-2 py-1 text-sm"
+                        placeholder="Label"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground whitespace-nowrap"
+                      >
+                        Add option
+                      </button>
+                    </form>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="rounded border border-border bg-muted/30 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Validation rules</h3>
+                <div className="grid gap-3">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Regex pattern
+                    <input
+                      value={String(validationRules.pattern ?? '')}
+                      onChange={(e) => setValidationValue('pattern', e.target.value)}
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                      placeholder="^[A-Z][a-z]+$"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Min
+                      <input
+                        type="number"
+                        value={String(validationRules.min ?? '')}
+                        onChange={(e) =>
+                          setValidationValue('min', e.target.value ? Number(e.target.value) : '')
+                        }
+                        className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Max
+                      <input
+                        type="number"
+                        value={String(validationRules.max ?? '')}
+                        onChange={(e) =>
+                          setValidationValue('max', e.target.value ? Number(e.target.value) : '')
+                        }
+                        className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded border border-border bg-muted/30 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Default and help text</h3>
+                <div className="grid gap-3">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Default value type
+                    <select
+                      value={formData.defaultValueType ?? 'static'}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, defaultValueType: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                    >
+                      <option value="static">Static</option>
+                      <option value="expression">Expression</option>
+                      <option value="current_user">Current user</option>
+                      <option value="current_datetime">Current datetime</option>
+                    </select>
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Default value
+                    <input
+                      value={formData.defaultValue ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, defaultValue: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                      placeholder="@now"
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Placeholder
+                    <input
+                      value={formData.placeholder ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, placeholder: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Help text
+                    <input
+                      value={formData.helpText ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, helpText: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="rounded border border-border bg-muted/30 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Behavioral attributes</h3>
+                <div className="space-y-1">
+                  <ToggleSwitch
+                    checked={Boolean(behavioralAttributes.audit)}
+                    onChange={(checked) => setBehavioralAttribute('audit', checked)}
+                    label="Audit changes"
+                  />
+                  <ToggleSwitch
+                    checked={Boolean(behavioralAttributes.encrypt_at_rest)}
+                    onChange={(checked) => setBehavioralAttribute('encrypt_at_rest', checked)}
+                    label="Encrypt at rest"
+                  />
+                  <ToggleSwitch
+                    checked={Boolean(behavioralAttributes.mask_in_logs)}
+                    onChange={(checked) => setBehavioralAttribute('mask_in_logs', checked)}
+                    label="Mask in logs"
+                  />
+                  <ToggleSwitch
+                    checked={behavioralAttributes.mobile_visible !== false}
+                    onChange={(checked) => setBehavioralAttribute('mobile_visible', checked)}
+                    label="Mobile visible"
+                  />
+                  <label className="mt-3 block text-xs font-medium text-muted-foreground">
+                    Formula cache strategy
+                    <select
+                      value={String(behavioralAttributes.formula_cache_strategy ?? 'none')}
+                      onChange={(e) => setBehavioralAttribute('formula_cache_strategy', e.target.value)}
+                      className="mt-1 w-full rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
+                    >
+                      <option value="none">None</option>
+                      <option value="memoize">Memoize</option>
+                      <option value="persist">Persist</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
             </div>
           )}
         </div>

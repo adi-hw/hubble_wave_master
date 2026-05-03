@@ -114,21 +114,15 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
    */
   const switchProfile = useCallback(
     async (profileId: string) => {
-      try {
-        await navigationService.switchProfile(profileId);
-        // Update local state optimistically
-        setProfiles((prev) =>
-          prev.map((p) => ({
-            ...p,
-            isActive: p.id === profileId,
-          }))
-        );
-        // Force refresh navigation for new profile
-        hasFetchedRef.current = false;
-        await fetchNavigation(true);
-      } catch (err) {
-        throw err;
-      }
+      await navigationService.switchProfile(profileId);
+      setProfiles((prev) =>
+        prev.map((p) => ({
+          ...p,
+          isActive: p.id === profileId,
+        }))
+      );
+      hasFetchedRef.current = false;
+      await fetchNavigation(true);
     },
     [fetchNavigation]
   );
@@ -140,25 +134,20 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     async (moduleKey: string) => {
       if (!navigation) return;
 
-      try {
-        await navigationService.toggleFavorite(moduleKey);
-        // Update local state optimistically
-        setNavigation((prev) => {
-          if (!prev) return prev;
+      await navigationService.toggleFavorite(moduleKey);
+      setNavigation((prev) => {
+        if (!prev) return prev;
 
-          const favorites = prev.favorites || [];
-          const isFavorite = favorites.includes(moduleKey);
+        const favorites = prev.favorites || [];
+        const isFavorite = favorites.includes(moduleKey);
 
-          return {
-            ...prev,
-            favorites: isFavorite
-              ? favorites.filter((k) => k !== moduleKey)
-              : [...favorites, moduleKey],
-          };
-        });
-      } catch (err) {
-        throw err;
-      }
+        return {
+          ...prev,
+          favorites: isFavorite
+            ? favorites.filter((k) => k !== moduleKey)
+            : [...favorites, moduleKey],
+        };
+      });
     },
     [navigation]
   );

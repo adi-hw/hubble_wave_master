@@ -94,6 +94,15 @@ export class PermissionResolverService {
   ): Promise<PermissionCheckResult> {
     const userPerms = await this.getUserPermissions(userId);
 
+    if (this.hasAdminRole(userPerms)) {
+      return {
+        allowed: true,
+        permission: permissionCode,
+        reason: 'Granted via admin role',
+        grantedVia: 'role',
+      };
+    }
+
     // Check wildcard permission first (admin.*)
     const category = permissionCode.split('.')[0];
     if (userPerms.permissions.has(`${category}.*`) || userPerms.permissions.has('*')) {
@@ -130,6 +139,7 @@ export class PermissionResolverService {
     permissionCodes: string[],
   ): Promise<boolean> {
     const userPerms = await this.getUserPermissions(userId);
+    if (this.hasAdminRole(userPerms)) return true;
 
     for (const code of permissionCodes) {
       if (userPerms.permissions.has(code)) {
@@ -153,6 +163,7 @@ export class PermissionResolverService {
     permissionCodes: string[],
   ): Promise<boolean> {
     const userPerms = await this.getUserPermissions(userId);
+    if (this.hasAdminRole(userPerms)) return true;
 
     for (const code of permissionCodes) {
       if (!userPerms.permissions.has(code)) {
@@ -308,6 +319,21 @@ export class PermissionResolverService {
     }
 
     return Array.from(collected);
+  }
+
+  private hasAdminRole(userPerms: UserPermissionCache): boolean {
+    if (userPerms.permissions.has('system.admin') || userPerms.permissions.has('*')) {
+      return true;
+    }
+    // Only seeded `isSystem` roles count as admin via the code-based
+    // fast-path. Without the `isSystem` gate, an operator with
+    // `roles.create` could self-assign a custom role coded `admin`
+    // and inherit platform admin via the string match alone.
+    return userPerms.roles.some(
+      (role) =>
+        role.isSystem === true &&
+        ['admin', 'system_admin', 'superadmin'].includes(role.code.toLowerCase()),
+    );
   }
 
 }

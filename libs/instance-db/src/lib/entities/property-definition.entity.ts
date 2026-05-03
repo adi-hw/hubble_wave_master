@@ -26,6 +26,26 @@ export type PropertyDefinitionStatus = 'draft' | 'published' | 'deprecated';
 export type PropertyDefinitionRevisionStatus = 'draft' | 'published';
 
 /**
+ * Plan §6.3 behavioral attributes registry. Each key is a discrete
+ * runtime hook the platform consults when reading or writing the
+ * property. Values default to "off" — absent keys are treated as
+ * disabled so adopters can introduce new attributes without
+ * back-filling every existing row.
+ */
+export interface PropertyBehavioralAttributes {
+  /** Encrypt the field's value before storage via shared encryption service. */
+  encrypt_at_rest?: boolean;
+  /** Track changes to this property in the audit-log subscriber's tracked-changes set. */
+  audit?: boolean;
+  /** Redact the field's value in notification provider-error log lines. */
+  mask_in_logs?: boolean;
+  /** Surface this property on the mobile shell. Default exposes everything. */
+  mobile_visible?: boolean;
+  /** Caching policy for computed properties (formula/rollup/lookup). */
+  formula_cache_strategy?: 'none' | 'memoize' | 'persist';
+}
+
+/**
  * PropertyDefinition entity - defines fields on collections
  * 
  * This is the schema engine's entity for defining what fields/columns
@@ -204,6 +224,10 @@ export class PropertyDefinition {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
+  /** ADR-7 provenance. See CollectionDefinition.source for semantics. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
+
   /** Is searchable (included in full-text search) */
   @Column({ name: 'is_searchable', type: 'boolean', default: false })
   isSearchable!: boolean;
@@ -243,6 +267,29 @@ export class PropertyDefinition {
   /** Requires break-glass access for viewing */
   @Column({ name: 'requires_break_glass', type: 'boolean', default: false })
   requiresBreakGlass!: boolean;
+
+  /**
+   * Behavioral attributes registry (plan §6.3). A typed JSONB bag the
+   * platform's runtime hooks read to decide property-level behavior:
+   *
+   *   - `encrypt_at_rest`  : route through libs/shared-types
+   *                          encryption.service before storage
+   *   - `audit`            : add to audit-log subscriber's tracked-
+   *                          changes set
+   *   - `mask_in_logs`     : redact in notification.service
+   *                          provider-error patterns
+   *   - `mobile_visible`   : surface on the mobile shell
+   *   - `formula_cache_strategy` : computed-property caching policy
+   *
+   * Values are typed via PropertyBehavioralAttributes; persistence is
+   * a flat JSONB so future attributes don't require schema migrations.
+   */
+  @Column({
+    name: 'behavioral_attributes',
+    type: 'jsonb',
+    default: () => `'{}'::jsonb`,
+  })
+  behavioralAttributes!: PropertyBehavioralAttributes;
 
   // ─────────────────────────────────────────────────────────────────
   // Metadata

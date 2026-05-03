@@ -218,7 +218,7 @@ export function AIAssistant({
       if (safeTarget !== null) {
         window.location.href = safeTarget;
       } else {
-        // eslint-disable-next-line no-console
+         
         console.warn('[AIAssistant] Refused unsafe navigation target', { target: action.target });
       }
     }

@@ -270,6 +270,88 @@ export class GridQueryService {
   }
 
   // ---------------------------------------------------------------------------
+  // AGGREGATE — single scalar result (sum / avg / min / max / count)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run a single SQL aggregate against a collection. Used by the
+   * Phase 5 MetricsPanel for sum / avg / min / max metrics. The
+   * aggregate runs through the same RLS pipeline as `count` /
+   * `query`, so non-readable rows are excluded from the math.
+   */
+  async aggregate(
+    ctx: RequestContext,
+    request: {
+      collection: string;
+      column?: string;
+      function: 'count' | 'sum' | 'avg' | 'min' | 'max';
+      filters?: GridFilterModel[];
+      globalFilter?: string;
+    },
+  ): Promise<{ value: number | null }> {
+    const fn = request.function.toLowerCase();
+    const allowed = new Set(['count', 'sum', 'avg', 'min', 'max']);
+    if (!allowed.has(fn)) {
+      throw new BadRequestException(`Unsupported aggregate function: ${request.function}`);
+    }
+    if (fn !== 'count' && !request.column) {
+      throw new BadRequestException(`Aggregate ${fn} requires a column`);
+    }
+
+    const model = await this.modelRegistry.getCollection(request.collection);
+    await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
+
+    const allFields = await this.modelRegistry.getProperties(request.collection, ctx.roles);
+    const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
+    if (request.column && !readableFields.find((f) => f.code === request.column)) {
+      // Either the column doesn't exist or the actor can't read it.
+      // Both surface as the same "unauthorized" outcome — never leak
+      // which one to non-editors.
+      throw new BadRequestException(`Aggregate column not available`);
+    }
+
+    // Resolve the storage column for the aggregation. count(*) is a
+    // special case — no column quoting needed.
+    let aggExpr: string;
+    if (fn === 'count') {
+      aggExpr = 'COUNT(*)';
+    } else {
+      const prop = allFields.find((f) => f.code === request.column);
+      const storage = prop?.storagePath?.replace(/^column:/, '') ?? request.column;
+      // The model registry already validated the property exists so
+      // `storage` is a safe identifier; quoting prevents bad input
+      // from a future code path from injecting SQL.
+      aggExpr = `${fn.toUpperCase()}(t."${storage}")`;
+    }
+
+    const qb = this.dataSource
+      .createQueryBuilder()
+      .select(aggExpr, 'value')
+      .from(this.buildPhysicalTableForQb(model), 't');
+
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildRowLevelClause(
+      ctx,
+      model.storageTable,
+      'read',
+      't',
+    );
+    rlsClauses.forEach((clause) => qb.andWhere(clause));
+    qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+
+    this.applyFilters(qb, request.filters, readableFields, allFields);
+    if (request.globalFilter) {
+      this.applyGlobalFilter(qb, request.globalFilter, readableFields, allFields);
+    }
+
+    const result = await qb.getRawOne();
+    if (!result || result.value === null || result.value === undefined) {
+      return { value: null };
+    }
+    const numeric = typeof result.value === 'number' ? result.value : Number(result.value);
+    return { value: Number.isFinite(numeric) ? numeric : null };
+  }
+
+  // ---------------------------------------------------------------------------
   // GROUPED QUERY (for tree/group views)
   // ---------------------------------------------------------------------------
 

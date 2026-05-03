@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useStudioCollectionId } from '../../../app/app-studio/table-builder';
 import {
   AlertCircle,
   Check,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { FormLayoutDesigner } from '../../../components/form/designer/FormLayoutDesigner';
+import { FormPreviewRolePicker } from '../../../components/form/FormPreviewRolePicker';
 import {
   buildDefaultDesignerLayout,
   SimpleFormLayout,
@@ -115,15 +117,26 @@ const getDefaultFormView = (views: FormView[]) => {
   }, null);
 };
 
+/**
+ * Read order matters: the save path writes the rich designer payload
+ * under `designer`, the simplified runtime projection under `layout`,
+ * and an older codepath used `formLayout`. The loader must check
+ * `designer` FIRST so designer-only items (related lists,
+ * annotations, dividers, dot-walks, field spans) survive a save →
+ * reload roundtrip. Falling through to `formLayout` covers historical
+ * data; `layout` is the last resort and rebuilds a degraded designer
+ * tree from the simplified projection.
+ */
 const getLayoutFromView = (view?: FormView | null) => {
   if (!view || !view.config || typeof view.config !== 'object') {
     return null;
   }
 
   const config = view.config as Record<string, unknown>;
-  const savedDesigner = config.formLayout as DesignerLayout | undefined;
-  if (savedDesigner?.version === 2) {
-    return { layout: toSimpleFormLayout(savedDesigner), designer: savedDesigner };
+
+  const designerPayload = (config.designer ?? config.formLayout) as DesignerLayout | undefined;
+  if (designerPayload?.version === 2) {
+    return { layout: toSimpleFormLayout(designerPayload), designer: designerPayload };
   }
 
   const savedLayout = config.layout as SimpleFormLayout | undefined;
@@ -143,6 +156,9 @@ const toViewCode = (value: string) => {
     .replace(/^_+|_+$/g, '')
     .slice(0, 120);
 };
+
+const toDefaultFormViewCode = (collectionCode: string) =>
+  toViewCode(`form_${collectionCode}_default`);
 
 const mapDefinitionToFormView = (item: ViewDefinitionListItem): FormView => {
   const layoutPayload =
@@ -166,8 +182,9 @@ const mapDefinitionToFormView = (item: ViewDefinitionListItem): FormView => {
 };
 
 export const FormLayoutPage: React.FC = () => {
-  const { id: collectionId } = useParams<{ id: string }>();
+  const collectionId = useStudioCollectionId();
   const [searchParams] = useSearchParams();
+  const { code: routeCollectionCode } = useParams<{ code?: string }>();
   const navigate = useNavigate();
 
   const [collection, setCollection] = useState<CollectionApiResponse | null>(null);
@@ -183,6 +200,13 @@ export const FormLayoutPage: React.FC = () => {
   const [viewScopeDraft, setViewScopeDraft] = useState<ViewScope>('instance');
   const [viewScopeKeyDraft, setViewScopeKeyDraft] = useState('');
   const [viewFilter, setViewFilter] = useState('');
+  // Plan §7.2 — Form Builder Preview-as-role state. The picker mounts
+  // in the toolbar above the designer; selecting a role enables a
+  // "Preview as this role" link that deep-links into the record page
+  // with `?previewAsRole=<csv>`. CollectionRecordPage forwards the
+  // CSV to viewApi.resolve, which forwards to the view-engine
+  // controller's previewAsRole gate.
+  const [previewAsRole, setPreviewAsRole] = useState<string[]>([]);
   const [fieldStudioRefresh, setFieldStudioRefresh] = useState(0);
   const [fieldEditorOpen, setFieldEditorOpen] = useState(false);
   const [fieldEditorProperty, setFieldEditorProperty] = useState<PropertyDefinition | undefined>(undefined);
@@ -206,10 +230,36 @@ export const FormLayoutPage: React.FC = () => {
       const schemaRes = await api.get<SchemaResponse>(
         `/data/collections/${collectionData.code}/schema`
       );
-      setProperties(schemaRes.properties || []);
+      const schemaProperties = schemaRes.properties || [];
+      setProperties(schemaProperties);
 
       const viewList = await viewApi.listDefinitions({ kind: 'form', collection: collectionData.code });
-      const formViews = viewList.map(mapDefinitionToFormView);
+      let formViews = viewList.map(mapDefinitionToFormView);
+      if (formViews.length === 0) {
+        const defaultDesignerLayout = buildDefaultDesignerLayout(schemaProperties);
+        const defaultCode = toDefaultFormViewCode(collectionData.code);
+        await viewApi.createDraft({
+          code: defaultCode,
+          name: 'Default Form',
+          description: `Default form view for ${collectionData.name}`,
+          kind: 'form',
+          target_collection_code: collectionData.code,
+          layout: {
+            layout: toSimpleFormLayout(defaultDesignerLayout),
+            designer: defaultDesignerLayout,
+          },
+          variant: {
+            scope: 'instance',
+            priority: 100,
+          },
+        });
+        await viewApi.publish(defaultCode);
+        const refreshedViews = await viewApi.listDefinitions({
+          kind: 'form',
+          collection: collectionData.code,
+        });
+        formViews = refreshedViews.map(mapDefinitionToFormView);
+      }
       setViews(formViews);
       const defaultView = getDefaultFormView(formViews);
       if (defaultView) {
@@ -290,9 +340,12 @@ export const FormLayoutPage: React.FC = () => {
             priority: activeView.priority,
           },
         });
-        await viewApi.publish(activeView.code);
+        // ADR-5: Save persists a draft revision. Publish flips the
+        // runtime to the new revision via the dedicated button —
+        // coupling them would bypass the draft/review flow every
+        // other metadata entity honors.
         await loadData();
-        showSuccess('Form layout saved.');
+        showSuccess('Form layout saved as draft.');
       } catch (err) {
         // Save failed - error toast shown
         showError('Failed to save form layout. Please try again.');
@@ -302,15 +355,34 @@ export const FormLayoutPage: React.FC = () => {
     [activeView, collection, loadData, showError, showSuccess]
   );
 
+  /**
+   * Publish the current draft revision. Decoupled from Save per ADR-5
+   * lifecycle so admins can iterate on a draft layout without
+   * affecting the form runtime serves to end users.
+   */
+  const handlePublishLayout = useCallback(async () => {
+    if (!activeView) return;
+    try {
+      await viewApi.publish(activeView.code);
+      await loadData();
+      showSuccess('Form layout published.');
+    } catch (err) {
+      showError('Failed to publish form layout. Please try again.');
+      throw err;
+    }
+  }, [activeView, loadData, showError, showSuccess]);
+
   const handleClose = useCallback(() => {
     if (returnTo) {
       navigate(returnTo);
+    } else if (routeCollectionCode) {
+      navigate(`/studio/c/${routeCollectionCode}/data`);
     } else if (collectionId) {
       navigate(`/studio/collections/${collectionId}/views`);
     } else {
       navigate('/studio/collections');
     }
-  }, [collectionId, navigate, returnTo]);
+  }, [collectionId, navigate, returnTo, routeCollectionCode]);
 
   const openViewEditor = (view?: FormView) => {
     setViewEditorState(view || null);
@@ -331,7 +403,7 @@ export const FormLayoutPage: React.FC = () => {
   const saveViewEditor = async () => {
     if (!collection || !viewNameDraft.trim()) return;
 
-    const code = viewEditorState?.code || toViewCode(viewNameDraft.trim());
+    const code = viewEditorState?.code || toViewCode(`${collection.code}_${viewNameDraft.trim()}`);
     const layoutPayload =
       (viewEditorState?.config as Record<string, unknown>) || {};
 
@@ -505,9 +577,9 @@ export const FormLayoutPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-card border-border">
-        <div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-col gap-3 border-b bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 border-border">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <button
               type="button"
@@ -525,7 +597,7 @@ export const FormLayoutPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <button
             type="button"
             onClick={() => setActiveTab('views')}
@@ -545,20 +617,20 @@ export const FormLayoutPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="w-56 border-r border-border bg-muted/30">
-          <div className="p-4 space-y-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <aside className="border-b border-border bg-muted/30 md:w-56 md:border-b-0 md:border-r">
+          <div className="flex gap-2 overflow-x-auto p-3 md:block md:space-y-2 md:p-4">
             {([
               { id: 'views', label: 'View Manager' },
               { id: 'builder', label: 'Form Builder' },
-              { id: 'fields', label: 'Field Studio' },
+              { id: 'fields', label: 'Property Studio' },
               { id: 'policies', label: 'Policy Studio' },
             ] as Array<{ id: StudioTab; label: string }>).map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                className={`flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors md:w-full ${
                   activeTab === tab.id
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -571,7 +643,7 @@ export const FormLayoutPage: React.FC = () => {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
           {activeTab === 'views' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -677,29 +749,62 @@ export const FormLayoutPage: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <FormLayoutDesigner
-                  key={activeView.id}
-                  collectionCode={collection?.code || ''}
-                  fields={formFields}
-                  initialLayout={designerInitialLayout}
-                  onSave={handleSaveLayout}
-                  onClose={handleClose}
-                  variant="embedded"
-                />
+                <>
+                  {/* ADR-5: Save persists a draft; Publish flips
+                      the runtime to the new revision so admins can
+                      iterate without affecting end users. */}
+                  <div className="mb-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 text-xs text-muted-foreground">
+                      Save persists a draft revision. Publish makes it the runtime layout.
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      <FormPreviewRolePicker
+                        value={previewAsRole}
+                        onChange={setPreviewAsRole}
+                      />
+                      {previewAsRole.length > 0 && collection?.code ? (
+                        <a
+                          href={`/${collection.code}/new?previewAsRole=${encodeURIComponent(previewAsRole.join(','))}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs text-foreground hover:bg-muted"
+                        >
+                          Preview form
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handlePublishLayout()}
+                        className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:opacity-90"
+                      >
+                        Publish current draft
+                      </button>
+                    </div>
+                  </div>
+                  <FormLayoutDesigner
+                    key={activeView.id}
+                    collectionCode={collection?.code || ''}
+                    fields={formFields}
+                    initialLayout={designerInitialLayout}
+                    onSave={handleSaveLayout}
+                    onClose={handleClose}
+                    variant="embedded"
+                  />
+                </>
               )}
             </div>
           )}
 
           {activeTab === 'fields' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Field Studio</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Property Studio</h2>
                   <p className="text-sm text-muted-foreground">
-                    Create and manage fields for this collection.
+                    Create and manage Properties for this Collection.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <button
                     type="button"
                     onClick={() => setFieldSuggestionsOpen(true)}

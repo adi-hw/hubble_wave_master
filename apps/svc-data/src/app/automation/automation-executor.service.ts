@@ -311,12 +311,14 @@ export class AutomationExecutorService {
               action: action as any,
               executeAsync: true,
               executeAfterCommit: false,
+              output: result.output,
             });
           } else if (result.type === 'queue_after_commit') {
             asyncQueue.push({
               action: action as any,
               executeAsync: false,
               executeAfterCommit: true,
+              output: result.output,
             });
           }
         } catch (err) {

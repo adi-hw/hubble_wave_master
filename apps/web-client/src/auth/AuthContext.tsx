@@ -527,6 +527,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const hasPermission = useCallback(
     (permission: string): boolean => {
+      if (auth.user?.roles?.some((role) => role === 'admin' || role === 'super_admin')) {
+        return true;
+      }
       return auth.user?.permissions?.includes(permission) ?? false;
     },
     [auth.user]
@@ -541,6 +544,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const hasAnyPermission = useCallback(
     (permissions: string[]): boolean => {
+      if (auth.user?.roles?.some((role) => role === 'admin' || role === 'super_admin')) {
+        return true;
+      }
       return permissions.some((perm) => auth.user?.permissions?.includes(perm));
     },
     [auth.user]

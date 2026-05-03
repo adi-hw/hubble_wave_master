@@ -110,7 +110,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
@@ -136,7 +136,7 @@ export const Modal: React.FC<ModalProps> = ({
       >
         {/* Header */}
         {(title || showCloseButton || icon) && (
-          <div className="flex items-start gap-4 px-6 py-4 border-b border-border">
+          <div className="flex items-start gap-4 border-b border-border px-4 py-4 sm:px-6">
             {/* Icon */}
             {icon && (
               <div
@@ -185,7 +185,7 @@ export const Modal: React.FC<ModalProps> = ({
         {/* Body */}
         <div
           className={cn(
-            'px-6 py-4',
+            'px-4 py-4 sm:px-6',
             scrollable && 'overflow-y-auto',
             scrollable && size !== 'full' && 'max-h-[calc(80vh-8rem)]',
             size === 'full' && 'flex-1'
@@ -196,7 +196,7 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-4 pb-20 pt-4 sm:px-6 sm:pb-4">
             {footer}
           </div>
         )}

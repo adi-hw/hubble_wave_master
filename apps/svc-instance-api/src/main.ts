@@ -31,6 +31,9 @@ async function bootstrap() {
 
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   app.enableCors({

@@ -55,6 +55,14 @@ export interface QueuedAction {
   action: AutomationAction;
   executeAsync: boolean;
   executeAfterCommit: boolean;
+  /**
+   * The action handler's `result.output` snapshot — captured at queue
+   * time so drainQueuedActions sees values with `@record` / `@output`
+   * bindings already resolved. Without this, post-commit work would
+   * publish raw placeholder strings (e.g. `@record.id`) instead of the
+   * evaluated values.
+   */
+  output?: unknown;
 }
 
 export interface AutomationAction {

@@ -15,6 +15,7 @@ import {
 import { api } from '../../lib/api';
 import { PermissionGate } from '../../auth/PermissionGate';
 import { viewApi, ResolvedView } from '../../services/viewApi';
+import { composeDisplay, type DisplayAction } from '../../lib/condition-evaluator';
 import {
   buildDefaultDesignerLayout,
   SimpleFormLayout,
@@ -44,6 +45,8 @@ interface PropertyDefinition {
   isReadonly?: boolean;
   description?: string;
   defaultValue?: unknown;
+  placeholder?: string;
+  helpText?: string;
   config?: {
     dataType?: string;
     choices?: { value: string; label: string; color?: string }[];
@@ -63,11 +66,27 @@ interface PropertyDefinition {
   position?: number;
 }
 
+interface FormFieldDetail {
+  code: string;
+  labelOverride?: string;
+  placeholder?: string;
+  helpText?: string;
+  readOnly?: boolean;
+  span?: 1 | 2 | 3 | 4;
+}
+
 interface FormLayoutSection {
   id: string;
   label?: string;
   columns: number;
   fields: string[];
+  /**
+   * Per-field overrides set in the designer. The runtime renderer
+   * honors these so a designer that set readOnly=true or span=2
+   * sees those preserved at runtime — without this, the projection
+   * would silently drop them.
+   */
+  fieldDetails?: FormFieldDetail[];
   collapsible?: boolean;
   defaultCollapsed?: boolean;
 }
@@ -126,7 +145,22 @@ export function CollectionRecordPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isNew = recordId === 'new';
-  const isEditMode = new URLSearchParams(location.search).get('edit') === 'true';
+  const searchParams = new URLSearchParams(location.search);
+  const isEditMode = searchParams.get('edit') === 'true';
+  // Optional `?formCode=...` pins the resolver to a specific
+  // authored form view. Workspace QuickActionsPanel passes this
+  // through so a kind=form quick action opens the configured form
+  // rather than the default-resolved one.
+  const requestedFormCode = searchParams.get('formCode') ?? undefined;
+  // Plan §7.2 — Form Builder Preview-as-role passes a CSV of role
+  // codes through the URL so the form-builder picker can deep-link
+  // into a record page rendered against a different role's variant
+  // resolution. The view-engine controller gates the override
+  // server-side by `metadata.forms.edit` or admin role.
+  const previewAsRole = (searchParams.get('previewAsRole') ?? '')
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
 
   const [collection, setCollection] = useState<CollectionDefinition | null>(null);
   const [properties, setProperties] = useState<PropertyDefinition[]>([]);
@@ -194,7 +228,15 @@ export function CollectionRecordPage() {
     }
 
     try {
-      const resolved = await viewApi.resolve({ kind: 'form', collection: code, route: location.pathname });
+      // When `?formCode=...` is supplied (e.g. workspace QuickAction),
+      // pin to that named view. Otherwise scope/priority resolution
+      // picks the best form view for this kind + collection.
+      const resolved = await viewApi.resolve({
+        kind: 'form',
+        collection: code,
+        code: requestedFormCode,
+        previewAsRole: previewAsRole.length > 0 ? previewAsRole : undefined,
+      });
       setResolvedView(resolved);
       const resolvedLayout = resolveLayoutFromResolvedView(resolved);
       if (resolvedLayout?.layout) {
@@ -207,7 +249,7 @@ export function CollectionRecordPage() {
       setFormLayout(null);
       setResolvedView(null);
     }
-  }, [location.pathname]);
+  }, [requestedFormCode, previewAsRole.join(',')]);
 
   useEffect(() => {
     if (!collection?.code) return;
@@ -215,7 +257,25 @@ export function CollectionRecordPage() {
   }, [collection?.code, loadFormLayout]);
 
   async function handleSave() {
-    if (Object.keys(changes).length === 0 && !isNew) {
+    // Display Rule setValue effects are stored in ruleValues for
+    // fields the user has not manually edited. Merge them into the
+    // payload so a rule that says "set priority='high' when state='open'"
+    // persists even if the user never touched the priority field.
+    // User-edited values in `changes` take precedence over rule
+    // values for the same code. Compute the payload BEFORE the
+    // early-exit so a setValue-only save (no user edits, but a rule
+    // produced a value that differs from the stored record) still
+    // reaches the backend.
+    const ruleOnlyValues: Record<string, unknown> = {};
+    ruleValues.forEach((value, code) => {
+      if (userEdited.has(code) || code in changes) return;
+      const stored = record?.[code];
+      if (stored === value) return;
+      ruleOnlyValues[code] = value;
+    });
+    const payload = { ...ruleOnlyValues, ...changes };
+
+    if (Object.keys(payload).length === 0 && !isNew) {
       setEditing(false);
       return;
     }
@@ -225,11 +285,11 @@ export function CollectionRecordPage() {
       setError(null);
 
       if (isNew) {
-        const res = await api.post<{ record: { id: string } }>(`/data/collections/${collectionCode}/data`, changes);
+        const res = await api.post<{ record: { id: string } }>(`/data/collections/${collectionCode}/data`, payload);
         navigate(`/${collectionCode}/${res.record.id}`, { replace: true });
       } else {
-        await api.put(`/data/collections/${collectionCode}/data/${recordId}`, changes);
-        setRecord({ ...record, ...changes });
+        await api.put(`/data/collections/${collectionCode}/data/${recordId}`, payload);
+        setRecord({ ...record, ...payload });
         setChanges({});
         setEditing(false);
       }
@@ -252,16 +312,41 @@ export function CollectionRecordPage() {
     }
   }
 
+  /**
+   * Track which property codes the user has manually edited. A
+   * Display Rule's `setValue` action only applies to fields the user
+   * has not touched — once they edit, their value sticks until they
+   * actively clear it. Without this tracking, a rule with `setValue`
+   * would clobber every user keystroke.
+   */
+  const [userEdited, setUserEdited] = useState<Set<string>>(new Set());
+
   const handleFieldChange = useCallback((code: string, value: unknown) => {
     setChanges((prev) => ({ ...prev, [code]: value }));
+    setUserEdited((prev) => {
+      if (prev.has(code)) return prev;
+      const next = new Set(prev);
+      next.add(code);
+      return next;
+    });
   }, []);
+
+  /**
+   * Display Rule `setValue` effects derived from composeDisplay. Only
+   * fields the user has NOT manually edited see the rule's value.
+   * Recomputed alongside fieldPolicyState below.
+   */
+  const [ruleValues, setRuleValues] = useState<Map<string, unknown>>(new Map());
 
   const currentValue = useCallback(
     (code: string) => {
       if (code in changes) return changes[code];
+      if (!userEdited.has(code) && ruleValues.has(code)) {
+        return ruleValues.get(code);
+      }
       return record?.[code];
     },
-    [changes, record]
+    [changes, record, ruleValues, userEdited]
   );
 
   const activePolicies = useMemo<FormPolicy[]>(() => {
@@ -324,6 +409,73 @@ export function CollectionRecordPage() {
       }
     };
 
+    // Apply published Display Rules + designer inline visibility
+    // conditions via the shared composeDisplay evaluator
+    // (libs/shared-types). Display Rules are the canonical mechanism;
+    // inlineDisplayRules are sections/tabs the designer marked with
+    // a visibilityCondition. The legacy formPolicies branch below
+    // still runs so older rule sets keep working until migrated.
+    const displayRules = resolvedView?.displayRules ?? [];
+    const layoutObj = resolvedView?.layout as
+      | { inlineDisplayRules?: { id: string; condition: Record<string, unknown>; fieldCodes: string[] }[] }
+      | undefined;
+    const inlineRules = layoutObj?.inlineDisplayRules ?? [];
+    if (displayRules.length > 0 || inlineRules.length > 0) {
+      const recordSnapshot: Record<string, unknown> = {
+        ...(record ?? {}),
+        ...changes,
+      };
+      // Inline rules carry { condition, fieldCodes }. Map them into
+      // composeDisplay's shape: when condition is FALSE, hide every
+      // field. We invert by wrapping in a synthetic rule that hides
+      // unconditionally and a counter-rule that shows when the
+      // condition holds.
+      const inlineAsRules = inlineRules.flatMap((r) => [
+        {
+          condition: {} as Record<string, unknown>,
+          actions: r.fieldCodes.map((code) => ({
+            propertyCode: code,
+            action: 'hide' as const,
+          })),
+          priority: 0,
+          isActive: true,
+        },
+        {
+          condition: r.condition,
+          actions: r.fieldCodes.map((code) => ({
+            propertyCode: code,
+            action: 'show' as const,
+          })),
+          priority: 1,
+          isActive: true,
+        },
+      ]);
+      const ruleSet = [
+        ...inlineAsRules,
+        ...displayRules.map((r) => ({
+          condition: r.condition ?? {},
+          actions: r.actions as DisplayAction[],
+          priority: r.priority,
+          isActive: r.isActive,
+        })),
+      ];
+      const resolved = composeDisplay(ruleSet, recordSnapshot);
+      for (const code of resolved.hidden) {
+        state[code] = { ...(state[code] ?? {}), hidden: true };
+      }
+      for (const code of resolved.mandatory) {
+        state[code] = { ...(state[code] ?? {}), required: true };
+      }
+      for (const code of resolved.readonly) {
+        state[code] = { ...(state[code] ?? {}), readOnly: true };
+      }
+      // setValue effects: stash the resolved values on the side. The
+      // currentValue() resolver applies them only to fields the user
+      // has not manually edited (tracked in userEdited). Defer the
+      // setRuleValues call to a useEffect since computing this inside
+      // a useMemo would re-set state every render.
+    }
+
     activePolicies
       .filter((policy) => policy.enabled)
       .forEach((policy) => {
@@ -356,7 +508,56 @@ export function CollectionRecordPage() {
       });
 
     return state;
-  }, [activePolicies, currentValue, resolvedView?.fieldPermissions]);
+  }, [
+    activePolicies,
+    currentValue,
+    resolvedView?.fieldPermissions,
+    resolvedView?.displayRules,
+    record,
+    changes,
+  ]);
+
+  /**
+   * Reconcile Display Rule `setValue` effects into the side-channel
+   * `ruleValues` map. The currentValue() resolver consults this map
+   * only for codes the user has not manually edited, so a rule
+   * that says "set priority='high' when status='open'" lights up
+   * priority on form load and propagates as the user changes status,
+   * but a user manually setting priority overrides the rule.
+   */
+  useEffect(() => {
+    const displayRules = resolvedView?.displayRules ?? [];
+    const layoutObj = resolvedView?.layout as
+      | { inlineDisplayRules?: { id: string; condition: Record<string, unknown>; fieldCodes: string[] }[] }
+      | undefined;
+    const inlineRules = layoutObj?.inlineDisplayRules ?? [];
+    if (displayRules.length === 0 && inlineRules.length === 0) {
+      if (ruleValues.size > 0) setRuleValues(new Map());
+      return;
+    }
+    const recordSnapshot: Record<string, unknown> = {
+      ...(record ?? {}),
+      ...changes,
+    };
+    const ruleSet = displayRules.map((r) => ({
+      condition: r.condition ?? {},
+      actions: r.actions as DisplayAction[],
+      priority: r.priority,
+      isActive: r.isActive,
+    }));
+    const resolved = composeDisplay(ruleSet, recordSnapshot);
+    // Compare maps shallowly to avoid an infinite re-render loop.
+    let changed = resolved.values.size !== ruleValues.size;
+    if (!changed) {
+      for (const [k, v] of resolved.values) {
+        if (ruleValues.get(k) !== v) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) setRuleValues(resolved.values);
+  }, [resolvedView?.displayRules, resolvedView?.layout, record, changes, ruleValues]);
 
   const designerFields = useMemo<ModelProperty[]>(() => {
     return properties.map((prop) => ({
@@ -406,6 +607,9 @@ export function CollectionRecordPage() {
         label: section.label || (activeTab.sections.length === 1 ? 'Details' : `Section ${index + 1}`),
         columns: Math.min(4, Math.max(1, section.columns || 2)),
         fields: Array.isArray(section.fields) ? section.fields : [],
+        fieldDetails: Array.isArray(section.fieldDetails)
+          ? (section.fieldDetails as FormFieldDetail[])
+          : undefined,
         collapsible: section.collapsible ?? true,
         defaultCollapsed: section.defaultCollapsed ?? false,
       }));
@@ -542,18 +746,19 @@ export function CollectionRecordPage() {
             </>
           ) : (
             <>
-              <PermissionGate roles="admin">
+              <PermissionGate permissions="metadata.forms.edit">
                 {collection && canConfigureForm && (
                   <button
                     type="button"
                     onClick={() =>
                       navigate(
-                        `/studio/collections/${collection.id}/form-layout?return=${encodeURIComponent(
+                        `/studio/c/${collection.code}/forms?return=${encodeURIComponent(
                           `${location.pathname}${location.search}`
                         )}`
                       )
                     }
                     className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border border-border bg-card text-foreground hover:bg-muted"
+                    title="Edit the form layout for this Collection (metadata.forms.edit)"
                   >
                     <Settings className="w-4 h-4" />
                     Configure Form
@@ -609,6 +814,9 @@ export function CollectionRecordPage() {
           {sections.map((section) => {
             const isCollapsible = section.collapsible ?? true;
             const isCollapsed = isCollapsible && collapsedSections.has(section.id);
+            const detailsByCode = new Map(
+              (section.fieldDetails ?? []).map((d) => [d.code, d]),
+            );
             const sectionProps = section.fields
               .map((code) => properties.find((p) => p.code === code))
               .filter(Boolean) as PropertyDefinition[];
@@ -650,20 +858,42 @@ export function CollectionRecordPage() {
                     <div className={`grid gap-4 ${getColumnsClass(section.columns)}`}>
                       {visibleProps.map((prop) => {
                         const policyState = fieldPolicyState[prop.code];
+                        const detail = detailsByCode.get(prop.code);
+                        // Merge designer-set fieldDetails into the
+                        // PropertyDefinition before render so
+                        // labelOverride / placeholder / helpText /
+                        // readOnly / span set in the designer
+                        // propagate to runtime.
                         const effectiveProperty: PropertyDefinition = {
                           ...prop,
+                          name: detail?.labelOverride ?? prop.name,
+                          placeholder: detail?.placeholder ?? prop.placeholder,
+                          helpText: detail?.helpText ?? prop.helpText,
                           isRequired: policyState?.required ? true : prop.isRequired,
-                          isReadonly: prop.isReadonly || policyState?.readOnly,
+                          isReadonly:
+                            prop.isReadonly ||
+                            policyState?.readOnly === true ||
+                            detail?.readOnly === true,
                         };
+                        const span = detail?.span ?? 1;
+                        const spanClass =
+                          span === 4
+                            ? 'md:col-span-4'
+                            : span === 3
+                            ? 'md:col-span-3'
+                            : span === 2
+                            ? 'md:col-span-2'
+                            : '';
 
                         return (
-                          <FieldRenderer
-                            key={prop.code}
-                            property={effectiveProperty}
-                            value={currentValue(prop.code)}
-                            editing={editing}
-                            onChange={(value) => handleFieldChange(prop.code, value)}
-                          />
+                          <div key={prop.code} className={spanClass}>
+                            <FieldRenderer
+                              property={effectiveProperty}
+                              value={currentValue(prop.code)}
+                              editing={editing}
+                              onChange={(value) => handleFieldChange(prop.code, value)}
+                            />
+                          </div>
                         );
                       })}
                     </div>
@@ -862,6 +1092,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
             disabled={isReadOnly}
             step={propType === 'integer' ? '1' : 'any'}
+            placeholder={property.placeholder}
             className={inputClassName}
           />
         );
@@ -882,6 +1113,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
             rows={4}
+            placeholder={property.placeholder}
             className={inputClassName}
           />
         );
@@ -906,6 +1138,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={String(value || '')}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
+            placeholder={property.placeholder}
             className={inputClassName}
           />
         );
@@ -936,6 +1169,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             value={String(value || '')}
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
+            placeholder={property.placeholder}
             className={inputClassName}
           />
         );
@@ -956,6 +1190,7 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
             onChange={(e) => onChange(e.target.value || null)}
             disabled={isReadOnly}
             maxLength={property.validationRules?.maxLength}
+            placeholder={property.placeholder}
             className={inputClassName}
           />
         );
@@ -969,8 +1204,10 @@ function FieldRenderer({ property, value, editing, onChange }: FieldRendererProp
         {property.isRequired && <span className="ml-1 text-destructive">*</span>}
       </label>
       {renderField()}
-      {property.description && (
-        <p className="mt-1 text-xs text-muted-foreground">{property.description}</p>
+      {(property.helpText ?? property.description) && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {property.helpText ?? property.description}
+        </p>
       )}
     </div>
   );

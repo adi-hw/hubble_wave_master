@@ -71,13 +71,14 @@ export class MetricsService {
     }
 
     const { start, end, limit } = this.resolveRange(metric, range);
+    const direction = range.direction === 'desc' ? 'DESC' : 'ASC';
     if (context.isAdmin) {
       const query = this.pointRepo
         .createQueryBuilder('p')
         .where('p.metricCode = :metricCode', { metricCode })
         .andWhere('p.periodStart >= :start', { start })
         .andWhere('p.periodStart < :end', { end })
-        .orderBy('p.periodStart', 'ASC')
+        .orderBy('p.periodStart', direction)
         .take(limit ?? MAX_METRIC_POINTS_PER_QUERY);
 
       const points = await query.getMany();
@@ -90,6 +91,10 @@ export class MetricsService {
     }
 
     const periods = this.buildPeriods(start, end, metric.cadence);
+    // Walk newest-first when the caller asked for desc so a
+    // limit=1 short-circuit returns the latest computed value
+    // without iterating the full retention window.
+    if (direction === 'DESC') periods.reverse();
     const effectiveLimit = limit ?? MAX_METRIC_POINTS_PER_QUERY;
     const results: MetricPointResult[] = [];
     for (const period of periods) {

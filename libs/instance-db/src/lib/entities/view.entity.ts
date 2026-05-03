@@ -71,6 +71,10 @@ export class ViewDefinition {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
+
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
 }
 
 @Entity('view_definition_revisions')
