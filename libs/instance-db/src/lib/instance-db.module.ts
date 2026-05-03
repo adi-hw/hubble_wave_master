@@ -39,7 +39,7 @@ import { InstanceDbService } from './instance-db.service';
         database: configService.get('DB_NAME', 'hubblewave'),
         entities: instanceEntities,
         synchronize: false, // Always use migrations in production
-        migrationsRun: configService.get('RUN_MIGRATIONS', 'true') === 'true',
+        migrationsRun: configService.get('RUN_MIGRATIONS', 'false') === 'true',
         migrations: ['dist/migrations/instance/*.js'],
         subscribers: [AuditLogSubscriber],
         logging: configService.get('DB_LOGGING', 'false') === 'true',
