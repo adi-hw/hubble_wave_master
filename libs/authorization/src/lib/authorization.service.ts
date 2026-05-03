@@ -594,77 +594,105 @@ export class AuthorizationService {
   ): RowLevelClause {
     const clauses: string[] = [];
     const params: Record<string, unknown> = {};
-    let paramIndex = 0;
+    const counter = { value: 0 };
 
     for (const pred of predicates) {
-      const field = `${tableAlias}."${pred.field}"`;
-      const paramName = `rls_p${paramIndex++}`;
+      this.renderPredicateInternal(pred, ctx, tableAlias, clauses, params, counter);
+    }
 
-      let value = pred.value;
-      if (pred.contextRef) {
-        switch (pred.contextRef) {
-          case 'userId':
-            value = ctx.userId;
-            break;
-          case 'roles':
-            value = ctx.roles as unknown as string;
-            break;
-          case 'groups':
-            value = (ctx.attributes?.['groupIds'] || []) as unknown as string;
-            break;
-          case 'sites':
-            value = (ctx.attributes?.['siteIds'] || []) as unknown as string;
-            break;
+    return { clauses, params };
+  }
+
+  private renderPredicateInternal(
+    pred: SafePredicate,
+    ctx: RequestContext,
+    tableAlias: string,
+    clauses: string[],
+    params: Record<string, unknown>,
+    counter: { value: number },
+  ): void {
+    if (pred.kind === 'or') {
+      const branchClauses: string[] = [];
+      for (const branch of pred.branches) {
+        const innerClauses: string[] = [];
+        for (const inner of branch) {
+          this.renderPredicateInternal(inner, ctx, tableAlias, innerClauses, params, counter);
+        }
+        if (innerClauses.length > 0) {
+          branchClauses.push(innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`);
         }
       }
+      if (branchClauses.length > 0) {
+        clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
+      }
+      return;
+    }
 
-      switch (pred.operator) {
-        case 'eq':
-          clauses.push(`${field} = :${paramName}`);
-          params[paramName] = value;
+    const field = `${tableAlias}."${pred.field}"`;
+    const paramName = `rls_p${counter.value++}`;
+
+    let value = pred.value;
+    if (pred.contextRef) {
+      switch (pred.contextRef) {
+        case 'userId':
+          value = ctx.userId;
           break;
-        case 'neq':
-          clauses.push(`${field} != :${paramName}`);
-          params[paramName] = value;
+        case 'roles':
+          value = ctx.roles as unknown as string;
           break;
-        case 'in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} = ANY(:${paramName})`);
-            params[paramName] = value;
-          }
+        case 'groups':
+          value = (ctx.attributes?.['groupIds'] || []) as unknown as string;
           break;
-        case 'not_in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} != ALL(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
-        case 'gt':
-          clauses.push(`${field} > :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'gte':
-          clauses.push(`${field} >= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lt':
-          clauses.push(`${field} < :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lte':
-          clauses.push(`${field} <= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'is_null':
-          clauses.push(`${field} IS NULL`);
-          break;
-        case 'is_not_null':
-          clauses.push(`${field} IS NOT NULL`);
+        case 'sites':
+          value = (ctx.attributes?.['siteIds'] || []) as unknown as string;
           break;
       }
     }
 
-    return { clauses, params };
+    switch (pred.operator) {
+      case 'eq':
+        clauses.push(`${field} = :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'neq':
+        clauses.push(`${field} != :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'in':
+        if (Array.isArray(value) && value.length > 0) {
+          clauses.push(`${field} = ANY(:${paramName})`);
+          params[paramName] = value;
+        }
+        break;
+      case 'not_in':
+        if (Array.isArray(value) && value.length > 0) {
+          clauses.push(`${field} != ALL(:${paramName})`);
+          params[paramName] = value;
+        }
+        break;
+      case 'gt':
+        clauses.push(`${field} > :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'gte':
+        clauses.push(`${field} >= :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'lt':
+        clauses.push(`${field} < :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'lte':
+        clauses.push(`${field} <= :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'is_null':
+        clauses.push(`${field} IS NULL`);
+        break;
+      case 'is_not_null':
+        clauses.push(`${field} IS NOT NULL`);
+        break;
+    }
   }
 
   private applyMask(value: unknown, strategy: MaskingStrategy): unknown {

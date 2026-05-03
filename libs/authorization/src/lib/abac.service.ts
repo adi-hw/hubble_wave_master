@@ -4,7 +4,8 @@ import { Injectable } from '@nestjs/common';
  * Supported predicate operations for row-level security.
  * These are translated to safe, parameterized SQL conditions.
  */
-export type SafePredicate = {
+export type LeafPredicate = {
+  kind: 'leaf';
   /** Column name (must be valid SQL identifier) */
   field: string;
   /** Comparison operator */
@@ -14,6 +15,17 @@ export type SafePredicate = {
   /** Reference to context value instead of literal (e.g., 'userId', 'roles', 'groups') */
   contextRef?: string;
 };
+
+/**
+ * Disjunction predicate: each branch is a list of predicates AND-ed together;
+ * branches themselves are OR-ed together.
+ */
+export type OrPredicate = {
+  kind: 'or';
+  branches: SafePredicate[][];
+};
+
+export type SafePredicate = LeafPredicate | OrPredicate;
 
 type Condition = {
   equals?: Record<string, unknown>;
@@ -105,6 +117,13 @@ export class AbacService {
    * Validate that a predicate is safe to use
    */
   private validatePredicate(pred: SafePredicate): boolean {
+    if (pred.kind === 'or') {
+      if (!Array.isArray(pred.branches) || pred.branches.length === 0) return false;
+      return pred.branches.every((branch) =>
+        Array.isArray(branch) && branch.length > 0 && branch.every((p) => this.validatePredicate(p)),
+      );
+    }
+
     // Validate field name is in whitelist or matches safe pattern
     if (!pred.field) return false;
 
@@ -147,73 +166,101 @@ export class AbacService {
   ): { clauses: string[]; params: Record<string, any> } {
     const clauses: string[] = [];
     const params: Record<string, any> = {};
-    let paramIndex = 0;
+    const counter = { value: 0 };
 
     for (const pred of predicates) {
       if (!this.validatePredicate(pred)) continue;
-
-      const field = `${tableAlias}."${pred.field}"`;
-      const paramName = `rls_${paramIndex++}`;
-
-      // Resolve value from context if contextRef is specified
-      let value: string | number | boolean | null | undefined | string[] = pred.value;
-      if (pred.contextRef) {
-        switch (pred.contextRef) {
-          case 'userId': value = context.userId; break;
-          case 'roles': value = context.roles; break;
-          case 'groups': value = context.groups ?? []; break;
-          case 'sites': value = context.sites ?? []; break;
-          default: continue; // Skip invalid refs
-        }
-      }
-
-      switch (pred.operator) {
-        case 'eq':
-          clauses.push(`${field} = :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'neq':
-          clauses.push(`${field} != :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} = ANY(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
-        case 'not_in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} != ALL(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
-        case 'gt':
-          clauses.push(`${field} > :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'gte':
-          clauses.push(`${field} >= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lt':
-          clauses.push(`${field} < :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lte':
-          clauses.push(`${field} <= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'is_null':
-          clauses.push(`${field} IS NULL`);
-          break;
-        case 'is_not_null':
-          clauses.push(`${field} IS NOT NULL`);
-          break;
-      }
+      this.renderPredicate(pred, context, tableAlias, clauses, params, counter);
     }
 
     return { clauses, params };
+  }
+
+  private renderPredicate(
+    pred: SafePredicate,
+    context: { userId: string; roles: string[]; groups?: string[]; sites?: string[] },
+    tableAlias: string,
+    clauses: string[],
+    params: Record<string, any>,
+    counter: { value: number },
+  ): void {
+    if (pred.kind === 'or') {
+      const branchClauses: string[] = [];
+      for (const branch of pred.branches) {
+        const innerClauses: string[] = [];
+        for (const inner of branch) {
+          if (!this.validatePredicate(inner)) continue;
+          this.renderPredicate(inner, context, tableAlias, innerClauses, params, counter);
+        }
+        if (innerClauses.length > 0) {
+          branchClauses.push(innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`);
+        }
+      }
+      if (branchClauses.length > 0) {
+        clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
+      }
+      return;
+    }
+
+    const field = `${tableAlias}."${pred.field}"`;
+    const paramName = `rls_${counter.value++}`;
+
+    // Resolve value from context if contextRef is specified
+    let value: string | number | boolean | null | undefined | string[] = pred.value;
+    if (pred.contextRef) {
+      switch (pred.contextRef) {
+        case 'userId': value = context.userId; break;
+        case 'roles': value = context.roles; break;
+        case 'groups': value = context.groups ?? []; break;
+        case 'sites': value = context.sites ?? []; break;
+        default: return; // Skip invalid refs
+      }
+    }
+
+    switch (pred.operator) {
+      case 'eq':
+        clauses.push(`${field} = :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'neq':
+        clauses.push(`${field} != :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'in':
+        if (Array.isArray(value) && value.length > 0) {
+          clauses.push(`${field} = ANY(:${paramName})`);
+          params[paramName] = value;
+        }
+        break;
+      case 'not_in':
+        if (Array.isArray(value) && value.length > 0) {
+          clauses.push(`${field} != ALL(:${paramName})`);
+          params[paramName] = value;
+        }
+        break;
+      case 'gt':
+        clauses.push(`${field} > :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'gte':
+        clauses.push(`${field} >= :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'lt':
+        clauses.push(`${field} < :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'lte':
+        clauses.push(`${field} <= :${paramName}`);
+        params[paramName] = value;
+        break;
+      case 'is_null':
+        clauses.push(`${field} IS NULL`);
+        break;
+      case 'is_not_null':
+        clauses.push(`${field} IS NOT NULL`);
+        break;
+    }
   }
 
   private readContext(ctx: Record<string, any>, path: string): unknown {
