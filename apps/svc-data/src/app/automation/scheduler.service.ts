@@ -7,6 +7,7 @@
  */
 
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue, Worker, Job, ConnectionOptions } from 'bullmq';
 import { ScheduledJobService } from './scheduled-job.service';
 import { ActionHandlerService } from './action-handler.service';
@@ -24,10 +25,28 @@ interface ScheduledJobPayload {
   queryFilter?: Record<string, unknown>;
 }
 
+interface DlqPayload {
+  originalJob: ReturnType<Job['toJSON']>;
+  error: string;
+  stack?: string;
+  failedAt: string;
+}
+
+interface ScheduledJobFailedEvent {
+  jobId: string | undefined;
+  automationId: string | undefined;
+  error: string;
+}
+
+const SCHEDULED_JOBS_QUEUE = 'scheduled-jobs';
+const SCHEDULED_JOBS_DLQ = 'scheduled-jobs-dlq';
+const SCHEDULED_JOB_FAILED_EVENT = 'scheduled_job.failed';
+
 @Injectable()
 export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
   private queue: Queue | null = null;
+  private dlqQueue: Queue<DlqPayload, void> | null = null;
   private worker: Worker | null = null;
   private connectionOptions: ConnectionOptions | null = null;
   private pollInterval: NodeJS.Timeout | null = null;
@@ -38,6 +57,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly actionHandler: ActionHandlerService,
     private readonly scriptSandbox: ScriptSandboxService,
     private readonly executionLogService: ExecutionLogService,
+    private readonly eventEmitter: EventEmitter2,
     @Optional() @Inject('REDIS_HOST') private redisHost?: string,
     @Optional() @Inject('REDIS_PORT') private redisPort?: number,
   ) {}
@@ -63,6 +83,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     if (this.queue) {
       await this.queue.close();
     }
+    if (this.dlqQueue) {
+      await this.dlqQueue.close();
+    }
     this.connectionOptions = null;
   }
 
@@ -77,7 +100,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       enableReadyCheck: false,
     };
 
-    this.queue = new Queue<ScheduledJobPayload, void>('scheduled-jobs', {
+    this.queue = new Queue<ScheduledJobPayload, void>(SCHEDULED_JOBS_QUEUE, {
       connection: this.connectionOptions,
       defaultJobOptions: {
         attempts: 3,
@@ -88,14 +111,21 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         removeOnComplete: {
           count: 1000,
         },
+        // Intermediate failures still age out so Redis doesn't grow unbounded.
+        // The DLQ entry written from the worker `failed` handler is what
+        // preserves trace data for jobs that exhaust their retries.
         removeOnFail: {
           count: 500,
         },
       },
     });
 
+    this.dlqQueue = new Queue<DlqPayload, void>(SCHEDULED_JOBS_DLQ, {
+      connection: this.connectionOptions,
+    });
+
     this.worker = new Worker<ScheduledJobPayload, void>(
-      'scheduled-jobs',
+      SCHEDULED_JOBS_QUEUE,
       async (job: Job<ScheduledJobPayload>) => this.processJob(job),
       {
         connection: this.connectionOptions,
@@ -107,9 +137,55 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Job ${job.id} completed successfully`);
     });
 
-    this.worker.on('failed', (job, err) => {
+    this.worker.on('failed', async (job, err) => {
       this.logger.error(`Job ${job?.id} failed: ${err.message}`);
+      await this.handleWorkerFailure(job, err);
     });
+  }
+
+  /**
+   * On the FINAL retry attempt only, persist a Dead Letter Queue entry and
+   * emit a domain event so alerting subscribers can react. Intermediate
+   * retry failures take BullMQ's normal backoff path and are not enqueued
+   * to the DLQ — only true exhaustion produces a DLQ entry.
+   */
+  private async handleWorkerFailure(
+    job: Job<ScheduledJobPayload> | undefined,
+    err: Error,
+  ): Promise<void> {
+    if (!job) {
+      return;
+    }
+
+    const maxAttempts = job.opts.attempts ?? 1;
+    if (job.attemptsMade < maxAttempts) {
+      return;
+    }
+
+    try {
+      if (this.dlqQueue) {
+        const dlqEntry: DlqPayload = {
+          originalJob: job.toJSON(),
+          error: err.message,
+          stack: err.stack,
+          failedAt: new Date().toISOString(),
+        };
+        await this.dlqQueue.add('failed-job', dlqEntry);
+      }
+    } catch (dlqError) {
+      const dlqErr = dlqError as Error;
+      this.logger.error(
+        `Failed to enqueue job ${job.id} to DLQ: ${dlqErr.message}`,
+        dlqErr.stack,
+      );
+    }
+
+    const event: ScheduledJobFailedEvent = {
+      jobId: job.id,
+      automationId: job.data?.jobId,
+      error: err.message,
+    };
+    this.eventEmitter.emit(SCHEDULED_JOB_FAILED_EVENT, event);
   }
 
   private startPolling() {
@@ -316,5 +392,17 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     return { waiting, active, completed, failed };
+  }
+
+  /**
+   * Returns the count of dead-lettered scheduled jobs. Operators consume
+   * this to track DLQ growth. Returns zero when the DLQ is not initialized
+   * (e.g., Redis was unavailable at startup).
+   */
+  async getDlqSize(): Promise<number> {
+    if (!this.dlqQueue) {
+      return 0;
+    }
+    return this.dlqQueue.getWaitingCount();
   }
 }
