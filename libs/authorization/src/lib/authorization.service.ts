@@ -13,7 +13,7 @@ import {
   AccessConditionData,
   SPECIAL_VALUES,
 } from './types';
-import { AbacService, SafePredicate } from './abac.service';
+import { AbacService, SafePredicate, LeafPredicate } from './abac.service';
 import { PolicyCompilerService } from './policy-compiler.service';
 
 export interface RowLevelClause {
@@ -615,7 +615,7 @@ export class AuthorizationService {
    * scalar comparison or vice versa.
    */
   private resolvePredicateValue(
-    pred: SafePredicate,
+    pred: LeafPredicate,
     ctx: RequestContext,
   ): string | string[] | number | boolean | null | undefined {
     if (!pred.contextRef) {
@@ -642,78 +642,106 @@ export class AuthorizationService {
   ): RowLevelClause {
     const clauses: string[] = [];
     const params: Record<string, unknown> = {};
-    let paramIndex = 0;
+    const counter = { value: 0 };
 
     for (const pred of predicates) {
-      const field = `${tableAlias}."${pred.field}"`;
-      const paramName = `rls_p${paramIndex++}`;
-      const value = this.resolvePredicateValue(pred, ctx);
-
-      switch (pred.operator) {
-        case 'eq':
-        case 'neq': {
-          // Array values do not legally bind to scalar comparisons. Refuse
-          // rather than coerce so a misconfigured policy fails closed.
-          if (Array.isArray(value)) {
-            this.logger.warn(
-              `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for scalar operator`,
-            );
-            paramIndex--;
-            continue;
-          }
-          clauses.push(`${field} ${pred.operator === 'eq' ? '=' : '!='} :${paramName}`);
-          params[paramName] = value ?? null;
-          break;
-        }
-        case 'in':
-        case 'not_in': {
-          // Postgres ANY/ALL bind to array params. Coerce scalars into
-          // single-element arrays so a literal-value `in` policy still works.
-          const arr = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
-          if (arr.length === 0) {
-            paramIndex--;
-            continue;
-          }
-          clauses.push(
-            pred.operator === 'in'
-              ? `${field} = ANY(:${paramName})`
-              : `${field} != ALL(:${paramName})`,
-          );
-          params[paramName] = arr;
-          break;
-        }
-        case 'gt':
-        case 'gte':
-        case 'lt':
-        case 'lte': {
-          if (Array.isArray(value)) {
-            this.logger.warn(
-              `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for range operator`,
-            );
-            paramIndex--;
-            continue;
-          }
-          const opSql =
-            pred.operator === 'gt' ? '>' :
-            pred.operator === 'gte' ? '>=' :
-            pred.operator === 'lt' ? '<' :
-            '<=';
-          clauses.push(`${field} ${opSql} :${paramName}`);
-          params[paramName] = value;
-          break;
-        }
-        case 'is_null':
-          paramIndex--;
-          clauses.push(`${field} IS NULL`);
-          break;
-        case 'is_not_null':
-          paramIndex--;
-          clauses.push(`${field} IS NOT NULL`);
-          break;
-      }
+      this.renderPredicateInternal(pred, ctx, tableAlias, clauses, params, counter);
     }
 
     return { clauses, params };
+  }
+
+  private renderPredicateInternal(
+    pred: SafePredicate,
+    ctx: RequestContext,
+    tableAlias: string,
+    clauses: string[],
+    params: Record<string, unknown>,
+    counter: { value: number },
+  ): void {
+    if (pred.kind === 'or') {
+      const branchClauses: string[] = [];
+      for (const branch of pred.branches) {
+        const innerClauses: string[] = [];
+        for (const inner of branch) {
+          this.renderPredicateInternal(inner, ctx, tableAlias, innerClauses, params, counter);
+        }
+        if (innerClauses.length > 0) {
+          branchClauses.push(innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`);
+        }
+      }
+      if (branchClauses.length > 0) {
+        clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
+      }
+      return;
+    }
+
+    const field = `${tableAlias}."${pred.field}"`;
+    const paramName = `rls_p${counter.value++}`;
+    const value = this.resolvePredicateValue(pred, ctx);
+
+    switch (pred.operator) {
+      case 'eq':
+      case 'neq': {
+        // Array values do not legally bind to scalar comparisons. Refuse
+        // rather than coerce so a misconfigured policy fails closed.
+        if (Array.isArray(value)) {
+          this.logger.warn(
+            `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for scalar operator`,
+          );
+          counter.value--;
+          return;
+        }
+        clauses.push(`${field} ${pred.operator === 'eq' ? '=' : '!='} :${paramName}`);
+        params[paramName] = value ?? null;
+        break;
+      }
+      case 'in':
+      case 'not_in': {
+        // Postgres ANY/ALL bind to array params. Coerce scalars into
+        // single-element arrays so a literal-value `in` policy still works.
+        const arr = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
+        if (arr.length === 0) {
+          counter.value--;
+          return;
+        }
+        clauses.push(
+          pred.operator === 'in'
+            ? `${field} = ANY(:${paramName})`
+            : `${field} != ALL(:${paramName})`,
+        );
+        params[paramName] = arr;
+        break;
+      }
+      case 'gt':
+      case 'gte':
+      case 'lt':
+      case 'lte': {
+        if (Array.isArray(value)) {
+          this.logger.warn(
+            `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for range operator`,
+          );
+          counter.value--;
+          return;
+        }
+        const opSql =
+          pred.operator === 'gt' ? '>' :
+          pred.operator === 'gte' ? '>=' :
+          pred.operator === 'lt' ? '<' :
+          '<=';
+        clauses.push(`${field} ${opSql} :${paramName}`);
+        params[paramName] = value;
+        break;
+      }
+      case 'is_null':
+        counter.value--;
+        clauses.push(`${field} IS NULL`);
+        break;
+      case 'is_not_null':
+        counter.value--;
+        clauses.push(`${field} IS NOT NULL`);
+        break;
+    }
   }
 
   private applyMask(value: unknown, strategy: MaskingStrategy): unknown {
