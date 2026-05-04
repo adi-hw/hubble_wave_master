@@ -17,15 +17,4 @@ export default {
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: '../../coverage/apps/svc-automation',
   passWithNoTests: true,
-  // The real `@hubblewave/instance-db` barrel re-exports entity files that
-  // are declared on master but not yet committed (they're in-flight from a
-  // parallel slice). Map the import to a unit-test stub so the runtime
-  // tests can run without dragging in unrelated entities.
-  // (W3.D will clean these up when the underlying state is verified.)
-  moduleNameMapper: {
-    '^@hubblewave/instance-db$': '<rootDir>/src/test-utils/instance-db-mock.ts',
-    '^@hubblewave/authorization$': '<rootDir>/src/test-utils/authorization-mock.ts',
-    '^@hubblewave/auth-guard$': '<rootDir>/src/test-utils/auth-guard-mock.ts',
-    '^@hubblewave/shared-types$': '<rootDir>/src/test-utils/shared-types-mock.ts',
-  },
 };
