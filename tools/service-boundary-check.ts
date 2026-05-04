@@ -47,6 +47,103 @@ const KNOWN_VIOLATIONS: Array<{
   followUp: string;
 }> = [];
 
+/**
+ * Entity ownership map. Each entity is owned by exactly one service per the
+ * service-responsibility map (zippy-creek §C). Importing a TypeORM entity
+ * inside another service's source tree gives that service the ability to
+ * read or mutate the entity, which violates ownership even if no actual
+ * write happens at that line — the import is the channel.
+ *
+ * Entries here are enforced at CI time: a non-owner service that imports
+ * one of these entities from `@hubblewave/instance-db` fails the build.
+ * The owner service may import the entity freely; libs/ may import freely
+ * (they are the shared surface).
+ *
+ * Plan Fix 1 establishes the first two entries. Adding more entries
+ * requires the same level of architectural review as canon amendments —
+ * it is the lever by which "svc-automation owns automation" is upgraded
+ * from a documented intention to a CI-enforced contract.
+ */
+const ENTITY_OWNERSHIP: Record<string, string> = {
+  AutomationRule: 'svc-automation',
+  AutomationRuleRevision: 'svc-automation',
+  AutomationExecutionLog: 'svc-automation',
+  ScheduledJob: 'svc-automation',
+};
+
+type EntityViolation = {
+  file: string;
+  line: number;
+  entity: string;
+  expectedOwner: string;
+  actualImporter: string;
+};
+
+/**
+ * Allowlist for entity-ownership crossings that are legitimate
+ * design-time access. Each entry must document the reason. Runtime
+ * crossings (sync triggers, post-commit automation execution) MUST
+ * NOT appear here — those go through HTTP / outbox.
+ *
+ * The zippy-creek critique acknowledged that svc-metadata has
+ * cross-cutting design-time responsibilities: publish-impact
+ * analysis, reference scanning before property delete, pack
+ * install/export, change-package authoring. Each of these
+ * legitimately reads or writes AutomationRule at design time.
+ *
+ * New entries require explicit founder/architect approval and a
+ * one-line rationale. The point of the allowlist is to make
+ * crossings visible and reviewable, not to dilute the rule.
+ */
+const KNOWN_ENTITY_VIOLATIONS: Array<{
+  file: string;
+  entity: string;
+  rationale: string;
+}> = [
+  {
+    file: 'apps/svc-metadata/src/app/publish-impact/analyzers/automation-rule-impact.analyzer.ts',
+    entity: 'AutomationRule',
+    rationale: 'Design-time impact analysis. Reads automation rules to compute downstream effects of metadata changes.',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/publish-impact/publish-impact.module.ts',
+    entity: 'AutomationRule',
+    rationale: 'Module wiring for the impact analyzer above.',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.ts',
+    entity: 'AutomationRule',
+    rationale: 'W2.A reference scanner. Reads automation rules to find references to a property before delete (canon §14).',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.spec.ts',
+    entity: 'AutomationRule',
+    rationale: 'Test fixture for the reference scanner above.',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/packs/packs.service.ts',
+    entity: 'AutomationRule',
+    rationale: 'Pack install/export. Reads + writes automation rules as part of bundling and applying customer packs (zippy-creek Fix 8 — pack install is svc-metadata\'s design-time responsibility).',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.ts',
+    entity: 'AutomationRule',
+    rationale: 'Change-package authoring. Reads automation rules to bundle them in a change package for export.',
+  },
+  {
+    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.spec.ts',
+    entity: 'AutomationRule',
+    rationale: 'Test fixture for the change-package service above.',
+  },
+];
+
+function isKnownEntityViolation(file: string, entity: string): boolean {
+  const rel = toPosix(file);
+  return KNOWN_ENTITY_VIOLATIONS.some(
+    (entry) => rel.endsWith(entry.file) && entry.entity === entity,
+  );
+}
+
 const SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/;
 
 function isServiceDir(name: string): boolean {
@@ -248,9 +345,100 @@ function detectViolations(): Violation[] {
   return violations;
 }
 
+/**
+ * Detects imports of owned entities from `@hubblewave/instance-db` by
+ * services that are not the entity's owner. The check is import-graph
+ * shaped: any import of the entity name in a non-owner service's source
+ * tree fails CI, regardless of whether the importing line uses the
+ * entity to read or write. Reads are flagged because canonical ownership
+ * means no other service should know about the entity at all — they go
+ * through the owner's HTTP / event surface.
+ */
+function detectEntityOwnershipViolations(): EntityViolation[] {
+  const violations: EntityViolation[] = [];
+  const ownedEntities = Object.keys(ENTITY_OWNERSHIP);
+  if (ownedEntities.length === 0) return violations;
+
+  const serviceDirs = (() => {
+    try {
+      return readdirSync(APPS_DIR).filter((name) => {
+        if (!isServiceDir(name)) return false;
+        const srcDir = join(APPS_DIR, name, 'src');
+        try {
+          return statSync(srcDir).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return [];
+    }
+  })();
+
+  // Pattern: capture the named-import block from `@hubblewave/instance-db`.
+  // Multiline support so the typical multi-line `import { ... }` block
+  // matches as one specifier list.
+  const importBlockRe =
+    /\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s+['"]@hubblewave\/instance-db['"]/g;
+
+  for (const service of serviceDirs) {
+    const srcDir = join(APPS_DIR, service, 'src');
+    const files = walk(srcDir);
+    for (const file of files) {
+      const fromService = serviceOf(file);
+      if (!fromService) continue;
+      let content: string;
+      try {
+        content = readFileSync(file, 'utf8');
+      } catch {
+        continue;
+      }
+      const lines = content.split(/\r?\n/);
+
+      let blockMatch: RegExpExecArray | null;
+      while ((blockMatch = importBlockRe.exec(content)) !== null) {
+        const namedList = blockMatch[1];
+        // Compute 1-based line number for the start of the import block.
+        const offset = blockMatch.index;
+        let line = 1;
+        let count = 0;
+        for (const l of lines) {
+          if (count + l.length + 1 > offset) break;
+          count += l.length + 1;
+          line++;
+        }
+        // Each named binding is `Foo` or `Foo as Bar` — capture the source
+        // name (left of `as`) since that is what binds to the entity.
+        const names = namedList
+          .split(',')
+          .map((seg) => seg.trim())
+          .filter(Boolean)
+          .map((seg) => seg.split(/\s+as\s+/)[0].trim());
+        for (const name of names) {
+          const owner = ENTITY_OWNERSHIP[name];
+          if (!owner) continue;
+          if (owner === fromService) continue;
+          const relFile = toPosix(relative(ROOT, file));
+          if (isKnownEntityViolation(relFile, name)) continue;
+          violations.push({
+            file: relFile,
+            line,
+            entity: name,
+            expectedOwner: owner,
+            actualImporter: fromService,
+          });
+        }
+      }
+    }
+  }
+  return violations;
+}
+
 function main() {
   const violations = detectViolations();
-  if (violations.length === 0) {
+  const entityViolations = detectEntityOwnershipViolations();
+
+  if (violations.length === 0 && entityViolations.length === 0) {
     console.log('service boundary check: ok');
     if (KNOWN_VIOLATIONS.length > 0) {
       console.log(`  (${KNOWN_VIOLATIONS.length} allowlisted cross-service import(s) tracked):`);
@@ -258,20 +446,53 @@ function main() {
         console.log(`    - ${entry.file} -> ${entry.importPath}  [${entry.followUp}]`);
       }
     }
+    const ownedCount = Object.keys(ENTITY_OWNERSHIP).length;
+    if (ownedCount > 0) {
+      console.log(`  (${ownedCount} entity ownership rule(s) enforced):`);
+      for (const [entity, owner] of Object.entries(ENTITY_OWNERSHIP)) {
+        console.log(`    - ${entity} owned by ${owner}`);
+      }
+    }
+    if (KNOWN_ENTITY_VIOLATIONS.length > 0) {
+      console.log(`  (${KNOWN_ENTITY_VIOLATIONS.length} allowlisted entity crossing(s) tracked):`);
+      for (const entry of KNOWN_ENTITY_VIOLATIONS) {
+        console.log(`    - ${entry.file} reads ${entry.entity}`);
+      }
+    }
     return;
   }
 
-  console.error(`service boundary check: FAILED (${violations.length} violation(s))`);
-  console.error('Cross-service source imports are forbidden. Services must');
-  console.error('collaborate through libs/* (the shared surface), HTTP RPC,');
-  console.error('or the outbox event bus — not by reaching into another');
-  console.error("service's source tree directly. (Plan Fix 12 / canon §3.)");
-  console.error('');
-  for (const v of violations) {
-    console.error(
-      `  ${v.file}:${v.line} - ${v.fromService} imports from ${v.toService}: ${v.importPath}`,
-    );
+  if (violations.length > 0) {
+    console.error(`service boundary check: FAILED (${violations.length} violation(s))`);
+    console.error('Cross-service source imports are forbidden. Services must');
+    console.error('collaborate through libs/* (the shared surface), HTTP RPC,');
+    console.error('or the outbox event bus — not by reaching into another');
+    console.error("service's source tree directly. (Plan Fix 12 / canon §3.)");
+    console.error('');
+    for (const v of violations) {
+      console.error(
+        `  ${v.file}:${v.line} - ${v.fromService} imports from ${v.toService}: ${v.importPath}`,
+      );
+    }
   }
+
+  if (entityViolations.length > 0) {
+    if (violations.length > 0) console.error('');
+    console.error(
+      `entity ownership check: FAILED (${entityViolations.length} violation(s))`,
+    );
+    console.error('Domain entities are owned by a single service per the');
+    console.error('service-responsibility map. Other services must reach the');
+    console.error("owner via HTTP RPC or the outbox event bus, not by importing");
+    console.error("the entity directly from @hubblewave/instance-db.");
+    console.error('');
+    for (const v of entityViolations) {
+      console.error(
+        `  ${v.file}:${v.line} - ${v.actualImporter} imports ${v.entity} (owned by ${v.expectedOwner})`,
+      );
+    }
+  }
+
   process.exit(1);
 }
 

@@ -66,6 +66,7 @@ export class JwtAuthGuard implements CanActivate {
       username: payload.username,
       attributes: payload.attributes,
       raw: payload,
+      bearerToken: token,
     };
 
     request.user = requestContext;

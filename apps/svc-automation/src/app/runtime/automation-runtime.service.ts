@@ -14,8 +14,11 @@ import {
   ActionExecutionResult,
   AutomationAction,
   AutomationExecutionStatus,
+  ExecuteSyncTriggerArgs,
   ExecutionContext,
   RecordEventPayload,
+  SyncQueuedAction,
+  SyncTriggerResult,
   TriggerOperation,
   TriggeredByPrincipalType,
 } from './automation-runtime.types';
@@ -260,6 +263,432 @@ export class AutomationRuntimeService {
         });
       }
     }
+  }
+
+  /**
+   * Synchronous (in-request) automation execution path. Used by other
+   * instance services that need before-trigger semantics — the caller
+   * still holds the user's request open, and the result of this method
+   * decides whether the caller commits, what record they commit, and
+   * what post-commit side-effects they enqueue.
+   *
+   * Differs from {@link processRecordEvent} (the async/outbox path) in
+   * three load-bearing ways:
+   *  1. Never persists modifications. The caller owns the commit; this
+   *     method returns `modifiedRecord` for the caller to apply.
+   *  2. Never emits outbox events directly. Side-effects (create_record,
+   *     send_notification, fire_event, start_workflow) are returned in
+   *     `asyncQueue` for the caller to enqueue after its own commit.
+   *     A `before`-trigger that aborts must NOT have published a
+   *     notification — queueing protects that invariant.
+   *  3. Returns structured `SyncTriggerResult` including an explicit
+   *     `aborted` flag the caller MUST honor by rejecting its write.
+   *
+   * Internal duplication with {@link processRecordEvent} / {@link executeAutomation}
+   * is intentional in this PR — the post-deletion refactor (after svc-data's
+   * local executor is removed in PR 4) extracts the shared loop into a
+   * primitive both callers use. Doing that refactor now would violate
+   * Plan Fix 1's "small reversible PR" property.
+   */
+  async executeSyncTrigger(args: ExecuteSyncTriggerArgs): Promise<SyncTriggerResult> {
+    const collection = await this.getCollectionById(args.collectionId);
+    if (!collection) {
+      this.logger.warn(`Sync trigger skipped: collection ${args.collectionId} not found`);
+      const recordId = args.record.id as string | undefined;
+      await this.runtimeAnomaly.record({
+        kind: 'record_lookup_missing',
+        serviceCode: 'svc-automation',
+        message: `Sync trigger skipped: collection ${args.collectionId} not found`,
+        recordId,
+        context: {
+          collectionId: args.collectionId,
+          timing: args.timing,
+          operation: args.operation,
+          missing: 'collection',
+        },
+      });
+      return this.emptySyncResult(args.record);
+    }
+
+    const previousRecord = args.previousRecord ?? null;
+    const changes = previousRecord
+      ? this.calculateChanges(args.record, previousRecord)
+      : [];
+    const inboundDepth = (args.parentContext?.depth ?? 0) + 1;
+    const inboundChain = new Set<string>(args.parentContext?.executionChain ?? []);
+    const principalType: TriggeredByPrincipalType = args.userContext.id ? 'user' : 'service';
+
+    let modifiedRecord: Record<string, unknown> = { ...args.record };
+    const errors: Array<{ property: string; message: string }> = [];
+    const warnings: Array<{ property: string; message: string }> = [];
+    const asyncQueue: SyncQueuedAction[] = [];
+    let aborted = false;
+    let abortMessage: string | undefined;
+
+    if (inboundDepth > MAX_DEPTH) {
+      this.logger.warn(
+        `Sync trigger depth exceeded MAX_DEPTH=${MAX_DEPTH}, dropping chain ` +
+          `(collection=${collection.code} depth=${inboundDepth})`,
+      );
+      await withAudit(this.dataSource, async (mgr) => {
+        await this.executionLog.log(
+          {
+            automationName: '_chain_depth_exceeded',
+            collectionId: collection.id,
+            recordId: (args.record.id as string) ?? '_pending',
+            triggerEvent: args.operation,
+            triggerTiming: args.timing,
+            status: 'skipped',
+            skippedReason: `Automation chain depth exceeded MAX_DEPTH=${MAX_DEPTH}`,
+            triggeredBy: args.userContext.id ?? null,
+            triggeredByPrincipalType: principalType,
+            executionDepth: inboundDepth,
+          },
+          mgr,
+        );
+      });
+      warnings.push({
+        property: '_automation',
+        message: `Automation chain depth exceeded MAX_DEPTH=${MAX_DEPTH}`,
+      });
+      return { modifiedRecord, errors, warnings, asyncQueue, aborted: false };
+    }
+
+    const authorizedFields = await this.computeAuthorizedFields(
+      collection.tableName,
+      args.userContext.id ?? null,
+    );
+
+    const automations = await this.getAutomationsForCollection(collection.id);
+    let executedCount = 0;
+
+    for (const automation of automations) {
+      if (aborted) break;
+      if (executedCount >= MAX_AUTOMATIONS_PER_EVENT) {
+        this.logger.warn(
+          `Sync trigger automation limit reached for collection ${collection.code}`,
+        );
+        break;
+      }
+
+      if (automation.triggerTiming !== args.timing) continue;
+      if (!this.isOperationCompatible(automation.triggerOperations, args.operation)) continue;
+
+      if (
+        args.operation === 'update' &&
+        automation.watchProperties &&
+        automation.watchProperties.length > 0 &&
+        !automation.watchProperties.some((prop) => changes.includes(prop))
+      ) {
+        continue;
+      }
+
+      const recordIdForCycle = (args.record.id as string) ?? '_pending';
+      const cycleKey = `${automation.id}:${recordIdForCycle}`;
+      if (inboundChain.has(cycleKey)) {
+        await withAudit(this.dataSource, async (mgr, recordAudit) => {
+          await this.executionLog.log(
+            {
+              automationId: automation.id,
+              automationName: automation.name,
+              collectionId: automation.collectionId,
+              recordId: recordIdForCycle,
+              triggerEvent: args.operation,
+              triggerTiming: automation.triggerTiming,
+              status: 'skipped',
+              skippedReason: 'Circular automation reference detected',
+              triggeredBy: args.userContext.id ?? null,
+              triggeredByPrincipalType: principalType,
+              executionDepth: inboundDepth,
+            },
+            mgr,
+          );
+          this.recordAutomationAudit(recordAudit, {
+            userId: args.userContext.id ?? null,
+            automationId: automation.id,
+            automationName: automation.name,
+            collectionCode: collection.code,
+            recordId: recordIdForCycle,
+            status: 'skipped',
+            principalType,
+            details: { reason: 'Circular automation reference detected' },
+          });
+        });
+        continue;
+      }
+
+      const ctx: ExecutionContext = {
+        user: { id: args.userContext.id ?? null, email: args.userContext.email, roles: args.userContext.roles },
+        record: modifiedRecord,
+        previousRecord,
+        changes,
+        automation: {
+          id: automation.id,
+          name: automation.name,
+          triggerTiming: automation.triggerTiming,
+          abortOnError: automation.abortOnError,
+        },
+        depth: inboundDepth,
+        maxDepth: MAX_DEPTH,
+        executionChain: new Set(inboundChain),
+        outputs: {},
+        errors: [],
+        warnings: [],
+        authorizedFields,
+      };
+
+      // Condition gate
+      if (automation.conditionType !== 'always') {
+        const conditionResult = await this.evaluateCondition(automation, ctx);
+        if (!conditionResult.result) {
+          await withAudit(this.dataSource, async (mgr, recordAudit) => {
+            await this.executionLog.log(
+              {
+                automationId: automation.id,
+                automationName: automation.name,
+                collectionId: automation.collectionId,
+                recordId: recordIdForCycle,
+                triggerEvent: args.operation,
+                triggerTiming: automation.triggerTiming,
+                status: 'skipped',
+                skippedReason: 'Condition not met',
+                inputData: { condition: automation.condition, evaluation: conditionResult.trace },
+                triggeredBy: args.userContext.id ?? null,
+                triggeredByPrincipalType: principalType,
+                executionDepth: inboundDepth,
+              },
+              mgr,
+            );
+            this.recordAutomationAudit(recordAudit, {
+              userId: args.userContext.id ?? null,
+              automationId: automation.id,
+              automationName: automation.name,
+              collectionCode: collection.code,
+              recordId: recordIdForCycle,
+              status: 'skipped',
+              principalType,
+              details: { reason: 'Condition not met' },
+            });
+          });
+          continue;
+        }
+      }
+
+      // Action execution
+      inboundChain.add(cycleKey);
+      const startTime = Date.now();
+      const actionsExecuted: ActionExecutionResult[] = [];
+      let actionFailureCount = 0;
+      const localErrors: Array<{ property: string; message: string }> = [];
+      const localWarnings: Array<{ property: string; message: string }> = [];
+
+      try {
+        if (automation.actionType === 'no_code' && automation.actions) {
+          for (const action of automation.actions as AutomationAction[]) {
+            if (aborted) break;
+            const actionStart = Date.now();
+
+            if (action.condition) {
+              const cond = this.conditionEvaluator.evaluate(action.condition, {
+                ...ctx,
+                record: modifiedRecord,
+              });
+              if (!cond.result) {
+                actionsExecuted.push({
+                  actionId: action.id,
+                  actionType: action.type,
+                  success: true,
+                  output: 'Skipped - condition not met',
+                  durationMs: Date.now() - actionStart,
+                });
+                continue;
+              }
+            }
+
+            try {
+              const result = await this.actionHandler.execute(action, {
+                ...ctx,
+                record: modifiedRecord,
+              });
+              actionsExecuted.push({
+                actionId: action.id,
+                actionType: action.type,
+                success: true,
+                output: result.output,
+                durationMs: Date.now() - actionStart,
+              });
+
+              if (result.type === 'modify_record') {
+                if (args.operation === 'delete') {
+                  localWarnings.push({
+                    property: '_automation',
+                    message: 'Modify record action skipped on delete event',
+                  });
+                } else {
+                  modifiedRecord = { ...modifiedRecord, ...result.changes };
+                }
+              } else if (
+                result.type === 'create_record' ||
+                result.type === 'send_notification' ||
+                result.type === 'start_workflow' ||
+                result.type === 'fire_event'
+              ) {
+                // Sync path: queue for caller's post-commit drain.
+                // executeAfterCommit is true for `before` triggers (caller
+                // hasn't committed yet) and false for `after` triggers
+                // (caller already committed when sync trigger ran).
+                asyncQueue.push({
+                  action: { id: action.id, type: action.type, config: action.config },
+                  executeAsync: true,
+                  executeAfterCommit: args.timing === 'before',
+                  output: result.output,
+                });
+              } else if (result.type === 'abort') {
+                aborted = true;
+                abortMessage = result.message;
+                break;
+              } else if (result.type === 'add_error') {
+                localErrors.push({
+                  property: result.property || 'record',
+                  message: result.message || 'Error',
+                });
+              } else if (result.type === 'add_warning') {
+                localWarnings.push({
+                  property: result.property || 'record',
+                  message: result.message || 'Warning',
+                });
+              }
+            } catch (error) {
+              actionFailureCount++;
+              actionsExecuted.push({
+                actionId: action.id,
+                actionType: action.type,
+                success: false,
+                error: (error as Error).message,
+                durationMs: Date.now() - actionStart,
+              });
+
+              if (!action.continueOnError && automation.abortOnError) {
+                localErrors.push({
+                  property: '_automation',
+                  message: `Action ${action.type} failed: ${(error as Error).message}`,
+                });
+                break;
+              }
+            }
+          }
+        } else if (automation.actionType === 'script' && automation.script) {
+          const scriptStart = Date.now();
+          try {
+            const scriptResult = await this.scriptSandbox.execute(automation.script, ctx, {
+              mode: 'transformation',
+            });
+            if (scriptResult.changes && args.operation !== 'delete') {
+              modifiedRecord = { ...modifiedRecord, ...scriptResult.changes };
+            }
+            actionsExecuted.push({
+              actionId: 'script',
+              actionType: 'run_script',
+              success: true,
+              output: scriptResult.output,
+              durationMs: scriptResult.durationMs,
+            });
+          } catch (error) {
+            const message = (error as Error).message;
+            actionsExecuted.push({
+              actionId: 'script',
+              actionType: 'run_script',
+              success: false,
+              error: message,
+              durationMs: Date.now() - scriptStart,
+            });
+            localErrors.push({ property: '_script', message });
+          }
+        }
+      } finally {
+        inboundChain.delete(cycleKey);
+      }
+
+      let status: AutomationExecutionStatus;
+      if (localErrors.length > 0 && actionsExecuted.some((a) => a.success)) {
+        status = 'partial_failure';
+      } else if (localErrors.length > 0 || actionFailureCount > 0) {
+        status = actionsExecuted.some((a) => a.success) ? 'partial_failure' : 'error';
+      } else {
+        status = 'success';
+      }
+
+      await withAudit(this.dataSource, async (mgr, recordAudit) => {
+        await this.executionLog.log(
+          {
+            automationId: automation.id,
+            automationName: automation.name,
+            collectionId: automation.collectionId,
+            recordId: recordIdForCycle,
+            triggerEvent: args.operation,
+            triggerTiming: automation.triggerTiming,
+            status: aborted ? 'skipped' : status,
+            skippedReason: aborted ? abortMessage : undefined,
+            inputData: ctx.record,
+            outputData: modifiedRecord,
+            actionsExecuted: actionsExecuted as unknown as Record<string, unknown>[],
+            triggeredBy: args.userContext.id ?? null,
+            triggeredByPrincipalType: principalType,
+            executionDepth: inboundDepth,
+            durationMs: Date.now() - startTime,
+            errorMessage: localErrors[0]?.message,
+          },
+          mgr,
+        );
+        this.recordAutomationAudit(recordAudit, {
+          userId: args.userContext.id ?? null,
+          automationId: automation.id,
+          automationName: automation.name,
+          collectionCode: collection.code,
+          recordId: recordIdForCycle,
+          status: aborted ? 'skipped' : status,
+          principalType,
+          details: { errors: localErrors, warnings: localWarnings, aborted, abortMessage },
+        });
+      });
+
+      if (localErrors.length > 0) {
+        await this.recordAutomationError(automation.id);
+      } else {
+        await this.recordAutomationSuccess(automation.id);
+      }
+
+      errors.push(...localErrors);
+      warnings.push(...localWarnings);
+      executedCount++;
+    }
+
+    const result: SyncTriggerResult = {
+      modifiedRecord,
+      errors,
+      warnings,
+      asyncQueue,
+      aborted,
+    };
+    if (abortMessage !== undefined) {
+      result.abortMessage = abortMessage;
+    }
+    return result;
+  }
+
+  private async getCollectionById(id: string): Promise<CollectionDefinition | null> {
+    const repo = this.dataSource.getRepository(CollectionDefinition);
+    return repo.findOne({ where: { id, isActive: true } });
+  }
+
+  private emptySyncResult(record: Record<string, unknown>): SyncTriggerResult {
+    return {
+      modifiedRecord: { ...record },
+      errors: [],
+      warnings: [],
+      asyncQueue: [],
+      aborted: false,
+    };
   }
 
   private async executeAutomation(

@@ -36,18 +36,19 @@ All code must be written **as if it is deploying to production today**.
 
 If something is not production-ready, it does not belong in the codebase.
 
-**Implementation status (W6.A):** The "no TODO/FIXME/dead code" rule is
-enforced for NEW code via lint + the compliance scanner. Pre-existing
-violations are tracked explicitly:
+**Implementation status (W6.A, updated post-Plan-Fix-1):** The "no
+TODO/FIXME/dead code" rule is enforced for NEW code via lint + the
+compliance scanner. Pre-existing violations are tracked explicitly:
 - `tools/audit-bypass-check.ts` KNOWN_DEFERRED_OFFENDERS list (currently
   empty after W2.E)
 - `tools/service-boundary-check.ts` KNOWN_VIOLATIONS list (currently
   empty after W5.D)
-- The `apps/svc-data/src/app/automation/` directory is DEPRECATED pending
-  Plan Fix 1 (automation consolidation); its file contents are duplicate
-  with `apps/svc-automation/src/app/runtime/` and slated for deletion
 - `libs/instance-db/src/lib/entities/index.ts` is acknowledged as a
   "god-package" pending Plan Fix 24 (per-service entity sets)
+
+Plan Fix 1 (automation consolidation) is complete: svc-data's
+`automation/` directory now contains only a thin HTTP client; the
+runtime, scheduling, AVA bridge, and CRUD all live in svc-automation.
 
 The rule applies to GREENFIELD code; legacy cleanup is tracked in the
 remediation backlog rather than allowed to bypass the rule via TODO
@@ -492,6 +493,14 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05 (Plan Fix 1): §1 deferred-offender list pruned — the
+  `apps/svc-data/src/app/automation/` deprecation entry is removed
+  because the duplicate runtime is gone. svc-automation now owns the
+  full automation domain (runtime + sync-trigger + scheduling + AVA +
+  CRUD). svc-data retains only a thin HTTP client. Service-boundary
+  scanner extended with a rule that any service other than
+  svc-automation writing to AutomationRule or AutomationExecutionLog
+  fails CI.
 - 2026-05 (W6.A): §1 absolutes clarified (greenfield rule + tracked
   legacy backlog); §9 "no shortcuts" tied to specific W1.2 + W1.5 +
   W5.D enforcement; §13 upgrade safety acknowledged convention-based

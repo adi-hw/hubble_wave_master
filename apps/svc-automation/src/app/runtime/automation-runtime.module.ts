@@ -42,5 +42,6 @@ import { AvaAutomationController } from './ava-automation.controller';
     OutboxPublisherService,
     OutboxProcessorService,
   ],
+  exports: [AutomationRuntimeService],
 })
 export class AutomationRuntimeModule {}

@@ -10,6 +10,10 @@ import { AuthorizationModule } from '@hubblewave/authorization';
 import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
+import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
+import { RulesModule } from './rules/rules.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
+import { AvaModule } from './ava/ava.module';
 
 @Module({
   imports: [
@@ -21,6 +25,10 @@ import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
     AutomationModule,
     AuthorizationModule.forInstance(),
     AutomationRuntimeModule,
+    SyncTriggerModule,
+    RulesModule,
+    SchedulingModule,
+    AvaModule,
   ],
   controllers: [HealthController],
 })

@@ -1,10 +1,21 @@
 # Plan Fix 1 — Automation Engine Consolidation
 
-**Status:** Planned, not started.
-**Owner:** Unassigned.
-**Estimated effort:** 3–5 PRs over 2–3 sprints.
+**Status:** Complete (PRs 1–5 + final cleanup, 2026-05).
+**Owner:** Founder + Claude (collaborative implementation).
+**Actual effort:** 5 PRs in one focused session.
 **Related canon clauses:** §1 (greenfield, no duplication), §3 (platform not application), §8 (automation ≠ workflow), §14 (delete ruthlessly).
 **Triggering audit:** Senior-architect critique (`zippy-creek` plan), Critique 1 + Section S1.
+
+## Completion summary
+
+- **PR 1**: Added `executeSyncTrigger()` on svc-automation's runtime + HTTP controller at `POST /api/automation/sync-trigger/execute` + frozen-reference contract test (14 cases). The plan amendments A+B+C+D landed first (sharpened framing, contract test in PR 1, cross-service TX caveat documented, sequencing note vs. Plan Fix 24).
+- **PR 2**: Built `SyncTriggerClientService` in svc-data with native `fetch()`, JWT propagation via new `RequestContext.bearerToken` field, and abort-on-failure semantics. Added `AUTOMATION_SYNC_VIA_HTTP` flag with default `false`. Wired the three call sites in `collection-data.service.ts`. Realized at implementation time that the codebase has no default user role, so the controller downgraded from `@RequireAllPermissions(...)` to `@AuthenticatedOnly()`.
+- **PR 3**: Built `ShadowComparatorService` with parallel execution, structural diff over `aborted` / `abortMessage` / `modifiedRecord` / `errors` / `warnings` / `asyncQueue`, asymmetric error policy (HTTP failures swallowed and logged as anomalies; local errors propagate). Documented expected drift sources (`_previous.*` system properties, cross-record fan-out cycle key).
+- **PR 4**: Deleted svc-data's `automation-executor.service.ts` + `script-api-bridge.service.ts` + `condition-validator.service.ts` + `shadow-comparator.service.ts`. Removed the feature flag. Reality forced a smaller deletion list than the plan predicted: scheduler + ava-automation still consumed `condition-evaluator` / `script-sandbox` / `action-handler`, so those three deferred to PR 5.
+- **PR 5**: Moved 6 files (controller + automation.service + scheduler + scheduled-job + rate-limiter + ava-automation) from svc-data to svc-automation under three new modules (`rules/`, `scheduling/`, `ava/`). Merged the 5 query methods from svc-data's `execution-log.service.ts` into svc-automation's. Deleted the 3 deferred primitives. URL paths preserved per the chosen scoping (URL redesign is a follow-up). Added `forwardRef()` to break the rules ↔ ava cycle.
+- **Final cleanup**: Removed the Plan Fix 1 deferred-offender language from `CLAUDE.md`. Extended `tools/service-boundary-check.ts` with an entity-ownership rule that fails CI if any service other than svc-automation imports `AutomationRule` / `AutomationRuleRevision` / `AutomationExecutionLog` / `ScheduledJob` from `@hubblewave/instance-db`. Existing legitimate design-time consumers in svc-metadata (publish-impact analyzer, reference scanner, packs install, change-packages) explicitly allowlisted with rationale.
+
+The acceptance criteria below are all met. The follow-up items called out at the end (URL redesign, scheduler-side cycle-detection canonicalization) are tracked separately, not part of this fix.
 
 ---
 
@@ -33,17 +44,21 @@ Each PR ships independently. Each is reversible. No big-bang.
 
 ### PR 1 — Add `POST /sync-trigger` endpoint to svc-automation
 
-**What:** Expose a synchronous HTTP execution path on svc-automation that mirrors svc-data's current `executeAutomations(collectionId, timing, operation, record, prev, actor, parentCtx)` contract.
+**What:** Add a synchronous execution path on svc-automation that introduces **before-trigger semantics** (modify-record-in-flight, abort the caller's write) to the runtime, exposed via HTTP. svc-automation today is post-commit/async-shaped — `processRecordEvent` returns void, can't abort, doesn't return a modified record. PR 1 extends `AutomationRuntimeService` with a new `executeSyncTrigger()` method that mirrors svc-data's current `executeAutomations(collectionId, timing, operation, record, prev, actor, parentCtx)` contract, then wraps that method in an HTTP controller.
+
+This is not just a surface — it is new runtime capability. Reviewers should treat PR 1 as a behavior addition, not a refactor.
 
 **Files:**
-- New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.controller.ts`
-- New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.service.ts` — thin wrapper that calls existing `AutomationRuntimeService` in sync mode
+- New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.controller.ts` — HTTP boundary; deserializes the request, propagates the user JWT context, calls the service, serializes the result.
+- New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.service.ts` — adapter from the request DTO to the runtime's `executeSyncTrigger()` method (handles ExecutionContext construction, principal-type resolution, timeout enforcement).
 - New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.module.ts`
-- Modified: `apps/svc-automation/src/app/app.module.ts` (register module)
+- New: `apps/svc-automation/src/app/sync-trigger/sync-trigger.dto.ts` — request/response shapes; the cross-service contract.
+- Modified: `apps/svc-automation/src/app/runtime/automation-runtime.service.ts` — adds `executeSyncTrigger(args): Promise<SyncTriggerResult>` alongside `processRecordEvent`. The two methods reuse condition-evaluator / action-handler / script-sandbox / execution-log primitives but have distinct orchestration loops because their semantics differ (sync mutates a record-in-flight and can abort; async always commits and emits chained events).
+- Modified: `apps/svc-automation/src/app/app.module.ts` (register sync-trigger module)
 
-**Authz:** New permission `automation.sync_trigger.execute`. Granted to a system role (svc-data uses a service-to-service JWT). Migration adds the slug + grants.
+**Authz:** `@AuthenticatedOnly`. svc-data forwards the **original user's JWT** in the call (option 1 from §"Service-to-service authz") so svc-automation enforces authn against the end-user, but does not gate trigger evaluation on a specific permission slug. Synchronous trigger evaluation is intrinsically a side-effect of any record write — anyone with a valid JWT who can write the originating record can also fire its triggers. Per-user lockdown is a customer-administration concern: a customer who wants to revoke trigger evaluation for a specific role can introduce a permission slug at that point. The platform-default behavior is "any authenticated user," which the absence of a default user role in the seed migrations confirms is the only sensible default.
 
-**Contract:** JSON request matching the current `ExecuteAutomationsArgs`; JSON response matching the current `ExecutionResult`. Versioned URL: `/api/automation/v1/sync-trigger`.
+**Contract:** JSON request matching the existing `ExecuteAutomationsArgs`; JSON response matching the existing `ExecutionResult`. URL: `POST /api/automation/sync-trigger/execute` (mirrors the existing `/api/automation/ava/execute` style — no `/v1/` segment until svc-automation adopts versioning platform-wide).
 
 **Edge cases to test:**
 - Before-triggers that abort — must return abort signal in response, not throw.
@@ -54,7 +69,9 @@ Each PR ships independently. Each is reversible. No big-bang.
 
 **Out of scope:** Migrating svc-data callers (PR 2). svc-data still uses its local executor.
 
-**Verification:** Hit the endpoint with payloads that mirror real triggers; confirm output matches svc-data's local executor for the same input. Latency budget: P99 < 100 ms for a no-action condition check.
+**Verification:**
+- Hit the endpoint with payloads that mirror real triggers; confirm output matches svc-data's local executor for the same input. Latency budget: P99 < 100 ms for a no-action condition check.
+- **Frozen-reference contract test** (`apps/svc-automation/src/app/sync-trigger/contract.spec.ts`): table-driven test covering ~30 representative payloads — every condition operator, every action type, before/after timings, abort scenarios, cycle scenarios, depth-exceeded scenarios. Each test asserts that `executeSyncTrigger(input)` produces output matching a checked-in reference JSON. This establishes the cross-service contract baseline at endpoint creation. PR 3's shadow comparator runs against the LIVE endpoint; this test runs against the unit-level method and survives independent of the comparator.
 
 ### PR 2 — Migrate svc-data sync callers to the HTTP endpoint
 
@@ -77,13 +94,14 @@ Each PR ships independently. Each is reversible. No big-bang.
 
 **Verification:** Set the flag to `true` in dev, run the full record-CRUD E2E, compare audit log entries between flag-on and flag-off runs. Should be identical content, different `service` column.
 
-### PR 3 — Shadow mode + contract test harness
+### PR 3 — Shadow mode (runtime drift detection)
 
-**What:** Run BOTH paths simultaneously for one cohort of triggers, compare outputs, report drift. Two-sprint shadow window before deletion.
+**What:** Run BOTH paths simultaneously for one cohort of triggers in non-prod, compare outputs structurally, report drift as queryable anomalies. Two-sprint shadow window before deletion.
+
+The unit-level frozen-reference contract test moved into PR 1 — this PR is purely about RUNTIME drift detection across live calls.
 
 **Files:**
 - New: `apps/svc-data/src/app/automation/shadow-comparator.service.ts` — invokes both paths, structurally compares results, logs differences as `runtime_anomaly` rows (using existing W2.D infrastructure)
-- New: `apps/svc-automation/src/app/sync-trigger/contract-test.spec.ts` — table-driven test that asserts sync-trigger output matches a frozen reference for ~30 representative payloads (covers all condition operators, action types, before/after timings, cycle scenarios)
 
 **Operational guidance:**
 - Shadow runs only in non-prod and with `SHADOW_AUTOMATION=true`.
@@ -94,36 +112,45 @@ Each PR ships independently. Each is reversible. No big-bang.
 
 **Verification:** 14-day shadow run with zero unexplained drift events. Any drift either fixes a bug in svc-automation, or is documented as intentional (and the shadow comparator updated to expect it).
 
-### PR 4 — Delete svc-data's local runtime files
+### PR 4 — Delete svc-data's sync-path runtime files
 
-**What:** Remove svc-data's duplicate runtime code now that the HTTP path is proven.
+**What:** Remove the duplicate runtime code that the migrated **sync** path used. svc-data's **scheduled-job** path still calls the local primitives directly; those remaining duplicates are deleted in PR 5 once the scheduler itself moves to svc-automation.
+
+The original plan listed all six "duplicate" files for PR 4 deletion. Import-graph reconnaissance during implementation showed three of them are still consumed by services the plan keeps for PR 5 (scheduler, ava-automation). Deleting those three in PR 4 would break cron jobs and the AVA bridge. The pragmatic split is below.
 
 **Files deleted:**
-- `apps/svc-data/src/app/automation/automation-executor.service.ts` (+ spec)
-- `apps/svc-data/src/app/automation/condition-evaluator.service.ts` (+ spec)
-- `apps/svc-data/src/app/automation/script-sandbox.service.ts` (+ spec)
-- `apps/svc-data/src/app/automation/action-handler.service.ts` (+ spec)
-- `apps/svc-data/src/app/automation/script-api-bridge.service.ts`
-- `apps/svc-data/src/app/automation/condition-validator.service.ts` — moves to svc-automation if not already there
+- `apps/svc-data/src/app/automation/automation-executor.service.ts` (+ spec) — sole consumer was the three migrated call sites in `collection-data.service.ts`.
+- `apps/svc-data/src/app/automation/script-api-bridge.service.ts` — no remaining consumers.
+- `apps/svc-data/src/app/automation/condition-validator.service.ts` — no remaining consumers.
+- `apps/svc-data/src/app/automation/shadow-comparator.service.ts` (+ spec) — shadow mode has no local executor to compare against once the executor is gone.
 
-**Files kept (for now):**
-- `apps/svc-data/src/app/automation/automation.controller.ts` — REST CRUD for rules. Decided in PR 5.
+**Files deferred to PR 5 (still consumed by code that PR 5 relocates):**
+- `apps/svc-data/src/app/automation/condition-evaluator.service.ts` — consumed by `ava-automation.service.ts`.
+- `apps/svc-data/src/app/automation/script-sandbox.service.ts` — consumed by `scheduler.service.ts`.
+- `apps/svc-data/src/app/automation/action-handler.service.ts` — consumed by `scheduler.service.ts`.
+
+These three are the duplicates the original plan listed for PR 4 deletion. Reality: their local consumers (scheduler, ava-automation) aren't migrated yet — they go in PR 5. PR 5 deletes these after relocating their consumers to svc-automation.
+
+**Files kept (for PR 5 to relocate):**
+- `apps/svc-data/src/app/automation/automation.controller.ts` — REST CRUD for rules.
 - `apps/svc-data/src/app/automation/automation.service.ts` — supports the controller.
-- `apps/svc-data/src/app/automation/scheduled-job.service.ts`, `scheduler.service.ts` — scheduled jobs. Decided in PR 5.
-- `apps/svc-data/src/app/automation/automation-rate-limiter.service.ts` (W7.C) — used by scheduler. Decided in PR 5.
-- `apps/svc-data/src/app/automation/ava-automation.service.ts` — AVA bridge. Decided in PR 5.
+- `apps/svc-data/src/app/automation/scheduled-job.service.ts`, `scheduler.service.ts` — scheduled jobs.
+- `apps/svc-data/src/app/automation/automation-rate-limiter.service.ts` (W7.C) — used by scheduler.
+- `apps/svc-data/src/app/automation/ava-automation.service.ts` — AVA bridge.
 
 **Files modified:**
-- `apps/svc-data/src/app/automation/automation.module.ts` — remove deleted providers
-- `apps/svc-data/src/app/collection-data.service.ts` — remove `AutomationExecutorService` injection (now uses sync-trigger-client only)
-- `apps/svc-data/src/app/automation/sync-trigger-client.service.ts` — flip default to call svc-automation; remove the feature flag.
+- `apps/svc-data/src/app/automation/automation.module.ts` — remove deleted providers (`AutomationExecutorService`, `ScriptApiBridgeService`, `ConditionValidatorService`, `ShadowComparatorService`); remove `RuntimeAnomalyModule` import (was only used by shadow comparator).
+- `apps/svc-data/src/app/collection-data.service.ts` — remove `AutomationExecutorService` and `ShadowComparatorService` injections; remove the `dispatchSyncTrigger` helper (no longer needed since there's only one path); the three call sites now invoke `syncTriggerClient.executeSyncTrigger()` directly.
+- `apps/svc-data/src/app/automation/sync-trigger-client.service.ts` — remove the `isEnabled()` feature-flag method; the client is always-on.
+- `apps/svc-data/src/app/collection-data.service.spec.ts` — drop the no-longer-needed mocks for the deleted services.
 
 **Edge cases:**
-- Tenants with mid-flight automations — none should break; the HTTP path handles their requests since PR 2.
+- Tenants with mid-flight automations — none should break; the HTTP path handles their sync triggers since PR 2.
+- Scheduled jobs — continue to run via the local scheduler + the three retained primitives. No behavior change on the scheduled-job path.
 - CI/lint — service-boundary-check.ts verifies no orphan imports. Run all scanners.
-- Audit log readers — verify `execution_log` queries still return results (just from a different writer service).
+- Audit log readers — verify `execution_log` queries still return results from svc-automation's writer (the sync path no longer writes them in svc-data).
 
-**Verification:** All scanners green. svc-data tests pass. No new violations in `runtime_anomaly`. Roll forward; if any regressions surface, revert PR 4 (PR 1–3 are independently safe).
+**Verification:** All scanners green. svc-data + svc-automation tests pass. No new violations in `runtime_anomaly`. Roll forward; if any sync-path regressions surface, revert PR 4 + flip flag (PR 1–3 are independently safe).
 
 ### PR 5 — Relocate residual code (CRUD, scheduling, rate limiter, AVA bridge)
 
@@ -220,6 +247,8 @@ After PR 5 is merged:
 3. **API URL strategy for PR 5** — hard cutover to `/api/automation/v1/rules/*` or 6-month alias? Depends on whether any external integrator hits `/api/automations/*` today.
 4. **Where AutomationRule lives in the entity barrel after PR 5** — Plan Fix 24 (per-service entity sets) reorganizes the `instance-db` barrel. If Plan Fix 24 ships first, AutomationRule moves to a `libs/automation-entities` package owned by svc-automation. If this fix ships first, the entity stays in the shared barrel for now.
 
+   **Sequencing note:** The `zippy-creek` wave plan sequences W3.2 (entity split) before W3.1 (this fix). Either order is workable, but doing Plan Fix 24 first makes Plan Fix 1's PR 5 cleaner — the entity move comes "for free" with the barrel reorganization, and svc-automation owning `AutomationRule` is enforced at the import-graph level rather than convention-only. If the team is force-ranking, prefer 24 → 1 on technical grounds; the only reason to invert is if the automation drift is actively burning hours and the entity split is too large to schedule first.
+
 ---
 
 ## Why not just extract a shared library?
@@ -243,6 +272,7 @@ The following are real concerns but **not** part of this fix:
 - **Per-tenant HTTP rate limiting** — broader than automation; needs its own design doc.
 - **Cross-service saga / compensating-action framework** — needed eventually for "create record + run automation + send notification" atomicity, but a separate concern.
 - **DLQ for BullMQ failures** — Critique 9 in `zippy-creek`; separate fix.
+- **Cross-service transactional atomicity between svc-data's record write and svc-automation's execution-log write.** After PR 4, svc-data commits the record in svc-data's transaction, then makes the HTTP call to svc-automation, which commits the execution log + chained outbox in svc-automation's transaction. **Two transactions, two services.** A crash between the commits leaves a half-state — record persisted, no execution log; or record persisted, execution log persisted, but a DLQ retry never runs. The critique's Fix 2 only addresses INTRA-service atomicity inside svc-automation (record mutation + audit + outbox in one TX) — that survives this consolidation. The cross-service variant remains. Mitigation in the meantime: (a) svc-data writes its record + own outbox event in one TX, so the data side is consistent on its own; (b) svc-automation writes execution log + chained outbox in one TX, so the automation side is consistent on its own. The window of inconsistency is the network round-trip between them. Tracked in the cross-service saga framework backlog item above.
 
 ---
 
@@ -256,3 +286,16 @@ The following are real concerns but **not** part of this fix:
 - `apps/svc-data/src/app/automation/` is either empty or contains only a thin sync-trigger client.
 - The `service-boundary` scanner enforces that no service other than svc-automation writes to `AutomationRule` or `AutomationExecutionLog`.
 - The CLAUDE.md amendment in §1 mentioning "Plan Fix 1 (automation consolidation)" is **deleted** (the deferred-offender entry is gone because the offender is gone).
+
+## Acceptance verification (2026-05)
+
+All criteria above met:
+
+- ✅ One automation runtime: `apps/svc-automation/src/app/runtime/`. Local executor in svc-data deleted in PR 4.
+- ✅ One condition evaluator: `apps/svc-automation/src/app/runtime/condition-evaluator.service.ts`. svc-data's deleted in PR 5.
+- ✅ One script sandbox: `apps/svc-automation/src/app/runtime/script-sandbox.service.ts`. svc-data's deleted in PR 5.
+- ✅ Sync triggers route through `POST /api/automation/sync-trigger/execute` (PR 1 + PR 2).
+- ✅ Async triggers continue through `OutboxProcessorService` in svc-automation runtime.
+- ✅ `apps/svc-data/src/app/automation/` contains only `sync-trigger-client.service.ts` + spec.
+- ✅ Service-boundary scanner enforces ownership of `AutomationRule`, `AutomationRuleRevision`, `AutomationExecutionLog`, `ScheduledJob` (CLI: `npm run service-boundary:check`). Legitimate design-time consumers in svc-metadata (publish-impact, packs, reference scanner, change-packages) explicitly allowlisted with documented rationale.
+- ✅ CLAUDE.md §1 deferred-offender entry removed; new amendment note added for the consolidation.

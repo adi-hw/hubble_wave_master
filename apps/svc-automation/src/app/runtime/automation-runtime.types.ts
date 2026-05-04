@@ -221,3 +221,47 @@ export interface RecordEventPayload {
   executionChain?: string[];
   executionDepth?: number;
 }
+
+// ============================================================================
+// Sync trigger types — for the in-request before/after path used by svc-data.
+//
+// The async path (RecordEventPayload + processRecordEvent) is event-shaped:
+// the runtime owns the record, persists modifications, and emits chained
+// outbox events itself. The sync path is request-shaped: the runtime never
+// touches the database (the caller does the commit), so modifications are
+// returned to the caller, and post-commit work is queued in asyncQueue
+// for the caller to drain after its own commit succeeds.
+// ============================================================================
+
+export interface ExecuteSyncTriggerArgs {
+  collectionId: string;
+  timing: 'before' | 'after';
+  operation: TriggerOperation;
+  record: Record<string, unknown>;
+  previousRecord?: Record<string, unknown>;
+  userContext: AutomationUserContext;
+  parentContext?: {
+    depth: number;
+    executionChain: string[];
+  };
+}
+
+export interface SyncQueuedAction {
+  action: {
+    id: string;
+    type: string;
+    config: Record<string, unknown>;
+  };
+  executeAsync: boolean;
+  executeAfterCommit: boolean;
+  output?: unknown;
+}
+
+export interface SyncTriggerResult {
+  modifiedRecord: Record<string, unknown>;
+  errors: Array<{ property: string; message: string }>;
+  warnings: Array<{ property: string; message: string }>;
+  asyncQueue: SyncQueuedAction[];
+  aborted: boolean;
+  abortMessage?: string;
+}

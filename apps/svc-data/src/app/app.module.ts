@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -25,13 +26,13 @@ import { HealthController } from './health.controller';
 import { ModelRegistryService } from './model-registry.service';
 import { CollectionDataController } from './collection-data.controller';
 import { CollectionDataService } from './collection-data.service';
+import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 import { EventOutboxService } from './events/event-outbox.service';
 import { OfferingsController } from './offerings/offerings.controller';
 import { OfferingsService } from './offerings/offerings.service';
 import { WorkController } from './work/work.controller';
 import { WorkService } from './work/work.service';
 
-import { AutomationModule } from './automation/automation.module';
 import { IntegrationModule } from './integration/integration.module';
 import { AVAModule } from './ava/ava.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -59,7 +60,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     }),
     RedisModule.forRoot(),
     MaintenanceModeModule,
-    AutomationModule,
+    ConfigModule,
     IntegrationModule,
     AVAModule,
     WorkflowModule,
@@ -81,6 +82,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DataService,
     ModelRegistryService,
     CollectionDataService,
+    SyncTriggerClientService,
     EventOutboxService,
     OfferingsService,
     WorkService,

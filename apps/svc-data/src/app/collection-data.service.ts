@@ -20,7 +20,7 @@ import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'ty
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
 import { EventOutboxService } from './events/event-outbox.service';
-import { AutomationExecutorService } from './automation/automation-executor.service';
+import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
 import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
 import { PropertyValidationResult, ValidationContext } from './validation/validation.types';
@@ -170,7 +170,7 @@ export class CollectionDataService {
     private readonly validationService: ValidationService,
     private readonly defaultValueService: DefaultValueService,
     private readonly outboxService: EventOutboxService,
-    private readonly automationExecutor: AutomationExecutorService,
+    private readonly syncTriggerClient: SyncTriggerClientService,
     private readonly computedDispatcher: ComputedPropertyDispatcher,
     private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {}
@@ -256,15 +256,15 @@ export class CollectionDataService {
       executeAfterCommit: boolean;
     }>;
   }> {
-    const result = await this.automationExecutor.executeAutomations(
-      collection.id,
-      'before',
+    const result = await this.syncTriggerClient.executeSyncTrigger(ctx, {
+      collectionId: collection.id,
+      timing: 'before',
       operation,
       record,
       previousRecord,
-      { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
-      parentAutomationContext,
-    );
+      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      parentContext: parentAutomationContext,
+    });
     if (result.aborted) {
       throw new BadRequestException({
         message: result.abortMessage ?? 'Operation aborted by Automation Rule',
@@ -407,14 +407,13 @@ export class CollectionDataService {
     collection: CollectionDefinition,
     options: Record<string, unknown>,
   ): Promise<void> {
-    const result = await this.automationExecutor.executeAutomations(
-      collection.id,
-      'before',
-      'query',
-      options,
-      undefined,
-      { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
-    );
+    const result = await this.syncTriggerClient.executeSyncTrigger(ctx, {
+      collectionId: collection.id,
+      timing: 'before',
+      operation: 'query',
+      record: options,
+      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+    });
     if (result.aborted) {
       throw new BadRequestException({
         message: result.abortMessage ?? 'Query aborted by Automation Rule',
@@ -473,14 +472,14 @@ export class CollectionDataService {
     // so a downstream automation failure cannot retroactively fail
     // the user's already-committed write.
     try {
-      const result = await this.automationExecutor.executeAutomations(
-        collection.id,
-        'after',
+      const result = await this.syncTriggerClient.executeSyncTrigger(ctx, {
+        collectionId: collection.id,
+        timing: 'after',
         operation,
         record,
         previousRecord,
-        { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
-      );
+        userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      });
       if (result.errors.length > 0 || result.warnings.length > 0) {
         this.logger.warn(
           `After-automation issues for ${collection.code}: ` +

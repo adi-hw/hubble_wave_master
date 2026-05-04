@@ -30,14 +30,18 @@ import {
   AutomationService,
   CreateAutomationDto,
   UpdateAutomationDto,
-} from './automation.service';
-import { ScheduledJobService, CreateScheduledJobDto, UpdateScheduledJobDto } from './scheduled-job.service';
-import { ExecutionLogService, ExecutionStatus } from './execution-log.service';
-import { AvaAutomationService, AvaAutomationRequest } from './ava-automation.service';
+} from './rules.service';
+import {
+  ScheduledJobService,
+  CreateScheduledJobDto,
+  UpdateScheduledJobDto,
+} from '../scheduling/scheduled-job.service';
+import { ExecutionLogService, ExecutionStatus } from '../runtime/execution-log.service';
+import { AvaAutomationService, AvaAutomationRequest } from '../ava/ava-automation.service';
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
-export class AutomationController {
+export class RulesController {
   constructor(
     private readonly automationService: AutomationService,
     private readonly scheduledJobService: ScheduledJobService,

@@ -135,19 +135,17 @@ describe('CollectionDataService — transactional audit', () => {
     const outbox = {
       enqueueRecordEvent: jest.fn(async () => undefined),
     } as unknown as EventOutboxService;
-    // The runBefore/AfterAutomations helpers route through one
-    // executeAutomations entry point (W2.B) and read aborted / errors /
-    // warnings / asyncQueue / modifiedRecord off the result. A no-op
-    // mock returning the record unchanged keeps the chaos test focused
-    // on the audit-rollback contract.
-    const automationExecutor: any = {
-      executeAutomations: jest.fn(async (
-        _collectionId: string,
-        _phase: 'before' | 'after',
-        _operation: string,
-        record: Record<string, unknown>,
+    // After Plan Fix 1 PR 4, the chaos test no longer mocks the
+    // local automation executor — collection-data calls
+    // SyncTriggerClientService.executeSyncTrigger directly. A no-op
+    // mock returning the record unchanged keeps the chaos test
+    // focused on the audit-rollback contract.
+    const syncTriggerClient: any = {
+      executeSyncTrigger: jest.fn(async (
+        _ctx: unknown,
+        args: { record: Record<string, unknown> },
       ) => ({
-        modifiedRecord: record ?? {},
+        modifiedRecord: args.record ?? {},
         errors: [],
         warnings: [],
         asyncQueue: [],
@@ -170,7 +168,7 @@ describe('CollectionDataService — transactional audit', () => {
       validation as ValidationService,
       defaultValue as DefaultValueService,
       outbox,
-      automationExecutor,
+      syncTriggerClient,
       computedDispatcher,
       runtimeAnomaly,
     );
@@ -332,10 +330,6 @@ describe('CollectionDataService — bulk partial-failure anomaly recording (W2.D
     const outboxService: any = {
       enqueueRecordEvent: jest.fn(async () => undefined),
     };
-    const automationExecutor: any = {
-      executeBefore: jest.fn(async (_ctx: any, _c: any, _r: any, data: any) => data),
-      executeAfter: jest.fn(async () => undefined),
-    };
     const computedDispatcher: any = {
       applyOnInsert: jest.fn(async () => ({})),
       applyOnUpdate: jest.fn(async () => ({})),
@@ -354,13 +348,23 @@ describe('CollectionDataService — bulk partial-failure anomaly recording (W2.D
       }),
     };
 
+    const syncTriggerClient: any = {
+      executeSyncTrigger: jest.fn(async (_ctx: unknown, args: { record: Record<string, unknown> }) => ({
+        modifiedRecord: args.record ?? {},
+        errors: [],
+        warnings: [],
+        asyncQueue: [],
+        aborted: false,
+      })),
+    };
+
     const service = new CollectionDataService(
       dataSource,
       authz,
       validationService,
       defaultValueService,
       outboxService,
-      automationExecutor,
+      syncTriggerClient,
       computedDispatcher,
       runtimeAnomaly,
     );

@@ -9,6 +9,16 @@ export interface RequestContext {
   sessionId?: string;
   username?: string;
   raw?: Record<string, unknown>;
+  /**
+   * Raw `Bearer <token>` string preserved by JwtAuthGuard. Used by
+   * service-to-service callers that forward the original end-user's
+   * JWT to a downstream instance service (e.g. svc-data → svc-automation
+   * sync-trigger). Treat as sensitive: do not log, do not include in
+   * structured outputs, do not persist. Optional because non-JWT auth
+   * paths (system actors, migrations) construct RequestContext without
+   * a token.
+   */
+  bearerToken?: string;
 }
 
 /**

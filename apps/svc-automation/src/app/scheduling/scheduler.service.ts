@@ -10,9 +10,9 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject, Optional } f
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue, Worker, Job, ConnectionOptions } from 'bullmq';
 import { ScheduledJobService } from './scheduled-job.service';
-import { ActionHandlerService } from './action-handler.service';
-import { ScriptSandboxService } from './script-sandbox.service';
-import { ExecutionLogService } from './execution-log.service';
+import { ActionHandlerService } from '../runtime/action-handler.service';
+import { ScriptSandboxService } from '../runtime/script-sandbox.service';
+import { ExecutionLogService } from '../runtime/execution-log.service';
 import { ScheduledJob } from '@hubblewave/instance-db';
 import { AutomationRateLimiterService } from './automation-rate-limiter.service';
 
@@ -241,25 +241,23 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private createExecutionContext(jobId: string, jobName: string, _collectionId?: string) {
     return {
       user: {
-        id: 'system',
+        id: 'system' as string | null,
         email: 'scheduler@system',
         roles: ['system'],
       },
       record: {} as Record<string, unknown>,
-      previousRecord: undefined,
+      previousRecord: null as Record<string, unknown> | null,
       changes: [] as string[],
       automation: {
         id: jobId,
         name: jobName,
-        triggerTiming: 'async' as const, // Scheduled jobs run asynchronously
+        triggerTiming: 'async' as const,
         abortOnError: false,
       },
       depth: 1,
       maxDepth: 5,
-      executionChain: [] as string[],
-      recordsModified: new Map<string, Record<string, unknown>>(),
+      executionChain: new Set<string>(),
       outputs: {} as Record<string, unknown>,
-      asyncQueue: [] as Array<{ action: { id: string; type: string; config: Record<string, unknown> }; executeAsync: boolean; executeAfterCommit: boolean }>,
       errors: [] as Array<{ property: string; message: string }>,
       warnings: [] as Array<{ property: string; message: string }>,
     };
