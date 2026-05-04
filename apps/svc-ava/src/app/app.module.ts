@@ -11,6 +11,7 @@ import { EmbeddingController } from './embedding.controller';
 import { AVAController } from './ava.controller';
 import { AVAGovernanceController } from './ava-governance.controller';
 import { AVASchemaController } from './ava-schema.controller';
+import { AvaProposalController } from './ava-proposal.controller';
 import { HealthController } from './health.controller';
 import { SearchModule } from './search/search.module';
 import { AvaToolsModule } from './ava-tools/ava-tools.module';
@@ -61,6 +62,7 @@ import {
     AVAController,
     AVAGovernanceController,
     AVASchemaController,
+    AvaProposalController,
     // Phase 7 Controllers
     NLQueryController,
     AIReportsController,

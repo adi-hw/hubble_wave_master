@@ -15,3 +15,7 @@ export {
 export { RuntimeAnomalyService } from './lib/runtime-anomaly/runtime-anomaly.service';
 export type { RuntimeAnomalyEvent } from './lib/runtime-anomaly/runtime-anomaly.service';
 export { RuntimeAnomalyModule } from './lib/runtime-anomaly/runtime-anomaly.module';
+export {
+  AvaProposalService,
+  BadStateTransitionException,
+} from './lib/ava-proposal';

@@ -5,6 +5,7 @@ import { instanceEntities } from './entities/index';
 import { AuditLogSubscriber } from './subscribers/audit-log.subscriber';
 import { IdentityCacheInvalidationSubscriber } from './subscribers/identity-cache-invalidation.subscriber';
 import { InstanceDbService } from './instance-db.service';
+import { AvaProposalService } from './ava-proposal/ava-proposal.service';
 
 /**
  * Instance Database Module
@@ -97,7 +98,19 @@ import { InstanceDbService } from './instance-db.service';
     }),
     TypeOrmModule.forFeature(instanceEntities),
   ],
-  providers: [InstanceDbService],
-  exports: [TypeOrmModule, InstanceDbService],
+  providers: [
+    InstanceDbService,
+    AvaProposalService,
+    // Allow consumers (e.g. RequireApprovedProposalGuard) to inject by token,
+    // mirroring the existing 'AuditService' / interface-based wiring patterns
+    // used elsewhere in the platform.
+    { provide: 'AvaProposalService', useExisting: AvaProposalService },
+  ],
+  exports: [
+    TypeOrmModule,
+    InstanceDbService,
+    AvaProposalService,
+    'AvaProposalService',
+  ],
 })
 export class InstanceDbModule {}

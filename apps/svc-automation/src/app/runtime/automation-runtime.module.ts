@@ -17,6 +17,7 @@ import { RecordMutationService } from './record-mutation.service';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { OutboxProcessorService } from './outbox-processor.service';
 import { OutboxPublisherService } from './outbox-publisher.service';
+import { AvaAutomationController } from './ava-automation.controller';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { OutboxPublisherService } from './outbox-publisher.service';
     ]),
     RuntimeAnomalyModule,
   ],
+  controllers: [AvaAutomationController],
   providers: [
     ConditionEvaluatorService,
     ActionHandlerService,

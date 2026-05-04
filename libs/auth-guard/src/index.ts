@@ -11,3 +11,5 @@ export * from './lib/permissions.guard';
 export * from './lib/skip-maintenance-mode.decorator';
 export * from './lib/maintenance-mode.interceptor';
 export * from './lib/maintenance-mode.module';
+export * from './lib/require-approved-proposal.decorator';
+export * from './lib/require-approved-proposal.guard';
