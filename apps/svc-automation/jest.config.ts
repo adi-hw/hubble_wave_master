@@ -21,6 +21,7 @@ export default {
   // are declared on master but not yet committed (they're in-flight from a
   // parallel slice). Map the import to a unit-test stub so the runtime
   // tests can run without dragging in unrelated entities.
+  // (W3.D will clean these up when the underlying state is verified.)
   moduleNameMapper: {
     '^@hubblewave/instance-db$': '<rootDir>/src/test-utils/instance-db-mock.ts',
     '^@hubblewave/authorization$': '<rootDir>/src/test-utils/authorization-mock.ts',

@@ -11,6 +11,27 @@ import { ExecutionContext } from './automation-runtime.types';
 //
 // Refs Part 2 Fix 5 (test coverage), Fix 6 (deny-list -> allow-list switch).
 
+function makeContext(record: Record<string, unknown>): ExecutionContext {
+  return {
+    user: { id: 'user-1', email: 'u@example.com', roles: [] },
+    record,
+    previousRecord: null,
+    changes: [],
+    automation: {
+      id: 'auto-1',
+      name: 'Test Automation',
+      triggerTiming: 'after',
+      abortOnError: false,
+    },
+    depth: 0,
+    maxDepth: 5,
+    executionChain: new Set<string>(),
+    outputs: {},
+    errors: [],
+    warnings: [],
+  };
+}
+
 describe('ScriptSandboxService', () => {
   let service: ScriptSandboxService;
 
@@ -247,11 +268,11 @@ describe('ScriptSandboxService', () => {
     });
 
     it('returns true for a truthy condition', async () => {
-      // expr-eval treats `==` as the equality operator. Note that variable
-      // names that collide with SAFE_FUNCTIONS keys (e.g. 'count', 'length',
-      // 'iif', 'min', 'max', 'first', 'last') are shadowed by the function,
-      // so a record property named 'count' is unreachable from a script.
-      // Use a non-colliding name here.
+      // expr-eval treats `==` as the equality operator. After W3.A, record
+      // properties whose names collide with SAFE_FUNCTIONS keys (e.g.
+      // 'count', 'length', 'iif', 'min', 'max', 'first', 'last') are now
+      // resolvable as values via resolveScopePrecedence, but this test uses
+      // a non-colliding name to keep behavior independent of the rewrite.
       const result = await service.evaluateCondition('priority == 3', {
         priority: 3,
       });
@@ -292,18 +313,128 @@ describe('ScriptSandboxService', () => {
 
   describe('record-field shadowing by SAFE_FUNCTIONS', () => {
     // Record properties whose names collide with SAFE_FUNCTIONS entries
-    // (count, length, iif, min, max, first, last, ...) are shadowed by
-    // the registered function. A script referencing such a property does
-    // NOT see the record value — it sees the function reference. This is
-    // a latent footgun for customers who name fields after common helpers.
-    // Plan Fix 6 (deny-list -> allow-list switch) will surface this when
-    // it scopes function names; until then, document the gotcha.
-    it.skip('record property "count" should be readable as a value (Plan Fix 6)', async () => {
-      // Currently fails: 'count' resolves to the SAFE_FUNCTIONS.count
-      // function reference, not the record value 3, so 'count == 3' is
-      // false (strict equality of function vs number).
+    // (count, length, iif, min, max, first, last, ...) used to be shadowed
+    // by the registered function. W3.A's resolveScopePrecedence rewrites
+    // value-site IVAR tokens to a sentinel scope key so the field value
+    // wins over the function reference. Function-call syntax (count(items),
+    // length("foo")) still routes to SAFE_FUNCTIONS.
+    it('record property "count" should be readable as a value', async () => {
       const result = await service.evaluateCondition('count == 3', { count: 3 });
       expect(result).toBe(true);
+    });
+  });
+});
+
+describe('ScriptSandboxService — record fields shadowing SAFE_FUNCTIONS (W3.A)', () => {
+  let service: ScriptSandboxService;
+
+  beforeEach(() => {
+    service = new ScriptSandboxService();
+  });
+
+  describe('evaluateCondition', () => {
+    // Originally documented as it.skip in the W1.9 characterization suite:
+    // record property "count" should be readable as a value, but expr-eval
+    // resolved bare `count` to the SAFE_FUNCTIONS function reference, so the
+    // condition `count == 3` was always false against the function object.
+    it('record property "count" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('count == 3', { count: 3 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "length" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('length == 5', { length: 5 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "min" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('min == 10', { min: 10 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "max" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('max == 99', { max: 99 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "first" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('first == 1', { first: 1 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "last" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('last == 9', { last: 9 });
+      expect(result).toBe(true);
+    });
+
+    it('record property "iif" should be readable as a value', async () => {
+      const result = await service.evaluateCondition('iif == 42', { iif: 42 });
+      expect(result).toBe(true);
+    });
+
+    it('still calls length(value) correctly when used as a function', async () => {
+      const result = await service.evaluateCondition('length("foo") == 3', {});
+      expect(result).toBe(true);
+    });
+
+    it('still calls min(a, b) correctly when used as a function', async () => {
+      const result = await service.evaluateCondition('min(1, 2) == 1', {});
+      expect(result).toBe(true);
+    });
+
+    it('mixed: function call and shadowed field in same expression', async () => {
+      // length("abc") = 3, plus the field length=7 = 10
+      const ctx = { length: 7 };
+      const result = await service.evaluateCondition('length("abc") + length == 10', ctx);
+      expect(result).toBe(true);
+    });
+
+    it('returns false (not crashes) when shadowed field has wrong value', async () => {
+      const result = await service.evaluateCondition('count == 3', { count: 99 });
+      expect(result).toBe(false);
+    });
+
+    it('does not affect non-colliding record fields', async () => {
+      const result = await service.evaluateCondition('foo + bar == 15', { foo: 5, bar: 10 });
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('execute', () => {
+    it('record property "count" resolves as a value, not the function reference', async () => {
+      const result = await service.execute('count', makeContext({ count: 3 }));
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe(3);
+    });
+
+    it('record property "length" resolves as a value', async () => {
+      const result = await service.execute('length', makeContext({ length: 5 }));
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe(5);
+    });
+
+    it('count(items) still calls the SAFE_FUNCTIONS helper', async () => {
+      const result = await service.execute(
+        'count(items)',
+        makeContext({ items: [1, 2, 3, 4] }),
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe(4);
+    });
+
+    it('length("hello") still calls the SAFE_FUNCTIONS helper', async () => {
+      const result = await service.execute('length("hello")', makeContext({}));
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe(5);
+    });
+
+    it('iif(cond, t, f) still resolves as a function call', async () => {
+      const result = await service.execute(
+        'iif(true, "yes", "no")',
+        makeContext({}),
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe('yes');
     });
   });
 });
