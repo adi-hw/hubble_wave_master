@@ -29,11 +29,11 @@ export class ViewController {
     let effectiveRoles = authContext.roles || [];
     if (previewAsRole) {
       const canPreview =
-        authContext.roles?.includes('admin') ||
+        authContext.isAdmin ||
         authContext.permissions?.includes('metadata.forms.edit');
       if (!canPreview) {
         throw new ForbiddenException(
-          'previewAsRole requires `metadata.forms.edit` or admin role',
+          'previewAsRole requires `metadata.forms.edit` or platform.bypass_authz',
         );
       }
       effectiveRoles = previewAsRole.split(',').map((r) => r.trim()).filter(Boolean);

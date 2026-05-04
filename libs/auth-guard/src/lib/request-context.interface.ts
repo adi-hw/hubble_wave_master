@@ -30,9 +30,6 @@ export interface InstanceRequest extends Request {
   user?: AuthenticatedUser;
 }
 
-// Deprecated alias for backward compatibility
-export type TenantRequest = InstanceRequest;
-
 /**
  * Request type for authenticated endpoints
  * Use this when @UseGuards(JwtAuthGuard) is applied
@@ -72,12 +69,13 @@ export function extractContext(req: InstanceRequest | AuthenticatedRequest | Rec
   // Fallback: Build context from AuthenticatedUser if available
   if ('user' in req && req.user && isValidAuthenticatedUser(req.user)) {
     const user = req.user as AuthenticatedUser;
+    const permissions = user.permissions || [];
     return {
       userId: user.userId,
       username: user.username,
       roles: user.roles || [],
-      permissions: user.permissions || [],
-      isAdmin: user.roles?.includes('admin') ?? false,
+      permissions,
+      isAdmin: permissions.includes('platform.bypass_authz'),
       sessionId: user.sessionId,
     };
   }

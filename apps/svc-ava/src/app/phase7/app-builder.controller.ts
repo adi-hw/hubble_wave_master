@@ -77,7 +77,7 @@ export class AppBuilderController {
   ) {
     const app = await this.appBuilderService.getApp(appId);
     if (!app) throw new NotFoundException('App not found');
-    if (app.createdBy !== user.id && !app.isPublished && !user.roles?.includes('admin')) {
+    if (app.createdBy !== user.id && !app.isPublished && !user.isAdmin) {
       throw new ForbiddenException('Not the owner');
     }
     return { app };
@@ -120,7 +120,7 @@ export class AppBuilderController {
   ) {
     const app = await this.appBuilderService.getApp(appId);
     if (!app) throw new NotFoundException('App not found');
-    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+    if (app.createdBy !== user.id && !user.isAdmin) {
       throw new ForbiddenException('Not the owner');
     }
     await this.appBuilderService.deleteApp(appId);
@@ -153,7 +153,7 @@ export class AppBuilderController {
   ) {
     const app = await this.appBuilderService.getApp(appId);
     if (!app) throw new NotFoundException('App not found');
-    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+    if (app.createdBy !== user.id && !user.isAdmin) {
       throw new ForbiddenException('Not the owner');
     }
     const versions = await this.appBuilderService.getVersionHistory(appId);
@@ -186,7 +186,7 @@ export class AppBuilderController {
   ) {
     const app = await this.appBuilderService.getApp(appId);
     if (!app) throw new NotFoundException('App not found');
-    if (app.createdBy !== user.id && !user.roles?.includes('admin')) {
+    if (app.createdBy !== user.id && !user.isAdmin) {
       throw new ForbiddenException('Not the owner');
     }
     const exported = await this.appBuilderService.exportApp(appId);

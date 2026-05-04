@@ -52,14 +52,14 @@ describe('CollectionAccessGuard', () => {
   });
 
   describe('blanket bypass', () => {
-    it('admin role grants access without consulting AccessRuleService', async () => {
+    it('platform.bypass_authz grants access without consulting AccessRuleService', async () => {
       const accessService = makeAccessService();
       const guard = new CollectionAccessGuard(accessService);
       const ctx = makeContext(
         makeRequest({
           method: 'POST',
           collectionId: 'col-1',
-          user: { id: 'u1', roles: ['admin'], permissions: [] },
+          user: { id: 'u1', roles: [], permissions: ['platform.bypass_authz'] },
         }),
       );
       await expect(guard.canActivate(ctx)).resolves.toBe(true);

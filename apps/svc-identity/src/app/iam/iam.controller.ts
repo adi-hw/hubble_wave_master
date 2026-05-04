@@ -34,6 +34,7 @@ export class IamController {
     // Resolve roles and permissions using shared service (with caching)
     const cached = await this.permissionResolver.getUserPermissions(ctx.userId);
     const roleNames = cached.roles.map(r => r.code || r.name);
+    const permissionList = Array.from(cached.permissions);
 
     return {
       id: user.id,
@@ -41,9 +42,9 @@ export class IamController {
       username: user.displayName || user.email,
       displayName: user.displayName || user.email || 'User',
       email: user.email,
-      isAdmin: roleNames.includes('admin'),
+      isAdmin: permissionList.includes('platform.bypass_authz'),
       roles: roleNames,
-      permissions: Array.from(cached.permissions),
+      permissions: permissionList,
     };
   }
 

@@ -330,14 +330,15 @@ export class AuthService {
       const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
 
       // 8. Generate Token
+      const permissionList = Array.from(permissions);
       const payload = {
         sub: user.id,
         username: user.displayName || user.email,
         roles: roleNames,
-        permissions: Array.from(permissions),
-        is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
+        permissions: permissionList,
+        is_admin: permissionList.includes('platform.bypass_authz'),
       };
-      
+
       const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
 
       const { token: refreshToken } =
@@ -360,8 +361,8 @@ export class AuthService {
           email: user.email,
           displayName: user.displayName,
           roles: roleNames,
-          permissions: Array.from(permissions),
-          isAdmin: roleNames.includes('admin'),
+          permissions: permissionList,
+          isAdmin: permissionList.includes('platform.bypass_authz'),
         },
       };
 
@@ -411,12 +412,13 @@ export class AuthService {
     const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
 
     // Generate JWT payload
+    const permissionList = Array.from(permissions);
     const payload = {
       sub: user.id,
       username: user.displayName || user.email,
       roles: roleNames,
-      permissions: Array.from(permissions),
-      is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
+      permissions: permissionList,
+      is_admin: permissionList.includes('platform.bypass_authz'),
     };
 
     const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
@@ -449,8 +451,8 @@ export class AuthService {
         email: user.email,
         displayName: user.displayName,
         roles: roleNames,
-        permissions: Array.from(permissions),
-        isAdmin: roleNames.includes('admin'),
+        permissions: permissionList,
+        isAdmin: permissionList.includes('platform.bypass_authz'),
       },
     };
   }
@@ -514,12 +516,13 @@ export class AuthService {
     }
 
     // 6. Generate New Access Token
+    const permissionList = Array.from(permissions);
     const payload = {
         sub: user.id,
         username: user.displayName || user.email,
         roles: roleNames,
-        permissions: Array.from(permissions),
-        is_admin: roleNames.includes('admin'),
+        permissions: permissionList,
+        is_admin: permissionList.includes('platform.bypass_authz'),
       };
       const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
 

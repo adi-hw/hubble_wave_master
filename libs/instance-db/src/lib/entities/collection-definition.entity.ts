@@ -191,7 +191,6 @@ export class CollectionDefinition {
   publishedAt?: Date | null;
 
   // Optional fields used by higher layers (not persisted in single-instance build)
-  deletedAt?: Date | null;
   propertyCount?: number;
   recordCount?: number;
   sortOrder?: number;

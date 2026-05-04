@@ -27,13 +27,14 @@ export class PropertyAccessInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Check if user is admin - skip property access filtering for admins
+    // Skip property access filtering for users with the bypass permission or
+    // operation-agnostic schema admin. `isAdmin` / `is_admin` are the cached
+    // forms of "holds platform.bypass_authz".
+    const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
     const isAdmin = rawUser.isAdmin || rawUser.is_admin ||
-      (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin')) ||
-      (Array.isArray(rawUser.permissions) && (
-        rawUser.permissions.includes('system.admin') ||
-        rawUser.permissions.includes('collection.admin')
-      ));
+      permissions.includes('platform.bypass_authz') ||
+      permissions.includes('system.admin') ||
+      permissions.includes('collection.admin');
 
     if (isAdmin) {
       return next.handle();

@@ -3,31 +3,32 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 
 /**
- * InstanceDbService for single-instance architecture.
- * Uses a single DataSource and ignores instanceId parameter for API compatibility.
+ * Instance identity surface for the customer instance plane.
+ *
+ * Per Canon §5, every customer is provisioned its own instance with a
+ * dedicated database. The runtime in this process is bound to exactly
+ * one instance: the connection string is fixed at deploy time, the
+ * `INSTANCE_ID` env var identifies which customer it serves, and there
+ * is intentionally no API for routing requests to a different
+ * instance's database.
+ *
+ * This service exposes the bound instance's identity and a typed
+ * accessor for the bound DataSource. It does not accept an instanceId
+ * parameter, because no caller in the instance plane has authority to
+ * cross instances. Cross-instance operations belong on the control
+ * plane.
  */
 @Injectable()
 export class InstanceDbService {
-  private readonly defaultInstanceId = process.env['INSTANCE_ID'] || 'default-instance';
+  readonly instanceId: string = process.env['INSTANCE_ID'] || 'default-instance';
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async getDataSource(_instanceId?: string): Promise<DataSource> {
+  getDataSource(): DataSource {
     return this.dataSource;
   }
 
-  async getRepository<T extends ObjectLiteral>(
-    _instanceId: string | undefined,
-    entity: EntityTarget<T>,
-  ): Promise<Repository<T>> {
-    // instanceId ignored in single-instance deployment; shim retains signature for backwards compatibility
+  getRepository<T extends ObjectLiteral>(entity: EntityTarget<T>): Repository<T> {
     return this.dataSource.getRepository(entity);
   }
-
-  async getAllInstances(): Promise<Array<{ id: string; slug: string; status: string }>> {
-    return [{ id: this.defaultInstanceId, slug: this.defaultInstanceId, status: 'active' }];
-  }
 }
-
-// Deprecated alias for backward compatibility
-export { InstanceDbService as TenantDbService };

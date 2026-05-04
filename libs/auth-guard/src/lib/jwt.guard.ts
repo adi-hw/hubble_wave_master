@@ -61,7 +61,10 @@ export class JwtAuthGuard implements CanActivate {
       userId: payload.sub,
       roles,
       permissions,
-      isAdmin: roles.includes('admin') || !!payload.is_admin,
+      // `isAdmin` is the cached form of "this user holds platform.bypass_authz".
+      // `payload.is_admin` remains an honoured fast-path for tokens issued by the
+      // control plane that explicitly mark a system bypass.
+      isAdmin: permissions.includes('platform.bypass_authz') || !!payload.is_admin,
       sessionId: payload.session_id || payload.sessionId,
       username: payload.username,
       attributes: payload.attributes,

@@ -214,8 +214,8 @@ export class ComputedOutboxProcessor implements OnModuleInit, OnModuleDestroy {
         userId: 'system',
         username: 'system',
         isAdmin: true,
-        permissions: [],
-        roles: ['admin'],
+        permissions: ['platform.bypass_authz'],
+        roles: [],
       } as never,
     );
 

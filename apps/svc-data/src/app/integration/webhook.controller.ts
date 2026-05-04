@@ -62,7 +62,7 @@ export class WebhookController {
     if (!subscription) {
       throw new NotFoundException('Webhook not found');
     }
-    const isAdmin = user.roles?.includes('admin');
+    const isAdmin = user.isAdmin;
     if (!isAdmin && subscription.createdBy !== user.id) {
       throw new ForbiddenException('Not the owner of this webhook');
     }
@@ -204,7 +204,7 @@ export class WebhookController {
       await this.assertWebhookOwnership(subscriptionId, user);
       return this.webhookService.getStats(subscriptionId);
     }
-    if (!user.roles?.includes('admin')) {
+    if (!user.isAdmin) {
       throw new ForbiddenException('Aggregate webhook stats require admin');
     }
     return this.webhookService.getStats();

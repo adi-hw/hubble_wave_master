@@ -174,8 +174,8 @@ export class ModelRegistryService {
       .join(' ');
   }
 
-  private isAdmin(roles?: string[]) {
-    return Array.isArray(roles) && roles.includes('admin');
+  private hasBypassPermission(permissions?: string[]) {
+    return Array.isArray(permissions) && permissions.includes('platform.bypass_authz');
   }
 
   /**
@@ -208,7 +208,7 @@ export class ModelRegistryService {
   /**
    * Get properties from property_definitions for a collection
    */
-  async getProperties(collectionCode: string, roles?: string[]): Promise<PropertyInfo[]> {
+  async getProperties(collectionCode: string, permissions?: string[]): Promise<PropertyInfo[]> {
     const cacheKey = `properties:${collectionCode}`;
     const cached = await this.cache.get<PropertyInfo[]>(cacheKey);
     if (cached) return cached;
@@ -224,7 +224,7 @@ export class ModelRegistryService {
 
     if (!collection) {
       // Fall back to information_schema if no collection definition
-      return this.getPropertiesFromSchema(collectionCode, roles);
+      return this.getPropertiesFromSchema(collectionCode, permissions);
     }
 
     // Get property definitions for this collection
@@ -256,7 +256,7 @@ export class ModelRegistryService {
 
     const uiConfigMap = new Map<string, PropertyUiConfig>();
 
-    const showHidden = this.isAdmin(roles);
+    const showHidden = this.hasBypassPermission(permissions);
 
     const propertyInfoList: PropertyInfo[] = properties
       .map((prop) => {
@@ -307,7 +307,7 @@ export class ModelRegistryService {
   /**
    * Fallback: Get properties from information_schema when no collection definition exists
    */
-  private async getPropertiesFromSchema(collectionCode: string, roles?: string[]): Promise<PropertyInfo[]> {
+  private async getPropertiesFromSchema(collectionCode: string, permissions?: string[]): Promise<PropertyInfo[]> {
     const ds = this.dataSource;
 
     // Get columns from information_schema for the storage table
@@ -326,7 +326,7 @@ export class ModelRegistryService {
       ORDER BY ordinal_position
     `, [collectionCode]);
 
-    const showHidden = this.isAdmin(roles);
+    const showHidden = this.hasBypassPermission(permissions);
 
     // Define column result type
     interface ColumnResult {

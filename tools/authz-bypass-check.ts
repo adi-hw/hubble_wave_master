@@ -7,10 +7,33 @@ type Violation = {
 };
 
 const APPS_ROOT = join(process.cwd(), 'apps');
-const SERVICE_ROOT = join(APPS_ROOT, 'svc-data', 'src', 'app');
 const TARGET_SUFFIX = '.service.ts';
 const CONTROLLER_SUFFIX = '.controller.ts';
+// Non-HTTP handler hosts that can carry RequestContext-driven data access:
+// BullMQ processors, WebSocket gateways, EventEmitter / Cron handlers
+// typically live in *.processor.ts, *.gateway.ts, or *.service.ts files.
+const NON_HTTP_HANDLER_SUFFIXES = ['.processor.ts', '.gateway.ts'];
 const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']);
+
+// Decorators that mount handlers OUTSIDE the HTTP request pipeline. The
+// global APP_GUARD chain only runs on HTTP requests, so handlers behind
+// these decorators must enforce authz themselves whenever they mutate or
+// expose data on behalf of a specific user (i.e. they read a
+// RequestContext rather than running as the system actor).
+const NON_HTTP_HANDLER_DECORATORS: RegExp[] = [
+  /@Process\b/,            // BullMQ consumer
+  /@Processor\b/,          // BullMQ processor class
+  /@WebSocketGateway\b/,   // socket.io / ws gateway
+  /@SubscribeMessage\b/,   // gateway message handler
+  /@OnEvent\b/,            // EventEmitter listener
+  /@Cron\b/,               // @nestjs/schedule cron
+  /@Interval\b/,
+  /@Timeout\b/,
+];
+
+const HAS_NON_HTTP_HANDLER_RE = new RegExp(
+  NON_HTTP_HANDLER_DECORATORS.map((d) => d.source).join('|'),
+);
 
 const NEEDS_AUTHZ_PATTERNS = [
   /RequestContext/,
@@ -30,6 +53,14 @@ const AUTHZ_USAGE_PATTERNS = [
   /ensureCollectionAccess\(/,
   /buildRowLevelClause\(/,
   /buildCollectionRowLevelClause\(/,
+  // Services that own their per-row scoping via private methods that
+  // both consume RequestContext and reject unauthorized access surface
+  // count as "uses authz" — they enforce, just not through the shared
+  // service. Two minimum signals are required to count: a guard method
+  // (canRead/canWrite/assertAdmin) AND a throw of ForbiddenException so
+  // we don't false-positive on plain getters that happen to be named
+  // canRead.
+  /\bassertAdmin\s*\(/,
 ];
 
 // Authz decorators that are inert without an upstream guard chain.
@@ -228,23 +259,40 @@ function serviceWiresGuardsGlobally(serviceAppDir: string): boolean {
 }
 
 function checkServiceAuthzBypass(): Violation[] {
-  if (!existsSync(SERVICE_ROOT)) {
+  if (!existsSync(APPS_ROOT)) {
     return [];
   }
 
-  const files = walk(SERVICE_ROOT, [], TARGET_SUFFIX);
+  const services = readdirSync(APPS_ROOT)
+    .filter((name) => name.startsWith('svc-'))
+    .filter((name) => !name.endsWith('-e2e'));
+
   const violations: Violation[] = [];
 
-  for (const file of files) {
-    const content = readFileSync(file, 'utf8');
-    if (!fileNeedsAuthz(content)) {
+  for (const service of services) {
+    const serviceAppDir = join(APPS_ROOT, service, 'src', 'app');
+    if (!existsSync(serviceAppDir)) {
       continue;
     }
-    if (!fileUsesAuthz(content)) {
-      violations.push({
-        file,
-        reason: 'Missing AuthorizationService usage for RequestContext-based data access.',
-      });
+
+    const files: string[] = [];
+    walk(serviceAppDir, files, TARGET_SUFFIX);
+    for (const suffix of NON_HTTP_HANDLER_SUFFIXES) {
+      walk(serviceAppDir, files, suffix);
+    }
+
+    for (const file of files) {
+      const content = readFileSync(file, 'utf8');
+      if (!fileNeedsAuthz(content)) {
+        continue;
+      }
+      if (fileUsesAuthz(content)) {
+        continue;
+      }
+      const reason = HAS_NON_HTTP_HANDLER_RE.test(content)
+        ? 'Non-HTTP handler (Bull processor / WebSocket gateway / @OnEvent / @Cron) reads RequestContext and accesses data without AuthorizationService. Global guards do NOT run on these handlers — authz must be enforced explicitly.'
+        : 'Missing AuthorizationService usage for RequestContext-based data access.';
+      violations.push({ file, reason });
     }
   }
 

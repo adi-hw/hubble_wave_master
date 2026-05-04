@@ -207,7 +207,8 @@ export class AVAController {
         : undefined;
 
     // Check if admin to get global stats
-    const isAdmin = req.user.roles.includes('admin');
+    const permissions: string[] = req.user.permissions || [];
+    const isAdmin = permissions.includes('platform.bypass_authz');
     const userId = isAdmin ? undefined : req.user.sub;
 
     return this.avaService.getUsageStats(userId, dateRange);

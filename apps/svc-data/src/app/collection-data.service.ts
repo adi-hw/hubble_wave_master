@@ -2499,7 +2499,8 @@ export class CollectionDataService {
         const prop = properties.find((p) => p.code === sort.property);
         if (prop) {
           const col = this.ensureSafeIdentifier(this.getStorageColumn(prop), 'column');
-          orderByParts.push(`t."${col}" ${sort.direction.toUpperCase()}`);
+          const dir = sort.direction.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+          orderByParts.push(`t."${col}" ${dir}`);
         }
       });
     }

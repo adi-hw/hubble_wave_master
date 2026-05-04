@@ -735,9 +735,6 @@ export class WorkflowDefinitionService {
     if (actor.isAdmin) {
       return true;
     }
-    if (actor.roles?.includes('admin')) {
-      return true;
-    }
     if (!actor.permissions) {
       return false;
     }

@@ -12,7 +12,7 @@ import {
   AvaProposal,
   AvaProposalService,
 } from '@hubblewave/instance-db';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, RequestUser, RequirePermission } from '@hubblewave/auth-guard';
 
 interface SuggestProposalDto {
   kind: string;
@@ -53,6 +53,7 @@ export class AvaProposalController {
   constructor(private readonly proposalService: AvaProposalService) {}
 
   @Post()
+  @RequirePermission('ava.proposal.suggest')
   @ApiOperation({
     summary: 'AVA emits a suggested proposal',
     description:
@@ -66,6 +67,7 @@ export class AvaProposalController {
   }
 
   @Get(':id')
+  @RequirePermission('ava.proposal.read')
   @ApiOperation({ summary: 'Fetch a proposal by id' })
   @ApiResponse({ status: 200, description: 'Proposal' })
   async findOne(@Param('id') id: string): Promise<AvaProposal> {
@@ -77,6 +79,7 @@ export class AvaProposalController {
   }
 
   @Post(':id/preview')
+  @RequirePermission('ava.proposal.preview')
   @ApiOperation({
     summary: 'Transition: suggested → previewed',
     description:
@@ -93,6 +96,7 @@ export class AvaProposalController {
   }
 
   @Post(':id/approve')
+  @RequirePermission('ava.proposal.approve')
   @ApiOperation({
     summary: 'Transition: previewed → approved',
     description:
@@ -109,6 +113,7 @@ export class AvaProposalController {
   }
 
   @Post(':id/reject')
+  @RequirePermission('ava.proposal.reject')
   @ApiOperation({ summary: 'Transition: any non-terminal state → rejected' })
   @ApiResponse({ status: 200, description: 'Proposal transitioned to rejected' })
   async reject(
@@ -120,6 +125,7 @@ export class AvaProposalController {
   }
 
   @Post(':id/execute')
+  @RequirePermission('ava.proposal.execute')
   @ApiOperation({
     summary: 'Transition: approved → executed (or failed)',
     description:

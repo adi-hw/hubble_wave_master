@@ -130,13 +130,15 @@ export class AuthService {
       }
 
       const { roleNames, permissions } = await this.resolveRolesAndPermissions(user.id);
+      const permissionList = Array.from(permissions);
+      const hasBypass = permissionList.includes('platform.bypass_authz');
 
       const payload = {
         sub: user.id,
         username: user.displayName || user.email,
         roles: roleNames,
-        permissions: Array.from(permissions),
-        is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
+        permissions: permissionList,
+        is_admin: hasBypass,
       };
 
       const accessToken = this.jwtService.sign(payload);
@@ -170,8 +172,8 @@ export class AuthService {
           email: user.email,
           displayName: user.displayName,
           roles: roleNames,
-          permissions: Array.from(permissions),
-          isAdmin: roleNames.includes('admin'),
+          permissions: permissionList,
+          isAdmin: hasBypass,
         },
       };
     } catch (error) {
@@ -245,12 +247,13 @@ export class AuthService {
       throw new UnauthorizedException('Failed to rotate refresh token');
     }
 
+    const permissionList = Array.from(permissions);
     const payload = {
       sub: user.id,
       username: user.displayName || user.email,
       roles: roleNames,
-      permissions: Array.from(permissions),
-      is_admin: roleNames.includes('admin'),
+      permissions: permissionList,
+      is_admin: permissionList.includes('platform.bypass_authz'),
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -276,6 +279,7 @@ export class AuthService {
     }
 
     const { roleNames, permissions } = await this.resolveRolesAndPermissions(userId);
+    const permissionList = Array.from(permissions);
 
     return {
       id: user.id,
@@ -285,8 +289,8 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       roles: roleNames,
-      permissions: Array.from(permissions),
-      isAdmin: roleNames.includes('admin'),
+      permissions: permissionList,
+      isAdmin: permissionList.includes('platform.bypass_authz'),
     };
   }
 

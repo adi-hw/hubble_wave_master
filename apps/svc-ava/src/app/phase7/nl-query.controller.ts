@@ -161,8 +161,7 @@ export class NLQueryController {
     @Param('id') queryId: string,
   ) {
     // Ownership check: only the user who saved the query (or admin) may toggle.
-    const isAdmin = user.roles?.includes('admin') ?? false;
-    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, user.isAdmin);
     if (!existing) {
       throw new ForbiddenException('Not the owner');
     }
@@ -178,8 +177,7 @@ export class NLQueryController {
     @Param('id') queryId: string,
   ) {
     // Ownership check: only the user who saved the query (or admin) may delete.
-    const isAdmin = user.roles?.includes('admin') ?? false;
-    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, user.isAdmin);
     if (!existing) {
       throw new ForbiddenException('Not the owner');
     }

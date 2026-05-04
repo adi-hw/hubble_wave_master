@@ -122,7 +122,7 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
-    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.permissions);
     const readableProperties = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allProperties);
     if (!readableProperties.length) {
       throw new ForbiddenException('No readable properties on this collection');
@@ -187,7 +187,7 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
-    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.permissions);
     const readableProperties = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allProperties);
     if (!readableProperties.length) {
       throw new ForbiddenException('No readable properties on this collection');
@@ -226,7 +226,7 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'create');
 
-    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.permissions);
     const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
@@ -310,7 +310,7 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'update');
 
-    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.permissions);
     const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 
@@ -467,7 +467,7 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'update');
 
-    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
+    const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.permissions);
     const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
 

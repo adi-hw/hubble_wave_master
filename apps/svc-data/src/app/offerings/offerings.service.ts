@@ -158,7 +158,7 @@ export class OfferingsService {
       userId: user.id,
       roles: user.roles,
       permissions: user.permissions,
-      isAdmin: user.roles.includes('admin'),
+      isAdmin: user.isAdmin,
     };
   }
 }

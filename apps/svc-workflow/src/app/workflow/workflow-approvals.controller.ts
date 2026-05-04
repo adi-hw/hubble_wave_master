@@ -31,7 +31,7 @@ export class WorkflowApprovalsController {
     @Body() body: { comments?: string },
     @CurrentUser() user: RequestUser,
   ) {
-    return this.approvals.approve(id, user.id, body.comments, user.roles?.includes('admin'));
+    return this.approvals.approve(id, user.id, body.comments, user.isAdmin);
   }
 
   @Post(':id/reject')
@@ -40,7 +40,7 @@ export class WorkflowApprovalsController {
     @Body() body: { comments?: string },
     @CurrentUser() user: RequestUser,
   ) {
-    return this.approvals.reject(id, user.id, body.comments, user.roles?.includes('admin'));
+    return this.approvals.reject(id, user.id, body.comments, user.isAdmin);
   }
 
   @Post(':id/delegate')
@@ -54,7 +54,7 @@ export class WorkflowApprovalsController {
       body.delegatedTo,
       user.id,
       body.reason,
-      user.roles?.includes('admin'),
+      user.isAdmin,
     );
   }
 }

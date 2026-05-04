@@ -50,21 +50,22 @@ export class CollectionAccessGuard implements CanActivate {
     const operation = this.determineOperation(request.method);
     const acceptablePermissions = this.permissionsForOperation(operation, request);
 
-    // Admin role grants full schema access.
-    const isAdminRole =
+    // platform.bypass_authz grants full schema access. `isAdmin` / `is_admin`
+    // are the cached forms of "this user holds the bypass permission" set by
+    // the JWT guard / token issuer.
+    const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
+    const hasBypassPermission =
       rawUser.isAdmin ||
       rawUser.is_admin ||
-      (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin'));
+      permissions.includes('platform.bypass_authz');
 
-    const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
-
-    // Only system.admin (platform superuser) and the admin role bypass
+    // Only platform.bypass_authz (and the legacy system.admin slug) bypass
     // the per-collection access-rule check below. collection.admin is
     // intentionally NOT in this set — it is operation-agnostic, not
     // collection-agnostic, and is checked against AccessRuleService
     // alongside every other collection permission.
     const hasBlanketBypass =
-      isAdminRole || permissions.includes('system.admin');
+      hasBypassPermission || permissions.includes('system.admin');
 
     if (hasBlanketBypass) {
       return true;

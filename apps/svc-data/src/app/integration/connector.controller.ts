@@ -76,7 +76,7 @@ export class ConnectorController {
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
-    const isAdmin = user.roles?.includes('admin');
+    const isAdmin = user.isAdmin;
     if (!isAdmin && connection.createdBy !== user.id) {
       throw new ForbiddenException('Not the owner of this connection');
     }

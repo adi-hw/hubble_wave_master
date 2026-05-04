@@ -7,7 +7,7 @@ export * from './lib/audit-log-hash';
 export { withAudit } from './lib/audit/with-audit';
 export type { AuditEvent, AuditRecorder } from './lib/audit/with-audit';
 export { InstanceDbModule } from './lib/instance-db.module';
-export { InstanceDbService, TenantDbService } from './lib/instance-db.service';
+export { InstanceDbService } from './lib/instance-db.service';
 export {
   IdentityCacheInvalidationSubscriber,
   IdentityCacheEventPublisher,

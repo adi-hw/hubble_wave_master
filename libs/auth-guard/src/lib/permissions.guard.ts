@@ -94,9 +94,10 @@ export class PermissionsGuard implements CanActivate {
     // Get user permissions - support multiple property names
     const userPermissions: string[] = user.permissions || user.perms || [];
 
-    // Admin role bypasses permission checks
-    const userRoles: string[] = user.roles || [];
-    if (userRoles.includes('admin') || userRoles.includes('super_admin')) {
+    // Canonical bypass: `platform.bypass_authz` is granted to admin roles
+    // by migration 1940000000000. Per Canon §4 + §9, role names are not
+    // hardcoded — bypass is itself a permission the metadata system owns.
+    if (userPermissions.includes('platform.bypass_authz')) {
       return true;
     }
 
