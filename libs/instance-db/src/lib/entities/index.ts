@@ -167,6 +167,10 @@ export {
   AVAToolApprovalPolicy,
 } from './ava-registry.entity';
 
+// AVA Proposal (canon §12 state machine: Suggest → Preview → Approve → Execute → Audit)
+export { AvaProposal } from './ava-proposal.entity';
+export type { AvaProposalState } from './ava-proposal.entity';
+
 // ─────────────────────────────────────────────────────────────────
 // Audit Logs
 // ─────────────────────────────────────────────────────────────────
@@ -565,6 +569,7 @@ import {
   AVACard,
   AVAPromptPolicy,
 } from './ava-registry.entity';
+import { AvaProposal } from './ava-proposal.entity';
 import {
   AnalyticsEvent,
   AggregatedMetric,
@@ -782,6 +787,7 @@ export const instanceEntities = [
   AVATopic,
   AVACard,
   AVAPromptPolicy,
+  AvaProposal,
   AVAConversation,
   AVAMessage,
   AVAIntent,

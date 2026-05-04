@@ -7,3 +7,5 @@ export * from './lib/roles.guard';
 export * from './lib/public.decorator';
 export * from './lib/permissions.decorator';
 export * from './lib/permissions.guard';
+export * from './lib/require-approved-proposal.decorator';
+export * from './lib/require-approved-proposal.guard';

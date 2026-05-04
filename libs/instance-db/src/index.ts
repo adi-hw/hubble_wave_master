@@ -6,3 +6,7 @@ export * from './lib/utils';
 export * from './lib/audit-log-hash';
 export { InstanceDbModule } from './lib/instance-db.module';
 export { InstanceDbService, TenantDbService } from './lib/instance-db.service';
+export {
+  AvaProposalService,
+  BadStateTransitionException,
+} from './lib/ava-proposal';
