@@ -8,3 +8,6 @@ export * from './lib/roles.guard';
 export * from './lib/public.decorator';
 export * from './lib/permissions.decorator';
 export * from './lib/permissions.guard';
+export * from './lib/skip-maintenance-mode.decorator';
+export * from './lib/maintenance-mode.interceptor';
+export * from './lib/maintenance-mode.module';

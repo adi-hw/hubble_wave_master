@@ -37,6 +37,11 @@ import {
   CollectionDefinition,
 } from '@hubblewave/instance-db';
 import { parseYaml, validatePackManifest, verifyEd25519, sha256 } from '@hubblewave/packs';
+import { RedisService } from '@hubblewave/redis';
+import {
+  MAINTENANCE_MODE_FLAG_KEY,
+  MAINTENANCE_MODE_TTL_SECONDS,
+} from '@hubblewave/auth-guard';
 import * as unzipper from 'unzipper';
 import { randomUUID } from 'crypto';
 import { PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './packs.dto';
@@ -86,6 +91,7 @@ export class PacksService {
     private readonly insightsIngestService: InsightsIngestService,
     private readonly connectorsIngestService: ConnectorsIngestService,
     private readonly localizationIngestService: LocalizationIngestService,
+    private readonly redis: RedisService,
   ) {}
 
   async listReleases(query: PackReleaseQuery) {
@@ -116,6 +122,7 @@ export class PacksService {
     const lockHolder = randomUUID();
 
     await this.acquireLock(lockKey, lockHolder);
+    await this.setMaintenanceFlag();
 
     let releaseRecord: PackReleaseRecord | null = null;
     try {
@@ -196,6 +203,7 @@ export class PacksService {
       this.logger.error(message, (error as Error).stack);
       throw error;
     } finally {
+      await this.clearMaintenanceFlag();
       await this.releaseLock(lockKey, lockHolder);
     }
   }
@@ -214,6 +222,7 @@ export class PacksService {
     const lockHolder = randomUUID();
 
     await this.acquireLock(lockKey, lockHolder);
+    await this.setMaintenanceFlag();
 
     let rollbackRecord: PackReleaseRecord | null = null;
     try {
@@ -266,6 +275,7 @@ export class PacksService {
       this.logger.error(message, (error as Error).stack);
       throw error;
     } finally {
+      await this.clearMaintenanceFlag();
       await this.releaseLock(lockKey, lockHolder);
     }
   }
@@ -2054,6 +2064,43 @@ export class PacksService {
     const raw = this.configService.get<string>('PACK_INSTALL_LOCK_TTL_SECONDS') || '600';
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 600;
+  }
+
+  /**
+   * Sets the Redis maintenance-mode flag. The MaintenanceModeInterceptor
+   * (registered globally via MaintenanceModeModule in svc-metadata, svc-data,
+   * svc-automation, and svc-workflow) consults this flag on every
+   * state-changing request and returns 503 while it is set.
+   *
+   * The TTL provides a safety net: if this process crashes between setting
+   * the flag and the matching clearMaintenanceFlag() in finally{}, customer
+   * write traffic resumes after MAINTENANCE_MODE_TTL_SECONDS.
+   */
+  private async setMaintenanceFlag(): Promise<void> {
+    const ok = await this.redis.set(MAINTENANCE_MODE_FLAG_KEY, '1', MAINTENANCE_MODE_TTL_SECONDS);
+    if (!ok) {
+      // RedisService logs the underlying error. We surface a clear message
+      // here so the operator knows the install proceeded WITHOUT the
+      // read-only gate — concurrent writes during install may produce
+      // inconsistent state in this case.
+      this.logger.warn(
+        'Failed to set maintenance-mode Redis flag; pack install will proceed without read-only gate',
+      );
+    }
+  }
+
+  /**
+   * Clears the Redis maintenance-mode flag. Always called from a finally{}
+   * so that a failed install does not leave the instance permanently
+   * read-only (the TTL is a backstop, not the primary mechanism).
+   */
+  private async clearMaintenanceFlag(): Promise<void> {
+    const ok = await this.redis.del(MAINTENANCE_MODE_FLAG_KEY);
+    if (!ok) {
+      this.logger.warn(
+        `Failed to clear maintenance-mode Redis flag; will expire in ${MAINTENANCE_MODE_TTL_SECONDS}s`,
+      );
+    }
   }
 
   private parseAssetContent(type: string, raw: string): Record<string, unknown> {
