@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -49,6 +53,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       enableCaching: true,
     }),
     RedisModule.forRoot(),
+    MaintenanceModeModule,
     AutomationModule,
     IntegrationModule,
     AVAModule,

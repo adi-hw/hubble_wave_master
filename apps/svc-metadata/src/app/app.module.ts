@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -13,6 +17,7 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
 } from '@hubblewave/instance-db';
+import { RedisModule } from '@hubblewave/redis';
 import { ModuleController } from './module.controller';
 import { ModuleService } from './module.service';
 import { ModelRegistryService } from './model-registry.service';
@@ -50,6 +55,8 @@ import { ChangePackageModule } from './change-packages/change-package.module';
     InstanceDbModule,
     AuthGuardModule,
     GlobalGuardsModule,
+    RedisModule.forRoot(),
+    MaintenanceModeModule,
     EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({

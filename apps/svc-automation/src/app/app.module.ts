@@ -1,8 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
 import { AutomationModule } from '@hubblewave/automation';
 import { AuthorizationModule } from '@hubblewave/authorization';
+import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
 
@@ -11,6 +16,8 @@ import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
     ConfigModule.forRoot({ isGlobal: true }),
     AuthGuardModule,
     GlobalGuardsModule,
+    RedisModule.forRoot(),
+    MaintenanceModeModule,
     AutomationModule,
     AuthorizationModule.forInstance(),
     AutomationRuntimeModule,
