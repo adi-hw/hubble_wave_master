@@ -1,0 +1,43 @@
+# Production overrides for the HubbleWave Control Plane chart.
+
+environment: production
+
+config:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  CONTROL_PLANE_URL: https://control.hubblewave.com
+  CONTROL_PLANE_CORS_ORIGINS: https://control.hubblewave.com,https://hubblewave.com
+
+api:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+web:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+ingress:
+  enabled: true
+  api:
+    host: api.hubblewave.com
+    tlsSecret: control-plane-api-tls
+  web:
+    host: control.hubblewave.com
+    tlsSecret: control-plane-web-tls

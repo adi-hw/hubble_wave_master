@@ -1,0 +1,35 @@
+HubbleWave Control Plane has been deployed.
+
+Release:     {{ .Release.Name }}
+Namespace:   {{ .Release.Namespace }}
+Environment: {{ .Values.environment }}
+API image:   {{ include "control-plane.image" (dict "root" . "component" .Values.api.image.component) }}
+Web image:   {{ include "control-plane.image" (dict "root" . "component" .Values.web.image.component) }}
+
+Verify the rollout:
+
+  kubectl rollout status deployment/{{ .Values.api.name }} -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/{{ .Values.web.name }} -n {{ .Release.Namespace }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress hosts (TLS terminated at the controller):
+
+  - https://{{ .Values.ingress.api.host }}/api/health
+  - https://{{ .Values.ingress.web.host }}/
+{{- else }}
+
+Ingress is disabled. Reach the services in-cluster at:
+
+  - {{ .Values.api.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.api.service.port }}
+  - {{ .Values.web.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.web.service.port }}
+{{- end }}
+
+Secret management:
+  - secrets.create=true is suitable for CD pipelines passing values via --set-string.
+  - For production, prefer secrets.create=false and supply secrets.existingSecret
+    populated by an external-secrets controller or SealedSecret.
+
+Rollback:
+
+  helm rollback {{ .Release.Name }} <revision> --namespace {{ .Release.Namespace }}

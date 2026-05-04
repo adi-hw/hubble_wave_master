@@ -4,6 +4,12 @@
 dist
 tmp
 out-tsc
+libs/**/*.js
+libs/**/*.js.map
+migrations/**/*.js
+migrations/**/*.js.map
+scripts/*.js
+scripts/*.js.map
 
 # dependencies
 node_modules
@@ -45,17 +51,30 @@ Thumbs.db
 
 vite.config.*.timestamp*
 # Environment files (NEVER commit secrets!)
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
+!.env.production.example
+**/*.env.backup
 apps/**/.env
 libs/**/.env
 **/secrets.json
 **/credentials.json
 
+# Reference PDFs (ServiceNow docs) — sit alongside the repo for offline
+# reading but must never be committed (100MB+ each).
+servicenow-*.pdf
+**/servicenow-*.pdf
+
+# Local Claude Code settings (machine-local, never committed)
+.claude/settings.local.json
+.claude/*.local.md
+.claude/worktrees/
+
 # Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
+**/*.tfvars
+!**/*.tfvars.example
 tools/terraform/terraform.exe
 infrastructure/terraform/environments/*/.terraform/

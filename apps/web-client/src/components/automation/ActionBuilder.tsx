@@ -39,7 +39,7 @@ interface ActionTypeOption {
   configFields: Array<{
     key: string;
     label: string;
-    type: 'property' | 'value' | 'text' | 'select' | 'formula';
+    type: 'property' | 'value' | 'text' | 'select' | 'formula' | 'json' | 'string-array';
     options?: Array<{ value: string; label: string }>;
     placeholder?: string;
   }>;
@@ -83,8 +83,16 @@ const ACTION_TYPES: ActionTypeOption[] = [
     icon: 'N',
     configFields: [
       { key: 'templateCode', label: 'Template Code', type: 'text', placeholder: 'notification_template_code' },
-      { key: 'recipients', label: 'Recipients', type: 'text', placeholder: 'user_id_1, user_id_2' },
-      { key: 'data', label: 'Data (JSON)', type: 'text', placeholder: '{\"recordId\": \"@record.id\"}' },
+      // recipients: catalog requires `string[]`; the editor accepts a
+      // comma-separated entry for ergonomics and commits the parsed
+      // array on change so the backend doesn't see a raw string.
+      { key: 'recipients', label: 'Recipients', type: 'string-array', placeholder: 'user_id_1, user_id_2' },
+      // data: catalog requires `Record<string, unknown>`. JSON is
+      // parsed on each keystroke; valid JSON commits an object,
+      // invalid JSON keeps the raw string locally so the user can
+      // continue editing without losing keystrokes (resolveRecord
+      // tolerates both — see action-handler.service.ts).
+      { key: 'data', label: 'Data (JSON)', type: 'json', placeholder: '{"recordId": "@record.id"}' },
     ],
   },
   {
@@ -94,7 +102,7 @@ const ACTION_TYPES: ActionTypeOption[] = [
     icon: 'W',
     configFields: [
       { key: 'workflowId', label: 'Workflow ID', type: 'text', placeholder: 'workflow_id' },
-      { key: 'inputs', label: 'Inputs (JSON)', type: 'text', placeholder: '{\"recordId\": \"@record.id\"}' },
+      { key: 'inputs', label: 'Inputs (JSON)', type: 'json', placeholder: '{"recordId": "@record.id"}' },
     ],
   },
   {
@@ -103,8 +111,13 @@ const ACTION_TYPES: ActionTypeOption[] = [
     description: 'Create a new record in a collection',
     icon: '+',
     configFields: [
-      { key: 'collectionId', label: 'Collection', type: 'text' },
-      { key: 'values', label: 'Values (JSON)', type: 'text' },
+      // The runtime dispatcher reads collectionCode (canonical
+      // BUILT_IN_AUTOMATION_ACTIONS contract); legacy rows used
+      // `collection`. Either is accepted at execute time. The earlier
+      // `collectionId` field had no consumer, so UI-authored
+      // CreateRecord rules persisted with no resolvable target.
+      { key: 'collectionCode', label: 'Collection code', type: 'text' },
+      { key: 'values', label: 'Values (JSON)', type: 'json' },
     ],
   },
   {
@@ -131,6 +144,48 @@ const ACTION_TYPES: ActionTypeOption[] = [
 
 function generateId(): string {
   return `act_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Stores a JSON-shaped action config field as the parsed object when
+ * the textarea contents are valid JSON, or the raw string otherwise.
+ * Mirrors the Phase 3.6 MakeDecisionConfig pattern: valid JSON
+ * commits an object so the runtime sees `Record<string, unknown>`;
+ * invalid intermediate states stay as strings so the user can keep
+ * editing. The svc-data action handler's `resolveRecord` tolerates
+ * both shapes (try-parses strings).
+ */
+function commitJsonField(raw: string): unknown {
+  if (raw.trim() === '') return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function renderJsonField(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Commits a comma-separated input as a `string[]` so the runtime
+ * receives the catalog-shaped recipients array (was a raw comma
+ * string, which failed `NotificationOutboxProcessor` validation).
+ */
+function commitStringArray(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function renderStringArray(value: unknown): string {
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'string') return value;
+  return '';
 }
 
 export const ActionBuilder: React.FC<ActionBuilderProps> = ({
@@ -254,6 +309,42 @@ export const ActionBuilder: React.FC<ActionBuilderProps> = ({
               onChange={(e) => handleUpdateAction(actionIndex, field.key, e.target.value)}
               placeholder={field.placeholder}
               className="w-full px-3 py-1.5 text-sm rounded border border-border bg-card text-foreground font-mono focus:outline-none focus:ring-2"
+            />
+          </div>
+        );
+
+      case 'json':
+        return (
+          <div key={field.key} className="flex-[2]">
+            <label className="block text-xs font-medium mb-1 text-muted-foreground">
+              {field.label}
+            </label>
+            <textarea
+              value={renderJsonField(value)}
+              onChange={(e) =>
+                handleUpdateAction(actionIndex, field.key, commitJsonField(e.target.value))
+              }
+              placeholder={field.placeholder}
+              rows={3}
+              className="w-full px-3 py-1.5 text-sm rounded border border-border bg-card text-foreground font-mono focus:outline-none focus:ring-2"
+            />
+          </div>
+        );
+
+      case 'string-array':
+        return (
+          <div key={field.key} className="flex-1">
+            <label className="block text-xs font-medium mb-1 text-muted-foreground">
+              {field.label}
+            </label>
+            <input
+              type="text"
+              value={renderStringArray(value)}
+              onChange={(e) =>
+                handleUpdateAction(actionIndex, field.key, commitStringArray(e.target.value))
+              }
+              placeholder={field.placeholder}
+              className="w-full px-3 py-1.5 text-sm rounded border border-border bg-card text-foreground focus:outline-none focus:ring-2"
             />
           </div>
         );

@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  NotImplementedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserPreference, PinnedNavigationItem } from '@hubblewave/instance-db';
@@ -12,6 +18,8 @@ import { v4 as uuidv4, validate as validateUuid } from 'uuid';
 
 @Injectable()
 export class PreferencesService {
+  private readonly logger = new Logger(PreferencesService.name);
+
   constructor(
     @InjectRepository(UserPreference)
     private readonly prefRepo: Repository<UserPreference>,
@@ -297,32 +305,31 @@ export class PreferencesService {
   // ============================================================================
 
   /**
-   * Sync preferences from another device
+   * Sync preferences from another device.
+   *
+   * Cross-device sync requires the platform to validate that `deviceId` is
+   * owned by the requesting user — otherwise an attacker can pin sync state
+   * to a device they do not control. The user-device registry is not yet
+   * available in this instance, so the endpoint fails closed with
+   * NotImplementedException rather than silently accepting an unverified
+   * deviceId.
    */
   async syncPreferences(
     userId: string,
     deviceId: string,
-    fromVersion?: number,
+    _fromVersion?: number,
   ): Promise<{
     preferences: UserPreferencesResponse;
     hasChanges: boolean;
     currentVersion: number;
   }> {
     this.ensureUserId(userId);
-    const pref = await this.getOrCreate(userId);
-
-    const hasChanges = fromVersion ? pref.preferenceVersion > fromVersion : true;
-
-    // Update sync metadata
-    pref.lastSyncDevice = deviceId;
-    pref.lastSyncedAt = new Date();
-    await this.prefRepo.save(pref);
-
-    return {
-      preferences: this.toResponse(pref),
-      hasChanges,
-      currentVersion: pref.preferenceVersion,
-    };
+    this.logger.warn(
+      `Preferences sync attempted by user ${userId} for device ${deviceId} but no user-device registry is wired; refusing to accept unverified deviceId.`,
+    );
+    throw new NotImplementedException(
+      'Preference sync is unavailable: device validation infrastructure is not configured for this instance.',
+    );
   }
 
   /**

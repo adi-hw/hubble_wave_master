@@ -94,8 +94,8 @@ export const uiService = {
     try {
       const res = await uiApi.get<ThemeResponse>('/ui/theme');
       return res.data;
-    } catch (error) {
-      console.warn('Falling back to default theme tokens', error);
+    } catch {
+      // Theme fetch failed - use fallback theme
       return fallbackTheme;
     }
   },
@@ -103,8 +103,8 @@ export const uiService = {
     try {
       const res = await uiApi.get<NavigationResponse>('/ui/navigation');
       return res.data;
-    } catch (error) {
-      console.warn('Falling back to default navigation', error);
+    } catch {
+      // Navigation fetch failed - use fallback navigation
       return fallbackNavigation;
     }
   },

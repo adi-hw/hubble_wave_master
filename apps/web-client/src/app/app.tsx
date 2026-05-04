@@ -40,6 +40,13 @@ import {
   AuditExplorerPage,
 } from '../features/admin';
 
+// App Studio — Application registry (Phase 0 Slice B) + TableBuilder shell (Phase 1 Slice A)
+import {
+  AppStudioHome,
+  ApplicationDetailPage,
+} from '../features/admin/applications';
+import { TableBuilder } from './app-studio/table-builder';
+
 
 
 // Data pages (Schema Engine runtime)
@@ -53,6 +60,17 @@ import { AutomationLogsPage } from '../features/automation/AutomationLogsPage';
 // Process Flow pages
 import { ProcessFlowsListPage } from '../features/process-flow/ProcessFlowsListPage';
 import { ProcessFlowEditorPage } from '../features/process-flow/ProcessFlowEditorPage';
+
+// Workspace pages (Phase 5)
+import { WorkspaceBuilder } from './app-studio/workspace-builder/WorkspaceBuilder';
+import { WorkspacesListPage } from './app-studio/workspace-builder/WorkspacesListPage';
+import { WorkspaceRenderer } from './workspace/WorkspaceRenderer';
+
+// Change Packages (Phase 6)
+import { ChangePackageManager } from './app-studio/change-packages/ChangePackageManager';
+import { DecisionTableEditor } from './app-studio/decision-tables/DecisionTableEditor';
+import { GuidedProcessEditor } from './app-studio/guided-processes/GuidedProcessEditor';
+import { ChangePackageDiff } from './app-studio/change-packages/ChangePackageDiff';
 
 // Integration pages
 import { ApiExplorerPage } from '../features/integration/ApiExplorerPage';
@@ -121,6 +139,70 @@ export function App() {
             element={
               <ProtectedRoute roles="admin">
                 <AdminDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* App Studio — Application registry */}
+          <Route
+            path="/studio/apps"
+            element={
+              <ProtectedRoute roles="admin">
+                <AppStudioHome />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/apps/:id"
+            element={
+              <ProtectedRoute roles="admin">
+                <ApplicationDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Phase 1 Slice A — TableBuilder shell at /studio/c/:code/:tab.
+              Canonical Studio entry per ADR-11; supersedes the Slice-B
+              redirector. Tab content adapts existing pages via
+              useStudioCollectionId(); id-based routes below remain
+              for deep-editor surfaces and bookmarked direct links. */}
+          {/* App Studio tab shell accepts admin role OR any of the
+              per-feature metadata.* edit slugs (ADR-12). The shell
+              itself negotiates per-tab availability via TAB_REGISTRY's
+              getTabAvailability — a delegated user with only
+              metadata.forms.edit lands on the shell and sees Forms
+              enabled while other tabs render disabled. */}
+          <Route
+            path="/studio/c/:code"
+            element={
+              <ProtectedRoute
+                anyPermission={[
+                  'metadata.collections.edit',
+                  'metadata.properties.edit',
+                  'metadata.forms.edit',
+                  'metadata.policies.edit',
+                  'metadata.flows.edit',
+                  'collection.read',
+                ]}
+              >
+                <TableBuilder />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/c/:code/:tab"
+            element={
+              <ProtectedRoute
+                anyPermission={[
+                  'metadata.collections.edit',
+                  'metadata.properties.edit',
+                  'metadata.forms.edit',
+                  'metadata.policies.edit',
+                  'metadata.flows.edit',
+                  'collection.read',
+                ]}
+              >
+                <TableBuilder />
               </ProtectedRoute>
             }
           />
@@ -301,7 +383,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
                 <AutomationsListPage />
               </ProtectedRoute>
             }
@@ -309,7 +391,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations/new"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute permissions="metadata.flows.edit">
                 <AutomationEditorPage />
               </ProtectedRoute>
             }
@@ -317,8 +399,16 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations/:automationId"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute permissions="metadata.flows.edit">
                 <AutomationEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/collections/:id/automation-logs"
+            element={
+              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
+                <AutomationLogsPage />
               </ProtectedRoute>
             }
           />
@@ -397,7 +487,7 @@ export function App() {
           <Route
             path="/process-flows"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
                 <ProcessFlowsListPage />
               </ProtectedRoute>
             }
@@ -405,7 +495,7 @@ export function App() {
           <Route
             path="/process-flows/new"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute permissions="metadata.flows.edit">
                 <ProcessFlowEditorPage />
               </ProtectedRoute>
             }
@@ -413,8 +503,100 @@ export function App() {
           <Route
             path="/process-flows/:id"
             element={
-              <ProtectedRoute roles="admin">
+              <ProtectedRoute permissions="metadata.flows.edit">
                 <ProcessFlowEditorPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Decision Table Editor (§15.1 visual editor — deferred slice resolved) */}
+          <Route
+            path="/decision-tables/new"
+            element={
+              <ProtectedRoute permissions="metadata.flows.edit">
+                <DecisionTableEditor />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/decision-tables/:id"
+            element={
+              <ProtectedRoute permissions="metadata.flows.edit">
+                <DecisionTableEditor />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Guided Process Editor (§15.1 visual editor — deferred slice resolved) */}
+          <Route
+            path="/guided-processes/new"
+            element={
+              <ProtectedRoute permissions="metadata.flows.edit">
+                <GuidedProcessEditor />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/guided-processes/:id"
+            element={
+              <ProtectedRoute permissions="metadata.flows.edit">
+                <GuidedProcessEditor />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Workspace Builder (Phase 5) — list + per-workspace canvas
+              under the canonical /studio/* prefix (consistent with the
+              rest of App Studio). */}
+          <Route
+            path="/studio/workspaces"
+            element={
+              <ProtectedRoute permissions="metadata.workspaces.edit">
+                <WorkspacesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/studio/workspaces/:workspaceId"
+            element={
+              <ProtectedRoute permissions="metadata.workspaces.edit">
+                <WorkspaceBuilder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Workspace Runtime (Phase 5) */}
+          <Route
+            path="/workspace/:wsCode"
+            element={
+              <ProtectedRoute>
+                <WorkspaceRenderer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/:wsCode/record/:collectionCode/:recordId"
+            element={
+              <ProtectedRoute>
+                <WorkspaceRenderer />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Change Packages (Phase 6) */}
+          <Route
+            path="/app-studio/change-packages"
+            element={
+              <ProtectedRoute permissions="metadata.change-packages.edit">
+                <ChangePackageManager />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app-studio/change-packages/:id"
+            element={
+              <ProtectedRoute permissions="metadata.change-packages.edit">
+                <ChangePackageDiff />
               </ProtectedRoute>
             }
           />

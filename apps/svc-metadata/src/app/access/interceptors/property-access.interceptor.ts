@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
@@ -83,8 +84,14 @@ export class PropertyAccessInterceptor implements NestInterceptor {
 
       return data;
     } catch (error) {
-      this.logger.warn(`Failed to apply property access rules: ${error}`);
-      return data;
+      // Fail closed: if masking cannot be applied, refuse to return data rather
+      // than risk leaking sensitive properties to a user who should not see them.
+      const err = error as Error;
+      this.logger.error(
+        `Failed to apply property access rules for collection ${collectionId} / user ${user.id}: ${err.message}`,
+        err.stack,
+      );
+      throw new InternalServerErrorException('Property masking failed');
     }
   }
 

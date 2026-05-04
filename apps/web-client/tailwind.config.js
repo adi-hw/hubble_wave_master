@@ -1,4 +1,3 @@
-const { createGlobPatternsForDependencies } = require('@nx/react/tailwind');
 const { join } = require('path');
 
 const withOpacityValue = (variable) => {
@@ -14,8 +13,12 @@ const withOpacityValue = (variable) => {
 module.exports = {
   darkMode: ['class', '[data-theme="dark"]'],
   content: [
-    join(__dirname, '{src,pages,components,app}/**/*!(*.stories|*.spec).{ts,tsx,html}'),
-    ...createGlobPatternsForDependencies(__dirname),
+    // Web-client sources - use join() to ensure absolute paths
+    join(__dirname, 'src/**/*.{js,ts,jsx,tsx,html}'),
+    // Monorepo libs
+    join(__dirname, '../../libs/ui/src/**/*.{js,ts,jsx,tsx}'),
+    join(__dirname, '../../libs/shared-types/src/**/*.{js,ts,jsx,tsx}'),
+    join(__dirname, '../../libs/auth-guard/src/**/*.{js,ts,jsx,tsx}'),
   ],
   theme: {
     extend: {

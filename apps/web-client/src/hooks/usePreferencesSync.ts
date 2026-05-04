@@ -115,8 +115,8 @@ export function usePreferencesSync(options: UsePreferencesSyncOptions = {}) {
       const currentVersion = syncStateRef.current.lastSyncedVersion;
 
       return currentVersion !== null && versionInfo.version > currentVersion;
-    } catch (err) {
-      console.warn('Failed to check for preference updates:', err);
+    } catch {
+      // Preference version check failed - assume no updates
       return false;
     }
   }, []);

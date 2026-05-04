@@ -50,12 +50,13 @@ export class SessionService {
     // Simple user agent parsing without external dependency
     const ua = userAgent.toLowerCase();
 
-    // Determine device type
+    // Determine device type — check tablet patterns BEFORE mobile because
+    // iPad UAs contain "Mobile" (e.g., "Mobile/15E148 Safari/604.1").
     let deviceType: 'desktop' | 'mobile' | 'tablet' = 'desktop';
-    if (/mobile|android|iphone|ipod|blackberry|windows phone/i.test(ua)) {
-      deviceType = 'mobile';
-    } else if (/tablet|ipad/i.test(ua)) {
+    if (/tablet|ipad/i.test(ua)) {
       deviceType = 'tablet';
+    } else if (/mobile|android|iphone|ipod|blackberry|windows phone/i.test(ua)) {
+      deviceType = 'mobile';
     }
 
     // Parse browser
@@ -89,20 +90,24 @@ export class SessionService {
       osVersion = '10/11';
     } else if (/windows nt/i.test(ua)) {
       osName = 'Windows';
+    } else if (/android/i.test(ua)) {
+      // Android must be checked before Linux because Android UAs
+      // contain "Linux" (e.g., "Mozilla/5.0 (Linux; Android 13; ...)").
+      osName = 'Android';
+      const match = ua.match(/android (\d+)/);
+      if (match) osVersion = match[1];
+    } else if (/iphone|ipad|ipod/i.test(ua)) {
+      // iOS must be checked before macOS because iPhone/iPad UAs contain
+      // "Mac OS X" (e.g., "iPad; CPU OS 17_0 like Mac OS X").
+      osName = 'iOS';
+      const match = ua.match(/os (\d+)/);
+      if (match) osVersion = match[1];
     } else if (/mac os x/i.test(ua)) {
       osName = 'macOS';
       const match = ua.match(/mac os x (\d+[._]\d+)/);
       if (match) osVersion = match[1].replace('_', '.');
     } else if (/linux/i.test(ua)) {
       osName = 'Linux';
-    } else if (/android/i.test(ua)) {
-      osName = 'Android';
-      const match = ua.match(/android (\d+)/);
-      if (match) osVersion = match[1];
-    } else if (/iphone|ipad|ipod/i.test(ua)) {
-      osName = 'iOS';
-      const match = ua.match(/os (\d+)/);
-      if (match) osVersion = match[1];
     }
 
     return {

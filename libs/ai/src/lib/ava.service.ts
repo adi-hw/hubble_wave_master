@@ -718,8 +718,11 @@ export class AVAService {
   }
 
   private buildGroundedAnswer(answer: string, sources: AVASource[]): string {
+    // Allow responses without sources for general queries
+    // AVA can answer platform questions, provide help, and have general conversations
+    // Only add source citations when we have relevant documents
     if (sources.length === 0) {
-      return 'I do not have enough grounded information to answer that yet. Please provide more context or point me to a record, collection, or knowledge article.';
+      return answer;
     }
 
     if (answer.includes('[Source:')) {

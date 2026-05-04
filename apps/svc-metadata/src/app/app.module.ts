@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -13,6 +17,7 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
 } from '@hubblewave/instance-db';
+import { RedisModule } from '@hubblewave/redis';
 import { ModuleController } from './module.controller';
 import { ModuleService } from './module.service';
 import { ModelRegistryService } from './model-registry.service';
@@ -37,18 +42,35 @@ import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
 import { SearchModule } from './search/search.module';
 import { LocalizationModule } from './localization/localization.module';
+import { ApplicationModule } from './application/application.module';
+import { PublishImpactModule } from './publish-impact/publish-impact.module';
+import { DisplayRuleModule } from './display-rules/display-rule.module';
+import { DecisionTableModule } from './decision-tables/decision-table.module';
+import { GuidedProcessModule } from './guided-processes/guided-process.module';
+import { WorkspaceModule } from './workspaces/workspace.module';
+import { ChangePackageModule } from './change-packages/change-package.module';
 
 @Module({
   imports: [
     InstanceDbModule,
     AuthGuardModule,
+    GlobalGuardsModule,
+    RedisModule.forRoot(),
+    MaintenanceModeModule,
     EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,
     }),
+    ApplicationModule,
     PropertyModule,
     AccessModule,
+    PublishImpactModule,
+    DisplayRuleModule,
+    DecisionTableModule,
+    GuidedProcessModule,
+    WorkspaceModule,
+    ChangePackageModule,
     ThemeModule,
     PreferencesModule,
     ViewModule,

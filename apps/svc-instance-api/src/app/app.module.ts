@@ -6,8 +6,8 @@ import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { InstanceDbModule, CollectionAccessRule, PropertyAccessRule, PackReleaseRecord } from '@hubblewave/instance-db';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { InstanceDbModule, CollectionAccessRule, PropertyAccessRule } from '@hubblewave/instance-db';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -15,8 +15,6 @@ import {
 } from '@hubblewave/authorization';
 import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
-import { PacksController } from './packs/packs.controller';
-import { PacksService } from './packs/packs.service';
 import { IdentityModule } from './identity/identity.module';
 
 @Module({
@@ -32,7 +30,8 @@ import { IdentityModule } from './identity/identity.module';
     }),
     InstanceDbModule,
     AuthGuardModule,
-    TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule, PackReleaseRecord]),
+    GlobalGuardsModule,
+    TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,
     }),
@@ -43,7 +42,6 @@ import { IdentityModule } from './identity/identity.module';
   ],
   controllers: [
     HealthController,
-    PacksController,
   ],
   providers: [
     {
@@ -60,7 +58,6 @@ import { IdentityModule } from './identity/identity.module';
       useFactory: (repo: Repository<PropertyAccessRule>) => repo,
       inject: [getRepositoryToken(PropertyAccessRule)],
     },
-    PacksService,
   ],
 })
 export class AppModule implements NestModule {

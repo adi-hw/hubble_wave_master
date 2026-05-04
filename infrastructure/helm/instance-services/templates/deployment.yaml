@@ -1,0 +1,82 @@
+{{- $root := . -}}
+{{- $defaults := .Values.defaults -}}
+{{- range $svc := .Values.services }}
+{{- $replicas := default $defaults.replicaCount $svc.replicaCount -}}
+{{- $resources := default $defaults.resources $svc.resources -}}
+{{- $autoscaling := default $defaults.autoscaling $svc.autoscaling -}}
+{{- $readinessPath := default $defaults.readinessProbePath $svc.readinessProbePath -}}
+{{- $livenessPath := default $defaults.livenessProbePath $svc.livenessProbePath -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.name }}
+  labels:
+    {{- include "instance-services.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $svc.name }}
+spec:
+  {{- if not $autoscaling.enabled }}
+  replicas: {{ $replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "instance-services.serviceSelector" (dict "root" $root "service" $svc) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "instance-services.serviceSelector" (dict "root" $root "service" $svc) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+        {{- if $root.Values.secrets.create }}
+        checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $root.Values.serviceAccount.name }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      {{- with $root.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $svc.name }}
+          image: {{ include "instance-services.image" (dict "root" $root "service" $svc) }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "instance-services.fullname" $root }}-config
+            - secretRef:
+                name: {{ include "instance-services.secretName" $root }}
+          resources:
+            {{- toYaml $resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ $readinessPath }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ $livenessPath }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

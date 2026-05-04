@@ -78,8 +78,8 @@ export function AISearchBar({
           setResults(data.results || []);
           setSelectedIndex(-1);
         }
-      } catch (error) {
-        console.error('Search failed:', error);
+      } catch {
+        // Search failed - results remain empty
       } finally {
         setIsLoading(false);
       }

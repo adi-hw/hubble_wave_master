@@ -5,10 +5,11 @@
  * Manages external connectors and data synchronization.
  */
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, LessThan } from 'typeorm';
+import { DataSource, EntityManager, Repository, LessThan } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { validateOutboundUrl as validateOutboundUrlCentral } from '@hubblewave/integrations';
 import { AuthorizationService } from '@hubblewave/authorization';
 import {
   ExternalConnector,
@@ -24,11 +25,24 @@ import {
   SyncRunStatus,
   CollectionDefinition,
   PropertyDefinition,
-  AuditLog,
+  withAudit,
 } from '@hubblewave/instance-db';
 import { ConnectorCredentialsService } from './connector-credentials.service';
 import { EventOutboxService } from '../events/event-outbox.service';
 import { RequestContext } from '@hubblewave/auth-guard';
+
+/**
+ * Wraps the platform-wide URL validator so connector errors surface as
+ * `BadRequestException` with the connector-specific message prefix.
+ */
+function validateOutboundUrl(rawUrl: string): URL {
+  try {
+    return validateOutboundUrlCentral(rawUrl);
+  } catch (err) {
+    const detail = (err as Error).message.replace(/^Outbound URL invalid:\s*/, '');
+    throw new BadRequestException(`Connector source url invalid: ${detail}`);
+  }
+}
 
 interface CreateConnectionDto {
   connectorId: string;
@@ -93,8 +107,6 @@ export class ConnectorService {
     private readonly collectionRepo: Repository<CollectionDefinition>,
     @InjectRepository(PropertyDefinition)
     private readonly propertyRepo: Repository<PropertyDefinition>,
-    @InjectRepository(AuditLog)
-    private readonly auditRepo: Repository<AuditLog>,
     @InjectRepository(SyncConfiguration)
     private readonly syncConfigRepo: Repository<SyncConfiguration>,
     @InjectRepository(SyncRun)
@@ -456,36 +468,42 @@ export class ConnectorService {
       await this.syncConfigRepo.save(config);
     }
 
-    const run = this.syncRunRepo.create({
-      configurationId: configId,
-      status: 'running' as SyncRunStatus,
-      direction: config.direction,
-      recordsProcessed: 0,
-      recordsCreated: 0,
-      recordsUpdated: 0,
-      recordsDeleted: 0,
-      recordsSkipped: 0,
-      recordsFailed: 0,
-      conflictsDetected: 0,
-      conflictsResolved: 0,
-      log: [],
-    });
-
-    const savedRun = await this.syncRunRepo.save(run);
-
     const targetCollectionCode = config.mapping?.targetCollectionId
       ? (await this.getCollectionById(config.mapping.targetCollectionId)).code
       : null;
 
-    await this.writeAuditLog({
-      collectionCode: targetCollectionCode,
-      recordId: null,
-      action: 'connector.sync.run.start',
-      newValues: {
-        runId: savedRun.id,
-        configurationId: config.id,
-        connectionId: config.connectionId,
-      },
+    const savedRun = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const runRepo = mgr.getRepository(SyncRun);
+      const run = runRepo.create({
+        configurationId: configId,
+        status: 'running' as SyncRunStatus,
+        direction: config.direction,
+        recordsProcessed: 0,
+        recordsCreated: 0,
+        recordsUpdated: 0,
+        recordsDeleted: 0,
+        recordsSkipped: 0,
+        recordsFailed: 0,
+        conflictsDetected: 0,
+        conflictsResolved: 0,
+        log: [],
+      });
+
+      const persisted = await runRepo.save(run);
+
+      recordAudit({
+        userId: this.systemUserId,
+        collectionCode: targetCollectionCode,
+        recordId: null,
+        action: 'connector.sync.run.start',
+        newValues: {
+          runId: persisted.id,
+          configurationId: config.id,
+          connectionId: config.connectionId,
+        },
+      });
+
+      return persisted;
     });
 
     this.executeSyncRun(savedRun, config);
@@ -521,8 +539,6 @@ export class ConnectorService {
 
       this.addLogEntry(run, 'info', `Sync completed: ${run.recordsProcessed} records processed`);
 
-      await this.syncRunRepo.save(run);
-
       config.lastRunAt = new Date();
       config.runCount++;
       config.successCount++;
@@ -530,24 +546,30 @@ export class ConnectorService {
       if (config.schedule) {
         config.nextRunAt = this.calculateNextRun(config.schedule);
       }
-      await this.syncConfigRepo.save(config);
 
       const targetCollectionCode = mapping?.targetCollectionId
         ? (await this.getCollectionById(mapping.targetCollectionId)).code
         : null;
-      await this.writeAuditLog({
-        collectionCode: targetCollectionCode,
-        recordId: null,
-        action: 'connector.sync.run.completed',
-        newValues: {
-          runId: run.id,
-          configurationId: config.id,
-          connectionId: config.connectionId,
-          processed: run.recordsProcessed,
-          created: run.recordsCreated,
-          updated: run.recordsUpdated,
-          failed: run.recordsFailed,
-        },
+
+      await withAudit(this.dataSource, async (mgr, recordAudit) => {
+        await mgr.getRepository(SyncRun).save(run);
+        await mgr.getRepository(SyncConfiguration).save(config);
+
+        recordAudit({
+          userId: this.systemUserId,
+          collectionCode: targetCollectionCode,
+          recordId: null,
+          action: 'connector.sync.run.completed',
+          newValues: {
+            runId: run.id,
+            configurationId: config.id,
+            connectionId: config.connectionId,
+            processed: run.recordsProcessed,
+            created: run.recordsCreated,
+            updated: run.recordsUpdated,
+            failed: run.recordsFailed,
+          },
+        });
       });
 
       this.eventEmitter.emit('sync.completed', { runId: run.id, configId: config.id });
@@ -561,8 +583,6 @@ export class ConnectorService {
 
       this.addLogEntry(run, 'error', `Sync failed: ${err.message}`);
 
-      await this.syncRunRepo.save(run);
-
       const configToUpdate = await this.findSyncConfigById(run.configurationId);
       if (configToUpdate) {
         configToUpdate.lastRunAt = new Date();
@@ -571,24 +591,32 @@ export class ConnectorService {
         const retryPlan = this.planRetry(configToUpdate, new Date());
         configToUpdate.metadata = retryPlan.metadata;
         configToUpdate.nextRunAt = retryPlan.nextRunAt;
-        await this.syncConfigRepo.save(configToUpdate);
 
         const targetCollectionCode = configToUpdate.mapping?.targetCollectionId
           ? (await this.getCollectionById(configToUpdate.mapping.targetCollectionId)).code
           : null;
-        await this.writeAuditLog({
-          collectionCode: targetCollectionCode,
-          recordId: null,
-          action: 'connector.sync.run.failed',
-          newValues: {
-            runId: run.id,
-            configurationId: configToUpdate.id,
-            connectionId: configToUpdate.connectionId,
-            processed: run.recordsProcessed,
-            failed: run.recordsFailed,
-            error: err.message,
-          },
+
+        await withAudit(this.dataSource, async (mgr, recordAudit) => {
+          await mgr.getRepository(SyncRun).save(run);
+          await mgr.getRepository(SyncConfiguration).save(configToUpdate);
+
+          recordAudit({
+            userId: this.systemUserId,
+            collectionCode: targetCollectionCode,
+            recordId: null,
+            action: 'connector.sync.run.failed',
+            newValues: {
+              runId: run.id,
+              configurationId: configToUpdate.id,
+              connectionId: configToUpdate.connectionId,
+              processed: run.recordsProcessed,
+              failed: run.recordsFailed,
+              error: err.message,
+            },
+          });
         });
+      } else {
+        await this.syncRunRepo.save(run);
       }
 
       this.eventEmitter.emit('sync.failed', { runId: run.id, error: err.message });
@@ -666,6 +694,7 @@ export class ConnectorService {
     if (!url) {
       throw new Error('Sync source config must include a url');
     }
+    validateOutboundUrl(url);
 
     const method = (source.method as string | undefined)?.toUpperCase() || 'GET';
     const headers: Record<string, string> = {
@@ -858,13 +887,13 @@ export class ConnectorService {
         if (!updateAllowed) {
           return { action: 'skipped' };
         }
-        await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+        await this.authz.ensureCollectionAccess(context, collection.id, 'update');
         await this.updateRecord(collection, properties, existingId, values);
         return { action: 'updated' };
       }
     }
 
-    await this.authz.ensureTableAccess(context, collection.tableName, 'create');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'create');
     await this.createRecord(collection, properties, values);
     return { action: 'created' };
   }
@@ -928,43 +957,49 @@ export class ConnectorService {
       'table',
     )}`;
 
-    const result = await this.dataSource
-      .createQueryBuilder()
-      .insert()
-      .into(tableName)
-      .values(insertData)
-      .returning('id')
-      .execute();
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const result = await mgr
+        .createQueryBuilder()
+        .insert()
+        .into(tableName)
+        .values(insertData)
+        .returning('id')
+        .execute();
 
-    const recordId = result.identifiers[0]?.id as string | undefined;
-    if (!recordId) {
-      throw new Error('Failed to create normalized record');
-    }
+      const recordId = result.identifiers[0]?.id as string | undefined;
+      if (!recordId) {
+        throw new Error('Failed to create normalized record');
+      }
 
-    const record = await this.loadRecord(collection, properties, recordId);
-    if (!record) {
-      throw new Error('Normalized record could not be loaded');
-    }
+      const record = await this.loadRecordWithManager(mgr, collection, properties, recordId);
+      if (!record) {
+        throw new Error('Normalized record could not be loaded');
+      }
 
-    await this.writeAuditLog({
-      collectionCode: collection.code,
-      recordId,
-      action: 'connector.sync.create',
-      newValues: record,
-    });
+      recordAudit({
+        userId: this.systemUserId,
+        collectionCode: collection.code,
+        recordId,
+        action: 'connector.sync.create',
+        newValues: record,
+      });
 
-    await this.outboxService.enqueueRecordEvent({
-      eventType: 'record.created',
-      collectionCode: collection.code,
-      recordId,
-      record,
-      previousRecord: null,
-      changedProperties: Object.keys(record || {}),
-      userId: this.systemUserId,
-      metadata: {
-        source: 'connector',
-        collectionId: collection.id,
-      },
+      await this.outboxService.enqueueRecordEvent(
+        {
+          eventType: 'record.created',
+          collectionCode: collection.code,
+          recordId,
+          record,
+          previousRecord: null,
+          changedProperties: Object.keys(record || {}),
+          userId: this.systemUserId,
+          metadata: {
+            source: 'connector',
+            collectionId: collection.id,
+          },
+        },
+        mgr,
+      );
     });
   }
 
@@ -992,40 +1027,46 @@ export class ConnectorService {
       'table',
     )}`;
 
-    const previous = await this.loadRecord(collection, properties, recordId);
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const previous = await this.loadRecordWithManager(mgr, collection, properties, recordId);
 
-    await this.dataSource
-      .createQueryBuilder()
-      .update(tableName)
-      .set(updateData)
-      .where('id = :id', { id: recordId })
-      .execute();
+      await mgr
+        .createQueryBuilder()
+        .update(tableName)
+        .set(updateData)
+        .where('id = :id', { id: recordId })
+        .execute();
 
-    const updated = await this.loadRecord(collection, properties, recordId);
-    if (!updated) {
-      throw new Error('Updated record could not be loaded');
-    }
+      const updated = await this.loadRecordWithManager(mgr, collection, properties, recordId);
+      if (!updated) {
+        throw new Error('Updated record could not be loaded');
+      }
 
-    await this.writeAuditLog({
-      collectionCode: collection.code,
-      recordId,
-      action: 'connector.sync.update',
-      oldValues: previous,
-      newValues: updated,
-    });
+      recordAudit({
+        userId: this.systemUserId,
+        collectionCode: collection.code,
+        recordId,
+        action: 'connector.sync.update',
+        oldValues: previous,
+        newValues: updated,
+      });
 
-    await this.outboxService.enqueueRecordEvent({
-      eventType: 'record.updated',
-      collectionCode: collection.code,
-      recordId,
-      record: updated,
-      previousRecord: previous ?? null,
-      changedProperties: this.calculateChangedProperties(previous, updated),
-      userId: this.systemUserId,
-      metadata: {
-        source: 'connector',
-        collectionId: collection.id,
-      },
+      await this.outboxService.enqueueRecordEvent(
+        {
+          eventType: 'record.updated',
+          collectionCode: collection.code,
+          recordId,
+          record: updated,
+          previousRecord: previous ?? null,
+          changedProperties: this.calculateChangedProperties(previous, updated),
+          userId: this.systemUserId,
+          metadata: {
+            source: 'connector',
+            collectionId: collection.id,
+          },
+        },
+        mgr,
+      );
     });
   }
 
@@ -1074,9 +1115,18 @@ export class ConnectorService {
     properties: PropertyDefinition[],
     recordId: string,
   ): Promise<Record<string, unknown> | null> {
+    return this.loadRecordWithManager(this.dataSource.manager, collection, properties, recordId);
+  }
+
+  private async loadRecordWithManager(
+    mgr: EntityManager,
+    collection: CollectionDefinition,
+    properties: PropertyDefinition[],
+    recordId: string,
+  ): Promise<Record<string, unknown> | null> {
     const schema = this.ensureSafeIdentifier('public', 'schema');
     const table = this.ensureSafeIdentifier(collection.tableName, 'table');
-    const rows = (await this.dataSource.query(
+    const rows = (await mgr.query(
       `SELECT * FROM "${schema}"."${table}" WHERE id = $1`,
       [recordId],
     )) as Record<string, unknown>[];
@@ -1121,26 +1171,6 @@ export class ConnectorService {
       }
     }
     return changes;
-  }
-
-  private async writeAuditLog(params: {
-    collectionCode?: string | null;
-    recordId?: string | null;
-    action: string;
-    oldValues?: Record<string, unknown> | null;
-    newValues?: Record<string, unknown> | null;
-    permissionCode?: string | null;
-  }): Promise<void> {
-    const entry = this.auditRepo.create({
-      userId: this.systemUserId,
-      collectionCode: params.collectionCode ?? null,
-      recordId: params.recordId ?? null,
-      action: params.action,
-      oldValues: params.oldValues ?? null,
-      newValues: params.newValues ?? null,
-      permissionCode: params.permissionCode ?? null,
-    });
-    await this.auditRepo.save(entry);
   }
 
   private getStorageColumn(prop: PropertyDefinition): string {

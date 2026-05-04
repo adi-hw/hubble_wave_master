@@ -65,7 +65,8 @@ ARG TERRAFORM_SHA256=d117883fd98b960c5d0f012b0d4b21801e1aea985e26949c2d1ebb39af0
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
-RUN apk add --no-cache curl unzip \
+RUN apk add --no-cache curl unzip git python3 py3-pip \
+    && pip3 install --break-system-packages awscli \
     && curl -sSLo /tmp/terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
     && echo "${TERRAFORM_SHA256}  /tmp/terraform.zip" | sha256sum -c - \
     && unzip /tmp/terraform.zip -d /usr/local/bin \

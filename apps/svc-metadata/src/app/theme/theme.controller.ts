@@ -1,12 +1,16 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { ThemeService } from './theme.service';
 import { CreateThemeDto, UpdateThemeDto, UpdatePreferenceDto } from './theme.dto';
-import { CurrentUser, JwtAuthGuard, Roles } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, Public, Roles } from '@hubblewave/auth-guard';
 
 @Controller('themes')
 export class ThemeController {
   constructor(private readonly themeService: ThemeService) {}
 
+  // Theme catalog is platform-wide visual configuration that must render
+  // on the unauthenticated login page. Marked @Public so the JWT guard
+  // chain skips these reads.
+  @Public()
   @Get()
   async list() {
     return this.themeService.list();
@@ -16,16 +20,17 @@ export class ThemeController {
   // "preferences" being matched as :id and failing ParseUUIDPipe
   @UseGuards(JwtAuthGuard)
   @Get('preferences/me')
-  async getPref(@CurrentUser('id') userId: string) {
+  async getPref(@CurrentUser('userId') userId: string) {
     return this.themeService.getPreference(userId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('preferences/me')
-  async updatePref(@CurrentUser('id') userId: string, @Body() dto: UpdatePreferenceDto) {
+  async updatePref(@CurrentUser('userId') userId: string, @Body() dto: UpdatePreferenceDto) {
     return this.themeService.updatePreference(userId, dto);
   }
 
+  @Public()
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.themeService.findOne(id);
@@ -33,7 +38,7 @@ export class ThemeController {
 
   @Roles('admin')
   @Post()
-  async create(@Body() dto: CreateThemeDto, @CurrentUser('id') userId: string) {
+  async create(@Body() dto: CreateThemeDto, @CurrentUser('userId') userId: string) {
     return this.themeService.create(dto, userId);
   }
 

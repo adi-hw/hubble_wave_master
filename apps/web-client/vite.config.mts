@@ -5,6 +5,14 @@ import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 import { nxCopyAssetsPlugin } from '@nx/vite/plugins/nx-copy-assets.plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const rewriteDevSetCookieHeader = (setCookie: string | string[] | undefined) => {
+  if (!setCookie) return setCookie;
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return cookies.map((cookie) =>
+    cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
+  );
+};
+
 export default defineConfig(() => ({
   root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/apps/web-client',
@@ -12,39 +20,40 @@ export default defineConfig(() => ({
     port: 4200,
     // Allow access from any host (localhost, acme.localhost, etc.)
     host: true,
-    // Proxy API requests through dev server to avoid cross-origin cookie issues
-    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ava=3004
+    // Proxy API requests through dev server to avoid cross-origin cookie issues.
+    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ava=3004.
+    //
+    // Cookie Path/Domain rewrite rationale (dev-only):
+    // The identity and auth services set their cookies with service-scoped
+    // paths (e.g. Path=/api/identity, Path=/api/auth) and a backend-specific
+    // Domain. In dev the entire app runs on a single origin (localhost:4200)
+    // and React-Router pages need to read XSRF-TOKEN from any path, so we
+    // strip Domain= and widen Path to '/'. Production deployments terminate
+    // each service behind its own ingress route — they keep their natural
+    // service-scoped cookie paths and this rewrite is irrelevant.
     proxy: {
       // Service-prefixed routes (primary pattern)
       '/api/identity': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/identity/, '/api'),
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
-            if (setCookie) {
-              proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
-                cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
-              );
-            }
+            proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
       },
       '/api/data': {
         target: 'http://localhost:3002',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/data/, '/api'),
       },
       '/api/metadata': {
         target: 'http://localhost:3003',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/metadata/, '/api'),
       },
       '/api/ai': {
         target: 'http://localhost:3004',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/ai/, '/api'),
       },
       // Studio routes go to svc-data
       '/api/studio': {
@@ -59,36 +68,46 @@ export default defineConfig(() => ({
         rewrite: (path) => path.replace(/^\/api\/admin/, '/api/admin'),
       },
       // Direct API routes (for pages using simple /api/... paths)
-      // Collections & Properties & Themes → svc-metadata
+      // Applications, Collections, Properties, Themes → svc-metadata
+      '/api/applications': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
+      },
       '/api/collections': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/properties': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/themes': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/views': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/navigation/resolve': {
         target: 'http://localhost:3006',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api'),
+        rewrite: (path) =>
+          path.replace(/^\/api\/navigation\/resolve/, '/api/view-engine/navigation/resolve'),
       },
       '/api/navigation': {
         target: 'http://localhost:3003',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
       },
       '/api/view-engine': {
         target: 'http://localhost:3006',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/view-engine/, '/api'),
       },
       // User management & Auth → svc-identity
       '/api/tenant-users': {
@@ -101,11 +120,7 @@ export default defineConfig(() => ({
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
-            if (setCookie) {
-              proxyRes.headers['set-cookie'] = setCookie.map((cookie) =>
-                cookie.replace(/Path=\/[^;]*/i, 'Path=/').replace(/Domain=[^;]*/i, '')
-              );
-            }
+            proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
       },
@@ -117,6 +132,7 @@ export default defineConfig(() => ({
       '/api/ava': {
         target: 'http://localhost:3004',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
       '/api/workflows': {
         target: 'http://localhost:3007',
@@ -124,7 +140,10 @@ export default defineConfig(() => ({
         rewrite: (path) => path.replace(/^\/api\/workflows/, '/api/workflows'),
       },
       '/api/insights': {
-        target: 'http://localhost:3007',
+        // svc-insights runs on INSIGHTS_PORT (3009 per .env). Earlier
+        // mis-target sent these to 3007 (WORKFLOW_PORT) so workspace
+        // analytics calls landed on the wrong service in dev.
+        target: 'http://localhost:3009',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/insights/, '/api/insights'),
       },
@@ -137,8 +156,12 @@ export default defineConfig(() => ({
       '/api/phase7': {
         target: 'http://localhost:3004',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
     },
+  },
+  define: {
+    'process.env': {},
   },
   preview: {
     port: 4200,
@@ -149,64 +172,18 @@ export default defineConfig(() => ({
     nxViteTsPaths(),
     nxCopyAssetsPlugin(['*.md']),
     VitePWA({
+      // injectManifest compiles src/service-worker.ts as the source of truth.
+      // The hardened SW (auth-gated cache, CLEAR_USER_CACHE, notification URL
+      // validation) runs in production — generateSW would discard it.
+      strategies: 'injectManifest',
       registerType: 'autoUpdate',
+      srcDir: 'src',
+      filename: 'service-worker.ts',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: false, // Use our custom manifest.json
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\./i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /\/api\/(identity|data|metadata)\//i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'local-api-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 5, // 5 minutes
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-              },
-            },
-          },
-          {
-            urlPattern: /\.(woff|woff2|ttf|eot)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'fonts-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-            },
-          },
-        ],
       },
       devOptions: {
         enabled: false, // Disable in dev mode for easier debugging

@@ -227,9 +227,10 @@ export function DetailView<T extends Record<string, unknown>>({
             <ExternalLink className="w-3 h-3" />
           </a>
         );
-      case 'choice':
+      case 'choice': {
         const option = field.options?.find((o) => o.value === value);
         return option?.label || String(value);
+      }
       case 'reference':
         return (
           <span className="text-primary hover:underline cursor-pointer">

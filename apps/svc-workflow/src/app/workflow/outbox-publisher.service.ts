@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { InstanceEventOutbox } from '@hubblewave/instance-db';
 
 export type OutboxEventPayload = {
@@ -13,8 +13,8 @@ export type OutboxEventPayload = {
 export class OutboxPublisherService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async publish(event: OutboxEventPayload): Promise<void> {
-    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+  async publish(event: OutboxEventPayload, mgr?: EntityManager): Promise<void> {
+    const repo = (mgr ?? this.dataSource).getRepository(InstanceEventOutbox);
     const entry = repo.create({
       eventType: event.eventType,
       collectionCode: event.collectionCode ?? null,

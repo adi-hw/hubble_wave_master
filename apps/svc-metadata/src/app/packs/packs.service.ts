@@ -37,6 +37,11 @@ import {
   CollectionDefinition,
 } from '@hubblewave/instance-db';
 import { parseYaml, validatePackManifest, verifyEd25519, sha256 } from '@hubblewave/packs';
+import { RedisService } from '@hubblewave/redis';
+import {
+  MAINTENANCE_MODE_FLAG_KEY,
+  MAINTENANCE_MODE_TTL_SECONDS,
+} from '@hubblewave/auth-guard';
 import * as unzipper from 'unzipper';
 import { randomUUID } from 'crypto';
 import { PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './packs.dto';
@@ -86,6 +91,7 @@ export class PacksService {
     private readonly insightsIngestService: InsightsIngestService,
     private readonly connectorsIngestService: ConnectorsIngestService,
     private readonly localizationIngestService: LocalizationIngestService,
+    private readonly redis: RedisService,
   ) {}
 
   async listReleases(query: PackReleaseQuery) {
@@ -116,6 +122,7 @@ export class PacksService {
     const lockHolder = randomUUID();
 
     await this.acquireLock(lockKey, lockHolder);
+    await this.setMaintenanceFlag();
 
     let releaseRecord: PackReleaseRecord | null = null;
     try {
@@ -196,6 +203,7 @@ export class PacksService {
       this.logger.error(message, (error as Error).stack);
       throw error;
     } finally {
+      await this.clearMaintenanceFlag();
       await this.releaseLock(lockKey, lockHolder);
     }
   }
@@ -214,6 +222,7 @@ export class PacksService {
     const lockHolder = randomUUID();
 
     await this.acquireLock(lockKey, lockHolder);
+    await this.setMaintenanceFlag();
 
     let rollbackRecord: PackReleaseRecord | null = null;
     try {
@@ -266,6 +275,7 @@ export class PacksService {
       this.logger.error(message, (error as Error).stack);
       throw error;
     } finally {
+      await this.clearMaintenanceFlag();
       await this.releaseLock(lockKey, lockHolder);
     }
   }
@@ -343,7 +353,9 @@ export class PacksService {
           }
           if (asset.type === 'views') {
             objectId = await this.applyViewAsset(queryRunner.manager, parsed, {
+              packCode: manifest.pack.code,
               actorId: releaseRecord.appliedBy || undefined,
+              legacyPackOwnership: existingState?.packCode ?? null,
             });
           }
           if (asset.type === 'navigation') {
@@ -367,6 +379,7 @@ export class PacksService {
                 releaseId: manifest.pack.release_id,
                 actorId: releaseRecord.appliedBy || undefined,
                 existingObjectId: existingState?.objectId || null,
+                legacyPackOwnership: existingState?.packCode ?? null,
               },
             );
           }
@@ -379,6 +392,7 @@ export class PacksService {
                 releaseId: manifest.pack.release_id,
                 actorId: releaseRecord.appliedBy || undefined,
                 existingObjectId: existingState?.objectId || null,
+                legacyPackOwnership: existingState?.packCode ?? null,
               },
             );
           }
@@ -525,7 +539,11 @@ export class PacksService {
         if (revision.objectType === 'views') {
           if (previousRevision) {
             await this.applyViewAsset(queryRunner.manager, previousRevision.content, {
+              packCode: target.packCode,
               actorId: rollbackRecord.appliedBy || undefined,
+              // Rollback always operates on its own pack's rows; treat
+              // pre-Phase-6 source='custom' as legacy-owned by this pack.
+              legacyPackOwnership: state?.packCode ?? target.packCode,
             });
           } else {
             await this.deactivateViewAsset(queryRunner.manager, revision.content, {
@@ -566,6 +584,7 @@ export class PacksService {
               releaseId: target.packReleaseId,
               actorId: rollbackRecord.appliedBy || undefined,
               existingObjectId: state?.objectId || null,
+              legacyPackOwnership: state?.packCode ?? target.packCode,
             });
           } else {
             await this.deactivateAutomationAsset(queryRunner.manager, revision.content, {
@@ -581,6 +600,7 @@ export class PacksService {
               releaseId: target.packReleaseId,
               actorId: rollbackRecord.appliedBy || undefined,
               existingObjectId: state?.objectId || null,
+              legacyPackOwnership: state?.packCode ?? target.packCode,
             });
           } else {
             await this.deactivateWorkflowAsset(queryRunner.manager, revision.content, {
@@ -823,7 +843,18 @@ export class PacksService {
   private async applyViewAsset(
     manager: PackManager,
     content: Record<string, unknown>,
-    context: { actorId?: string }
+    context: {
+      packCode: string;
+      actorId?: string;
+      /**
+       * Pack code recorded in `pack_object_states` for this asset key.
+       * Authoritative legacy ownership signal — pre-Phase-6 view rows
+       * have `source='custom'` (the column default) but pack_object_states
+       * already knows who owns them. Without consulting it, a same-pack
+       * upgrade of a legacy view would throw as customer-authored.
+       */
+      legacyPackOwnership?: string | null;
+    }
   ): Promise<string | null> {
     const payloads = this.extractViewPayloads(content);
     if (payloads.length === 0) {
@@ -835,9 +866,12 @@ export class PacksService {
       const normalized = this.normalizeViewPayload(payload);
 
       const existing = await manager.findOne(ViewDefinition, { where: { code: normalized.code } });
+      if (existing) {
+        this.assertViewPackOwnership(existing, context.packCode, context.legacyPackOwnership);
+      }
       const definition = existing
-        ? await this.updateViewDefinition(manager, existing, normalized, context.actorId)
-        : await this.createViewDefinition(manager, normalized, context.actorId);
+        ? await this.updateViewDefinition(manager, existing, normalized, context.packCode, context.actorId)
+        : await this.createViewDefinition(manager, normalized, context.packCode, context.actorId);
 
       await this.ensureViewVariant(manager, definition, normalized.variant, context.actorId);
       await this.createViewRevision(manager, definition, normalized, context.actorId);
@@ -848,6 +882,89 @@ export class PacksService {
     }
 
     return payloads.length === 1 ? primaryId : null;
+  }
+
+  /**
+   * View ADR-7 ownership check. Mirrors `metadata-ingest.service.ts`'s
+   * `assertPackOwnership` for collections/properties: refuse to
+   * overwrite a row owned by `custom` or by a different pack.
+   *
+   * `legacyPackOwnership` is the pack code recorded in
+   * `pack_object_states` for this asset key. Pre-Phase-6 view rows
+   * default to `source='custom'` because the source column was added
+   * after they were installed. When pack_object_states already
+   * identifies this pack as owner, the row is treated as a legacy
+   * promotion and the install path rewrites `source` to canonical.
+   */
+  private assertViewPackOwnership(
+    view: ViewDefinition,
+    packCode: string,
+    legacyPackOwnership?: string | null,
+  ): void {
+    this.assertSourcedRowPackOwnership(
+      { source: view.source, identity: `View "${view.code}"` },
+      packCode,
+      legacyPackOwnership,
+    );
+  }
+
+  private assertAutomationPackOwnership(
+    rule: AutomationRule,
+    packCode: string,
+    legacyPackOwnership?: string | null,
+  ): void {
+    // Automation has TWO legacy ownership signals: pack_object_states
+    // (the canonical record, passed as `legacyPackOwnership`) and
+    // `metadata.packCode` (per-rule metadata stamped during pack
+    // creation). Promote on either match.
+    const expected = `pack:${packCode}`;
+    const source = rule.source && rule.source.length > 0 ? rule.source : 'custom';
+    if (source === expected) return;
+    if (legacyPackOwnership === packCode) return;
+    const legacyMetadata = (rule.metadata as { packCode?: string } | undefined)?.packCode;
+    if (legacyMetadata === packCode) return;
+    if (source === 'custom') {
+      throw new ConflictException(
+        `Automation "${rule.name}" is customer-authored (source=custom); pack "${packCode}" cannot overwrite a custom rule.`,
+      );
+    }
+    throw new ConflictException(
+      `Automation "${rule.name}" is owned by ${source}; pack "${packCode}" cannot overwrite a row owned by another pack.`,
+    );
+  }
+
+  private assertWorkflowPackOwnership(
+    flow: ProcessFlowDefinition,
+    packCode: string,
+    legacyPackOwnership?: string | null,
+  ): void {
+    this.assertSourcedRowPackOwnership(
+      { source: flow.source, identity: `Process Flow "${flow.code}"` },
+      packCode,
+      legacyPackOwnership,
+    );
+  }
+
+  private assertSourcedRowPackOwnership(
+    row: { source?: string | null; identity: string },
+    packCode: string,
+    legacyPackOwnership?: string | null,
+  ): void {
+    const expected = `pack:${packCode}`;
+    const source = row.source && row.source.length > 0 ? row.source : 'custom';
+    if (source === expected) return;
+    // Legacy promotion: pack_object_states already records this pack
+    // as owner. The save path rewrites `source` to canonical so the
+    // next pass sees the right value.
+    if (legacyPackOwnership === packCode) return;
+    if (source === 'custom') {
+      throw new ConflictException(
+        `${row.identity} is customer-authored (source=custom); pack "${packCode}" cannot overwrite a custom row.`,
+      );
+    }
+    throw new ConflictException(
+      `${row.identity} is owned by ${source}; pack "${packCode}" cannot overwrite a row owned by another pack.`,
+    );
   }
 
   private async applyNavigationAsset(
@@ -883,7 +1000,14 @@ export class PacksService {
   private async applyAutomationAsset(
     manager: PackManager,
     content: Record<string, unknown>,
-    context: { packCode: string; releaseId: string; actorId?: string; existingObjectId?: string | null }
+    context: {
+      packCode: string;
+      releaseId: string;
+      actorId?: string;
+      existingObjectId?: string | null;
+      /** See `applyViewAsset.context.legacyPackOwnership`. */
+      legacyPackOwnership?: string | null;
+    }
   ): Promise<string | null> {
     const payloads = this.extractAutomationPayloads(content);
     if (payloads.length === 0) {
@@ -913,6 +1037,12 @@ export class PacksService {
         });
       }
 
+      if (rule) {
+        // Refuse to overwrite a row owned by a different pack or by
+        // the customer (ADR-7 — same rule the metadata-ingest path
+        // applies to collections/properties).
+        this.assertAutomationPackOwnership(rule, context.packCode, context.legacyPackOwnership);
+      }
       if (!rule) {
         rule = manager.create(AutomationRule, {
           name: normalized.name,
@@ -931,6 +1061,7 @@ export class PacksService {
           executionOrder: normalized.executionOrder,
           isActive: true,
           isSystem: true,
+          source: `pack:${context.packCode}`,
           metadata: {
             code: normalized.code,
             packCode: context.packCode,
@@ -955,6 +1086,7 @@ export class PacksService {
         rule.abortOnError = normalized.abortOnError;
         rule.executionOrder = normalized.executionOrder;
         rule.isActive = true;
+        rule.source = `pack:${context.packCode}`;
         rule.metadata = this.mergeMetadata(rule.metadata || {}, {
           code: normalized.code,
           packCode: context.packCode,
@@ -976,7 +1108,14 @@ export class PacksService {
   private async applyWorkflowAsset(
     manager: PackManager,
     content: Record<string, unknown>,
-    context: { packCode: string; releaseId: string; actorId?: string; existingObjectId?: string | null }
+    context: {
+      packCode: string;
+      releaseId: string;
+      actorId?: string;
+      existingObjectId?: string | null;
+      /** See `applyViewAsset.context.legacyPackOwnership`. */
+      legacyPackOwnership?: string | null;
+    }
   ): Promise<string | null> {
     const payloads = this.extractWorkflowPayloads(content);
     if (payloads.length === 0) {
@@ -998,6 +1137,9 @@ export class PacksService {
       }
 
       const collectionId = await this.resolveCollectionId(manager, normalized.collectionCode);
+      if (definition) {
+        this.assertWorkflowPackOwnership(definition, context.packCode, context.legacyPackOwnership);
+      }
       if (!definition) {
         definition = manager.create(ProcessFlowDefinition, {
           code: normalized.code,
@@ -1014,6 +1156,7 @@ export class PacksService {
           canvas: normalized.canvas,
           version: 1,
           isActive: true,
+          source: `pack:${context.packCode}`,
           createdBy: context.actorId || undefined,
           updatedBy: context.actorId || undefined,
         } as Partial<ProcessFlowDefinition>);
@@ -1031,6 +1174,7 @@ export class PacksService {
         definition.canvas = normalized.canvas;
         definition.version = definition.version + 1;
         definition.isActive = true;
+        definition.source = `pack:${context.packCode}`;
         definition.updatedBy = context.actorId || undefined;
       }
 
@@ -1503,6 +1647,7 @@ export class PacksService {
   private async createViewDefinition(
     manager: PackManager,
     payload: ReturnType<typeof this.normalizeViewPayload>,
+    packCode: string,
     actorId?: string
   ) {
     const definition = manager.create(ViewDefinition, {
@@ -1511,6 +1656,7 @@ export class PacksService {
       description: payload.description,
       kind: payload.kind,
       targetCollectionCode: payload.targetCollectionCode || null,
+      source: `pack:${packCode}`,
       metadata: this.mergeMetadata({}, { status: 'published' }),
       isActive: true,
       createdBy: actorId || null,
@@ -1523,6 +1669,7 @@ export class PacksService {
     manager: PackManager,
     existing: ViewDefinition,
     payload: ReturnType<typeof this.normalizeViewPayload>,
+    packCode: string,
     actorId?: string
   ) {
     if (existing.kind !== payload.kind) {
@@ -1534,6 +1681,7 @@ export class PacksService {
     existing.name = payload.name;
     existing.description = payload.description;
     existing.updatedBy = actorId || null;
+    existing.source = `pack:${packCode}`;
     existing.metadata = this.mergeMetadata(existing.metadata, { status: 'published' });
     return manager.save(ViewDefinition, existing);
   }
@@ -1916,6 +2064,43 @@ export class PacksService {
     const raw = this.configService.get<string>('PACK_INSTALL_LOCK_TTL_SECONDS') || '600';
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 600;
+  }
+
+  /**
+   * Sets the Redis maintenance-mode flag. The MaintenanceModeInterceptor
+   * (registered globally via MaintenanceModeModule in svc-metadata, svc-data,
+   * svc-automation, and svc-workflow) consults this flag on every
+   * state-changing request and returns 503 while it is set.
+   *
+   * The TTL provides a safety net: if this process crashes between setting
+   * the flag and the matching clearMaintenanceFlag() in finally{}, customer
+   * write traffic resumes after MAINTENANCE_MODE_TTL_SECONDS.
+   */
+  private async setMaintenanceFlag(): Promise<void> {
+    const ok = await this.redis.set(MAINTENANCE_MODE_FLAG_KEY, '1', MAINTENANCE_MODE_TTL_SECONDS);
+    if (!ok) {
+      // RedisService logs the underlying error. We surface a clear message
+      // here so the operator knows the install proceeded WITHOUT the
+      // read-only gate — concurrent writes during install may produce
+      // inconsistent state in this case.
+      this.logger.warn(
+        'Failed to set maintenance-mode Redis flag; pack install will proceed without read-only gate',
+      );
+    }
+  }
+
+  /**
+   * Clears the Redis maintenance-mode flag. Always called from a finally{}
+   * so that a failed install does not leave the instance permanently
+   * read-only (the TTL is a backstop, not the primary mechanism).
+   */
+  private async clearMaintenanceFlag(): Promise<void> {
+    const ok = await this.redis.del(MAINTENANCE_MODE_FLAG_KEY);
+    if (!ok) {
+      this.logger.warn(
+        `Failed to clear maintenance-mode Redis flag; will expire in ${MAINTENANCE_MODE_TTL_SECONDS}s`,
+      );
+    }
   }
 
   private parseAssetContent(type: string, raw: string): Record<string, unknown> {

@@ -120,7 +120,7 @@ export class AvaPreviewService {
       .from(`public.${tableName}`, 't')
       .where('t.id = :id', { id: recordId });
 
-    const rowLevel = await this.authz.buildRowLevelClause(requestContext, tableName, 'read', 't');
+    const rowLevel = await this.authz.buildCollectionRowLevelClause(requestContext, definition.id, 'read', 't');
     if (rowLevel.clauses.length > 0) {
       rowLevel.clauses.forEach((clause, index) => {
         qb.andWhere(clause, this.prefixParams(rowLevel.params, `rls_${index}_`));
@@ -146,8 +146,7 @@ export class AvaPreviewService {
     if (!definition) {
       throw new NotFoundException(`Collection ${collectionCode} not found`);
     }
-    const tableName = definition.tableName || collectionCode;
-    await this.authz.ensureTableAccess(context, tableName, operation);
+    await this.authz.ensureCollectionAccess(context, definition.id, operation);
   }
 
   private diffRecords(

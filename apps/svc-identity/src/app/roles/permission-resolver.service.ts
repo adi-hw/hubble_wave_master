@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, MoreThan, IsNull } from 'typeorm';
 import {
@@ -9,6 +9,13 @@ import {
   GroupRole,
   GroupMember,
 } from '@hubblewave/instance-db';
+import {
+  EventBusService,
+  EventTopic,
+  GroupMembershipChangedPayload,
+  RolePermissionChangedPayload,
+  UserRoleChangedPayload,
+} from '@hubblewave/event-bus';
 
 /**
  * Cached permission data for a user
@@ -38,16 +45,23 @@ export interface PermissionCheckResult {
 
 /**
  * PermissionResolverService - Handles permission resolution with inheritance and caching
+ *
+ * Cache invalidation is event-driven: entity changes on UserRole, RolePermission,
+ * GroupRole, and GroupMember publish identity.* events on the cross-service bus,
+ * and this service subscribes to drop the affected user(s) from the cache. The
+ * 30-second TTL is a fallback for the rare case the bus drops a message — under
+ * a healthy bus, role revocations propagate in well under a second.
  */
 @Injectable()
-export class PermissionResolverService {
+export class PermissionResolverService implements OnModuleInit {
   private readonly logger = new Logger(PermissionResolverService.name);
 
   // In-memory cache: userId -> cached permissions
   private cache = new Map<string, UserPermissionCache>();
 
-  // Cache TTL in milliseconds (5 minutes)
-  private readonly CACHE_TTL_MS = 5 * 60 * 1000;
+  // Cache TTL in milliseconds. Events are the primary invalidation path; this
+  // is a safety net for cases where the event bus is unreachable.
+  private readonly CACHE_TTL_MS = 30 * 1000;
 
   constructor(
     @InjectRepository(Role)
@@ -60,7 +74,39 @@ export class PermissionResolverService {
     private readonly groupRoleRepo: Repository<GroupRole>,
     @InjectRepository(GroupMember)
     private readonly groupMemberRepo: Repository<GroupMember>,
+    private readonly eventBus: EventBusService,
   ) {}
+
+  onModuleInit(): void {
+    this.eventBus.subscribe<UserRoleChangedPayload>(
+      EventTopic.IdentityUserRoleChanged,
+      (payload) => {
+        for (const userId of payload.userIds ?? []) {
+          this.invalidateUserCache(userId);
+        }
+      },
+    );
+
+    this.eventBus.subscribe<RolePermissionChangedPayload>(
+      EventTopic.IdentityRolePermissionChanged,
+      async (payload) => {
+        await Promise.all(
+          (payload.roleIds ?? []).map((roleId) =>
+            this.invalidateRoleCache(roleId),
+          ),
+        );
+      },
+    );
+
+    this.eventBus.subscribe<GroupMembershipChangedPayload>(
+      EventTopic.IdentityGroupMembershipChanged,
+      (payload) => {
+        for (const userId of payload.userIds ?? []) {
+          this.invalidateUserCache(userId);
+        }
+      },
+    );
+  }
 
   /**
    * Get all effective permissions for a user (with caching)
@@ -93,6 +139,15 @@ export class PermissionResolverService {
     permissionCode: string,
   ): Promise<PermissionCheckResult> {
     const userPerms = await this.getUserPermissions(userId);
+
+    if (this.hasAdminRole(userPerms)) {
+      return {
+        allowed: true,
+        permission: permissionCode,
+        reason: 'Granted via admin role',
+        grantedVia: 'role',
+      };
+    }
 
     // Check wildcard permission first (admin.*)
     const category = permissionCode.split('.')[0];
@@ -130,6 +185,7 @@ export class PermissionResolverService {
     permissionCodes: string[],
   ): Promise<boolean> {
     const userPerms = await this.getUserPermissions(userId);
+    if (this.hasAdminRole(userPerms)) return true;
 
     for (const code of permissionCodes) {
       if (userPerms.permissions.has(code)) {
@@ -153,6 +209,7 @@ export class PermissionResolverService {
     permissionCodes: string[],
   ): Promise<boolean> {
     const userPerms = await this.getUserPermissions(userId);
+    if (this.hasAdminRole(userPerms)) return true;
 
     for (const code of permissionCodes) {
       if (!userPerms.permissions.has(code)) {
@@ -308,6 +365,21 @@ export class PermissionResolverService {
     }
 
     return Array.from(collected);
+  }
+
+  private hasAdminRole(userPerms: UserPermissionCache): boolean {
+    if (userPerms.permissions.has('system.admin') || userPerms.permissions.has('*')) {
+      return true;
+    }
+    // Only seeded `isSystem` roles count as admin via the code-based
+    // fast-path. Without the `isSystem` gate, an operator with
+    // `roles.create` could self-assign a custom role coded `admin`
+    // and inherit platform admin via the string match alone.
+    return userPerms.roles.some(
+      (role) =>
+        role.isSystem === true &&
+        ['admin', 'system_admin', 'superadmin'].includes(role.code.toLowerCase()),
+    );
   }
 
 }

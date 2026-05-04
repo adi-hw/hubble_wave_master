@@ -151,8 +151,8 @@ export const UIScriptsPage: React.FC = () => {
         `/collections/${collectionId}/scripts`
       );
       setScripts(Array.isArray(response.data) ? response.data : []);
-    } catch (err) {
-      console.error('Failed to load scripts', err);
+    } catch {
+      // Scripts load failed - show error message
       setError('Failed to load UI scripts. The API may not be available yet.');
     } finally {
       setLoading(false);
@@ -214,8 +214,8 @@ export const UIScriptsPage: React.FC = () => {
       }
       handleCloseEditor();
       loadScripts();
-    } catch (err) {
-      console.error('Failed to save script', err);
+    } catch {
+      // Save failed - show error message
       setError('Failed to save UI script. Please try again.');
     } finally {
       setSaving(false);
@@ -229,8 +229,8 @@ export const UIScriptsPage: React.FC = () => {
       await metadataApi.delete(`/collections/${collectionId}/scripts/${deleteConfirm.id}`);
       setDeleteConfirm(null);
       loadScripts();
-    } catch (err) {
-      console.error('Failed to delete script', err);
+    } catch {
+      // Delete failed - show error message
       setError('Failed to delete UI script. Please try again.');
     }
   };
@@ -242,8 +242,8 @@ export const UIScriptsPage: React.FC = () => {
         isActive: !script.isActive,
       });
       loadScripts();
-    } catch (err) {
-      console.error('Failed to toggle script', err);
+    } catch {
+      // Toggle failed - script status unchanged
     }
   };
 

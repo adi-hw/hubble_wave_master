@@ -16,6 +16,7 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
+import { User } from './user.entity';
 
 // ─────────────────────────────────────────────────────────────────
 // Enums
@@ -28,6 +29,17 @@ export type AutomationActionType = 'no_code' | 'script';
 export type ExecutionStatus = 'success' | 'error' | 'skipped' | 'timeout';
 export type ScheduleFrequency = 'once' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'cron';
 
+/**
+ * Lifecycle status for the automation rule itself (ADR-5).
+ *  - draft: editable; runtime triggers do NOT fire
+ *  - published: authoritative; triggers fire when isActive = true
+ *  - deprecated: no new firings; existing runs finish on their own
+ *
+ * `isActive` (operational on/off switch) is orthogonal and persists.
+ */
+export type AutomationRuleStatus = 'draft' | 'published' | 'deprecated';
+export type AutomationRuleRevisionStatus = 'draft' | 'published';
+
 // ─────────────────────────────────────────────────────────────────
 // Automation Rule Entity
 // ─────────────────────────────────────────────────────────────────
@@ -35,6 +47,8 @@ export type ScheduleFrequency = 'once' | 'hourly' | 'daily' | 'weekly' | 'monthl
 @Entity('automation_rules')
 @Index(['collectionId', 'isActive'])
 @Index(['triggerTiming', 'isActive'])
+@Index(['applicationId'])
+@Index(['status'])
 export class AutomationRule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -48,6 +62,13 @@ export class AutomationRule {
   @Column({ name: 'collection_id', type: 'uuid' })
   @Index()
   collectionId!: string;
+
+  /**
+   * Application this rule belongs to (ADR-6). Backfilled from the
+   * parent collection during slice C3.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   @Column({ name: 'trigger_timing', type: 'varchar', length: 16 })
   triggerTiming!: TriggerTiming;
@@ -109,8 +130,75 @@ export class AutomationRule {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
+  // ─────────────────────────────────────────────────────────────────
+  // Lifecycle (ADR-5)
+  // ─────────────────────────────────────────────────────────────────
+
+  @Column({ type: 'varchar', length: 20, default: 'draft' })
+  status!: AutomationRuleStatus;
+
+  @Column({ name: 'current_revision_id', type: 'uuid', nullable: true })
+  currentRevisionId?: string | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
+
   @OneToMany(() => AutomationExecutionLog, (log) => log.automationRule)
   executionLogs!: AutomationExecutionLog[];
+}
+
+/**
+ * Append-only edit history for an AutomationRule. Mirrors
+ * CollectionDefinitionRevision so the lifecycle pattern is uniform
+ * across metadata entities (ADR-5).
+ */
+@Entity('automation_rule_revisions')
+@Index(['automationRuleId'])
+@Index(['status'])
+@Index(['automationRuleId', 'revision'], { unique: true })
+export class AutomationRuleRevision {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'automation_rule_id', type: 'uuid' })
+  automationRuleId!: string;
+
+  @ManyToOne(() => AutomationRule, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'automation_rule_id' })
+  automationRule?: AutomationRule;
+
+  @Column({ name: 'revision', type: 'integer' })
+  revision!: number;
+
+  @Column({ name: 'status', type: 'varchar', length: 20 })
+  status!: AutomationRuleRevisionStatus;
+
+  @Column({ name: 'payload', type: 'jsonb', default: () => `'{}'` })
+  payload!: Record<string, unknown>;
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser?: User | null;
+
+  @Column({ name: 'published_by', type: 'uuid', nullable: true })
+  publishedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'published_by' })
+  publishedByUser?: User | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
 }
 
 // ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { InstanceEventOutbox } from '@hubblewave/instance-db';
 import { RecordEventPayload } from './automation-runtime.types';
 
@@ -14,8 +14,11 @@ export type OutboxEventPayload = {
 export class OutboxPublisherService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async publishRecordEvent(payload: Omit<RecordEventPayload, 'occurredAt'>): Promise<void> {
-    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+  async publishRecordEvent(
+    payload: Omit<RecordEventPayload, 'occurredAt'>,
+    mgr?: EntityManager,
+  ): Promise<void> {
+    const repo = (mgr ?? this.dataSource).getRepository(InstanceEventOutbox);
     const entry = repo.create({
       eventType: payload.eventType,
       collectionCode: payload.collectionCode,
@@ -30,8 +33,8 @@ export class OutboxPublisherService {
     await repo.save(entry);
   }
 
-  async publishEvent(event: OutboxEventPayload): Promise<void> {
-    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+  async publishEvent(event: OutboxEventPayload, mgr?: EntityManager): Promise<void> {
+    const repo = (mgr ?? this.dataSource).getRepository(InstanceEventOutbox);
     const entry = repo.create({
       eventType: event.eventType,
       collectionCode: event.collectionCode ?? null,

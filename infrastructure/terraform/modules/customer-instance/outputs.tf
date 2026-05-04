@@ -1,7 +1,7 @@
 /**
  * HubbleWave Customer Instance Module - Outputs
  *
- * Dedicated infrastructure per instance model
+ * Cluster-per-Customer architecture with dedicated VPC and EKS cluster
  */
 
 # -----------------------------------------------------------------------------
@@ -13,11 +13,6 @@ output "instance_id" {
   value       = var.instance_id
 }
 
-output "namespace" {
-  description = "Kubernetes namespace for this instance"
-  value       = kubernetes_namespace.instance.metadata[0].name
-}
-
 output "instance_name" {
   description = "Computed instance name (customer_code-environment)"
   value       = local.instance_name
@@ -26,6 +21,83 @@ output "instance_name" {
 output "instance_domain" {
   description = "Customer instance domain"
   value       = local.instance_domain
+}
+
+# -----------------------------------------------------------------------------
+# VPC Outputs
+# -----------------------------------------------------------------------------
+
+output "vpc_id" {
+  description = "Customer instance VPC ID"
+  value       = module.vpc.vpc_id
+}
+
+output "vpc_cidr" {
+  description = "Customer instance VPC CIDR block"
+  value       = local.vpc_cidr
+}
+
+output "private_subnets" {
+  description = "Private subnet IDs"
+  value       = module.vpc.private_subnets
+}
+
+output "public_subnets" {
+  description = "Public subnet IDs"
+  value       = module.vpc.public_subnets
+}
+
+output "vpc_peering_connection_id" {
+  description = "VPC peering connection ID to control plane"
+  value       = aws_vpc_peering_connection.to_control_plane.id
+}
+
+# -----------------------------------------------------------------------------
+# EKS Cluster Outputs
+# -----------------------------------------------------------------------------
+
+output "eks_cluster_name" {
+  description = "Customer instance EKS cluster name"
+  value       = module.eks.cluster_name
+}
+
+output "eks_cluster_arn" {
+  description = "Customer instance EKS cluster ARN"
+  value       = module.eks.cluster_arn
+}
+
+output "eks_cluster_endpoint" {
+  description = "Customer instance EKS cluster endpoint"
+  value       = module.eks.cluster_endpoint
+}
+
+output "eks_cluster_version" {
+  description = "EKS cluster Kubernetes version"
+  value       = module.eks.cluster_version
+}
+
+output "eks_oidc_provider_arn" {
+  description = "EKS OIDC provider ARN for IRSA"
+  value       = module.eks.oidc_provider_arn
+}
+
+output "eks_node_security_group_id" {
+  description = "EKS node security group ID"
+  value       = module.eks.node_security_group_id
+}
+
+# -----------------------------------------------------------------------------
+# Kubeconfig & Control Plane Access
+# -----------------------------------------------------------------------------
+
+output "kubeconfig_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing kubeconfig"
+  value       = aws_secretsmanager_secret.kubeconfig.arn
+}
+
+output "control_plane_access_role_arn" {
+  description = "IAM role ARN for control plane to assume for cluster access"
+  value       = aws_iam_role.control_plane_access.arn
 }
 
 # -----------------------------------------------------------------------------
@@ -73,18 +145,29 @@ output "db_username" {
 # -----------------------------------------------------------------------------
 
 output "redis_cluster_id" {
-  description = "ElastiCache cluster identifier"
-  value       = aws_elasticache_cluster.instance.cluster_id
+  description = "ElastiCache replication group identifier"
+  value       = aws_elasticache_replication_group.instance.replication_group_id
 }
 
 output "redis_endpoint" {
-  description = "ElastiCache cluster endpoint"
-  value       = aws_elasticache_cluster.instance.cache_nodes[0].address
+  description = "ElastiCache primary endpoint (write address)"
+  value       = aws_elasticache_replication_group.instance.primary_endpoint_address
+}
+
+output "redis_reader_endpoint" {
+  description = "ElastiCache reader endpoint (multi-AZ read replicas)"
+  value       = aws_elasticache_replication_group.instance.reader_endpoint_address
 }
 
 output "redis_port" {
   description = "ElastiCache port"
-  value       = aws_elasticache_cluster.instance.port
+  value       = aws_elasticache_replication_group.instance.port
+}
+
+output "redis_auth_token" {
+  description = "ElastiCache AUTH token (TLS-only, sensitive)"
+  value       = random_password.redis_auth.result
+  sensitive   = true
 }
 
 # -----------------------------------------------------------------------------
@@ -164,32 +247,32 @@ output "workload_role_name" {
 
 output "service_account_name" {
   description = "Kubernetes service account for workloads"
-  value       = kubernetes_service_account.workload.metadata[0].name
+  value       = kubernetes_service_account_v1.workload.metadata[0].name
 }
 
 output "database_secret_name" {
   description = "Name of the Kubernetes secret containing database credentials"
-  value       = kubernetes_secret.database.metadata[0].name
+  value       = kubernetes_secret_v1.database.metadata[0].name
 }
 
 output "redis_secret_name" {
   description = "Name of the Kubernetes secret containing Redis credentials"
-  value       = kubernetes_secret.redis.metadata[0].name
+  value       = kubernetes_secret_v1.redis.metadata[0].name
 }
 
 output "config_secret_name" {
   description = "Name of the Kubernetes secret containing instance config"
-  value       = kubernetes_secret.instance_config.metadata[0].name
+  value       = kubernetes_secret_v1.instance_config.metadata[0].name
 }
 
 output "s3_secret_name" {
   description = "Name of the Kubernetes secret containing S3 config"
-  value       = kubernetes_secret.s3_credentials.metadata[0].name
+  value       = kubernetes_secret_v1.s3_credentials.metadata[0].name
 }
 
 output "app_config_name" {
   description = "Name of the Kubernetes ConfigMap for application settings"
-  value       = kubernetes_config_map.app_config.metadata[0].name
+  value       = kubernetes_config_map_v1.app_config.metadata[0].name
 }
 
 # -----------------------------------------------------------------------------
@@ -212,27 +295,41 @@ output "tier_config" {
 
 output "api_deployment_name" {
   description = "Name of the API deployment"
-  value       = kubernetes_deployment.api.metadata[0].name
+  value       = kubernetes_deployment_v1.api.metadata[0].name
 }
 
 output "web_deployment_name" {
   description = "Name of the web client deployment"
-  value       = kubernetes_deployment.web.metadata[0].name
+  value       = kubernetes_deployment_v1.web.metadata[0].name
 }
 
 output "api_service_name" {
   description = "Name of the API service"
-  value       = kubernetes_service.api.metadata[0].name
+  value       = kubernetes_service_v1.api.metadata[0].name
 }
 
 output "web_service_name" {
   description = "Name of the web client service"
-  value       = kubernetes_service.web.metadata[0].name
+  value       = kubernetes_service_v1.web.metadata[0].name
 }
 
 output "ingress_name" {
   description = "Name of the instance ingress"
   value       = kubernetes_ingress_v1.instance.metadata[0].name
+}
+
+# -----------------------------------------------------------------------------
+# ALB Outputs
+# -----------------------------------------------------------------------------
+
+output "alb_dns_name" {
+  description = "ALB DNS name for the instance"
+  value       = kubernetes_ingress_v1.instance.status[0].load_balancer[0].ingress[0].hostname
+}
+
+output "acm_certificate_arn" {
+  description = "ACM certificate ARN for the instance domain"
+  value       = aws_acm_certificate.instance.arn
 }
 
 # -----------------------------------------------------------------------------
@@ -256,22 +353,26 @@ output "api_url" {
 output "instance_metadata" {
   description = "Metadata for Control Plane registration"
   value = {
-    instance_id         = var.instance_id
-    customer_code       = var.customer_code
-    customer_name       = var.customer_name
-    environment         = var.environment
-    namespace           = kubernetes_namespace.instance.metadata[0].name
-    platform_release_id = var.platform_release_id
-    resource_tier       = var.resource_tier
-    db_instance_id      = aws_db_instance.instance.id
-    db_endpoint         = aws_db_instance.instance.endpoint
-    redis_cluster_id    = aws_elasticache_cluster.instance.cluster_id
-    redis_endpoint      = aws_elasticache_cluster.instance.cache_nodes[0].address
-    s3_bucket           = aws_s3_bucket.instance.id
-    instance_domain     = local.instance_domain
-    control_plane_url   = local.control_plane_url
-    created_at          = kubernetes_namespace.instance.metadata[0].annotations["hubblewave.com/created-at"]
-    gpu_enabled         = local.gpu_enabled_effective
+    instance_id               = var.instance_id
+    customer_code             = var.customer_code
+    customer_name             = var.customer_name
+    environment               = var.environment
+    platform_release_id       = var.platform_release_id
+    resource_tier             = var.resource_tier
+    vpc_id                    = module.vpc.vpc_id
+    vpc_cidr                  = local.vpc_cidr
+    eks_cluster_name          = module.eks.cluster_name
+    eks_cluster_arn           = module.eks.cluster_arn
+    kubeconfig_secret_arn     = aws_secretsmanager_secret.kubeconfig.arn
+    control_plane_access_role = aws_iam_role.control_plane_access.arn
+    db_instance_id            = aws_db_instance.instance.id
+    db_endpoint               = aws_db_instance.instance.endpoint
+    redis_cluster_id          = aws_elasticache_replication_group.instance.replication_group_id
+    redis_endpoint            = aws_elasticache_replication_group.instance.primary_endpoint_address
+    s3_bucket                 = aws_s3_bucket.instance.id
+    instance_domain           = local.instance_domain
+    control_plane_url         = local.control_plane_url
+    gpu_enabled               = local.gpu_enabled_effective
   }
 }
 
@@ -284,34 +385,24 @@ output "gpu_enabled" {
   value       = local.gpu_enabled_effective
 }
 
-output "gpu_node_group_name" {
-  description = "Name of the GPU node group"
-  value       = local.gpu_enabled_effective ? aws_eks_node_group.gpu[0].node_group_name : null
-}
-
-output "gpu_node_group_arn" {
-  description = "ARN of the GPU node group"
-  value       = local.gpu_enabled_effective ? aws_eks_node_group.gpu[0].arn : null
-}
-
 output "vllm_service_url" {
   description = "Internal URL for vLLM service"
-  value       = local.gpu_enabled_effective ? "http://vllm-service.${kubernetes_namespace.instance.metadata[0].name}.svc.cluster.local:8000" : null
+  value       = local.gpu_enabled_effective ? "http://vllm-service.default.svc.cluster.local:8000" : null
 }
 
 output "vllm_deployment_name" {
   description = "Name of the vLLM deployment"
-  value       = local.gpu_enabled_effective ? kubernetes_deployment.vllm[0].metadata[0].name : null
+  value       = local.gpu_enabled_effective ? kubernetes_deployment_v1.vllm[0].metadata[0].name : null
 }
 
 output "ava_service_url" {
   description = "Internal URL for AVA service"
-  value       = local.gpu_enabled_effective ? "http://ava-service.${kubernetes_namespace.instance.metadata[0].name}.svc.cluster.local:80" : null
+  value       = local.gpu_enabled_effective ? "http://ava-service.default.svc.cluster.local:80" : null
 }
 
 output "ava_deployment_name" {
   description = "Name of the AVA deployment"
-  value       = local.gpu_enabled_effective ? kubernetes_deployment.ava[0].metadata[0].name : null
+  value       = local.gpu_enabled_effective ? kubernetes_deployment_v1.ava[0].metadata[0].name : null
 }
 
 output "ava_external_url" {

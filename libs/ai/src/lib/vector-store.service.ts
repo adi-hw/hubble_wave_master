@@ -204,6 +204,12 @@ export class VectorStoreService {
 
     // Generate embedding for the query
     const queryEmbedding = await this.llmService.getEmbedding(query);
+
+    // If embedding generation failed (empty array), skip vector search
+    if (!queryEmbedding || queryEmbedding.length === 0) {
+      return [];
+    }
+
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
     // Build the query with optional filters

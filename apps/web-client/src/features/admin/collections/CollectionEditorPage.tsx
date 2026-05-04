@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useStudioCollectionId } from '../../../app/app-studio/table-builder';
 import {
   ArrowLeft,
   Save,
@@ -100,7 +101,7 @@ const colorOptions = [
 
 export const CollectionEditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const id = useStudioCollectionId();
   const isNew = id === 'new';
 
   const [loading, setLoading] = useState(!isNew);
@@ -163,8 +164,8 @@ export const CollectionEditorPage: React.FC = () => {
         isVersioned: mappedCollection.isVersioned,
         tags: mappedCollection.tags,
       });
-    } catch (error) {
-      console.error('Failed to fetch collection:', error);
+    } catch {
+      // Fetch failed - loading state cleared
     } finally {
       setLoading(false);
     }
@@ -174,8 +175,8 @@ export const CollectionEditorPage: React.FC = () => {
     try {
       const response = await metadataApi.get<string[]>('/collections/categories');
       setCategories(response.data);
-    } catch (error) {
-      console.error('Failed to fetch categories:', error);
+    } catch {
+      // Categories fetch failed - list remains empty
     }
   };
 
@@ -275,7 +276,7 @@ export const CollectionEditorPage: React.FC = () => {
         setCollection(mappedCollection);
       }
     } catch (error: any) {
-      console.error('Failed to save collection:', error);
+      // Save failed - show error message
       const message = error?.response?.data?.message || 'Failed to save collection';
       setErrors({ _form: message });
     } finally {
@@ -294,7 +295,7 @@ export const CollectionEditorPage: React.FC = () => {
       await metadataApi.post('/schema/deploy', { collectionCodes: [published.code] });
       await fetchCollection(id);
     } catch (error: any) {
-      console.error('Failed to publish and deploy:', error);
+      // Publish and deploy failed - show error message
       const message = error?.response?.data?.message || 'Failed to publish and deploy schema';
       setErrors({ _form: message });
     } finally {

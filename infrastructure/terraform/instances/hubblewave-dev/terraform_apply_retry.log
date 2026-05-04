@@ -1,0 +1,880 @@
+[0m[1mmodule.instance.random_id.bucket_suffix: Refreshing state... [id=pUoZ8g][0m
+[0m[1mmodule.instance.random_password.db_admin_password: Refreshing state... [id=none][0m
+[0m[1mmodule.instance.random_password.jwt_secret: Refreshing state... [id=none][0m
+[0m[1mmodule.instance.random_password.db_password: Refreshing state... [id=none][0m
+[0m[1mmodule.instance.module.vpc.aws_vpc.this[0]: Refreshing state... [id=vpc-096ed668dc952c58f][0m
+[0m[1mmodule.instance.module.eks.data.aws_caller_identity.current[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_partition.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_partition.current[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_iam_policy_document.assume_role_policy[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_partition.current: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_partition.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_partition.current[0]: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_iam_policy_document.assume_role_policy[0]: Reading...[0m[0m
+[0m[1mmodule.instance.aws_secretsmanager_secret.redis: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/redis-NvWlok][0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_policy_document.assume_role_policy[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_partition.current: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_iam_policy_document.assume_role_policy[0]: Read complete after 0s [id=2560088296][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret.kubeconfig: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/kubeconfig-2K1ONu][0m
+[0m[1mmodule.instance.aws_s3_bucket.instance: Refreshing state... [id=hw-hubblewave-dev-a54a19f2][0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_partition.current[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_partition.current[0]: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_iam_policy_document.assume_role_policy[0]: Read complete after 0s [id=2560088296][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.cluster_autoscaler: Reading...[0m[0m
+[0m[1mmodule.instance.data.aws_availability_zones.available: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_caller_identity.current: Reading...[0m[0m
+[0m[1mmodule.instance.aws_acm_certificate.instance: Refreshing state... [id=arn:aws:acm:us-east-2:687904696003:certificate/4a3e4326-388b-403b-b225-7601148485e8][0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_policy_document.assume_role_policy[0]: Read complete after 0s [id=2830595799][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.cluster_autoscaler: Read complete after 0s [id=981266954][0m
+[0m[1mdata.aws_iam_role.control_plane: Reading...[0m[0m
+[0m[1mdata.aws_eks_cluster.control_plane: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_caller_identity.current[0]: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_region.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_region.current: Read complete after 0s [id=us-east-2][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret.database: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/database-of8ePb][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_caller_identity.current: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret.s3: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/s3-1fhKJd][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_region.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_region.current: Read complete after 0s [id=us-east-2][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_partition.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_partition.current: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_caller_identity.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_caller_identity.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_caller_identity.current[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].data.aws_caller_identity.current: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].data.aws_caller_identity.current: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret.instance_config: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/instance-config-ZtSzVl][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_caller_identity.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_partition.current: Reading...[0m[0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_partition.current: Read complete after 0s [id=aws][0m
+[0m[1mmodule.instance.module.eks.aws_cloudwatch_log_group.this[0]: Refreshing state... [id=/aws/eks/hw-hubblewave-dev/cluster][0m
+[0m[1mmodule.instance.data.aws_availability_zones.available: Read complete after 0s [id=us-east-2][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006][0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_caller_identity.current[0]: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_caller_identity.current: Read complete after 0s [id=687904696003][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-gpu][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-std][0m
+[0m[1mdata.aws_iam_role.control_plane: Read complete after 0s [id=hubblewave-control-plane][0m
+[0m[1mmodule.instance.module.eks.aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-cluster-20260120021921059800000003][0m
+[0m[1mmodule.instance.aws_iam_policy.cluster_autoscaler: Refreshing state... [id=arn:aws:iam::687904696003:policy/hw-hubblewave-dev-cluster-autoscaler][0m
+[0m[1mdata.aws_eks_cluster.control_plane: Read complete after 0s [id=hubblewave-control][0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_session_context.current[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_session_context.current[0]: Read complete after 0s [id=arn:aws:iam::687904696003:user/hubblewave-terraform][0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_policy_document.custom[0]: Reading...[0m[0m
+[0m[1mmodule.instance.aws_secretsmanager_secret_version.instance_config: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/instance-config-ZtSzVl|terraform-20260120021921457500000008][0m
+[0m[1mmodule.instance.module.eks.data.aws_iam_policy_document.custom[0]: Read complete after 0s [id=513122117][0m
+[0m[1mdata.aws_route_table.control_plane["subnet-021fd2fbfb38c5004"]: Reading...[0m[0m
+[0m[1mdata.aws_route_table.control_plane["subnet-06a9ed0cc653bf801"]: Reading...[0m[0m
+[0m[1mdata.aws_route_table.control_plane["subnet-021fd2fbfb38c5004"]: Read complete after 1s [id=rtb-0aafc7243818832dc][0m
+[0m[1mdata.aws_route_table.control_plane["subnet-0b48abf2ec66813d2"]: Reading...[0m[0m
+[0m[1mdata.aws_route_table.control_plane["subnet-06a9ed0cc653bf801"]: Read complete after 1s [id=rtb-05b741a94c9d3bcf7][0m
+[0m[1mdata.aws_route_table.control_plane["subnet-0e75669b9e09d530f"]: Reading...[0m[0m
+[0m[1mdata.aws_vpc.control_plane: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_iam_policy_document.ebs_csi[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_iam_policy_document.load_balancer_controller[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_iam_policy_document.ebs_csi[0]: Read complete after 0s [id=4189668531][0m
+[0m[1mdata.aws_route_table.control_plane["subnet-0b48abf2ec66813d2"]: Read complete after 0s [id=rtb-05b741a94c9d3bcf7][0m
+[0m[1mmodule.instance.cloudflare_record.acm_validation["hubblewave.dev.hubblewave.com"]: Refreshing state... [id=d863e4d7916704a2ce2d0b62beb6c587][0m
+[0m[1mmodule.instance.module.eks.aws_iam_policy.custom[0]: Refreshing state... [id=arn:aws:iam::687904696003:policy/hw-hubblewave-dev-cluster-2026012002192146950000000a][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_iam_policy_document.load_balancer_controller[0]: Read complete after 0s [id=1541424006][0m
+[0m[1mmodule.instance.aws_iam_role.control_plane_access: Refreshing state... [id=hw-hubblewave-dev-control-plane-access][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.aws_iam_policy.ebs_csi[0]: Refreshing state... [id=arn:aws:iam::687904696003:policy/AmazonEKS_EBS_CSI_Policy-2026012002192153560000000c][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.aws_iam_policy.load_balancer_controller[0]: Refreshing state... [id=arn:aws:iam::687904696003:policy/AmazonEKS_AWS_Load_Balancer_Controller-2026012002192149100000000b][0m
+[0m[1mmodule.instance.module.eks.aws_iam_role_policy_attachment.this["AmazonEKSVPCResourceController"]: Refreshing state... [id=hw-hubblewave-dev-cluster-20260120021921059800000003-20260120021922150400000010][0m
+[0m[1mdata.aws_route_table.control_plane["subnet-0e75669b9e09d530f"]: Read complete after 0s [id=rtb-0d90ad968a0d41e09][0m
+[0m[1mmodule.instance.module.eks.aws_iam_role_policy_attachment.this["AmazonEKSClusterPolicy"]: Refreshing state... [id=hw-hubblewave-dev-cluster-20260120021921059800000003-20260120021922151500000011][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_iam_role_policy_attachment.this["AmazonEC2ContainerRegistryReadOnly"]: Refreshing state... [id=hw-hubblewave-dev-gpu-20260123030638550400000006][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEKS_CNI_Policy"]: Refreshing state... [id=hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192186470000000e][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_iam_role_policy_attachment.this["AmazonEKSWorkerNodePolicy"]: Refreshing state... [id=hw-hubblewave-dev-gpu-20260123030638499200000004][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_iam_role_policy_attachment.this["AmazonEKSWorkerNodePolicy"]: Refreshing state... [id=hw-hubblewave-dev-std-20260123030638442200000003][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_iam_role_policy_attachment.this["AmazonEKS_CNI_Policy"]: Refreshing state... [id=hw-hubblewave-dev-gpu-20260123030638437900000002][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_iam_role_policy_attachment.this["AmazonEKS_CNI_Policy"]: Refreshing state... [id=hw-hubblewave-dev-std-20260123030638435000000001][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_iam_role_policy_attachment.this["AmazonEC2ContainerRegistryReadOnly"]: Refreshing state... [id=hw-hubblewave-dev-std-20260123030638550400000005][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEKSWorkerNodePolicy"]: Refreshing state... [id=hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192185650000000d][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEC2ContainerRegistryReadOnly"]: Refreshing state... [id=hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192191930000000f][0m
+[0m[1mmodule.instance.module.eks.aws_iam_role_policy_attachment.custom[0]: Refreshing state... [id=hw-hubblewave-dev-cluster-20260120021921059800000003-20260120021922272800000012][0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_iam_policy_document.this[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.kms.data.aws_iam_policy_document.this[0]: Read complete after 0s [id=3261845946][0m
+[0m[1mmodule.instance.module.eks.module.kms.aws_kms_key.this[0]: Refreshing state... [id=82e2c006-a267-41b6-9653-275e67c2aba1][0m
+[0m[1mmodule.instance.aws_s3_bucket_versioning.instance: Refreshing state... [id=hw-hubblewave-dev-a54a19f2][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret_version.s3: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/s3-1fhKJd|terraform-20260120021922884300000013][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.instance_storage: Reading...[0m[0m
+[0m[1mmodule.instance.aws_s3_bucket_public_access_block.instance: Refreshing state... [id=hw-hubblewave-dev-a54a19f2][0m
+[0m[1mmodule.instance.aws_s3_bucket_server_side_encryption_configuration.instance: Refreshing state... [id=hw-hubblewave-dev-a54a19f2][0m
+[0m[1mmodule.instance.aws_s3_bucket_lifecycle_configuration.instance: Refreshing state... [id=hw-hubblewave-dev-a54a19f2][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.instance_storage: Read complete after 0s [id=1315265902][0m
+[0m[1mmodule.instance.aws_iam_policy.instance_storage: Refreshing state... [id=arn:aws:iam::687904696003:policy/hw-hubblewave-dev-storage][0m
+[0m[1mmodule.instance.module.vpc.aws_default_security_group.this[0]: Refreshing state... [id=sg-0c8e56c52e242978b][0m
+[0m[1mmodule.instance.module.vpc.aws_default_network_acl.this[0]: Refreshing state... [id=acl-09e55ed689d19e213][0m
+[0m[1mmodule.instance.module.vpc.aws_default_route_table.default[0]: Refreshing state... [id=rtb-00cd4565dedd2b178][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table.public[0]: Refreshing state... [id=rtb-03c7104ca4372d0a8][0m
+[0m[1mdata.aws_vpc.control_plane: Read complete after 0s [id=vpc-0bb2a7abe08d733ef][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table.private[0]: Refreshing state... [id=rtb-034119dca39f38ef5][0m
+[0m[1mmodule.instance.module.vpc.aws_subnet.private[1]: Refreshing state... [id=subnet-04f7f3ed4501e8e26][0m
+[0m[1mmodule.instance.module.vpc.aws_subnet.private[0]: Refreshing state... [id=subnet-0fcfd4dcc21005eb0][0m
+[0m[1mmodule.instance.module.vpc.aws_subnet.public[0]: Refreshing state... [id=subnet-0146e5ca6aaa72694][0m
+[0m[1mmodule.instance.module.vpc.aws_subnet.public[1]: Refreshing state... [id=subnet-06507d5e0a45e7c64][0m
+[0m[1mmodule.instance.module.vpc.aws_internet_gateway.this[0]: Refreshing state... [id=igw-06a027cdcbaf426b5][0m
+[0m[1mmodule.instance.module.eks.aws_security_group.node[0]: Refreshing state... [id=sg-0ba125c17877533df][0m
+[0m[1mmodule.instance.module.eks.aws_security_group.cluster[0]: Refreshing state... [id=sg-0ccb6b768740ac255][0m
+[0m[1mmodule.instance.module.eks.module.kms.aws_kms_alias.this["cluster"]: Refreshing state... [id=alias/eks/hw-hubblewave-dev][0m
+[0m[1mmodule.instance.aws_vpc_peering_connection.to_control_plane: Refreshing state... [id=pcx-06b3d903c93e82971][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table_association.public[0]: Refreshing state... [id=rtbassoc-0aaae4cd625dbb8ea][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table_association.public[1]: Refreshing state... [id=rtbassoc-0cf0d19b515b5cd28][0m
+[0m[1mmodule.instance.module.eks.aws_iam_policy.cluster_encryption[0]: Refreshing state... [id=arn:aws:iam::687904696003:policy/hw-hubblewave-dev-cluster-ClusterEncryption20260120021943016600000019][0m
+[0m[1mmodule.instance.module.vpc.aws_route.public_internet_gateway[0]: Refreshing state... [id=r-rtb-03c7104ca4372d0a81080289494][0m
+[0m[1mmodule.instance.module.vpc.aws_eip.nat[0]: Refreshing state... [id=eipalloc-07cbd6e755cae79aa][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table_association.private[0]: Refreshing state... [id=rtbassoc-08bf24766218956cd][0m
+[0m[1mmodule.instance.module.vpc.aws_route_table_association.private[1]: Refreshing state... [id=rtbassoc-0664bbdd4b487abc7][0m
+[0m[1mmodule.instance.aws_acm_certificate_validation.instance: Refreshing state... [id=0001-01-01 00:00:00 +0000 UTC][0m
+[0m[1mmodule.instance.aws_elasticache_subnet_group.instance: Refreshing state... [id=hw-hubblewave-dev][0m
+[0m[1mmodule.instance.aws_db_subnet_group.instance: Refreshing state... [id=hw-hubblewave-dev][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.cluster["ingress_nodes_443"]: Refreshing state... [id=sgrule-756578549][0m
+[0m[1mmodule.instance.aws_security_group.redis: Refreshing state... [id=sg-0afe478cd91174ab9][0m
+[0m[1mmodule.instance.aws_security_group.rds: Refreshing state... [id=sg-0eeab8c6e05ee0c39][0m
+[0m[1mmodule.instance.aws_route.control_plane_to_instance[0]: Refreshing state... [id=r-rtb-05b741a94c9d3bcf74022108271][0m
+[0m[1mmodule.instance.aws_route.control_plane_to_instance[1]: Refreshing state... [id=r-rtb-0aafc7243818832dc4022108271][0m
+[0m[1mmodule.instance.aws_route.control_plane_to_instance[2]: Refreshing state... [id=r-rtb-0d90ad968a0d41e094022108271][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_9443_webhook"]: Refreshing state... [id=sgrule-1809626348][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_kubelet"]: Refreshing state... [id=sgrule-2635854506][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_self_coredns_tcp"]: Refreshing state... [id=sgrule-3317375562][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_self_coredns_udp"]: Refreshing state... [id=sgrule-1642365349][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["egress_all"]: Refreshing state... [id=sgrule-1361156319][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_4443_webhook"]: Refreshing state... [id=sgrule-3580091536][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_443"]: Refreshing state... [id=sgrule-985247604][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_nodes_ephemeral"]: Refreshing state... [id=sgrule-758756249][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_self_all"]: Refreshing state... [id=sgrule-4203028520][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_8443_webhook"]: Refreshing state... [id=sgrule-259884839][0m
+[0m[1mmodule.instance.module.eks.aws_security_group_rule.node["ingress_cluster_6443_webhook"]: Refreshing state... [id=sgrule-471972614][0m
+[0m[1mmodule.instance.aws_route.instance_to_control_plane[0]: Refreshing state... [id=r-rtb-034119dca39f38ef5179966490][0m
+[0m[1mmodule.instance.module.eks.aws_iam_role_policy_attachment.cluster_encryption[0]: Refreshing state... [id=hw-hubblewave-dev-cluster-20260120021921059800000003-2026012002194338850000001a][0m
+[0m[1mmodule.instance.module.vpc.aws_nat_gateway.this[0]: Refreshing state... [id=nat-0bba37097aa08097b][0m
+[0m[1mmodule.instance.aws_elasticache_cluster.instance: Refreshing state... [id=hw-hubblewave-dev][0m
+[0m[1mmodule.instance.aws_db_instance.instance: Refreshing state... [id=db-HIQ3P5KKXBL5D4CU3GTNVCKUXM][0m
+[0m[1mmodule.instance.module.vpc.aws_route.private_nat_gateway[0]: Refreshing state... [id=r-rtb-034119dca39f38ef51080289494][0m
+[0m[1mmodule.instance.module.eks.aws_eks_cluster.this[0]: Refreshing state... [id=hw-hubblewave-dev][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret_version.database: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/database-of8ePb|terraform-20260120024009796200000001][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret_version.redis: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/redis-NvWlok|terraform-20260120022846339200000023][0m
+[0m[1mmodule.instance.module.eks.aws_ec2_tag.cluster_primary_security_group["hubblewave_environment"]: Refreshing state... [id=sg-058bf359874ab66de,hubblewave_environment][0m
+[0m[1mmodule.instance.module.eks.aws_ec2_tag.cluster_primary_security_group["hubblewave_instance_id"]: Refreshing state... [id=sg-058bf359874ab66de,hubblewave_instance_id][0m
+[0m[1mmodule.instance.module.eks.aws_ec2_tag.cluster_primary_security_group["hubblewave_customer"]: Refreshing state... [id=sg-058bf359874ab66de,hubblewave_customer][0m
+[0m[1mmodule.instance.module.eks.time_sleep.this[0]: Refreshing state... [id=2026-01-20T02:28:30Z][0m
+[0m[1mmodule.instance.module.eks.aws_eks_access_entry.this["cluster_creator"]: Refreshing state... [id=hw-hubblewave-dev:arn:aws:iam::687904696003:user/hubblewave-terraform][0m
+[0m[1mmodule.instance.module.eks.data.tls_certificate.this[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].module.user_data.null_resource.validate_cluster_service_cidr: Refreshing state... [id=2840536038742154598][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].module.user_data.null_resource.validate_cluster_service_cidr: Refreshing state... [id=4215289435112738943][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["main"].aws_launch_template.this[0]: Refreshing state... [id=lt-0d3cee875503c4caa][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_launch_template.this[0]: Refreshing state... [id=lt-0eb3484c57b5bafbe][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_launch_template.this[0]: Refreshing state... [id=lt-0255b367e906835e0][0m
+[0m[1mmodule.instance.module.eks.data.tls_certificate.this[0]: Read complete after 0s [id=0a759b1370f2328d0bd5dd3ac81215f4c3398ef8][0m
+[0m[1mmodule.instance.module.eks.aws_iam_openid_connect_provider.oidc_provider[0]: Refreshing state... [id=arn:aws:iam::687904696003:oidc-provider/oidc.eks.us-east-2.amazonaws.com/id/328B663D7D51519A9C45F1C02130AB74][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["gpu"].aws_eks_node_group.this[0]: Refreshing state... [id=hw-hubblewave-dev:hubblewave-dev-gpu-2026012303064464500000000e][0m
+[0m[1mmodule.instance.module.eks.module.eks_managed_node_group["standard"].aws_eks_node_group.this[0]: Refreshing state... [id=hw-hubblewave-dev:hubblewave-dev-std-2026012303064464290000000c][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_iam_policy_document.this[0]: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_iam_policy_document.this[0]: Reading...[0m[0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.workload_assume: Reading...[0m[0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.cluster_autoscaler_assume: Reading...[0m[0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.data.aws_iam_policy_document.this[0]: Read complete after 0s [id=530322151][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.cluster_autoscaler_assume: Read complete after 0s [id=3764799728][0m
+[0m[1mmodule.instance.data.aws_iam_policy_document.workload_assume: Read complete after 0s [id=1557801573][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.data.aws_iam_policy_document.this[0]: Read complete after 0s [id=1909354504][0m
+[0m[1mmodule.instance.aws_iam_role.workload: Refreshing state... [id=hw-hubblewave-dev-workload][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-alb-controller][0m
+[0m[1mmodule.instance.aws_iam_role.cluster_autoscaler: Refreshing state... [id=hw-hubblewave-dev-cluster-autoscaler][0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.aws_iam_role.this[0]: Refreshing state... [id=hw-hubblewave-dev-ebs-csi][0m
+[0m[1mmodule.instance.module.eks.aws_eks_access_policy_association.this["cluster_creator_admin"]: Refreshing state... [id=hw-hubblewave-dev#arn:aws:iam::687904696003:user/hubblewave-terraform#arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy][0m
+[0m[1mmodule.instance.module.aws_load_balancer_controller_irsa_role.aws_iam_role_policy_attachment.load_balancer_controller[0]: Refreshing state... [id=hw-hubblewave-dev-alb-controller-2026012002280183230000001c][0m
+[0m[1mmodule.instance.aws_iam_role_policy_attachment.cluster_autoscaler: Refreshing state... [id=hw-hubblewave-dev-cluster-autoscaler-20260123030638562300000007][0m
+[0m[1mmodule.instance.aws_iam_role_policy_attachment.workload_storage: Refreshing state... [id=hw-hubblewave-dev-workload-2026012002280190090000001d][0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["kube-proxy"]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["vpc-cni"]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["coredns"]: Reading...[0m[0m
+[0m[1mmodule.instance.module.ebs_csi_irsa_role.aws_iam_role_policy_attachment.ebs_csi[0]: Refreshing state... [id=hw-hubblewave-dev-ebs-csi-2026012002280180790000001b][0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["aws-ebs-csi-driver"]: Reading...[0m[0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["aws-ebs-csi-driver"]: Read complete after 0s [id=aws-ebs-csi-driver][0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["kube-proxy"]: Read complete after 0s [id=kube-proxy][0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["vpc-cni"]: Read complete after 0s [id=vpc-cni][0m
+[0m[1mmodule.instance.module.eks.data.aws_eks_addon_version.this["coredns"]: Read complete after 0s [id=coredns][0m
+[0m[1mmodule.instance.module.eks.aws_eks_addon.this["coredns"]: Refreshing state... [id=hw-hubblewave-dev:coredns][0m
+[0m[1mmodule.instance.module.eks.aws_eks_addon.this["vpc-cni"]: Refreshing state... [id=hw-hubblewave-dev:vpc-cni][0m
+[0m[1mmodule.instance.module.eks.aws_eks_addon.this["kube-proxy"]: Refreshing state... [id=hw-hubblewave-dev:kube-proxy][0m
+[0m[1mmodule.instance.module.eks.aws_eks_addon.this["aws-ebs-csi-driver"]: Refreshing state... [id=hw-hubblewave-dev:aws-ebs-csi-driver][0m
+[0m[1mmodule.instance.aws_eks_access_entry.control_plane: Refreshing state... [id=hw-hubblewave-dev:arn:aws:iam::687904696003:role/hw-hubblewave-dev-control-plane-access][0m
+[0m[1mmodule.instance.aws_iam_role_policy.control_plane_eks_access: Refreshing state... [id=hw-hubblewave-dev-control-plane-access:eks-access][0m
+[0m[1mmodule.instance.aws_secretsmanager_secret_version.kubeconfig: Refreshing state... [id=arn:aws:secretsmanager:us-east-2:687904696003:secret:hubblewave/instance/dev/hubblewave/f8df6a32-1d27-4608-ab50-7bf2ec53c7b1/kubeconfig-2K1ONu|terraform-2026012002280221070000001e][0m
+[0m[1mmodule.instance.helm_release.aws_load_balancer_controller: Refreshing state... [id=aws-load-balancer-controller][0m
+[0m[1mmodule.instance.kubernetes_config_map_v1.ava_config[0]: Refreshing state... [id=default/ava-config][0m
+[0m[1mmodule.instance.kubernetes_secret_v1.instance_config: Refreshing state... [id=default/instance-config][0m
+[0m[1mmodule.instance.kubernetes_service_v1.api: Refreshing state... [id=default/instance-api][0m
+[0m[1mmodule.instance.kubernetes_secret_v1.database: Refreshing state... [id=default/database-credentials][0m
+[0m[1mmodule.instance.kubernetes_secret_v1.s3_credentials: Refreshing state... [id=default/s3-credentials][0m
+[0m[1mmodule.instance.kubernetes_secret_v1.redis: Refreshing state... [id=default/redis-credentials][0m
+[0m[1mmodule.instance.kubernetes_deployment_v1.web: Refreshing state... [id=default/instance-web][0m
+[0m[1mmodule.instance.kubernetes_daemon_set_v1.nvidia_device_plugin[0]: Refreshing state... [id=kube-system/nvidia-device-plugin-daemonset][0m
+[0m[1mmodule.instance.kubernetes_service_v1.ava[0]: Refreshing state... [id=default/ava-service][0m
+[0m[1mmodule.instance.kubernetes_service_v1.web: Refreshing state... [id=default/instance-web][0m
+[0m[1mmodule.instance.helm_release.metrics_server: Refreshing state... [id=metrics-server][0m
+[0m[1mmodule.instance.kubernetes_pod_disruption_budget_v1.api: Refreshing state... [id=default/instance-api-pdb][0m
+[0m[1mmodule.instance.kubernetes_config_map_v1.app_config: Refreshing state... [id=default/app-config][0m
+[0m[1mmodule.instance.kubernetes_storage_class_v1.gp3: Refreshing state... [id=gp3][0m
+[0m[1mmodule.instance.kubernetes_service_account_v1.workload: Refreshing state... [id=default/hubblewave-workload][0m
+[0m[1mmodule.instance.helm_release.cluster_autoscaler: Refreshing state... [id=cluster-autoscaler][0m
+[0m[1mmodule.instance.kubernetes_secret_v1.huggingface[0]: Refreshing state... [id=default/huggingface-token][0m
+[0m[1mmodule.instance.kubernetes_service_v1.vllm[0]: Refreshing state... [id=default/vllm-service][0m
+[0m[1mmodule.instance.aws_eks_access_policy_association.control_plane: Refreshing state... [id=hw-hubblewave-dev#arn:aws:iam::687904696003:role/hw-hubblewave-dev-control-plane-access#arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy][0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Refreshing state... [id=default/vllm-model-cache][0m
+[0m[1mmodule.instance.kubernetes_deployment_v1.api: Refreshing state... [id=default/instance-api][0m
+[0m[1mmodule.instance.kubernetes_ingress_v1.instance: Refreshing state... [id=default/instance-ingress][0m
+[0m[1mmodule.instance.cloudflare_record.instance: Refreshing state... [id=b8faef7b9aa759a068336524afd28ea4][0m
+[0m[1mmodule.instance.kubernetes_horizontal_pod_autoscaler_v2.api: Refreshing state... [id=default/instance-api-hpa][0m
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  [32m+[0m create[0m
+  [31m-[0m destroy[0m
+[31m-[0m/[32m+[0m destroy and then create replacement[0m
+
+Terraform will perform the following actions:
+
+[1m  # module.instance.kubernetes_deployment_v1.ava[0][0m will be created
+[0m  [32m+[0m[0m resource "kubernetes_deployment_v1" "ava" {
+      [32m+[0m[0m id               = (known after apply)
+      [32m+[0m[0m wait_for_rollout = true
+
+      [32m+[0m[0m metadata {
+          [32m+[0m[0m generation       = (known after apply)
+          [32m+[0m[0m labels           = {
+              [32m+[0m[0m "app.kubernetes.io/component"  = "ava"
+              [32m+[0m[0m "app.kubernetes.io/managed-by" = "terraform"
+              [32m+[0m[0m "hubblewave.com/customer"      = "hubblewave"
+              [32m+[0m[0m "hubblewave.com/environment"   = "dev"
+              [32m+[0m[0m "hubblewave.com/instance-id"   = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+              [32m+[0m[0m "hubblewave.com/release-id"    = "20260118-2be29e0"
+            }
+          [32m+[0m[0m name             = "ava-service"
+          [32m+[0m[0m namespace        = "default"
+          [32m+[0m[0m resource_version = (known after apply)
+          [32m+[0m[0m uid              = (known after apply)
+        }
+
+      [32m+[0m[0m spec {
+          [32m+[0m[0m min_ready_seconds         = 0
+          [32m+[0m[0m paused                    = false
+          [32m+[0m[0m progress_deadline_seconds = 600
+          [32m+[0m[0m replicas                  = "1"
+          [32m+[0m[0m revision_history_limit    = 10
+
+          [32m+[0m[0m selector {
+              [32m+[0m[0m match_labels = {
+                  [32m+[0m[0m "app.kubernetes.io/component" = "ava"
+                  [32m+[0m[0m "hubblewave.com/instance-id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+                }
+            }
+
+          [32m+[0m[0m template {
+              [32m+[0m[0m metadata {
+                  [32m+[0m[0m generation       = (known after apply)
+                  [32m+[0m[0m labels           = {
+                      [32m+[0m[0m "app.kubernetes.io/component"  = "ava"
+                      [32m+[0m[0m "app.kubernetes.io/managed-by" = "terraform"
+                      [32m+[0m[0m "hubblewave.com/customer"      = "hubblewave"
+                      [32m+[0m[0m "hubblewave.com/environment"   = "dev"
+                      [32m+[0m[0m "hubblewave.com/instance-id"   = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+                      [32m+[0m[0m "hubblewave.com/release-id"    = "20260118-2be29e0"
+                    }
+                  [32m+[0m[0m name             = (known after apply)
+                  [32m+[0m[0m resource_version = (known after apply)
+                  [32m+[0m[0m uid              = (known after apply)
+                }
+              [32m+[0m[0m spec {
+                  [32m+[0m[0m automount_service_account_token  = true
+                  [32m+[0m[0m dns_policy                       = "ClusterFirst"
+                  [32m+[0m[0m enable_service_links             = true
+                  [32m+[0m[0m host_ipc                         = false
+                  [32m+[0m[0m host_network                     = false
+                  [32m+[0m[0m host_pid                         = false
+                  [32m+[0m[0m hostname                         = (known after apply)
+                  [32m+[0m[0m node_name                        = (known after apply)
+                  [32m+[0m[0m node_selector                    = {
+                      [32m+[0m[0m "hubblewave.com/node-type" = "standard"
+                    }
+                  [32m+[0m[0m restart_policy                   = "Always"
+                  [32m+[0m[0m scheduler_name                   = (known after apply)
+                  [32m+[0m[0m service_account_name             = "hubblewave-workload"
+                  [32m+[0m[0m share_process_namespace          = false
+                  [32m+[0m[0m termination_grace_period_seconds = 30
+
+                  [32m+[0m[0m container {
+                      [32m+[0m[0m image                      = "687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/instance/svc-ava:2be29e0"
+                      [32m+[0m[0m image_pull_policy          = (known after apply)
+                      [32m+[0m[0m name                       = "ava"
+                      [32m+[0m[0m restart_policy             = (known after apply)
+                      [32m+[0m[0m stdin                      = false
+                      [32m+[0m[0m stdin_once                 = false
+                      [32m+[0m[0m termination_message_path   = "/dev/termination-log"
+                      [32m+[0m[0m termination_message_policy = (known after apply)
+                      [32m+[0m[0m tty                        = false
+
+                      [32m+[0m[0m env_from {
+                          [32m+[0m[0m secret_ref {
+                              [32m+[0m[0m name = "database-credentials"
+                            }
+                        }
+                      [32m+[0m[0m env_from {
+                          [32m+[0m[0m secret_ref {
+                              [32m+[0m[0m name = "redis-credentials"
+                            }
+                        }
+                      [32m+[0m[0m env_from {
+                          [32m+[0m[0m secret_ref {
+                              [32m+[0m[0m name = "instance-config"
+                            }
+                        }
+                      [32m+[0m[0m env_from {
+                          [32m+[0m[0m config_map_ref {
+                              [32m+[0m[0m name = "ava-config"
+                            }
+                        }
+
+                      [32m+[0m[0m liveness_probe {
+                          [32m+[0m[0m failure_threshold     = 3
+                          [32m+[0m[0m initial_delay_seconds = 30
+                          [32m+[0m[0m period_seconds        = 10
+                          [32m+[0m[0m success_threshold     = 1
+                          [32m+[0m[0m timeout_seconds       = 5
+
+                          [32m+[0m[0m http_get {
+                              [32m+[0m[0m path   = "/api/health"
+                              [32m+[0m[0m port   = "3004"
+                              [32m+[0m[0m scheme = "HTTP"
+                            }
+                        }
+
+                      [32m+[0m[0m port {
+                          [32m+[0m[0m container_port = 3004
+                          [32m+[0m[0m name           = "http"
+                          [32m+[0m[0m protocol       = "TCP"
+                        }
+                      [32m+[0m[0m port {
+                          [32m+[0m[0m container_port = 9090
+                          [32m+[0m[0m name           = "metrics"
+                          [32m+[0m[0m protocol       = "TCP"
+                        }
+
+                      [32m+[0m[0m readiness_probe {
+                          [32m+[0m[0m failure_threshold     = 3
+                          [32m+[0m[0m initial_delay_seconds = 10
+                          [32m+[0m[0m period_seconds        = 5
+                          [32m+[0m[0m success_threshold     = 1
+                          [32m+[0m[0m timeout_seconds       = 3
+
+                          [32m+[0m[0m http_get {
+                              [32m+[0m[0m path   = "/api/health"
+                              [32m+[0m[0m port   = "3004"
+                              [32m+[0m[0m scheme = "HTTP"
+                            }
+                        }
+
+                      [32m+[0m[0m resources {
+                          [32m+[0m[0m limits   = {
+                              [32m+[0m[0m "cpu"    = "2000m"
+                              [32m+[0m[0m "memory" = "2Gi"
+                            }
+                          [32m+[0m[0m requests = {
+                              [32m+[0m[0m "cpu"    = "500m"
+                              [32m+[0m[0m "memory" = "512Mi"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+[1m  # module.instance.kubernetes_deployment_v1.vllm[0][0m will be created
+[0m  [32m+[0m[0m resource "kubernetes_deployment_v1" "vllm" {
+      [32m+[0m[0m id               = (known after apply)
+      [32m+[0m[0m wait_for_rollout = true
+
+      [32m+[0m[0m metadata {
+          [32m+[0m[0m generation       = (known after apply)
+          [32m+[0m[0m labels           = {
+              [32m+[0m[0m "app.kubernetes.io/component"  = "vllm"
+              [32m+[0m[0m "app.kubernetes.io/managed-by" = "terraform"
+              [32m+[0m[0m "hubblewave.com/customer"      = "hubblewave"
+              [32m+[0m[0m "hubblewave.com/environment"   = "dev"
+              [32m+[0m[0m "hubblewave.com/instance-id"   = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+              [32m+[0m[0m "hubblewave.com/release-id"    = "20260118-2be29e0"
+            }
+          [32m+[0m[0m name             = "vllm"
+          [32m+[0m[0m namespace        = "default"
+          [32m+[0m[0m resource_version = (known after apply)
+          [32m+[0m[0m uid              = (known after apply)
+        }
+
+      [32m+[0m[0m spec {
+          [32m+[0m[0m min_ready_seconds         = 0
+          [32m+[0m[0m paused                    = false
+          [32m+[0m[0m progress_deadline_seconds = 600
+          [32m+[0m[0m replicas                  = "1"
+          [32m+[0m[0m revision_history_limit    = 10
+
+          [32m+[0m[0m selector {
+              [32m+[0m[0m match_labels = {
+                  [32m+[0m[0m "app.kubernetes.io/component" = "vllm"
+                  [32m+[0m[0m "hubblewave.com/instance-id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+                }
+            }
+
+          [32m+[0m[0m strategy {
+              [32m+[0m[0m type = "Recreate"
+            }
+
+          [32m+[0m[0m template {
+              [32m+[0m[0m metadata {
+                  [32m+[0m[0m annotations      = {
+                      [32m+[0m[0m "hubblewave.com/model" = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+                    }
+                  [32m+[0m[0m generation       = (known after apply)
+                  [32m+[0m[0m labels           = {
+                      [32m+[0m[0m "app.kubernetes.io/component"  = "vllm"
+                      [32m+[0m[0m "app.kubernetes.io/managed-by" = "terraform"
+                      [32m+[0m[0m "hubblewave.com/customer"      = "hubblewave"
+                      [32m+[0m[0m "hubblewave.com/environment"   = "dev"
+                      [32m+[0m[0m "hubblewave.com/instance-id"   = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+                      [32m+[0m[0m "hubblewave.com/release-id"    = "20260118-2be29e0"
+                    }
+                  [32m+[0m[0m name             = (known after apply)
+                  [32m+[0m[0m resource_version = (known after apply)
+                  [32m+[0m[0m uid              = (known after apply)
+                }
+              [32m+[0m[0m spec {
+                  [32m+[0m[0m automount_service_account_token  = true
+                  [32m+[0m[0m dns_policy                       = "ClusterFirst"
+                  [32m+[0m[0m enable_service_links             = true
+                  [32m+[0m[0m host_ipc                         = false
+                  [32m+[0m[0m host_network                     = false
+                  [32m+[0m[0m host_pid                         = false
+                  [32m+[0m[0m hostname                         = (known after apply)
+                  [32m+[0m[0m node_name                        = (known after apply)
+                  [32m+[0m[0m node_selector                    = {
+                      [32m+[0m[0m "hubblewave.com/node-type" = "gpu"
+                    }
+                  [32m+[0m[0m restart_policy                   = "Always"
+                  [32m+[0m[0m scheduler_name                   = (known after apply)
+                  [32m+[0m[0m service_account_name             = "hubblewave-workload"
+                  [32m+[0m[0m share_process_namespace          = false
+                  [32m+[0m[0m termination_grace_period_seconds = 30
+
+                  [32m+[0m[0m container {
+                      [32m+[0m[0m args                       = [
+                          [32m+[0m[0m "--model",
+                          [32m+[0m[0m "/models/meta-llama--Meta-Llama-3.1-8B-Instruct",
+                          [32m+[0m[0m "--host",
+                          [32m+[0m[0m "0.0.0.0",
+                          [32m+[0m[0m "--port",
+                          [32m+[0m[0m "8000",
+                          [32m+[0m[0m "--dtype",
+                          [32m+[0m[0m "half",
+                          [32m+[0m[0m "--max-model-len",
+                          [32m+[0m[0m "8192",
+                          [32m+[0m[0m "--gpu-memory-utilization",
+                          [32m+[0m[0m "0.9",
+                          [32m+[0m[0m "--served-model-name",
+                          [32m+[0m[0m "llama-3.1-8b",
+                        ]
+                      [32m+[0m[0m image                      = "vllm/vllm-openai:v0.6.4.post1"
+                      [32m+[0m[0m image_pull_policy          = (known after apply)
+                      [32m+[0m[0m name                       = "vllm"
+                      [32m+[0m[0m restart_policy             = (known after apply)
+                      [32m+[0m[0m stdin                      = false
+                      [32m+[0m[0m stdin_once                 = false
+                      [32m+[0m[0m termination_message_path   = "/dev/termination-log"
+                      [32m+[0m[0m termination_message_policy = (known after apply)
+                      [32m+[0m[0m tty                        = false
+
+                      [32m+[0m[0m env {
+                          [32m+[0m[0m name  = "HF_HOME"
+                          [32m+[0m[0m value = "/models"
+                        }
+
+                      [32m+[0m[0m liveness_probe {
+                          [32m+[0m[0m failure_threshold     = 3
+                          [32m+[0m[0m initial_delay_seconds = 300
+                          [32m+[0m[0m period_seconds        = 30
+                          [32m+[0m[0m success_threshold     = 1
+                          [32m+[0m[0m timeout_seconds       = 10
+
+                          [32m+[0m[0m http_get {
+                              [32m+[0m[0m path   = "/health"
+                              [32m+[0m[0m port   = "8000"
+                              [32m+[0m[0m scheme = "HTTP"
+                            }
+                        }
+
+                      [32m+[0m[0m port {
+                          [32m+[0m[0m container_port = 8000
+                          [32m+[0m[0m name           = "http"
+                          [32m+[0m[0m protocol       = "TCP"
+                        }
+
+                      [32m+[0m[0m readiness_probe {
+                          [32m+[0m[0m failure_threshold     = 3
+                          [32m+[0m[0m initial_delay_seconds = 300
+                          [32m+[0m[0m period_seconds        = 10
+                          [32m+[0m[0m success_threshold     = 1
+                          [32m+[0m[0m timeout_seconds       = 5
+
+                          [32m+[0m[0m http_get {
+                              [32m+[0m[0m path   = "/health"
+                              [32m+[0m[0m port   = "8000"
+                              [32m+[0m[0m scheme = "HTTP"
+                            }
+                        }
+
+                      [32m+[0m[0m resources {
+                          [32m+[0m[0m limits   = {
+                              [32m+[0m[0m "cpu"            = "4"
+                              [32m+[0m[0m "memory"         = "14Gi"
+                              [32m+[0m[0m "nvidia.com/gpu" = "1"
+                            }
+                          [32m+[0m[0m requests = {
+                              [32m+[0m[0m "cpu"            = "2"
+                              [32m+[0m[0m "memory"         = "12Gi"
+                              [32m+[0m[0m "nvidia.com/gpu" = "1"
+                            }
+                        }
+
+                      [32m+[0m[0m volume_mount {
+                          [32m+[0m[0m mount_path        = "/models"
+                          [32m+[0m[0m mount_propagation = "None"
+                          [32m+[0m[0m name              = "model-cache"
+                          [32m+[0m[0m read_only         = false
+                        }
+                      [32m+[0m[0m volume_mount {
+                          [32m+[0m[0m mount_path        = "/dev/shm"
+                          [32m+[0m[0m mount_propagation = "None"
+                          [32m+[0m[0m name              = "shm"
+                          [32m+[0m[0m read_only         = false
+                        }
+                    }
+
+                  [32m+[0m[0m init_container {
+                      [32m+[0m[0m args                       = [
+                          [32m+[0m[0m <<-EOT
+                                set -e
+                                            echo "Checking for model at /models/meta-llama--Meta-Llama-3.1-8B-Instruct..."
+                                            if [ -d "/models/meta-llama--Meta-Llama-3.1-8B-Instruct" ] && [ "$(ls -A /models/meta-llama--Meta-Llama-3.1-8B-Instruct)" ]; then
+                                              echo "Model already exists, skipping download"
+                                            else
+                                              echo "Downloading model meta-llama/Meta-Llama-3.1-8B-Instruct..."
+                                              python -c "
+                                from huggingface_hub import snapshot_download
+                                import os
+                                token = os.environ.get('HF_TOKEN', '')
+                                snapshot_download(
+                                  repo_id='meta-llama/Meta-Llama-3.1-8B-Instruct',
+                                  local_dir='/models/meta-llama--Meta-Llama-3.1-8B-Instruct',
+                                  token=token if token else None
+                                )
+                                print('Model download complete')
+                                "
+                                            fi
+                            EOT,
+                        ]
+                      [32m+[0m[0m command                    = [
+                          [32m+[0m[0m "/bin/bash",
+                          [32m+[0m[0m "-c",
+                        ]
+                      [32m+[0m[0m image                      = "vllm/vllm-openai:v0.6.4.post1"
+                      [32m+[0m[0m image_pull_policy          = (known after apply)
+                      [32m+[0m[0m name                       = "model-downloader"
+                      [32m+[0m[0m restart_policy             = (known after apply)
+                      [32m+[0m[0m stdin                      = false
+                      [32m+[0m[0m stdin_once                 = false
+                      [32m+[0m[0m termination_message_path   = "/dev/termination-log"
+                      [32m+[0m[0m termination_message_policy = (known after apply)
+                      [32m+[0m[0m tty                        = false
+
+                      [32m+[0m[0m env {
+                          [32m+[0m[0m name  = "HF_HOME"
+                          [32m+[0m[0m value = "/models"
+                        }
+                      [32m+[0m[0m env {
+                          [32m+[0m[0m name  = "HF_TOKEN"
+                          [32m+[0m[0m value = (sensitive value)
+                        }
+
+                      [32m+[0m[0m resources {
+                          [32m+[0m[0m limits   = {
+                              [32m+[0m[0m "cpu"    = "2"
+                              [32m+[0m[0m "memory" = "8Gi"
+                            }
+                          [32m+[0m[0m requests = {
+                              [32m+[0m[0m "cpu"    = "1"
+                              [32m+[0m[0m "memory" = "4Gi"
+                            }
+                        }
+
+                      [32m+[0m[0m volume_mount {
+                          [32m+[0m[0m mount_path        = "/models"
+                          [32m+[0m[0m mount_propagation = "None"
+                          [32m+[0m[0m name              = "model-cache"
+                          [32m+[0m[0m read_only         = false
+                        }
+                    }
+
+                  [32m+[0m[0m toleration {
+                      [32m+[0m[0m effect   = "NoSchedule"
+                      [32m+[0m[0m key      = "nvidia.com/gpu"
+                      [32m+[0m[0m operator = "Equal"
+                      [32m+[0m[0m value    = "true"
+                    }
+
+                  [32m+[0m[0m volume {
+                      [32m+[0m[0m name = "model-cache"
+
+                      [32m+[0m[0m persistent_volume_claim {
+                          [32m+[0m[0m claim_name = "vllm-model-cache"
+                          [32m+[0m[0m read_only  = false
+                        }
+                    }
+                  [32m+[0m[0m volume {
+                      [32m+[0m[0m name = "shm"
+
+                      [32m+[0m[0m empty_dir {
+                          [32m+[0m[0m medium     = "Memory"
+                          [32m+[0m[0m size_limit = "8Gi"
+                        }
+                    }
+                }
+            }
+        }
+
+      [32m+[0m[0m timeouts {
+          [32m+[0m[0m create = "30m"
+          [32m+[0m[0m update = "30m"
+        }
+    }
+
+[1m  # module.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0][0m is tainted, so must be [1m[31mreplaced[0m
+[0m[31m-[0m/[32m+[0m[0m resource "kubernetes_persistent_volume_claim_v1" "vllm_cache" {
+      [33m~[0m[0m id               = "default/vllm-model-cache" -> (known after apply)
+        [90m# (1 unchanged attribute hidden)[0m[0m
+
+      [33m~[0m[0m metadata {
+          [31m-[0m[0m annotations      = {} [90m-> null[0m[0m
+          [33m~[0m[0m generation       = 0 -> (known after apply)
+            name             = "vllm-model-cache"
+          [33m~[0m[0m resource_version = "1171648" -> (known after apply)
+          [33m~[0m[0m uid              = "944807b1-7a14-48fb-b4c8-f2a0c97dc783" -> (known after apply)
+            [90m# (2 unchanged attributes hidden)[0m[0m
+        }
+
+      [33m~[0m[0m spec {
+          [33m~[0m[0m volume_mode        = "Filesystem" -> (known after apply)
+          [32m+[0m[0m volume_name        = (known after apply)
+            [90m# (2 unchanged attributes hidden)[0m[0m
+
+          [33m~[0m[0m resources {
+              [31m-[0m[0m limits   = {} [90m-> null[0m[0m
+                [90m# (1 unchanged attribute hidden)[0m[0m
+            }
+        }
+    }
+
+[1m  # module.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role.this[0][0m will be [1m[31mdestroyed[0m
+  # (because module.instance.module.eks.module.eks_managed_node_group["main"] is not in configuration)
+[0m  [31m-[0m[0m resource "aws_iam_role" "this" {
+      [31m-[0m[0m arn                   = "arn:aws:iam::687904696003:role/hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+      [31m-[0m[0m assume_role_policy    = jsonencode(
+            {
+              [31m-[0m[0m Statement = [
+                  [31m-[0m[0m {
+                      [31m-[0m[0m Action    = "sts:AssumeRole"
+                      [31m-[0m[0m Effect    = "Allow"
+                      [31m-[0m[0m Principal = {
+                          [31m-[0m[0m Service = "ec2.amazonaws.com"
+                        }
+                      [31m-[0m[0m Sid       = "EKSNodeAssumeRole"
+                    },
+                ]
+              [31m-[0m[0m Version   = "2012-10-17"
+            }
+        ) [90m-> null[0m[0m
+      [31m-[0m[0m create_date           = "2026-01-20T02:19:21Z" [90m-> null[0m[0m
+      [31m-[0m[0m description           = "EKS managed node group IAM role" [90m-> null[0m[0m
+      [31m-[0m[0m force_detach_policies = true [90m-> null[0m[0m
+      [31m-[0m[0m id                    = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+      [31m-[0m[0m managed_policy_arns   = [
+          [31m-[0m[0m "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+          [31m-[0m[0m "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+          [31m-[0m[0m "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+        ] [90m-> null[0m[0m
+      [31m-[0m[0m max_session_duration  = 3600 [90m-> null[0m[0m
+      [31m-[0m[0m name                  = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+      [31m-[0m[0m name_prefix           = "hw-hubblewave-dev-main-eks-node-group-" [90m-> null[0m[0m
+      [31m-[0m[0m path                  = "/" [90m-> null[0m[0m
+      [31m-[0m[0m tags                  = {
+          [31m-[0m[0m "Name"                    = "hw-hubblewave-dev"
+          [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+          [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+          [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+          [31m-[0m[0m "hubblewave_environment"  = "dev"
+          [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+        } [90m-> null[0m[0m
+      [31m-[0m[0m tags_all              = {
+          [31m-[0m[0m "Name"                    = "hw-hubblewave-dev"
+          [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+          [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+          [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+          [31m-[0m[0m "hubblewave_environment"  = "dev"
+          [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+        } [90m-> null[0m[0m
+      [31m-[0m[0m unique_id             = "AROA2AKSQU3BRKAZCCBHB" [90m-> null[0m[0m
+    }
+
+[1m  # module.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEC2ContainerRegistryReadOnly"][0m will be [1m[31mdestroyed[0m
+  # (because module.instance.module.eks.module.eks_managed_node_group["main"] is not in configuration)
+[0m  [31m-[0m[0m resource "aws_iam_role_policy_attachment" "this" {
+      [31m-[0m[0m id         = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192191930000000f" [90m-> null[0m[0m
+      [31m-[0m[0m policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly" [90m-> null[0m[0m
+      [31m-[0m[0m role       = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+    }
+
+[1m  # module.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEKSWorkerNodePolicy"][0m will be [1m[31mdestroyed[0m
+  # (because module.instance.module.eks.module.eks_managed_node_group["main"] is not in configuration)
+[0m  [31m-[0m[0m resource "aws_iam_role_policy_attachment" "this" {
+      [31m-[0m[0m id         = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192185650000000d" [90m-> null[0m[0m
+      [31m-[0m[0m policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy" [90m-> null[0m[0m
+      [31m-[0m[0m role       = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+    }
+
+[1m  # module.instance.module.eks.module.eks_managed_node_group["main"].aws_iam_role_policy_attachment.this["AmazonEKS_CNI_Policy"][0m will be [1m[31mdestroyed[0m
+  # (because module.instance.module.eks.module.eks_managed_node_group["main"] is not in configuration)
+[0m  [31m-[0m[0m resource "aws_iam_role_policy_attachment" "this" {
+      [31m-[0m[0m id         = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006-2026012002192186470000000e" [90m-> null[0m[0m
+      [31m-[0m[0m policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy" [90m-> null[0m[0m
+      [31m-[0m[0m role       = "hw-hubblewave-dev-main-eks-node-group-20260120021921069900000006" [90m-> null[0m[0m
+    }
+
+[1m  # module.instance.module.eks.module.eks_managed_node_group["main"].aws_launch_template.this[0][0m will be [1m[31mdestroyed[0m
+  # (because module.instance.module.eks.module.eks_managed_node_group["main"] is not in configuration)
+[0m  [31m-[0m[0m resource "aws_launch_template" "this" {
+      [31m-[0m[0m arn                     = "arn:aws:ec2:us-east-2:687904696003:launch-template/lt-0d3cee875503c4caa" [90m-> null[0m[0m
+      [31m-[0m[0m default_version         = 1 [90m-> null[0m[0m
+      [31m-[0m[0m description             = "Custom launch template for hw-hubblewave-dev-main EKS managed node group" [90m-> null[0m[0m
+      [31m-[0m[0m disable_api_stop        = false [90m-> null[0m[0m
+      [31m-[0m[0m disable_api_termination = false [90m-> null[0m[0m
+      [31m-[0m[0m id                      = "lt-0d3cee875503c4caa" [90m-> null[0m[0m
+      [31m-[0m[0m latest_version          = 1 [90m-> null[0m[0m
+      [31m-[0m[0m name                    = "main-2026012002283065640000001f" [90m-> null[0m[0m
+      [31m-[0m[0m name_prefix             = "main-" [90m-> null[0m[0m
+      [31m-[0m[0m security_group_names    = [] [90m-> null[0m[0m
+      [31m-[0m[0m tags                    = {
+          [31m-[0m[0m "Name"                    = "hw-hubblewave-dev"
+          [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+          [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+          [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+          [31m-[0m[0m "hubblewave_environment"  = "dev"
+          [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+        } [90m-> null[0m[0m
+      [31m-[0m[0m tags_all                = {
+          [31m-[0m[0m "Name"                    = "hw-hubblewave-dev"
+          [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+          [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+          [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+          [31m-[0m[0m "hubblewave_environment"  = "dev"
+          [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+        } [90m-> null[0m[0m
+      [31m-[0m[0m update_default_version  = true [90m-> null[0m[0m
+      [31m-[0m[0m vpc_security_group_ids  = [
+          [31m-[0m[0m "sg-0ba125c17877533df",
+        ] [90m-> null[0m[0m
+
+      [31m-[0m[0m metadata_options {
+          [31m-[0m[0m http_endpoint               = "enabled" [90m-> null[0m[0m
+          [31m-[0m[0m http_put_response_hop_limit = 2 [90m-> null[0m[0m
+          [31m-[0m[0m http_tokens                 = "required" [90m-> null[0m[0m
+        }
+
+      [31m-[0m[0m monitoring {
+          [31m-[0m[0m enabled = true [90m-> null[0m[0m
+        }
+
+      [31m-[0m[0m tag_specifications {
+          [31m-[0m[0m resource_type = "instance" [90m-> null[0m[0m
+          [31m-[0m[0m tags          = {
+              [31m-[0m[0m "Name"                    = "hw-hubblewave-dev-main"
+              [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+              [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+              [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+              [31m-[0m[0m "hubblewave_environment"  = "dev"
+              [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+            } [90m-> null[0m[0m
+        }
+      [31m-[0m[0m tag_specifications {
+          [31m-[0m[0m resource_type = "network-interface" [90m-> null[0m[0m
+          [31m-[0m[0m tags          = {
+              [31m-[0m[0m "Name"                    = "hw-hubblewave-dev-main"
+              [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+              [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+              [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+              [31m-[0m[0m "hubblewave_environment"  = "dev"
+              [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+            } [90m-> null[0m[0m
+        }
+      [31m-[0m[0m tag_specifications {
+          [31m-[0m[0m resource_type = "volume" [90m-> null[0m[0m
+          [31m-[0m[0m tags          = {
+              [31m-[0m[0m "Name"                    = "hw-hubblewave-dev-main"
+              [31m-[0m[0m "hubblewave.com/customer" = "hubblewave"
+              [31m-[0m[0m "hubblewave.com/instance" = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+              [31m-[0m[0m "hubblewave_customer"     = "hubblewave"
+              [31m-[0m[0m "hubblewave_environment"  = "dev"
+              [31m-[0m[0m "hubblewave_instance_id"  = "f8df6a32-1d27-4608-ab50-7bf2ec53c7b1"
+            } [90m-> null[0m[0m
+        }
+    }
+
+[1mPlan:[0m 3 to add, 0 to change, 6 to destroy.
+[0m[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Destroying... [id=default/vllm-model-cache][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Destruction complete after 1s[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Creating...[0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [10s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [20s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [30s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [40s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [50s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m0s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m10s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m20s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m30s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m40s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [1m50s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m1s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m11s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m21s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m31s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m41s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [2m51s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m1s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m11s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m21s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m31s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m41s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [3m51s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m1s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m11s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m21s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m31s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m41s elapsed][0m[0m
+[0m[1mmodule.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0]: Still creating... [4m51s elapsed][0m[0m
+[31m╷[0m[0m
+[31m│[0m [0m[1m[31mError: [0m[0m[1mclient rate limiter Wait returned an error: context deadline exceeded[0m
+[31m│[0m [0m
+[31m│[0m [0m[0m  with module.instance.kubernetes_persistent_volume_claim_v1.vllm_cache[0],
+[31m│[0m [0m  on ..\..\modules\customer-instance\vllm.tf line 50, in resource "kubernetes_persistent_volume_claim_v1" "vllm_cache":
+[31m│[0m [0m  50: resource "kubernetes_persistent_volume_claim_v1" "vllm_cache" [4m{[0m[0m
+[31m│[0m [0m
+[31m╵[0m[0m

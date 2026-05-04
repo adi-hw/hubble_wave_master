@@ -42,6 +42,13 @@ export interface DefaultValueContext {
   collectionId: string;
   record: Record<string, unknown>; // Other fields in the record
   isCreate: boolean;
+  /**
+   * Subset of property codes the caller can read on this collection.
+   * When present, expression evaluators must filter `record` to these fields
+   * before passing it to user-authored expressions, so an expression cannot
+   * exfiltrate fields the caller is not permitted to read.
+   */
+  authorizedFieldCodes?: string[];
 }
 
 /**

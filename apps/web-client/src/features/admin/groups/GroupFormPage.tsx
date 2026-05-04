@@ -72,8 +72,8 @@ export const GroupFormPage: React.FC = () => {
         ? response.data.data.filter((g) => g.id !== id && g.isActive)
         : response.data.data.filter((g) => g.isActive);
       setGroups(filteredGroups);
-    } catch (err) {
-      console.error('Failed to fetch groups:', err);
+    } catch {
+      // Groups fetch failed - parent selection will be empty
     }
   }, [id, isEditing]);
 

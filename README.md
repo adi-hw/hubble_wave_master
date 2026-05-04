@@ -34,57 +34,41 @@ See: [QUICK-START-SECURITY.md](QUICK-START-SECURITY.md) for security configurati
    docker-compose up -d
    ```
 
-### 2. **Generate JWT Secret** (REQUIRED)
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-   ```
-   Copy the output and add to `.env`:
-   ```env
-   JWT_SECRET=<your-generated-secret-here>
-   ```
-
-### 3. **Configure Environment**
-   Copy `.env.example` to `.env` and update:
+### 2. **Configure Environment + generate local secrets**
    ```bash
    cp .env.example .env
-   # Edit .env and set JWT_SECRET (from step 2)
+   npx ts-node scripts/generate-local-dev-secrets.ts >> .env
    ```
+   The generator emits fresh values for every internal-only secret
+   (JWT, pack signing keypair, backup signing key, DB password, instance
+   token, MinIO/Typesense keys, bootstrap admin password). Review the
+   appended block, then fill in external-service tokens by hand
+   (Cloudflare, HuggingFace, Anthropic, OpenAI). See `SECRETS_ROTATION.md`.
 
-### 4. **Install Dependencies**
+### 3. **Install Dependencies**
    ```bash
    npm install
    ```
 
-### 5. **Run Database Migrations**
+### 4. **Run Database Migrations**
    ```bash
-   # TypeORM migrations (recommended)
-   npm run typeorm:migration:run
-
-   # OR manually apply SQL migrations in order
-   psql "$DATABASE_URL" -f migrations/2025-11-29_add_rbac_abac_config.sql
-   psql "$DATABASE_URL" -f migrations/2025-11-30_add_modules.sql
-   psql "$DATABASE_URL" -f migrations/2025-11-30_seed-modules.sql
-   psql "$DATABASE_URL" -f migrations/2025-11-30_add_forms_workflows.sql
-   psql "$DATABASE_URL" -f migrations/2025-12-01_add_ui_tables.sql
-   psql "$DATABASE_URL" -f migrations/2025-12-02_add_model_tables.sql
-   psql "$DATABASE_URL" -f migrations/platform/1733616000000-add-account-lockout.ts
+   npm run migration:run:instance
+   npm run migration:run:control-plane
    ```
 
-### 6. **Run Services**
-   You can run services individually or all together:
+### 5. **Run Services**
    ```bash
-   # Run all services
-   npm run dev:all
-
-   # Run specific service
+   npm run dev:all              # all services in parallel
+   # or individually:
    npm run dev:identity
    npm run dev:metadata
    npm run dev:data
    npm run dev:web
    ```
 
-### 7. **Verify Security Configuration**
-   See: [QUICK-START-SECURITY.md](QUICK-START-SECURITY.md) for verification steps.
+### 6. **Verify Security Configuration**
+   See `SECRETS_ROTATION.md` for the post-audit credential rotation
+   runbook and the canonical list of required env vars.
 
 ## Environment
 - Copy `.env.example` to `.env` (backend) and set secrets (`JWT_SECRET`, DB credentials).

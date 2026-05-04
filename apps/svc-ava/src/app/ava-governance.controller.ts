@@ -75,7 +75,7 @@ interface AuditQueryDto {
 
 @ApiTags('AVA Governance - Admin')
 @ApiBearerAuth()
-@Controller('api/ava/admin')
+@Controller('ava/admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePermission('ava.admin')
 export class AVAGovernanceController {

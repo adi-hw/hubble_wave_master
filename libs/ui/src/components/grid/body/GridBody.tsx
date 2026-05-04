@@ -391,7 +391,8 @@ function renderCell<TData extends GridRowData>(
   }
 
   // Check if editing is enabled for this column
-  const isEditable = isColumnEditable?.(column.code) ?? false;
+  // Use isColumnEditable callback if provided, otherwise check column.editable directly
+  const isEditable = isColumnEditable ? isColumnEditable(column.code) : (column.editable === true);
   const rowId = row.original.id;
   const isEditing = editState?.rowId === rowId && editState?.columnCode === column.code;
 
@@ -484,11 +485,23 @@ const DataRow = memo(function DataRow<TData extends GridRowData>({
   void _columnOrder; // Used only to trigger re-renders when column order changes
   void _scrollLeft; // Kept for API compatibility
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // Don't trigger row click if clicking on a cell (cells handle their own clicks)
+    const target = e.target as HTMLElement;
+    const isClickOnCell = target.closest('.grid-cell') !== null;
+    if (isClickOnCell) {
+      return;
+    }
     onRowClick?.(row.original);
   }, [row.original, onRowClick]);
 
-  const handleDoubleClick = useCallback(() => {
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    // Don't trigger row double-click if double-clicking on a cell (cells handle editing)
+    const target = e.target as HTMLElement;
+    const isClickOnCell = target.closest('.grid-cell') !== null;
+    if (isClickOnCell) {
+      return;
+    }
     onRowDoubleClick?.(row.original);
   }, [row.original, onRowDoubleClick]);
 

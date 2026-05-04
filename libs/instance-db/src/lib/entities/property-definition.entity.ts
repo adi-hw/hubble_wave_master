@@ -19,6 +19,33 @@ import { PropertyType } from './property-type.entity';
 export type DefaultValueType = 'static' | 'expression' | 'script' | 'current_user' | 'current_datetime';
 
 /**
+ * Lifecycle status for the property definition itself (ADR-5).
+ * Mirrors CollectionDefinitionStatus.
+ */
+export type PropertyDefinitionStatus = 'draft' | 'published' | 'deprecated';
+export type PropertyDefinitionRevisionStatus = 'draft' | 'published';
+
+/**
+ * Plan §6.3 behavioral attributes registry. Each key is a discrete
+ * runtime hook the platform consults when reading or writing the
+ * property. Values default to "off" — absent keys are treated as
+ * disabled so adopters can introduce new attributes without
+ * back-filling every existing row.
+ */
+export interface PropertyBehavioralAttributes {
+  /** Encrypt the field's value before storage via shared encryption service. */
+  encrypt_at_rest?: boolean;
+  /** Track changes to this property in the audit-log subscriber's tracked-changes set. */
+  audit?: boolean;
+  /** Redact the field's value in notification provider-error log lines. */
+  mask_in_logs?: boolean;
+  /** Surface this property on the mobile shell. Default exposes everything. */
+  mobile_visible?: boolean;
+  /** Caching policy for computed properties (formula/rollup/lookup). */
+  formula_cache_strategy?: 'none' | 'memoize' | 'persist';
+}
+
+/**
  * PropertyDefinition entity - defines fields on collections
  * 
  * This is the schema engine's entity for defining what fields/columns
@@ -30,6 +57,8 @@ export type DefaultValueType = 'static' | 'expression' | 'script' | 'current_use
 @Index(['propertyTypeId'])
 @Index(['referenceCollectionId'])
 @Index(['isActive'])
+@Index(['status'])
+@Index(['applicationId'])
 export class PropertyDefinition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -41,6 +70,15 @@ export class PropertyDefinition {
   @ManyToOne(() => CollectionDefinition, (col) => col.properties, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'collection_id' })
   collection?: CollectionDefinition;
+
+  /**
+   * Application this property belongs to (ADR-6 explicit scoping).
+   * Always equals the parent collection's applicationId at creation
+   * time, but kept as a denormalized FK so cross-application reference
+   * checks don't require an extra join through collections.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   // ─────────────────────────────────────────────────────────────────
   // Identity
@@ -186,6 +224,10 @@ export class PropertyDefinition {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
+  /** ADR-7 provenance. See CollectionDefinition.source for semantics. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
+
   /** Is searchable (included in full-text search) */
   @Column({ name: 'is_searchable', type: 'boolean', default: false })
   isSearchable!: boolean;
@@ -226,6 +268,29 @@ export class PropertyDefinition {
   @Column({ name: 'requires_break_glass', type: 'boolean', default: false })
   requiresBreakGlass!: boolean;
 
+  /**
+   * Behavioral attributes registry (plan §6.3). A typed JSONB bag the
+   * platform's runtime hooks read to decide property-level behavior:
+   *
+   *   - `encrypt_at_rest`  : route through libs/shared-types
+   *                          encryption.service before storage
+   *   - `audit`            : add to audit-log subscriber's tracked-
+   *                          changes set
+   *   - `mask_in_logs`     : redact in notification.service
+   *                          provider-error patterns
+   *   - `mobile_visible`   : surface on the mobile shell
+   *   - `formula_cache_strategy` : computed-property caching policy
+   *
+   * Values are typed via PropertyBehavioralAttributes; persistence is
+   * a flat JSONB so future attributes don't require schema migrations.
+   */
+  @Column({
+    name: 'behavioral_attributes',
+    type: 'jsonb',
+    default: () => `'{}'::jsonb`,
+  })
+  behavioralAttributes!: PropertyBehavioralAttributes;
+
   // ─────────────────────────────────────────────────────────────────
   // Metadata
   // ─────────────────────────────────────────────────────────────────
@@ -233,6 +298,22 @@ export class PropertyDefinition {
   /** Additional metadata */
   @Column({ type: 'jsonb', default: () => `'{}'` })
   metadata!: Record<string, unknown>;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Lifecycle (ADR-5)
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Current lifecycle state of this property definition. */
+  @Column({ type: 'varchar', length: 20, default: 'draft' })
+  status!: PropertyDefinitionStatus;
+
+  /** The revision the property currently advertises as canonical. */
+  @Column({ name: 'current_revision_id', type: 'uuid', nullable: true })
+  currentRevisionId?: string | null;
+
+  /** When the most recent publish happened (null while draft). */
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
 
   // ─────────────────────────────────────────────────────────────────
   // Audit Fields
@@ -250,4 +331,59 @@ export class PropertyDefinition {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
+}
+
+/**
+ * PropertyDefinitionRevision — append-only edit history for a Property
+ * definition. Mirrors CollectionDefinitionRevision and ApplicationRevision
+ * so the lifecycle pattern is uniform across metadata entities (ADR-5).
+ */
+@Entity('property_definition_revisions')
+@Index(['propertyId'])
+@Index(['status'])
+@Index(['propertyId', 'revision'], { unique: true })
+export class PropertyDefinitionRevision {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'property_id', type: 'uuid' })
+  propertyId!: string;
+
+  @ManyToOne(() => PropertyDefinition, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'property_id' })
+  property?: PropertyDefinition;
+
+  @Column({ name: 'revision', type: 'integer' })
+  revision!: number;
+
+  @Column({ name: 'status', type: 'varchar', length: 20 })
+  status!: PropertyDefinitionRevisionStatus;
+
+  /**
+   * Snapshot of the property's authoring fields at this revision.
+   * Stored as JSON so future fields don't require schema migrations
+   * just to be revisioned.
+   */
+  @Column({ name: 'payload', type: 'jsonb', default: () => `'{}'` })
+  payload!: Record<string, unknown>;
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser?: User | null;
+
+  @Column({ name: 'published_by', type: 'uuid', nullable: true })
+  publishedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'published_by' })
+  publishedByUser?: User | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
 }

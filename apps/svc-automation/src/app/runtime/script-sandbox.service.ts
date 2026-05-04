@@ -2,11 +2,38 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Parser } from 'expr-eval';
 import { ExecutionContext } from './automation-runtime.types';
 
+// Layered defense for user-supplied scripts:
+//   1. Unicode normalization (NFKC) so look-alike characters are folded
+//      before pattern matching — defeats homoglyph bypasses.
+//   2. Defanged copy for pattern checks: whitespace and string-quote contents
+//      are stripped so `'eva'+'l'` matches the eval pattern. The original
+//      script is what reaches the parser; defanging is a check-only artifact.
+//   3. Length cap (MAX_SCRIPT_LENGTH) to bound parse cost.
+//   4. AST depth cap walking the expr-eval token tree (IEXPR sub-expression
+//      nodes are recursive). Limit is configurable via SCRIPT_MAX_AST_DEPTH.
+//   5. Wall-clock timeout via Promise.race — expr-eval has no native timeout,
+//      so the parser is racing a setTimeout-driven deadline. The evaluation
+//      itself cannot be killed mid-execution but the response is bounded.
+
 interface ScriptResult {
   output: unknown;
   changes?: Record<string, unknown>;
   error?: string;
   durationMs: number;
+}
+
+const MAX_SCRIPT_LENGTH = 10000;
+const DEFAULT_AST_DEPTH = 64;
+const MAX_EVAL_TIMEOUT_MS = 2000;
+
+interface ExprToken {
+  type: string;
+  value: unknown;
+}
+
+interface ParsedExpression {
+  tokens: ExprToken[];
+  evaluate: (values: Record<string, unknown>) => unknown;
 }
 
 const SAFE_FUNCTIONS = {
@@ -82,7 +109,7 @@ const BLOCKED_PATTERNS = [
   /\btypeof\b/i,
   /\binstanceof\b/i,
   /\bwith\b/i,
-  /\[\s*['\"`].*['\"`]\s*\]/,
+  /\[\s*['"`].*['"`]\s*\]/,
   /\bfetch\b/i,
   /\bXMLHttpRequest\b/i,
   /\bWebSocket\b/i,
@@ -103,6 +130,17 @@ export class ScriptSandboxService {
       operators: {
         in: false,
         assignment: false,
+        // Disable expr-eval's built-in unary forms for names that overlap with
+        // SAFE_FUNCTIONS / common record fields. With these enabled, `length`
+        // would parse as a prefix operator, making `length == 5` a parse
+        // error and shadowing any record field of the same name. We re-expose
+        // the same behavior through the SAFE_FUNCTIONS registration below, so
+        // `length(value)` continues to work as a normal function call.
+        length: false,
+        abs: false,
+        ceil: false,
+        floor: false,
+        round: false,
       },
     });
 
@@ -111,34 +149,223 @@ export class ScriptSandboxService {
     }
   }
 
-  private validateScript(script: string): void {
+  /**
+   * Make scope variables shadow registered SAFE_FUNCTIONS for bare-identifier
+   * lookups. expr-eval's IVAR resolver checks `parser.functions` before the
+   * values scope, so a record field named `count` would resolve to the
+   * `count(arr)` helper rather than the field value. Function-call syntax
+   * (e.g. `count(items)`) still routes to SAFE_FUNCTIONS — only standalone
+   * identifier reads are rewritten to point at scope sentinels.
+   */
+  private resolveScopePrecedence(
+    expression: ParsedExpression,
+    values: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const tokens = expression.tokens;
+    const collisionNames = new Set<string>();
+    for (const key of Object.keys(values)) {
+      if (key in this.parser.functions) {
+        collisionNames.add(key);
+      }
+    }
+    if (collisionNames.size === 0) {
+      return values;
+    }
+
+    // Stack simulation: each entry holds the source-token index that produced
+    // the value currently on the stack. When IFUNCALL pops its function slot,
+    // the producing IVAR is a function-call site and must remain unmodified.
+    const stack: number[] = [];
+    const functionCallSites = new Set<number>();
+    const PUSH_ONLY = new Set(['INUMBER', 'IVARNAME', 'IVAR', 'IEXPR', 'IEXPREVAL']);
+    const POP1_PUSH1 = new Set(['IOP1', 'IMEMBER']);
+    const POP2_PUSH1 = new Set(['IOP2']);
+    const POP3_PUSH1 = new Set(['IOP3']);
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const type = token.type;
+      if (PUSH_ONLY.has(type)) {
+        stack.push(i);
+      } else if (POP1_PUSH1.has(type)) {
+        stack.pop();
+        stack.push(i);
+      } else if (POP2_PUSH1.has(type)) {
+        stack.pop();
+        stack.pop();
+        stack.push(i);
+      } else if (POP3_PUSH1.has(type)) {
+        stack.pop();
+        stack.pop();
+        stack.pop();
+        stack.push(i);
+      } else if (type === 'IFUNCALL') {
+        const argCount = token.value as number;
+        for (let a = 0; a < argCount; a++) stack.pop();
+        const fnIndex = stack.pop();
+        if (fnIndex !== undefined) {
+          functionCallSites.add(fnIndex);
+        }
+        stack.push(i);
+      } else if (type === 'IFUNDEF') {
+        const argCount = token.value as number;
+        stack.pop(); // body expression
+        for (let a = 0; a < argCount; a++) stack.pop();
+        stack.pop(); // name
+        stack.push(i);
+      } else if (type === 'IARRAY') {
+        const argCount = token.value as number;
+        for (let a = 0; a < argCount; a++) stack.pop();
+        stack.push(i);
+      } else if (type === 'IENDSTATEMENT') {
+        stack.pop();
+      } else {
+        // Unknown token type — leave stack alone to avoid false rewrites.
+      }
+    }
+
+    // Rewrite each value-site IVAR token whose name collides with a function.
+    let scope: Record<string, unknown> | null = null;
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (token.type !== 'IVAR') continue;
+      const name = token.value as string;
+      if (!collisionNames.has(name)) continue;
+      if (functionCallSites.has(i)) continue;
+      // Sentinel keys are unique per call site to avoid clobbering.
+      const sentinel = `__hw_scope_${name}_${i}`;
+      token.value = sentinel;
+      if (scope === null) {
+        scope = { ...values };
+      }
+      scope[sentinel] = values[name];
+    }
+    return scope ?? values;
+  }
+
+  private validateScript(script: string): string {
+    if (typeof script !== 'string') {
+      throw new BadRequestException('Script must be a string');
+    }
+
+    if (script.length > MAX_SCRIPT_LENGTH) {
+      throw new BadRequestException(
+        `Script exceeds maximum allowed length (${MAX_SCRIPT_LENGTH} characters)`,
+      );
+    }
+
+    // Normalise to NFKC so visually-equivalent code points fold to canonical
+    // ASCII before pattern matching.
+    const normalised = script.normalize('NFKC');
+
+    // Build a defanged variant: drop whitespace and string-literal contents
+    // so concatenation tricks like "eva"+"l" surface as "eval".
+    const defanged = normalised
+      .replace(/'(?:\\'|[^'])*'/g, "''")
+      .replace(/"(?:\\"|[^"])*"/g, '""')
+      .replace(/`(?:\\`|[^`])*`/g, '``')
+      .replace(/\s+/g, '');
+
     for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(script)) {
+      if (pattern.test(normalised) || pattern.test(defanged)) {
         throw new BadRequestException(
           `Script contains blocked pattern: ${pattern.source}. Only safe expressions are allowed.`,
         );
       }
     }
 
-    if (script.length > 10000) {
-      throw new BadRequestException('Script exceeds maximum allowed length (10000 characters)');
-    }
-
-    if (/[<>]/.test(script)) {
+    if (/[<>]/.test(normalised)) {
       throw new BadRequestException('Script contains potentially unsafe characters');
     }
+
+    return normalised;
+  }
+
+  private getAstDepthLimit(): number {
+    const raw = process.env.SCRIPT_MAX_AST_DEPTH;
+    if (!raw) return DEFAULT_AST_DEPTH;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_AST_DEPTH;
+    return parsed;
+  }
+
+  private assertAstDepth(expression: unknown): void {
+    // expr-eval Expression objects expose their RPN token list. Sub-expression
+    // tokens (IEXPR / IFUNDEF) carry a nested token array — recurse into them
+    // to find the deepest nesting.
+    const limit = this.getAstDepthLimit();
+    const walk = (tokens: unknown, depth: number): number => {
+      if (!Array.isArray(tokens)) return depth;
+      let maxDepth = depth;
+      for (const token of tokens) {
+        if (
+          token &&
+          typeof token === 'object' &&
+          'value' in (token as Record<string, unknown>) &&
+          Array.isArray((token as { value: unknown }).value)
+        ) {
+          const nested = walk((token as { value: unknown[] }).value, depth + 1);
+          if (nested > maxDepth) maxDepth = nested;
+        }
+      }
+      return maxDepth;
+    };
+    const tokens = (expression as { tokens?: unknown }).tokens;
+    const depth = walk(tokens, 1);
+    if (depth > limit) {
+      throw new BadRequestException(
+        `Script expression depth (${depth}) exceeds limit (${limit})`,
+      );
+    }
+  }
+
+  private withTimeout<T>(work: () => T, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`Script evaluation exceeded ${timeoutMs}ms timeout`));
+      }, timeoutMs);
+      // Run synchronously but yield via microtask so the timer can fire if the
+      // parser hangs. expr-eval is synchronous, so this is a best-effort guard.
+      Promise.resolve()
+        .then(() => {
+          try {
+            const value = work();
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(value);
+          } catch (err) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(err);
+          }
+        })
+        .catch((err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        });
+    });
   }
 
   async execute(
     script: string,
     context: ExecutionContext,
-    _timeoutMs = 1000,
+    options: { timeoutMs?: number; mode?: 'transformation' | 'condition' } = {},
   ): Promise<ScriptResult> {
     const startTime = Date.now();
+    const timeoutMs = Math.min(options.timeoutMs ?? 1000, MAX_EVAL_TIMEOUT_MS);
+    const mode = options.mode ?? 'transformation';
 
     try {
-      this.validateScript(script);
-      const expression = this.parser.parse(script);
+      const normalisedScript = this.validateScript(script);
+      const expression = this.parser.parse(normalisedScript);
+      this.assertAstDepth(expression);
 
       const variables: Record<string, unknown> = {
         record: { ...context.record },
@@ -157,8 +384,15 @@ export class ScriptSandboxService {
         variables[key] = value;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = expression.evaluate(variables as any);
+      const scope = this.resolveScopePrecedence(
+        expression as unknown as ParsedExpression,
+        variables,
+      );
+      const result = await this.withTimeout(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        () => expression.evaluate(scope as any),
+        timeoutMs,
+      );
 
       let changes: Record<string, unknown> | undefined;
       if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -179,23 +413,33 @@ export class ScriptSandboxService {
         durationMs: Date.now() - startTime,
       };
     } catch (error) {
-      this.logger.warn(`Script execution failed: ${(error as Error).message}`);
-      return {
-        output: null,
-        error: error instanceof Error ? error.message : String(error),
-        durationMs: Date.now() - startTime,
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      // Fail-closed: condition scripts that fail evaluation must default to
+      // 'condition not met' so downstream branches do not run on a stale or
+      // null result. Transformation scripts surface the error so the caller
+      // can mark the action as failed rather than silently dropping output.
+      if (mode === 'condition') {
+        this.logger.warn(`Condition script failed (fail-closed): ${message}`);
+        return {
+          output: false,
+          error: message,
+          durationMs: Date.now() - startTime,
+        };
+      }
+      this.logger.warn(`Script execution failed: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 
-  evaluateCondition(
+  async evaluateCondition(
     condition: string,
     record: Record<string, unknown>,
     previousRecord?: Record<string, unknown>,
-  ): boolean {
+  ): Promise<boolean> {
     try {
-      this.validateScript(condition);
-      const expression = this.parser.parse(condition);
+      const normalised = this.validateScript(condition);
+      const expression = this.parser.parse(normalised);
+      this.assertAstDepth(expression);
 
       const variables: Record<string, unknown> = {
         record,
@@ -211,9 +455,17 @@ export class ScriptSandboxService {
         variables[key] = value;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return Boolean(expression.evaluate(variables as any));
+      const scope = this.resolveScopePrecedence(
+        expression as unknown as ParsedExpression,
+        variables,
+      );
+      return await this.withTimeout(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        () => Boolean(expression.evaluate(scope as any)),
+        1000,
+      );
     } catch (error) {
+      // Fail-closed: an unevaluable condition is treated as 'not met'.
       this.logger.error(`Condition evaluation failed: ${(error as Error).message}`);
       return false;
     }

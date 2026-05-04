@@ -16,6 +16,20 @@ function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * Write a development-only auth diagnostic record to sessionStorage. Gated
+ * by import.meta.env.MODE so production builds never persist request URLs
+ * or refresh-failure metadata where another script could read them.
+ */
+function writeAuthDebug(entry: Record<string, unknown>): void {
+  if (import.meta.env.MODE !== 'development') return;
+  try {
+    sessionStorage.setItem('auth_debug', JSON.stringify(entry));
+  } catch {
+    // sessionStorage may be disabled; debug write is best-effort.
+  }
+}
+
 export function createApiClient(baseURL: string): AxiosInstance {
   const api = axios.create({
     baseURL,
@@ -29,12 +43,6 @@ export function createApiClient(baseURL: string): AxiosInstance {
 
     // Add Authorization header if we have a token
     const token = getStoredToken();
-    console.log('[API] Request interceptor', {
-      url: config.url,
-      baseURL,
-      hasToken: !!token,
-      tokenLength: token?.length,
-    });
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -73,18 +81,13 @@ export function createApiClient(baseURL: string): AxiosInstance {
         // Only attempt refresh if we have an access token (user was logged in)
         // If no token exists, user needs to log in - don't bother trying refresh
         const currentToken = getStoredToken();
-        console.log('[API] 401 response interceptor', {
-          url: requestUrl,
-          hasToken: !!currentToken,
-          tokenLength: currentToken?.length,
-        });
         if (!currentToken) {
-          console.error('[API] No token on 401, redirecting to login');
-          sessionStorage.setItem('auth_debug', JSON.stringify({
+          // No token on 401 - redirect to login
+          writeAuthDebug({
             time: new Date().toISOString(),
             reason: 'no_token_on_401',
             url: requestUrl,
-          }));
+          });
           hardRedirectToLogin();
           return Promise.reject(error);
         }
@@ -97,12 +100,12 @@ export function createApiClient(baseURL: string): AxiosInstance {
           };
           return api(originalRequest);
         } catch (refreshError) {
-          sessionStorage.setItem('auth_debug', JSON.stringify({
+          writeAuthDebug({
             time: new Date().toISOString(),
             reason: 'refresh_failed',
             url: requestUrl,
             error: (refreshError as Error)?.message,
-          }));
+          });
           setStoredToken(null);
           // SECURITY: Refresh token is in HttpOnly cookie, cleared by backend
           hardRedirectToLogin();

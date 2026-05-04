@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AVAAction, AVAContext } from './ava.service';
@@ -6,6 +7,42 @@ import { AVAGovernanceService, PermissionCheckResult, AuditEntry } from './ava-g
 import { AVAAuditTrail, AVAActionStatus, CollectionDefinition } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
+
+/**
+ * Action types the executor knows how to dispatch. Any action.type not in this
+ * set is rejected before authorization is even attempted. Keep this in lock-step
+ * with the switch statement in execute().
+ */
+const KNOWN_ACTION_TYPES: ReadonlySet<AVAAction['type']> = new Set([
+  'navigate',
+  'create',
+  'update',
+  'execute',
+]);
+
+/**
+ * Stable JSON stringification: sorts object keys recursively so semantically
+ * identical params hash to the same digest regardless of property order.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map((item) => stableStringify(item)).join(',') + ']';
+  }
+  const entries = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map(
+      (key) =>
+        JSON.stringify(key) + ':' + stableStringify((value as Record<string, unknown>)[key]),
+    );
+  return '{' + entries.join(',') + '}';
+}
+
+function hashParams(params: unknown): string {
+  return createHash('sha256').update(stableStringify(params ?? {})).digest('hex');
+}
 
 /**
  * Action Executor Service
@@ -88,8 +125,7 @@ export class ActionExecutorService {
     }
 
     // SECURITY: Validate action type is known
-    const validActionTypes = ['navigate', 'create', 'update', 'execute'];
-    if (!validActionTypes.includes(action.type)) {
+    if (!KNOWN_ACTION_TYPES.has(action.type)) {
       this.logger.warn(`canExecute denied: unknown action type ${action.type}`);
       return false;
     }
@@ -140,6 +176,18 @@ export class ActionExecutorService {
     const { action, context } = request;
     const startTime = Date.now();
 
+    // Reject any action.type the executor does not explicitly dispatch. This
+    // hardens against forged actions whose type is not handled by the switch
+    // below; the dispatch table itself is never echoed back to the caller.
+    if (!KNOWN_ACTION_TYPES.has(action.type)) {
+      this.logger.warn(`execute denied: unknown action type ${action.type}`);
+      return {
+        success: false,
+        message: 'Unknown action type.',
+        error: 'UNKNOWN_ACTION',
+      };
+    }
+
     if (action.type !== 'navigate' && !request.previewId) {
       return {
         success: false,
@@ -185,18 +233,23 @@ export class ActionExecutorService {
       };
     }
 
-    // If confirmation required but not confirmed, return early
-    if (permissionCheck.requiresConfirmation && !request.confirmationRequired) {
+    const auditRepo = dataSource.getRepository(AVAAuditTrail);
+    let audit = null as AVAAuditTrail | null;
+
+    // Confirmation gate: actions flagged as requiring confirmation MUST be
+    // accompanied by a server-resolvable previewId. The client-provided
+    // `confirmationRequired` flag is ignored — confirmation is proven by
+    // the preview row's ownership + status + params hash matching the
+    // submitted action below. Without a previewId, fail closed even if
+    // the client claimed confirmation.
+    if (permissionCheck.requiresConfirmation && !request.previewId) {
       return {
         success: false,
-        message: 'This action requires confirmation before execution.',
+        message: 'This action requires preview approval before execution.',
         error: 'CONFIRMATION_REQUIRED',
         requiresConfirmation: true,
       };
     }
-
-    const auditRepo = dataSource.getRepository(AVAAuditTrail);
-    let audit = null as AVAAuditTrail | null;
 
     if (request.previewId) {
       audit = await auditRepo.findOne({ where: { id: request.previewId } });
@@ -221,6 +274,36 @@ export class ActionExecutorService {
           error: 'PREVIEW_INVALID_STATE',
         };
       }
+
+      // Bind execution to the previewed action: the action.type, target, and
+      // params at execute-time MUST match what was recorded on the preview.
+      // Otherwise an attacker who obtains a previewId could swap params after
+      // approval (e.g. change a target record id, escalate field values).
+      const previewType = audit.actionType;
+      const previewTarget = audit.actionTarget;
+      const expectedParamsHash = hashParams(audit.actionParams);
+      const submittedParamsHash = hashParams(action.params);
+
+      if (
+        previewType !== action.type ||
+        previewTarget !== action.target ||
+        expectedParamsHash !== submittedParamsHash
+      ) {
+        this.logger.warn(
+          `execute denied: preview/action mismatch (preview=${audit.id}, expectedType=${previewType}, gotType=${action.type})`,
+        );
+        await this.governanceService.recordAction(
+          dataSource,
+          this.createAuditEntry(request),
+          'rejected' as AVAActionStatus,
+        );
+        return {
+          success: false,
+          message: 'Action parameters do not match approved preview',
+          error: 'PREVIEW_PARAMS_MISMATCH',
+        };
+      }
+
       if (permissionCheck.requiresConfirmation) {
         await this.governanceService.updateAuditStatus(
           dataSource,
@@ -374,9 +457,11 @@ export class ActionExecutorService {
         const definition = await collectionRepo.findOne({
           where: [{ code: collection }, { tableName: collection }],
         });
-        const target = definition?.tableName || collection;
+        if (!definition) {
+          return { allowed: false, reason: `Collection ${collection} not found` };
+        }
         const operation = action.type === 'create' ? 'create' : 'update';
-        await this.authorizationService.ensureTableAccess(requestContext, target, operation);
+        await this.authorizationService.ensureCollectionAccess(requestContext, definition.id, operation);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Authorization check failed';
         return { allowed: false, reason: message };
@@ -386,14 +471,47 @@ export class ActionExecutorService {
     return { allowed: true };
   }
 
+  /**
+   * Normalize and validate a target path before parsing. Rejects path traversal
+   * attempts (`..`, `\\`, null bytes) and any string the URL parser refuses.
+   * Returns the canonical pathname (no query, no fragment) starting with `/`.
+   */
+  private normalizeTarget(target: string): string | null {
+    if (typeof target !== 'string' || target.length === 0) {
+      return null;
+    }
+    if (
+      target.includes('..') ||
+      target.includes('\\') ||
+      target.includes('\0')
+    ) {
+      return null;
+    }
+    try {
+      const parsed = new URL(target, 'http://x/');
+      const path = parsed.pathname;
+      if (!path.startsWith('/') || path.includes('..')) {
+        return null;
+      }
+      return path;
+    } catch {
+      return null;
+    }
+  }
+
   private extractCollection(target: string): string | null {
-    const match = target.match(/^\/?([a-z_-]+)/i);
+    const path = this.normalizeTarget(target);
+    if (!path) return null;
+    const match = path.match(/^\/([a-z_][a-z0-9_-]*)(?:\/.*)?$/i);
     return match?.[1] || null;
   }
 
   private extractRecordId(target: string): string | null {
-    const match = target.match(/^\/?[a-z_-]+\/([a-z0-9-]+)/i);
-    return match?.[1] === 'new' ? null : match?.[1] || null;
+    const path = this.normalizeTarget(target);
+    if (!path) return null;
+    const match = path.match(/^\/[a-z_][a-z0-9_-]*\/([a-z0-9_-]+)(?:\/.*)?$/i);
+    if (!match) return null;
+    return match[1] === 'new' ? null : match[1];
   }
 
   /**

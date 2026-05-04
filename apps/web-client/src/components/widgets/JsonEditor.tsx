@@ -230,7 +230,7 @@ const JsonTree = ({ data, level = 0, name = '' }: { data: any, level?: number, n
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    !isEmpty && setCollapsed(!collapsed);
+                    if (!isEmpty) setCollapsed(!collapsed);
                   }
                 }}
             >

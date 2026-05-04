@@ -15,6 +15,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, MoreThan } from 'typeorm';
 import { Delegation, DelegationStatus, User, AuditLog } from '@hubblewave/instance-db';
+import { PermissionResolverService } from '../roles/permission-resolver.service';
 
 export interface CreateDelegationDto {
   delegateId: string;
@@ -47,6 +48,7 @@ export class DelegationService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   /**
@@ -158,7 +160,24 @@ export class DelegationService {
       throw new NotFoundException('Pending delegation not found');
     }
 
-    // In production, verify approver has authority
+    // Verify approver has authority. The controller already gates this endpoint
+    // with @RequirePermission('delegations.approve'); this service-level check
+    // is a defense-in-depth guarantee for any caller that bypasses the
+    // controller (internal callers, schedulers, future entry points).
+    const approverPerms = await this.permissionResolver.getUserPermissions(approverId);
+    const hasApproverAuthority =
+      approverPerms.permissions.has('delegations.approve') ||
+      approverPerms.permissions.has('delegations.admin') ||
+      approverPerms.permissions.has('admin.audit');
+    if (!hasApproverAuthority) {
+      throw new ForbiddenException('Not authorized to approve this delegation');
+    }
+    if (approverId === delegation.delegatorId) {
+      throw new ForbiddenException('Delegator cannot self-approve a delegation');
+    }
+    if (approverId === delegation.delegateId) {
+      throw new ForbiddenException('Delegate cannot self-approve a delegation');
+    }
 
     delegation.status = 'active';
     delegation.approvedBy = approverId;
@@ -266,6 +285,7 @@ export class DelegationService {
       query.andWhere('delegation.status IN (:...statuses)', {
         statuses: ['pending', 'active'],
       });
+      query.andWhere('delegation.endsAt > :now', { now: new Date() });
     }
 
     return query.orderBy('delegation.createdAt', 'DESC').getMany();

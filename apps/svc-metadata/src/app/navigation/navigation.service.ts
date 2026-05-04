@@ -275,8 +275,17 @@ export class NavigationService {
     if (!request.code || !this.isValidCode(request.code)) {
       throw new BadRequestException('navigation.code must be lowercase letters, numbers, or underscore');
     }
+    if (request.code.length > 120) {
+      throw new BadRequestException('navigation.code must be 120 characters or fewer');
+    }
     if (!request.name || request.name.trim().length === 0) {
       throw new BadRequestException('navigation.name is required');
+    }
+    if (request.name.length > 255) {
+      throw new BadRequestException('navigation.name must be 255 characters or fewer');
+    }
+    if (request.description !== undefined && request.description !== null && request.description.length > 4000) {
+      throw new BadRequestException('navigation.description must be 4000 characters or fewer');
     }
     if (!request.variant) {
       throw new BadRequestException('navigation.variant is required');

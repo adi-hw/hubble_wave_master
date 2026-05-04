@@ -1,14 +1,20 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { CreateViewRequest, PublishViewRequest, ViewService } from './view.service';
 
 @Controller('views')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ViewController {
   constructor(private readonly viewService: ViewService) {}
 
   @Post()
+  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
   async createDraft(
     @Body() body: CreateViewRequest,
     @CurrentUser() user?: RequestUser,
@@ -17,6 +23,10 @@ export class ViewController {
   }
 
   @Get()
+  @RequirePermission(
+    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    'any',
+  )
   async listDefinitions(
     @Query('kind') kind?: CreateViewRequest['kind'],
     @Query('collection') collection?: string,
@@ -26,6 +36,7 @@ export class ViewController {
   }
 
   @Post(':viewCode/publish')
+  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
   async publish(
     @Param('viewCode') viewCode: string,
     @Body() body: PublishViewRequest,
@@ -35,11 +46,19 @@ export class ViewController {
   }
 
   @Get(':viewCode/revisions')
+  @RequirePermission(
+    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    'any',
+  )
   async listRevisions(@Param('viewCode') viewCode: string) {
     return this.viewService.listRevisions(viewCode);
   }
 
   @Get(':viewCode/revisions/:revisionId')
+  @RequirePermission(
+    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    'any',
+  )
   async getRevision(
     @Param('viewCode') viewCode: string,
     @Param('revisionId') revisionId: string,
@@ -48,11 +67,16 @@ export class ViewController {
   }
 
   @Get(':viewCode/variants')
+  @RequirePermission(
+    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    'any',
+  )
   async listVariants(@Param('viewCode') viewCode: string) {
     return this.viewService.listVariants(viewCode);
   }
 
   @Post(':viewCode/variants')
+  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
   async addVariant(
     @Param('viewCode') viewCode: string,
     @Body() body: CreateViewRequest['variant'],

@@ -178,6 +178,27 @@ export class NLQueryService {
     });
   }
 
+  /**
+   * Look up a single saved query and verify the caller may see it. Returns
+   * null when the row does not exist, when it belongs to another user, and
+   * when `bypassOwnerCheck` is false. Set `bypassOwnerCheck` to true ONLY
+   * for admin code paths (the controller is responsible for that decision).
+   */
+  async getSavedQueryById(
+    id: string,
+    userId: string,
+    bypassOwnerCheck = false,
+  ): Promise<SavedNLQuery | null> {
+    const query = await this.savedQueryRepo.findOne({ where: { id } });
+    if (!query) {
+      return null;
+    }
+    if (!bypassOwnerCheck && query.userId !== userId) {
+      return null;
+    }
+    return query;
+  }
+
   async getFavoriteQueries(userId: string): Promise<SavedNLQuery[]> {
     return this.savedQueryRepo.find({
       where: { userId, isFavorite: true },

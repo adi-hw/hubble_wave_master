@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { validateOutboundUrl } from './url-validator';
 
 export interface HttpRequestConfig {
   url: string;
@@ -44,6 +45,12 @@ export interface IntegrationConfig {
     retryDelay: number;
     retryOn: number[];
   };
+  /**
+   * Per-integration hostname allowlist passed to the central outbound URL
+   * validator. Falls back to the platform-wide `OUTBOUND_HOST_ALLOWLIST`
+   * environment variable when omitted.
+   */
+  allowedHosts?: string[];
 }
 
 @Injectable()
@@ -137,9 +144,11 @@ export class HttpClientService {
       ...config.headers,
     };
 
+    let integration: IntegrationConfig | undefined;
+
     // Apply integration config if specified
     if (integrationId) {
-      const integration = this.integrationConfigs.get(integrationId);
+      integration = this.integrationConfigs.get(integrationId);
       if (integration) {
         // Prepend base URL if config URL is relative
         if (!url.startsWith('http')) {
@@ -154,16 +163,26 @@ export class HttpClientService {
       }
     }
 
+    // Validate the resolved outbound URL before issuing the request. Throws on
+    // private-IP literals, disallowed schemes, and (when configured) hostnames
+    // outside the allowlist. SSRF defense is centralized here so every caller
+    // benefits from the same checks.
+    validateOutboundUrl(url, { allowedHosts: integration?.allowedHosts });
+
     const controller = new AbortController();
     const timeout = config.timeout ?? 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
+      // `redirect: 'error'` rejects any 3xx response so a malicious or
+      // misconfigured upstream cannot redirect us to an internal target after
+      // our pre-flight validation has already run.
       const response = await fetch(url, {
         method: config.method,
         headers,
         body: config.body ? JSON.stringify(config.body) : undefined,
         signal: controller.signal,
+        redirect: 'error',
       });
 
       clearTimeout(timeoutId);
@@ -257,6 +276,8 @@ export class HttpClientService {
       return undefined;
     }
 
+    validateOutboundUrl(config.authConfig.tokenUrl, { allowedHosts: config.allowedHosts });
+
     try {
       const response = await fetch(config.authConfig.tokenUrl, {
         method: 'POST',
@@ -269,6 +290,7 @@ export class HttpClientService {
           client_secret: config.authConfig.clientSecret,
           scope: config.authConfig.scopes?.join(' ') || '',
         }),
+        redirect: 'error',
       });
 
       if (!response.ok) {

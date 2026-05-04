@@ -217,6 +217,7 @@ export class AVAGlobalSettings {
  */
 @Entity('ava_conversations')
 @Index(['userId'])
+@Index(['organizationId'])
 @Index(['status'])
 @Index(['createdAt'])
 export class AVAConversation {
@@ -225,6 +226,15 @@ export class AVAConversation {
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
+
+  /**
+   * Organization / instance scope. Even though a customer instance has its own
+   * database, conversations are filtered explicitly by organizationId so that
+   * shared-cache or cross-instance code paths cannot accidentally surface
+   * another tenant's conversation.
+   */
+  @Column({ name: 'organization_id', type: 'varchar', length: 128, nullable: true })
+  organizationId?: string;
 
   @Column({ type: 'varchar', length: 50, default: 'active' })
   status!: ConversationStatus;

@@ -29,6 +29,7 @@ import {
   HttpStatus,
   Req,
   UseInterceptors,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
 // Removed TenantId decorator
@@ -42,12 +43,18 @@ import {
 
 import { CollectionAccessGuard } from '../access/guards/collection-access.guard';
 import { PropertyAccessInterceptor } from '../access/interceptors/property-access.interceptor';
+import { AccessAuditService } from '../access/services/access-audit.service';
+import { PublishImpactService } from '../publish-impact/publish-impact.service';
 
 @Controller('collections')
 @UseGuards(JwtAuthGuard, CollectionAccessGuard)
 @UseInterceptors(PropertyAccessInterceptor)
 export class CollectionController {
-  constructor(private readonly collectionService: CollectionService) {}
+  constructor(
+    private readonly collectionService: CollectionService,
+    private readonly accessAuditService: AccessAuditService,
+    private readonly publishImpactService: PublishImpactService,
+  ) {}
 
   // --------------------------------------------------------------------------
   // Query Endpoints
@@ -168,6 +175,14 @@ export class CollectionController {
     });
   }
 
+  /**
+   * List revisions for a collection (ADR-5 lifecycle history).
+   */
+  @Get(':id/revisions')
+  listRevisions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.collectionService.listCollectionRevisions(id);
+  }
+
   // --------------------------------------------------------------------------
   // Mutation Endpoints
   // --------------------------------------------------------------------------
@@ -262,6 +277,79 @@ export class CollectionController {
       body.replacementCollectionId,
       user?.id,
       context
+    );
+  }
+
+  /**
+   * ADR-17 publish-preview — classifies the diff between this
+   * Collection's most recently published property revisions and the
+   * current draft state. The frontend uses the returned classification
+   * (`cosmetic | structural | breaking | no_changes`) to decide
+   * whether to open a confirm dialog before letting the admin publish.
+   */
+  @Get(':id/publish-preview')
+  publishPreview(@Param('id', ParseUUIDPipe) id: string) {
+    return this.publishImpactService.previewCollectionPublish(id);
+  }
+
+  /**
+   * Spreadsheet edit-mode entry audit hook (ADR-16).
+   *
+   * Records that an admin transitioned the Records sub-tab into edit
+   * mode. The dedicated `metadata.collections.spreadsheet.write`
+   * permission is enforced explicitly inside the handler because
+   * CollectionAccessGuard maps POST to collection.create /
+   * metadata.collections.edit, neither of which is the right
+   * acquaintance for spreadsheet write — those are schema-edit
+   * permissions, not data-edit. The explicit check below closes that
+   * gap and matches the frontend gate the SpreadsheetView shows.
+   */
+  @Post(':id/spreadsheet/audit-edit-mode-entry')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async auditSpreadsheetEditModeEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+    @Req() request: Request,
+  ): Promise<void> {
+    if (!user?.id) {
+      throw new ForbiddenException('Authentication required');
+    }
+    const userPermissions: string[] = Array.isArray(user.permissions) ? user.permissions : [];
+    const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+    const isAdmin = userRoles.includes('admin');
+    const hasSpreadsheetWrite = userPermissions.includes(
+      'metadata.collections.spreadsheet.write',
+    );
+
+    if (!isAdmin && !hasSpreadsheetWrite) {
+      // Audit the denied entry so brute-force attempts are visible.
+      await this.accessAuditService.logAccess(
+        id,
+        user.id,
+        'spreadsheet_edit_mode_enter',
+        false,
+        {
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] as string | undefined,
+          denialReason:
+            'Missing metadata.collections.spreadsheet.write permission',
+        },
+      );
+      throw new ForbiddenException(
+        "Permission 'metadata.collections.spreadsheet.write' required for spreadsheet edit mode",
+      );
+    }
+
+    await this.accessAuditService.logAccess(
+      id,
+      user.id,
+      'spreadsheet_edit_mode_enter',
+      true,
+      {
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        trace: 'data-tab/records-subtab',
+      },
     );
   }
 

@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { LivingDocsService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { DocArtifactType } from '@hubblewave/instance-db';
 
 interface GenerateDocsDto {
@@ -21,8 +21,8 @@ interface GenerateDocsDto {
 
 @ApiTags('Phase 7 - Living Documentation System')
 @ApiBearerAuth()
-@Controller('api/phase7/docs')
-@UseGuards(JwtAuthGuard)
+@Controller('phase7/docs')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class LivingDocsController {
   constructor(
     private readonly docsService: LivingDocsService,
@@ -58,6 +58,7 @@ export class LivingDocsController {
   }
 
   @Post('regenerate-all')
+  @Roles('admin')
   @ApiOperation({ summary: 'Regenerate all documentation' })
   @ApiResponse({ status: 200, description: 'Regeneration started' })
   async regenerateAll(

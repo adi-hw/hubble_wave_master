@@ -1,13 +1,23 @@
 # HubbleWave Platform CI Pipeline
-# Runs on all PRs and pushes to main/develop branches
+# Runs on all PRs and pushes to master/main/develop branches.
+#
+# Architectural-gate jobs enforce canon §21 ("Builds fail if violations
+# exist"). The `scanners` job runs the six scripts that exit non-zero on
+# canon violations: authz, audit, security, compliance, service-boundary,
+# and approved-deps. New scanners added in future remediation waves MUST
+# be appended to that job. See docs/ci.md for the full list of required
+# status checks and how to extend them.
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [master, main, develop]
+
+permissions:
+  contents: read
 
 env:
   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
@@ -37,7 +47,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run lint
         run: npx nx affected --target=lint --parallel=3
@@ -45,11 +55,45 @@ jobs:
       - name: Check formatting
         run: npx nx format:check
 
-      - name: Authorization bypass check
+  # Architectural CI gates — canon §21 enforcement.
+  #
+  # Each step is a script that exits non-zero on violation. They are
+  # grouped into one job (rather than separate jobs) because they share
+  # the same `npm ci` install and run quickly; failing fast on the first
+  # violation is preferable to paying six install costs in parallel.
+  # If a future scanner becomes long-running, split it into its own job.
+  scanners:
+    name: Architectural CI gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authorization bypass check (canon §9 / W1.2)
         run: npm run authz:check
 
-      - name: Canon compliance check
+      - name: Audit-in-transaction check (canon §10 / W1.6)
+        run: npm run audit:check
+
+      - name: Security bypass check
+        run: npm run security:check
+
+      - name: Canon terminology compliance check
         run: npm run compliance:check:strict
+
+      - name: Service boundary check (canon §3 / W5.D)
+        run: npm run service-boundary:check
+
+      - name: Approved-dependencies check (W6.D)
+        run: npm run deps:check
 
   # Type checking
   typecheck:
@@ -70,7 +114,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run TypeScript type check
         run: npx nx affected --target=build --parallel=3
@@ -119,7 +163,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Run unit tests
         run: npx nx affected --target=test --parallel=3 --coverage
@@ -135,7 +179,7 @@ jobs:
           JWT_EXPIRES_IN: 1h
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: ./coverage/**/lcov.info
           fail_ci_if_error: false
@@ -187,7 +231,7 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Build affected applications
         run: npx nx affected --target=build --parallel=3
@@ -235,22 +279,20 @@ jobs:
 
       - name: Run npm audit
         run: npm audit --audit-level=high
-        continue-on-error: true
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
-        continue-on-error: true
 
   # Build check (ensures all apps build successfully)
   build:
     name: Build All
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, scanners]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -266,7 +308,7 @@ jobs:
         run: npm ci
 
       - name: Derive appropriate SHAs for NX
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
 
       - name: Build all affected projects
         run: npx nx affected --target=build --parallel=3

@@ -50,6 +50,29 @@ const UserPreferencesContext = createContext<UserPreferencesContextValue | undef
 
 const LOCAL_STORAGE_KEY = 'hw-user-preferences';
 
+/**
+ * Parse the localStorage preferences blob and validate it's a non-array
+ * object. Returns null on any shape mismatch and removes the corrupt entry so
+ * subsequent reads start clean. JSON.parse can produce arrays, primitives, or
+ * null — none of which are valid preference shapes — and a malicious browser
+ * extension could inject any of them.
+ */
+function readStoredPreferences(): Record<string, unknown> | null {
+  const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    return null;
+  }
+}
+
 // Create full preferences from defaults (adds missing id/userId/etc for local use)
 const createDefaultPrefs = (): UserPreferences => ({
   id: '',
@@ -76,18 +99,11 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
 
       if (!token) {
         // Not logged in - use local storage or defaults
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            // Merge with defaults to ensure all fields exist
-            setPreferences({ ...createDefaultPrefs(), ...parsed });
-          } catch {
-            // Invalid stored data, use defaults
-            setPreferences(createDefaultPrefs());
-          }
+        const parsed = readStoredPreferences();
+        if (parsed) {
+          // Merge with defaults to ensure all fields exist
+          setPreferences({ ...createDefaultPrefs(), ...parsed });
         } else {
-          // No stored data, use defaults
           setPreferences(createDefaultPrefs());
         }
         setLoading(false);
@@ -99,22 +115,14 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
         setPreferences(prefs);
         // Also store in local storage for offline access
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(prefs));
-      } catch (err) {
-        console.warn('Failed to load preferences from server:', err);
-        // Try to use local storage as fallback
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setPreferences({ ...createDefaultPrefs(), ...parsed });
-          } catch {
-            // Use defaults as last resort
-            setPreferences(createDefaultPrefs());
-            setError('Failed to load preferences');
-          }
+      } catch {
+        // Server unavailable - use local storage as fallback
+        const parsed = readStoredPreferences();
+        if (parsed) {
+          setPreferences({ ...createDefaultPrefs(), ...parsed });
         } else {
-          // Use defaults as last resort
           setPreferences(createDefaultPrefs());
+          setError('Failed to load preferences');
         }
       } finally {
         setLoading(false);
@@ -175,14 +183,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.updatePreferences(dto);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to update preferences:', err);
-      throw err;
-    }
+    const updated = await preferencesService.updatePreferences(dto);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   // Patch preferences (partial update)
@@ -198,14 +201,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.patchPreferences(dto);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to patch preferences:', err);
-      throw err;
-    }
+    const updated = await preferencesService.patchPreferences(dto);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   // Reset preferences
@@ -218,14 +216,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const reset = await preferencesService.resetPreferences();
-      setPreferences(reset);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reset));
-    } catch (err) {
-      console.error('Failed to reset preferences:', err);
-      throw err;
-    }
+    const reset = await preferencesService.resetPreferences();
+    setPreferences(reset);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reset));
   }, []);
 
   // Pinned navigation operations
@@ -233,52 +226,32 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.addPinnedItem(dto);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      console.error('Failed to add pinned item:', err);
-      throw err;
-    }
+    const items = await preferencesService.addPinnedItem(dto);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const updatePinnedItem = useCallback(async (itemId: string, dto: { label?: string; icon?: string; position?: number }) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.updatePinnedItem(itemId, dto);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      console.error('Failed to update pinned item:', err);
-      throw err;
-    }
+    const items = await preferencesService.updatePinnedItem(itemId, dto);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const removePinnedItem = useCallback(async (itemId: string) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.removePinnedItem(itemId);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      console.error('Failed to remove pinned item:', err);
-      throw err;
-    }
+    const items = await preferencesService.removePinnedItem(itemId);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   const reorderPinnedItems = useCallback(async (order: string[]) => {
     const token = getStoredToken();
     if (!token) return;
 
-    try {
-      const items = await preferencesService.reorderPinnedItems(order);
-      setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
-    } catch (err) {
-      console.error('Failed to reorder pinned items:', err);
-      throw err;
-    }
+    const items = await preferencesService.reorderPinnedItems(order);
+    setPreferences(prev => prev ? { ...prev, pinnedNavigation: items } : null);
   }, []);
 
   // Quick actions
@@ -294,14 +267,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.setDensityMode(mode);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to set density mode:', err);
-      throw err;
-    }
+    const updated = await preferencesService.setDensityMode(mode);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const setSidebarPosition = useCallback(async (position: SidebarPosition) => {
@@ -316,14 +284,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    try {
-      const updated = await preferencesService.setSidebarPosition(position);
-      setPreferences(updated);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to set sidebar position:', err);
-      throw err;
-    }
+    const updated = await preferencesService.setSidebarPosition(position);
+    setPreferences(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   const toggleSidebarCollapsed = useCallback(async () => {
@@ -342,15 +305,13 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       const updated = await preferencesService.toggleSidebarCollapsed();
       setPreferences(updated);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to toggle sidebar via API, using local fallback:', err);
-      // Fallback: update local state even if API fails
+    } catch {
+      // Server sync failed - update local state as fallback
       setPreferences(prev => {
         const updated = { ...prev, sidebarCollapsed: !prev?.sidebarCollapsed } as UserPreferences;
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
         return updated;
       });
-      // Don't throw - allow UI to update even if server sync fails
     }
   }, []);
 

@@ -61,8 +61,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
         const inner = input.slice(1, -1);
         // Determine logic by finding top-level separator
         let depth = 0;
-        let andPositions: number[] = [];
-        let orPositions: number[] = [];
+        const andPositions: number[] = [];
+        const orPositions: number[] = [];
 
         for (let i = 0; i < inner.length; i++) {
           if (inner[i] === '(') depth++;
@@ -134,8 +134,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
 
     // Check for top-level AND/OR separators
     let depth = 0;
-    let andPositions: number[] = [];
-    let orPositions: number[] = [];
+    const andPositions: number[] = [];
+    const orPositions: number[] = [];
 
     for (let i = 0; i < str.length; i++) {
       if (str[i] === '(') depth++;
@@ -171,8 +171,8 @@ const deserializeFilterString = (str: string): FilterGroup => {
     root.children = parts.map(parseNode).filter((n): n is FilterNode => n !== null);
 
     return root;
-  } catch (e) {
-    console.error('Failed to parse filter string:', e);
+  } catch {
+    // Parse failed - return empty filter group
     return root;
   }
 };
@@ -350,8 +350,8 @@ export const useFilterUrl = (options: UseFilterUrlOptions = {}): UseFilterUrlRet
       const url = getShareableUrl(state);
       await navigator.clipboard.writeText(url);
       return true;
-    } catch (e) {
-      console.error('Failed to copy URL:', e);
+    } catch {
+      // Clipboard copy failed
       return false;
     }
   }, [getShareableUrl]);

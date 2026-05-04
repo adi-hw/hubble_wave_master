@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuditService, CreateAuditLogDto, AuditLogQueryParams } from './audit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard)
@@ -40,6 +41,7 @@ export class AuditController {
   }
 
   @Post()
+  @Roles('super_admin')
   async create(@Body() dto: CreateAuditLogDto) {
     return this.auditService.create(dto);
   }

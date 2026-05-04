@@ -28,6 +28,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: jwtSecret,
+      // Audience + issuer claims pin every accepted token to this platform
+      // and identity service. Tokens minted for any other audience or issuer
+      // are rejected before the validate() callback runs.
+      audience: configService.get<string>('JWT_AUDIENCE') || 'hubblewave-instance',
+      issuer: configService.get<string>('JWT_ISSUER') || 'hubblewave-identity',
+      // 30 second clock skew tolerance accommodates minor drift between the
+      // identity service and downstream verifiers without weakening expiry.
+      // passport-jwt forwards options under `jsonWebTokenOptions` to the
+      // underlying jsonwebtoken verify() call, which is where clockTolerance
+      // is honored.
+      jsonWebTokenOptions: {
+        clockTolerance: 30,
+      },
     });
   }
 

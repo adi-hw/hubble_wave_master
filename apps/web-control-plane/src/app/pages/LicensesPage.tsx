@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, RefreshCw, Loader2, X, AlertCircle } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, Customer, License, LicenseStatus, LicenseType } from '../services/api';
+import { TypedConfirmDialog } from '../components/TypedConfirmDialog';
 
 export function LicensesPage() {
   const [licenses, setLicenses] = useState<License[]>([]);
@@ -18,6 +19,9 @@ export function LicensesPage() {
     expiresAt: '',
   });
   const [issuing, setIssuing] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<License | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   const fetchLicenses = async () => {
     try {
@@ -81,16 +85,33 @@ export function LicensesPage() {
     revoked: { color: colors.text.muted, bg: colors.glass.medium },
   };
 
-  const handleRevoke = async (license: License) => {
+  const openRevokeDialog = (license: License) => {
     if (license.status !== 'active') return;
-    const confirmed = window.confirm('Revoke this license?');
-    if (!confirmed) return;
-    const reason = window.prompt('Revocation reason (optional):') || undefined;
+    setRevokeError(null);
+    setRevokeTarget(license);
+  };
+
+  const handleRevokeConfirm = async (extra: Record<string, string>) => {
+    if (!revokeTarget) return;
+    const reason = (extra.reason ?? '').trim();
+    if (!reason) {
+      setRevokeError('A revocation reason is required.');
+      return;
+    }
     try {
-      await controlPlaneApi.updateLicenseStatus(license.id, { status: 'revoked', revokeReason: reason });
+      setRevoking(true);
+      setRevokeError(null);
+      await controlPlaneApi.updateLicenseStatus(revokeTarget.id, {
+        status: 'revoked',
+        revokeReason: reason,
+      });
+      setRevokeTarget(null);
       fetchLicenses();
-    } catch (err) {
-      console.error('Failed to revoke license:', err);
+    } catch (err: any) {
+      console.error('Failed to revoke license:', err?.message || err?.code || 'unknown');
+      setRevokeError(err?.response?.data?.message || 'Failed to revoke license.');
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -218,7 +239,7 @@ export function LicensesPage() {
                       <td className="px-4 py-3">
                         <button
                           type="button"
-                          onClick={() => handleRevoke(license)}
+                          onClick={() => openRevokeDialog(license)}
                           className="px-3 py-1.5 rounded text-xs font-semibold transition-colors"
                           style={{
                             backgroundColor: license.status === 'active' ? colors.danger.glow : colors.glass.subtle,
@@ -404,6 +425,43 @@ export function LicensesPage() {
           </div>
         </div>
       )}
+
+      <TypedConfirmDialog
+        open={revokeTarget !== null}
+        title="Revoke license"
+        description={
+          revokeTarget ? (
+            <>
+              <p className="mb-2">
+                Revoking this license will immediately disable platform access for{' '}
+                <strong>{revokeTarget.customer?.name || revokeTarget.customerId}</strong>.
+              </p>
+              {revokeError ? (
+                <p style={{ color: colors.danger.base }}>{revokeError}</p>
+              ) : null}
+            </>
+          ) : null
+        }
+        confirmationValue={revokeTarget?.licenseKey ?? ''}
+        confirmationLabel="To confirm, type the license key"
+        confirmButtonLabel="Revoke license"
+        extraFields={[
+          {
+            name: 'reason',
+            label: 'Revocation reason',
+            placeholder: 'e.g. contract terminated, replaced by new license',
+            required: true,
+            multiline: true,
+          },
+        ]}
+        busy={revoking}
+        onCancel={() => {
+          if (revoking) return;
+          setRevokeTarget(null);
+          setRevokeError(null);
+        }}
+        onConfirm={handleRevokeConfirm}
+      />
     </div>
   );
 }

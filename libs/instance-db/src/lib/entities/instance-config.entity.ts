@@ -1,5 +1,26 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
+/**
+ * Typed customization value supporting common configuration patterns.
+ */
+export interface CustomizationValue {
+  enabled?: boolean;
+  settings?: Record<string, unknown>;
+  overrides?: Record<string, unknown>;
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Details of a configuration change for audit purposes.
+ */
+export interface ConfigChangeDetails {
+  previousValue?: CustomizationValue;
+  newValue?: CustomizationValue;
+  changedFields?: string[];
+  reason?: string;
+  source?: 'ui' | 'api' | 'migration' | 'system';
+}
+
 @Entity('instance_customizations')
 export class InstanceCustomization {
   @PrimaryGeneratedColumn('uuid')
@@ -12,7 +33,7 @@ export class InstanceCustomization {
   resourceKey!: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  value?: any;
+  value?: CustomizationValue;
 
   @Column({ default: true })
   isActive!: boolean;
@@ -22,10 +43,10 @@ export class InstanceCustomization {
 
   @UpdateDateColumn()
   updatedAt!: Date;
-  
+
   @Column({ nullable: true })
   createdBy?: string;
-  
+
   @Column({ nullable: true })
   updatedBy?: string;
 }
@@ -45,7 +66,7 @@ export class ConfigChangeHistory {
   changeType!: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  details?: any;
+  details?: ConfigChangeDetails;
 
   @Column({ nullable: true })
   userId?: string;

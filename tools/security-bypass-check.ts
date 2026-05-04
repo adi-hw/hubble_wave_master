@@ -17,10 +17,12 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-data/src/app/integration/oauth2.controller.ts',
   'apps/svc-identity/src/app/health.controller.ts',
   'apps/svc-identity/src/app/auth/auth.controller.ts',
+  'apps/svc-identity/src/app/auth/magic-link.controller.ts',
   'apps/svc-identity/src/app/auth/password-reset.controller.ts',
   'apps/svc-identity/src/app/auth/email-verification.controller.ts',
   'apps/svc-identity/src/app/auth/sso/sso.controller.ts',
   'apps/svc-identity/src/app/auth/sso/sso-config.controller.ts',
+  'apps/svc-identity/src/app/oidc/oidc.controller.ts',
 ]);
 
 const BANNED_PATTERNS: Array<{
@@ -31,6 +33,21 @@ const BANNED_PATTERNS: Array<{
   {
     pattern: /\beval\s*\(/,
     description: 'eval() is not allowed',
+    allowlist: new Set([
+      // Sandbox bypass tests — eval is the test subject. The script-sandbox
+      // service rejects eval inside user-supplied scripts; the spec exercises
+      // that rejection path with literal eval() snippets passed AS DATA into
+      // evaluateCondition / execute. JavaScript eval is never invoked by the
+      // spec; the strings are parsed by expr-eval and rejected by the
+      // deny-list. Refs Plan §S5 W1.9 / Fix 6.
+      'apps/svc-automation/src/app/runtime/script-sandbox.service.spec.ts',
+      // Redis client EVAL command for atomic Lua scripts. The Lua source is a
+      // hardcoded constant (release-the-lock-if-we-still-own-it pattern). No
+      // user input flows into the script and Redis Lua is server-side
+      // sandboxed. This is `client.eval(lua, ...)`, NOT JavaScript eval.
+      'apps/svc-ava/src/app/embedding.controller.ts',
+      'apps/svc-insights/src/app/backup/backup.service.ts',
+    ]),
   },
   {
     pattern: /\bnew\s+Function\s*\(/,
@@ -127,12 +144,26 @@ function checkBannedPatterns(violations: Violation[]) {
   }
 }
 
+// Match a literal string containing an http(s):// URL when used in code
+// (assignments, fetch calls, axios.get, new URL, etc). Excludes URLs that
+// appear only inside line/block comments or docstrings.
+const HARDCODED_URL_PATTERN = /(?:^|[^\/\*])(?:['"`])https?:\/\/[^\s'"`]+['"`]/m;
+
+function stripCommentsAndStrings(source: string): string {
+  // Remove block comments
+  let out = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Remove single-line comments
+  out = out.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  return out;
+}
+
 function checkAvaExternalUrls(violations: Violation[]) {
   const avaRoot = join(APP_ROOT, 'svc-ava', 'src');
   const files = walk(avaRoot);
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
-    if (!/https?:\/\//.test(content)) {
+    const codeOnly = stripCommentsAndStrings(content);
+    if (!HARDCODED_URL_PATTERN.test(codeOnly)) {
       continue;
     }
     const rel = toRelative(file);

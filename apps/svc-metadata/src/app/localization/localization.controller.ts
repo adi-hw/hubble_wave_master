@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { LocalizationService, PublishLocalizationRequest } from './localization.service';
 import { LocalizationRequestService, CreateTranslationRequest } from './localization-request.service';
 import {
@@ -9,8 +9,19 @@ import {
   UpsertTranslationValue,
 } from './localization-studio.service';
 
+/**
+ * Localization endpoints serve translation bundles, locales, keys, and values.
+ *
+ * Tenant scope: HubbleWave runs one instance per customer (Manifesto §5), so
+ * "tenant" is implicit in the database itself. Translations are
+ * instance-global — every translation row, every locale, and every key in
+ * this database belongs to this customer instance and is shared by all of
+ * its users. There is therefore no per-tenant filter applied here, and there
+ * must not be one: introducing a tenantId column would constitute a
+ * cross-customer data sharing model, which the architecture forbids.
+ */
 @Controller('localization')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class LocalizationController {
   constructor(
     private readonly localizationService: LocalizationService,
@@ -19,6 +30,7 @@ export class LocalizationController {
   ) {}
 
   @Post('publish')
+  @Roles('admin')
   async publish(@Body() body: PublishLocalizationRequest, @CurrentUser() user?: RequestUser) {
     return this.localizationService.publishBundles(body || {}, user?.id);
   }
@@ -58,6 +70,7 @@ export class LocalizationController {
   }
 
   @Post('values')
+  @Roles('admin')
   async upsertValue(
     @Body() body: UpsertTranslationValue,
     @CurrentUser() user?: RequestUser,
@@ -66,6 +79,7 @@ export class LocalizationController {
   }
 
   @Patch('values/:id')
+  @Roles('admin')
   async updateValue(
     @Param('id') id: string,
     @Body() body: UpdateTranslationValue,

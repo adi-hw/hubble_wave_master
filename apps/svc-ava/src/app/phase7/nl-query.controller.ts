@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { NLQueryService } from '@hubblewave/ai';
@@ -23,7 +24,7 @@ interface SaveQueryDto {
 
 @ApiTags('Phase 7 - Natural Language Queries')
 @ApiBearerAuth()
-@Controller('api/phase7/nl-query')
+@Controller('phase7/nl-query')
 @UseGuards(JwtAuthGuard)
 export class NLQueryController {
   constructor(
@@ -156,8 +157,15 @@ export class NLQueryController {
   @ApiOperation({ summary: 'Toggle favorite status of a saved query' })
   @ApiResponse({ status: 200, description: 'Query favorite status toggled' })
   async toggleFavorite(
+    @CurrentUser() user: RequestUser,
     @Param('id') queryId: string,
   ) {
+    // Ownership check: only the user who saved the query (or admin) may toggle.
+    const isAdmin = user.roles?.includes('admin') ?? false;
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    if (!existing) {
+      throw new ForbiddenException('Not the owner');
+    }
     const query = await this.nlQueryService.toggleFavorite(queryId);
     return { query };
   }
@@ -166,8 +174,15 @@ export class NLQueryController {
   @ApiOperation({ summary: 'Delete a saved query' })
   @ApiResponse({ status: 200, description: 'Query deleted' })
   async deleteSavedQuery(
+    @CurrentUser() user: RequestUser,
     @Param('id') queryId: string,
   ) {
+    // Ownership check: only the user who saved the query (or admin) may delete.
+    const isAdmin = user.roles?.includes('admin') ?? false;
+    const existing = await this.nlQueryService.getSavedQueryById(queryId, user.id, isAdmin);
+    if (!existing) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.nlQueryService.deleteSavedQuery(queryId);
     return { success: true };
   }

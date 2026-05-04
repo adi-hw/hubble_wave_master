@@ -42,15 +42,41 @@ const DEFAULT_PERMISSIONS = [
   { code: 'admin.audit', name: 'View Audit Logs', description: 'Access audit trail', category: 'admin' },
   { code: 'admin.integrations', name: 'Manage Integrations', description: 'Configure external integrations', category: 'admin' },
   { code: 'admin.backup', name: 'Backup/Restore', description: 'Create and restore backups', category: 'admin' },
+
+  // App Studio / metadata permissions. Keep this script in sync with
+  // PermissionSeederService so local dev bootstrap does not depend on
+  // remembering a separate permission migration before logging in.
+  { code: 'system.admin', name: 'System Administrator', description: 'Platform superuser permission', category: 'admin' },
+  { code: 'collection.admin', name: 'Collection Administrator', description: 'Operation-agnostic collection access gate', category: 'collections' },
+  { code: 'collection.read', name: 'Read Collections', description: 'Read collection records and metadata', category: 'collections' },
+  { code: 'collection.create', name: 'Create Collection Records', description: 'Create records in collections', category: 'collections' },
+  { code: 'collection.update', name: 'Update Collection Records', description: 'Update records in collections', category: 'collections' },
+  { code: 'collection.delete', name: 'Delete Collection Records', description: 'Delete records in collections', category: 'collections' },
+  { code: 'property.read', name: 'Read Properties', description: 'Read property definitions on a collection', category: 'collections' },
+  { code: 'property.create', name: 'Create Properties', description: 'Create property definitions on a collection', category: 'collections' },
+  { code: 'property.update', name: 'Update Properties', description: 'Update property definitions on a collection', category: 'collections' },
+  { code: 'property.delete', name: 'Delete Properties', description: 'Delete property definitions on a collection', category: 'collections' },
+  { code: 'metadata.collections.edit', name: 'Edit Collections', description: 'Edit collection schema in App Studio', category: 'metadata' },
+  { code: 'metadata.properties.edit', name: 'Edit Properties', description: 'Edit property definitions in App Studio', category: 'metadata' },
+  { code: 'metadata.forms.edit', name: 'Edit Forms', description: 'Edit Record Form layouts in App Studio', category: 'metadata' },
+  { code: 'metadata.policies.edit', name: 'Edit Policies and Rules', description: 'Edit access rules, Display Rules, and Automation Rules', category: 'metadata' },
+  { code: 'metadata.choices.edit', name: 'Edit Choice Lists', description: 'Edit choice list definitions', category: 'metadata' },
+  { code: 'metadata.flows.edit', name: 'Edit Flows', description: 'Edit Process Flow and flow-adjacent metadata', category: 'metadata' },
+  { code: 'metadata.collections.spreadsheet.write', name: 'Write Spreadsheet', description: 'Enter App Studio spreadsheet edit mode', category: 'metadata' },
+  { code: 'metadata.workspaces.edit', name: 'Edit Workspaces', description: 'Edit App Studio Workspace definitions', category: 'metadata' },
+  { code: 'metadata.change-packages.edit', name: 'Edit Change Packages', description: 'Author and apply App Studio Change Packages', category: 'metadata' },
+  { code: 'ava.admin', name: 'AVA Administrator', description: 'Manage AVA prompts, governance, and execution policies', category: 'ava' },
+  { code: 'workflow.run-as-system', name: 'Run Workflow As System', description: 'Execute Process Flows under the system actor identity', category: 'process-flows' },
 ];
 
 async function seed() {
+  const dbPassword = requireEnv('DB_PASSWORD');
   const dataSource = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
     username: process.env.DB_USER || 'hubblewave',
-    password: process.env.DB_PASSWORD || 'hubblewave',
+    password: dbPassword,
     database: process.env.DB_NAME || 'hubblewave',
     synchronize: false,
   });

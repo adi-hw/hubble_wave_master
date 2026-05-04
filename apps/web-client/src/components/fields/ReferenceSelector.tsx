@@ -33,8 +33,8 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         const data = await response.json();
         setRecords(data);
       }
-    } catch (error) {
-      console.error('Failed to search records', error);
+    } catch {
+      // Record search failed - results remain empty
     } finally {
       setLoading(false);
     }

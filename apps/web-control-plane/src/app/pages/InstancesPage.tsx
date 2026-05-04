@@ -4,6 +4,11 @@ import { Plus, RefreshCw, ExternalLink, Terminal } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, TenantInstance } from '../services/api';
 
+// Hostnames opened via window.open are user-controlled (instance domain). We
+// only allow shapes that look like real registrable hostnames so a malformed
+// value can't redirect the operator to an attacker-controlled origin.
+const HOSTNAME_PATTERN = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
+
 const envConfig: Record<string, { color: string; bg: string }> = {
   production: { color: colors.success.base, bg: colors.success.glow },
   staging: { color: colors.warning.base, bg: colors.warning.glow },
@@ -32,8 +37,12 @@ export function InstancesPage() {
 
   const openDomain = (domain?: string | null) => {
     if (!domain) return;
-    const url = domain.startsWith('http') ? domain : `https://${domain}`;
-    window.open(url, '_blank', 'noopener');
+    // Strip any protocol prefix so we always validate the bare hostname before
+    // composing the target URL. Reject anything that doesn't look like a real
+    // hostname.
+    const bareHost = domain.replace(/^https?:\/\//i, '').split('/')[0];
+    if (!HOSTNAME_PATTERN.test(bareHost)) return;
+    window.open(`https://${bareHost}`, '_blank', 'noopener,noreferrer');
   };
 
   const fetchInstances = async () => {

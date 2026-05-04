@@ -17,12 +17,51 @@ import {
   Index,
 } from 'typeorm';
 import { CollectionDefinition } from './collection-definition.entity';
+import { User } from './user.entity';
+
+/**
+ * Lifecycle status for the process flow definition itself (ADR-5).
+ *  - draft: editable; instances cannot be started from a draft definition
+ *  - published: authoritative; runtime triggers fire from this state
+ *  - deprecated: no new instances; existing instances finish on their own
+ *
+ * `isActive` (operational on/off switch) is orthogonal and persists.
+ */
+export type ProcessFlowDefinitionStatus = 'draft' | 'published' | 'deprecated';
+export type ProcessFlowDefinitionRevisionStatus = 'draft' | 'published';
 
 // ═══════════════════════════════════════════════════════════════════
 // PROCESS FLOW DEFINITION
 // ═══════════════════════════════════════════════════════════════════
 
-export type TriggerType = 'record_created' | 'record_updated' | 'property_changed' | 'scheduled' | 'manual';
+/**
+ * Plan §8.1.9 — supported trigger sources for a Process Flow.
+ *
+ * - `record_created` / `record_updated` / `property_changed` — data
+ *   pipeline triggers; the engine subscribes to the event-outbox.
+ * - `scheduled` — cron-style trigger fired by `ScheduledJob`.
+ * - `manual` — user-initiated via the API or canvas Run button.
+ * - `ava_initiated` — AVA tool-call dispatch (Phase 5+ AI surfaces).
+ * - `metric_threshold` — `svc-insights` metric crosses a threshold.
+ * - `service_catalog` — record submitted via the Service Catalog
+ *   public form (interface ready for the deferred Service Catalog
+ *   phase).
+ * - `webhook` — REST call into the existing
+ *   `libs/integrations/webhook.service.ts` subscriber pattern. Do
+ *   NOT create a parallel registry; the webhook subscriber routes
+ *   inbound calls to a flow with `triggerType='webhook'` matched by
+ *   the flow's `triggerConditions.webhookCode`.
+ */
+export type TriggerType =
+  | 'record_created'
+  | 'record_updated'
+  | 'property_changed'
+  | 'scheduled'
+  | 'manual'
+  | 'ava_initiated'
+  | 'metric_threshold'
+  | 'service_catalog'
+  | 'webhook';
 export type ProcessFlowRunAs = 'system' | 'triggering_user' | 'specified_user';
 
 export interface ProcessFlowNode {
@@ -48,6 +87,8 @@ export interface ProcessFlowCanvas {
 
 @Entity('process_flow_definitions')
 @Index(['collectionId'], { where: '"is_active" = true' })
+@Index(['applicationId'])
+@Index(['status'])
 export class ProcessFlowDefinition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -67,6 +108,15 @@ export class ProcessFlowDefinition {
   @ManyToOne(() => CollectionDefinition, { nullable: true })
   @JoinColumn({ name: 'collection_id' })
   collection?: CollectionDefinition;
+
+  /**
+   * Application this process flow belongs to (ADR-6). Backfilled from
+   * the parent collection during slice C3, falling back to the
+   * `default` Application for global flows that don't bind to a
+   * collection.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   @Column({ type: 'integer', default: 1 })
   version!: number;
@@ -121,6 +171,23 @@ export class ProcessFlowDefinition {
 
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Lifecycle (ADR-5)
+  // ─────────────────────────────────────────────────────────────────
+
+  @Column({ type: 'varchar', length: 20, default: 'draft' })
+  status!: ProcessFlowDefinitionStatus;
+
+  @Column({ name: 'current_revision_id', type: 'uuid', nullable: true })
+  currentRevisionId?: string | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
 
   @OneToMany(() => ProcessFlowInstance, (instance) => instance.processFlow)
   instances?: ProcessFlowInstance[];
@@ -328,4 +395,63 @@ export class Approval {
 
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PROCESS FLOW DEFINITION REVISION (ADR-5)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Append-only edit history for a ProcessFlowDefinition. Mirrors
+ * CollectionDefinitionRevision so the lifecycle pattern is uniform
+ * across metadata entities.
+ */
+@Entity('process_flow_definition_revisions')
+@Index(['processFlowId'])
+@Index(['status'])
+@Index(['processFlowId', 'revision'], { unique: true })
+export class ProcessFlowDefinitionRevision {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'process_flow_id', type: 'uuid' })
+  processFlowId!: string;
+
+  @ManyToOne(() => ProcessFlowDefinition, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'process_flow_id' })
+  processFlow?: ProcessFlowDefinition;
+
+  @Column({ name: 'revision', type: 'integer' })
+  revision!: number;
+
+  @Column({ name: 'status', type: 'varchar', length: 20 })
+  status!: ProcessFlowDefinitionRevisionStatus;
+
+  /**
+   * Snapshot of the process flow's authoring fields at this revision.
+   * Stored as JSON so future fields don't require schema migrations
+   * just to be revisioned.
+   */
+  @Column({ name: 'payload', type: 'jsonb', default: () => `'{}'` })
+  payload!: Record<string, unknown>;
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser?: User | null;
+
+  @Column({ name: 'published_by', type: 'uuid', nullable: true })
+  publishedBy?: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'published_by' })
+  publishedByUser?: User | null;
+
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
+  publishedAt?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
 }

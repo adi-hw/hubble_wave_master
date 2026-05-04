@@ -78,8 +78,8 @@ export function ImpersonationPage() {
         limit: 50,
       });
       setSessions(result.sessions);
-    } catch (err) {
-      console.error('Failed to load sessions:', err);
+    } catch {
+      // Sessions fetch failed - show error message
       setMessage({ type: 'error', text: 'Failed to load impersonation sessions' });
     } finally {
       setLoading(false);

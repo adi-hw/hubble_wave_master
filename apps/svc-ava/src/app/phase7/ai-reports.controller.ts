@@ -9,12 +9,45 @@ import {
   Query,
   Res,
   UseGuards,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AIReportsService } from '@hubblewave/ai';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { ReportFormat, ReportStatus } from '@hubblewave/instance-db';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+
+const SUPPORTED_EXPORT_FORMATS: ReadonlySet<ReportFormat> = new Set<ReportFormat>([
+  'pdf',
+  'html',
+  'xlsx',
+  'json',
+  'csv',
+] as ReportFormat[]);
+
+// Strict DOMPurify config: disallow scripting, frames, plugins, event
+// handlers, javascript: URLs, and CSS injection vectors. Inline style is
+// blocked for safety; report styling is delivered via the wrapper template.
+const HTML_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [
+    'a', 'b', 'blockquote', 'br', 'caption', 'code', 'col', 'colgroup',
+    'div', 'em', 'figure', 'figcaption', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 'q', 's', 'small', 'span',
+    'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead',
+    'tr', 'u', 'ul',
+  ],
+  ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'colspan', 'rowspan', 'class'],
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'style', 'form', 'input', 'button'],
+  FORBID_ATTR: ['style', 'srcdoc', 'formaction'],
+  ALLOW_DATA_ATTR: false,
+};
+
+const purifierWindow = new JSDOM('').window;
+const purifier = createDOMPurify(purifierWindow as unknown as Window & typeof globalThis);
 
 interface GenerateReportDto {
   prompt: string;
@@ -33,7 +66,7 @@ interface CreateTemplateDto {
 
 @ApiTags('Phase 7 - AI Report Generator')
 @ApiBearerAuth()
-@Controller('api/phase7/reports')
+@Controller('phase7/reports')
 @UseGuards(JwtAuthGuard)
 export class AIReportsController {
   constructor(
@@ -139,9 +172,15 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Update a template' })
   @ApiResponse({ status: 200, description: 'Template updated' })
   async updateTemplate(
+    @CurrentUser() user: RequestUser,
     @Param('id') templateId: string,
     @Body() dto: Partial<CreateTemplateDto>,
   ) {
+    // Ownership check: only the template creator (or admin) may update.
+    const existing = await this.reportsService.getTemplate(templateId);
+    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     const template = await this.reportsService.updateTemplate(templateId, dto);
     return { template };
   }
@@ -150,8 +189,14 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Delete a template' })
   @ApiResponse({ status: 200, description: 'Template deleted' })
   async deleteTemplate(
+    @CurrentUser() user: RequestUser,
     @Param('id') templateId: string,
   ) {
+    // Ownership check: only the template creator (or admin) may delete.
+    const existing = await this.reportsService.getTemplate(templateId);
+    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.reportsService.deleteTemplate(templateId);
     return { success: true };
   }
@@ -187,8 +232,14 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Delete a report' })
   @ApiResponse({ status: 200, description: 'Report deleted' })
   async deleteReport(
+    @CurrentUser() user: RequestUser,
     @Param('id') reportId: string,
   ) {
+    // Ownership check: only the user who generated the report (or admin) may delete it.
+    const report = await this.reportsService.getReport(reportId);
+    if (report.generatedBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
     await this.reportsService.deleteReport(reportId);
     return { success: true };
   }
@@ -197,10 +248,23 @@ export class AIReportsController {
   @ApiOperation({ summary: 'Export report in specified format' })
   @ApiResponse({ status: 200, description: 'Exported report' })
   async exportReport(
+    @CurrentUser() user: RequestUser,
     @Param('id') reportId: string,
     @Param('format') format: string,
     @Res() res: Response,
   ) {
+    if (!SUPPORTED_EXPORT_FORMATS.has(format as ReportFormat)) {
+      throw new BadRequestException(
+        `Unsupported export format. Allowed: ${[...SUPPORTED_EXPORT_FORMATS].join(', ')}`,
+      );
+    }
+
+    // Ownership check on export — reports may contain sensitive data.
+    const report = await this.reportsService.getReport(reportId);
+    if (report.generatedBy !== user.id && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
+
     const result = await this.reportsService.exportReport(reportId, format as ReportFormat);
 
     const contentTypes: Record<string, string> = {
@@ -213,6 +277,21 @@ export class AIReportsController {
 
     res.setHeader('Content-Type', contentTypes[format] || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="report-${reportId}.${format}"`);
+
+    if (format === 'html') {
+      // Sanitize LLM-generated HTML before sending. CSP locks the document down
+      // even further so any latent script vector cannot execute.
+      const raw = typeof result === 'string' ? result : String(result);
+      const sanitized = purifier.sanitize(raw, HTML_SANITIZE_CONFIG);
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      );
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.send(sanitized);
+      return;
+    }
+
     res.send(result);
   }
 

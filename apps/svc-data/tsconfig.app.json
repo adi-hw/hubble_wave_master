@@ -10,5 +10,11 @@
     "moduleResolution": "node"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/app/flows.disabled/**/*"]
+  "exclude": [
+    "src/app/flows.disabled/**/*",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "**/__tests__/**",
+    "src/test-utils/**/*"
+  ]
 }

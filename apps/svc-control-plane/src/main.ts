@@ -8,12 +8,13 @@ import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { AppModule } from './app/app.module';
 import { ConfigService } from '@nestjs/config';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   // This will throw in production if insecure defaults are detected
   assertSecureConfig();
+  assertJwtConfig();
 
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);

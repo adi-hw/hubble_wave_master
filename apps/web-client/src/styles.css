@@ -169,9 +169,13 @@
      FORM SELECT/DROPDOWN STYLING
      ======================================== */
 
-  /* Base select styling */
+  /* Base select styling - ensure native behavior works */
   select,
   .settings-select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    -moz-appearance: auto;
+    cursor: pointer;
     background-color: var(--bg-surface);
     color: var(--text-primary);
   }

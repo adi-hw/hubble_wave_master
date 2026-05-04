@@ -1,7 +1,13 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -11,6 +17,7 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
   InstanceDbModule,
+  RuntimeAnomalyModule,
 } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
 import { DataController } from './data.controller';
@@ -19,13 +26,13 @@ import { HealthController } from './health.controller';
 import { ModelRegistryService } from './model-registry.service';
 import { CollectionDataController } from './collection-data.controller';
 import { CollectionDataService } from './collection-data.service';
+import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 import { EventOutboxService } from './events/event-outbox.service';
 import { OfferingsController } from './offerings/offerings.controller';
 import { OfferingsService } from './offerings/offerings.service';
 import { WorkController } from './work/work.controller';
 import { WorkService } from './work/work.service';
 
-import { AutomationModule } from './automation/automation.module';
 import { IntegrationModule } from './integration/integration.module';
 import { AVAModule } from './ava/ava.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -34,18 +41,26 @@ import { ValidationModule } from './validation/validation.module';
 import { DefaultsModule } from './defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
 import { FormulaModule } from './formula/formula.module';
+import { ComputedModule } from './computed/computed.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     InstanceDbModule,
+    RuntimeAnomalyModule,
     AuthGuardModule,
+    GlobalGuardsModule,
+    // Backs ModelRegistryService cache. 30-second TTL keeps schema
+    // discovery responsive after metadata changes; 1000-key cap bounds
+    // memory growth as new collections are discovered.
+    CacheModule.register({ ttl: 30_000, max: 1000 }),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,
     }),
     RedisModule.forRoot(),
-    AutomationModule,
+    MaintenanceModeModule,
+    ConfigModule,
     IntegrationModule,
     AVAModule,
     WorkflowModule,
@@ -53,6 +68,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DefaultsModule,
     GridModule,
     FormulaModule,
+    ComputedModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [
@@ -66,6 +82,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DataService,
     ModelRegistryService,
     CollectionDataService,
+    SyncTriggerClientService,
     EventOutboxService,
     OfferingsService,
     WorkService,

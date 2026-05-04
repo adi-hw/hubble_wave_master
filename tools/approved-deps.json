@@ -1,0 +1,415 @@
+{
+  "_comment": "Edit this file to add or replace approved dependencies. Each entry MUST include a 'reason' field. The CI scanner blocks new package.json deps not on this list. @types/* packages are auto-allowed. The 'legacy' map carves out pre-existing banned deps that are tracked for removal in a separate cleanup commit; net-new additions of any dep in 'banned' fail CI.",
+  "approved": {
+    "production": {
+      "@aws-sdk/client-s3": {
+        "reason": "AWS S3 client for object storage (backups, attachments)"
+      },
+      "@aws-sdk/client-secrets-manager": {
+        "reason": "AWS Secrets Manager client for runtime secret retrieval"
+      },
+      "@aws-sdk/s3-request-presigner": {
+        "reason": "Presigned URL generation for S3 uploads/downloads"
+      },
+      "@dnd-kit/core": {
+        "reason": "Canonical drag-and-drop; NEVER add @hello-pangea/dnd"
+      },
+      "@dnd-kit/sortable": {
+        "reason": "Sortable extension for the canonical @dnd-kit drag-and-drop"
+      },
+      "@dnd-kit/utilities": {
+        "reason": "Utilities for the canonical @dnd-kit drag-and-drop"
+      },
+      "@emotion/react": {
+        "reason": "CSS-in-JS engine required by @mui/material"
+      },
+      "@emotion/styled": {
+        "reason": "Styled-components API required by @mui/material"
+      },
+      "@monaco-editor/react": {
+        "reason": "Code editor for formula/script authoring in admin UI"
+      },
+      "@xyflow/react": {
+        "reason": "Flow chart library for workflow + process-flow editors"
+      },
+      "react-grid-layout": {
+        "reason": "Drag/resize layout for workspace builder UI"
+      },
+      "@mui/icons-material": {
+        "reason": "Canonical icon set paired with @mui/material"
+      },
+      "@mui/material": {
+        "reason": "Canonical UI component library"
+      },
+      "@nestjs/axios": {
+        "reason": "NestJS HTTP client wrapper around axios"
+      },
+      "@nestjs/cache-manager": {
+        "reason": "NestJS cache integration; pairs with cache-manager (W5.C)"
+      },
+      "@nestjs/common": {
+        "reason": "Core framework"
+      },
+      "@nestjs/config": {
+        "reason": "Canonical config loader for NestJS services"
+      },
+      "@nestjs/core": {
+        "reason": "Core framework"
+      },
+      "@nestjs/event-emitter": {
+        "reason": "In-process event bus used by automation/workflow services"
+      },
+      "@nestjs/jwt": {
+        "reason": "JWT signing/verification for identity service"
+      },
+      "@nestjs/passport": {
+        "reason": "Passport integration for identity strategies"
+      },
+      "@nestjs/platform-express": {
+        "reason": "Express HTTP adapter for NestJS"
+      },
+      "@nestjs/schedule": {
+        "reason": "Cron and scheduled job support"
+      },
+      "@nestjs/swagger": {
+        "reason": "OpenAPI document generation"
+      },
+      "@nestjs/throttler": {
+        "reason": "Rate limiting for HTTP controllers"
+      },
+      "@nestjs/typeorm": {
+        "reason": "ORM integration"
+      },
+      "@tanstack/react-query": {
+        "reason": "Frontend data fetching"
+      },
+      "@tanstack/react-table": {
+        "reason": "Canonical headless table primitive for grid views"
+      },
+      "@tanstack/react-virtual": {
+        "reason": "Row virtualization for high-performance grids"
+      },
+      "argon2": {
+        "reason": "Canonical password hash; NEVER add bcrypt"
+      },
+      "axios": {
+        "reason": "HTTP client used through @nestjs/axios"
+      },
+      "bullmq": {
+        "reason": "Canonical job queue for automation/workflow workers"
+      },
+      "cache-manager": {
+        "reason": "Canonical cache abstraction (W5.C)"
+      },
+      "class-transformer": {
+        "reason": "DTO serialization paired with class-validator"
+      },
+      "class-validator": {
+        "reason": "Canonical request DTO validation"
+      },
+      "clsx": {
+        "reason": "Conditional className composition for React components"
+      },
+      "cookie-parser": {
+        "reason": "Cookie parsing for refresh-token / SSO flows"
+      },
+      "cors": {
+        "reason": "CORS middleware for cross-origin web client requests"
+      },
+      "dompurify": {
+        "reason": "HTML sanitization for rich-text fields and AVA-rendered output"
+      },
+      "dotenv": {
+        "reason": "Local development env loading"
+      },
+      "exceljs": {
+        "reason": "Canonical .xlsx export for grid views and reports"
+      },
+      "expr-eval": {
+        "reason": "Sandboxed expression evaluator for formulas/automation (NEVER use eval)"
+      },
+      "framer-motion": {
+        "reason": "Animation primitives for the canonical UI"
+      },
+      "helmet": {
+        "reason": "Security headers middleware for all HTTP services"
+      },
+      "html2canvas": {
+        "reason": "Client-side rasterization for PDF export pipeline"
+      },
+      "ioredis": {
+        "reason": "Canonical Redis client"
+      },
+      "jspdf": {
+        "reason": "Canonical PDF generation for client-side report export"
+      },
+      "jspdf-autotable": {
+        "reason": "Tabular layout plugin for the canonical jspdf"
+      },
+      "ldapts": {
+        "reason": "Canonical LDAP/AD client for SSO directory binds"
+      },
+      "lru-cache": {
+        "reason": "Browser-only LRU eviction (libs/ui); server code must use cache-manager (W5.C)"
+      },
+      "lucide-react": {
+        "reason": "Canonical icon set used in custom components alongside @mui/icons-material"
+      },
+      "nest-winston": {
+        "reason": "Winston transport for NestJS logger"
+      },
+      "nodemailer": {
+        "reason": "Canonical SMTP transport for svc-notify"
+      },
+      "openid-client": {
+        "reason": "Canonical OIDC client for SSO flows"
+      },
+      "otplib": {
+        "reason": "Canonical TOTP/HOTP for MFA"
+      },
+      "passport": {
+        "reason": "Authentication strategy framework used via @nestjs/passport"
+      },
+      "passport-jwt": {
+        "reason": "JWT strategy for passport"
+      },
+      "pg": {
+        "reason": "Postgres driver"
+      },
+      "pgvector": {
+        "reason": "pgvector helpers for AVA embeddings"
+      },
+      "qrcode": {
+        "reason": "QR code generation for MFA enrollment"
+      },
+      "react": {
+        "reason": "Frontend framework"
+      },
+      "react-dom": {
+        "reason": "React renderer"
+      },
+      "react-router-dom": {
+        "reason": "Canonical client-side router"
+      },
+      "reactflow": {
+        "reason": "Canonical node-graph editor for workflow / automation designers"
+      },
+      "reflect-metadata": {
+        "reason": "Required by NestJS DI and TypeORM decorators"
+      },
+      "rxjs": {
+        "reason": "Reactive primitives required by NestJS"
+      },
+      "swagger-ui-express": {
+        "reason": "OpenAPI UI rendering paired with @nestjs/swagger"
+      },
+      "tailwind-merge": {
+        "reason": "Canonical Tailwind class composition utility"
+      },
+      "typeorm": {
+        "reason": "Canonical ORM"
+      },
+      "typesense": {
+        "reason": "Canonical full-text search engine client"
+      },
+      "unzipper": {
+        "reason": "Canonical archive extraction for change-package import"
+      },
+      "uuid": {
+        "reason": "UUID generation; pinned to ^11 (W4.C). Note: package.json currently shows ^13 - flagged for human review"
+      },
+      "winston": {
+        "reason": "Canonical structured logger"
+      },
+      "zod": {
+        "reason": "Canonical schema validation for envelope/integration payloads"
+      }
+    },
+    "development": {
+      "@babel/core": {
+        "reason": "Babel core required by babel-jest"
+      },
+      "@babel/preset-react": {
+        "reason": "JSX transform for React tests"
+      },
+      "@eslint/js": {
+        "reason": "ESLint core JS configuration"
+      },
+      "@nestjs/schematics": {
+        "reason": "NestJS code generation schematics"
+      },
+      "@nestjs/testing": {
+        "reason": "NestJS testing utilities"
+      },
+      "@nx/devkit": {
+        "reason": "Nx workspace devkit"
+      },
+      "@nx/eslint": {
+        "reason": "Nx ESLint integration"
+      },
+      "@nx/eslint-plugin": {
+        "reason": "Nx ESLint rules"
+      },
+      "@nx/jest": {
+        "reason": "Nx jest plugin"
+      },
+      "@nx/js": {
+        "reason": "Nx JS/TS executors"
+      },
+      "@nx/nest": {
+        "reason": "Nx NestJS plugin"
+      },
+      "@nx/node": {
+        "reason": "Nx Node plugin"
+      },
+      "@nx/playwright": {
+        "reason": "Nx Playwright e2e plugin"
+      },
+      "@nx/react": {
+        "reason": "Nx React plugin"
+      },
+      "@nx/vite": {
+        "reason": "Nx Vite plugin"
+      },
+      "@nx/web": {
+        "reason": "Nx web plugin"
+      },
+      "@nx/webpack": {
+        "reason": "Nx webpack plugin"
+      },
+      "@nx/workspace": {
+        "reason": "Nx workspace utilities"
+      },
+      "@playwright/test": {
+        "reason": "Canonical e2e test runner"
+      },
+      "@swc-node/register": {
+        "reason": "SWC ts-node alternative for Nx"
+      },
+      "@swc/core": {
+        "reason": "SWC compiler used by Nx"
+      },
+      "@swc/helpers": {
+        "reason": "SWC runtime helpers"
+      },
+      "@testing-library/dom": {
+        "reason": "DOM testing primitives"
+      },
+      "@testing-library/react": {
+        "reason": "Canonical React component testing library"
+      },
+      "@vitejs/plugin-react": {
+        "reason": "Vite plugin for React"
+      },
+      "@vitest/ui": {
+        "reason": "Vitest interactive UI"
+      },
+      "ajv": {
+        "reason": "JSON schema validation used by tooling and Nx"
+      },
+      "archiver": {
+        "reason": "Archive creation for change-package export tooling"
+      },
+      "autoprefixer": {
+        "reason": "PostCSS autoprefixer for Tailwind pipeline"
+      },
+      "babel-jest": {
+        "reason": "Babel transformer for jest"
+      },
+      "eslint": {
+        "reason": "Canonical linter"
+      },
+      "eslint-config-prettier": {
+        "reason": "Disables ESLint rules conflicting with prettier"
+      },
+      "jest": {
+        "reason": "Test runner"
+      },
+      "jest-environment-jsdom": {
+        "reason": "JSDOM jest environment for component tests"
+      },
+      "jest-environment-node": {
+        "reason": "Node jest environment for service tests"
+      },
+      "jest-util": {
+        "reason": "Jest internal utilities pinned for plugin compatibility"
+      },
+      "jiti": {
+        "reason": "Runtime TS loader for Nx config files"
+      },
+      "jsdom": {
+        "reason": "JSDOM implementation underlying jest-environment-jsdom"
+      },
+      "nx": {
+        "reason": "Nx CLI"
+      },
+      "postcss": {
+        "reason": "PostCSS pipeline for Tailwind"
+      },
+      "prettier": {
+        "reason": "Canonical code formatter"
+      },
+      "tailwindcss": {
+        "reason": "Canonical utility CSS framework"
+      },
+      "ts-jest": {
+        "reason": "TS transformer for jest"
+      },
+      "ts-node": {
+        "reason": "TS execution for tooling scripts (migrations, scanners)"
+      },
+      "tsconfig-paths": {
+        "reason": "TS path-mapping resolution at runtime"
+      },
+      "tslib": {
+        "reason": "TypeScript runtime helpers"
+      },
+      "typescript": {
+        "reason": "Type checking"
+      },
+      "typescript-eslint": {
+        "reason": "Canonical TS ESLint integration"
+      },
+      "vite": {
+        "reason": "Build tool for the web client"
+      },
+      "vite-plugin-dts": {
+        "reason": "Type-declaration generation for libs built with Vite"
+      },
+      "vite-plugin-pwa": {
+        "reason": "PWA assets for the web client"
+      },
+      "vitest": {
+        "reason": "Test runner for browser/lib code"
+      },
+      "webpack-cli": {
+        "reason": "Required by Nx webpack executors"
+      },
+      "workbox-window": {
+        "reason": "Service worker registration for the PWA"
+      }
+    }
+  },
+  "banned": {
+    "bcrypt": {
+      "reason": "Use argon2 instead (canon W5.C dep registry)"
+    },
+    "node-cache": {
+      "reason": "Use cache-manager (W5.C)"
+    },
+    "@hello-pangea/dnd": {
+      "reason": "Use @dnd-kit/core"
+    }
+  },
+  "legacy": {
+    "bcrypt": {
+      "reason": "Pre-existing banned dep tracked for removal in a separate cleanup commit; argon2 is canonical going forward"
+    },
+    "node-cache": {
+      "reason": "Pre-existing banned dep tracked for removal in a separate cleanup commit; cache-manager is canonical going forward"
+    },
+    "@hello-pangea/dnd": {
+      "reason": "Pre-existing banned dep tracked for removal in a separate cleanup commit; @dnd-kit/core is canonical going forward"
+    }
+  }
+}

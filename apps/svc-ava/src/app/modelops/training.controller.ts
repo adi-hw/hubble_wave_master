@@ -3,7 +3,7 @@ import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-
 import { ModelTrainingService } from './training.service';
 import { ModelTrainingRequest } from './training.types';
 
-@Controller('api/ava/training-jobs')
+@Controller('ava/training-jobs')
 @UseGuards(JwtAuthGuard)
 export class TrainingController {
   constructor(private readonly trainingService: ModelTrainingService) {}

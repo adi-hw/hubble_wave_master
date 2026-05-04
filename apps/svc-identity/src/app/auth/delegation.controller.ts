@@ -22,6 +22,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 import { DelegationService, CreateDelegationDto } from './delegation.service';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface RequestWithUser {
   user: {
@@ -39,6 +40,7 @@ export class DelegationController {
    * Create a new delegation
    */
   @Post()
+  @AuthenticatedOnly()
   @HttpCode(HttpStatus.CREATED)
   async createDelegation(
     @Request() req: RequestWithUser,
@@ -69,6 +71,7 @@ export class DelegationController {
    * Get delegations I've created (as delegator)
    */
   @Get('created')
+  @AuthenticatedOnly()
   async getDelegationsCreated(
     @Request() req: RequestWithUser,
     @Query('includeExpired') includeExpired?: string,
@@ -101,6 +104,7 @@ export class DelegationController {
    * Get delegations I've received (as delegate)
    */
   @Get('received')
+  @AuthenticatedOnly()
   async getDelegationsReceived(@Request() req: RequestWithUser) {
     const delegations = await this.delegationService.getActiveDelegationsForUser(
       req.user.sub,
@@ -128,6 +132,7 @@ export class DelegationController {
    * Get effective permissions (own + delegated)
    */
   @Get('effective-permissions')
+  @AuthenticatedOnly()
   async getEffectivePermissions(@Request() req: RequestWithUser) {
     const result = await this.delegationService.getEffectivePermissions(
       req.user.sub,
@@ -175,6 +180,7 @@ export class DelegationController {
    * Revoke a delegation
    */
   @Delete(':delegationId')
+  @AuthenticatedOnly()
   async revokeDelegation(
     @Request() req: RequestWithUser,
     @Param('delegationId') delegationId: string,
@@ -200,6 +206,7 @@ export class DelegationController {
    * Get delegation by ID
    */
   @Get(':delegationId')
+  @AuthenticatedOnly()
   async getDelegation(
     @Request() req: RequestWithUser,
     @Param('delegationId') delegationId: string,
@@ -210,11 +217,22 @@ export class DelegationController {
       return { found: false };
     }
 
-    // Only delegator, delegate, or admin can view
-    if (
-      delegation.delegatorId !== req.user.sub &&
-      delegation.delegateId !== req.user.sub
-    ) {
+    const isDelegator = delegation.delegatorId === req.user.sub;
+    const isDelegate = delegation.delegateId === req.user.sub;
+
+    // Only delegator or delegate can view
+    if (!isDelegator && !isDelegate) {
+      return { found: false };
+    }
+
+    // Revoked or expired delegations are only visible to the delegator (creator)
+    // who needs them for audit history. Delegates (and any non-owner that slipped
+    // past the check above) get an opaque not-found.
+    const isInactive =
+      delegation.status === 'revoked' ||
+      delegation.status === 'expired' ||
+      (delegation.endsAt && new Date(delegation.endsAt) < new Date());
+    if (isInactive && !isDelegator) {
       return { found: false };
     }
 

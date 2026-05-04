@@ -11,6 +11,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser, CurrentUserData } from '../auth/current-user.decorator';
 import {
   HealthAggregatorService,
   HealthAggregationSummary,
@@ -92,9 +93,13 @@ export class HealthAggregatorController {
     description: 'Instance health details',
   })
   async getInstanceHealth(
-    @Param('instanceId') instanceId: string
+    @Param('instanceId') instanceId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<InstanceHealthResult> {
-    return this.healthService.checkInstanceById(instanceId);
+    return this.healthService.checkInstanceById(instanceId, {
+      id: user.id,
+      role: user.role,
+    });
   }
 
   /**

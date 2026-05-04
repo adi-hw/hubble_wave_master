@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox, ProcessFlowDefinition } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, ProcessFlowDefinition, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { ProcessFlowEngineService } from '@hubblewave/automation';
 
 @Injectable()
@@ -12,15 +12,18 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly batchSize: number;
   private readonly pollIntervalMs: number;
   private readonly lockTimeoutMs: number;
+  private readonly maxRetries: number;
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly engine: ProcessFlowEngineService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('WORKFLOW_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('WORKFLOW_OUTBOX_POLL_MS', '2000'), 10);
     this.lockTimeoutMs = parseInt(this.configService.get('WORKFLOW_OUTBOX_LOCK_TIMEOUT_MS', '60000'), 10);
+    this.maxRetries = parseInt(this.configService.get('WORKFLOW_OUTBOX_MAX_RETRIES', '5'), 10);
   }
 
   onModuleInit(): void {
@@ -51,7 +54,23 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
           }
           await this.markProcessed(entry.id);
         } catch (error) {
-          await this.markFailed(entry.id, (error as Error).message);
+          await this.handleEntryFailure(entry, (error as Error).message);
+          // Record a runtime anomaly so dropped/failed workflow starts are
+          // queryable from the runtime_anomaly table even if the entry is
+          // retried — operators can correlate by outboxId.
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_failure',
+            serviceCode: 'svc-workflow',
+            message: `Workflow outbox entry ${entry.id} (${entry.eventType}) failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {
@@ -67,10 +86,24 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
       throw new Error('workflowId is required to start workflow');
     }
 
+    // The Phase 4 catalog's CallFlow action carries `flowCode` (a
+    // human-authored code), which producers forward through this
+    // payload as `workflowId`. Earlier producers (svc-ava /
+    // svc-insights / svc-metadata helpers) emit a UUID id. Detect
+    // which shape was sent and resolve accordingly so a single
+    // outbox channel serves both.
+    const ref = workflow.workflowId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
     const definitionRepo = this.dataSource.getRepository(ProcessFlowDefinition);
-    const definition = await definitionRepo.findOne({ where: { id: workflow.workflowId, isActive: true } });
+    const definition = await definitionRepo.findOne({
+      where: isUuid
+        ? { id: ref, isActive: true, status: 'published' }
+        : { code: ref, isActive: true, status: 'published' },
+    });
     if (!definition) {
-      throw new Error('Workflow definition not found');
+      throw new Error(
+        `Workflow definition not found or not in a runnable state: ${ref}`,
+      );
     }
 
     await this.engine.startProcessFlow(
@@ -139,6 +172,39 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
         errorMessage: null,
       })
       .where('id = :id', { id })
+      .execute();
+  }
+
+  /**
+   * Decide whether to retry a transient failure or promote the entry
+   * to terminal `failed`. Entries below `maxRetries` are returned to
+   * `pending` with a future `locked_at` so the next poll skips them
+   * until the backoff window has elapsed (claimPending's
+   * `locked_at < lockCutoff` predicate prevents claim while the
+   * future timestamp dominates `NOW() - lockTimeout`). The backoff
+   * is exponential and capped at five minutes so a misbehaving
+   * payload doesn't pile up unbounded retry traffic.
+   */
+  private async handleEntryFailure(
+    entry: InstanceEventOutbox,
+    message: string,
+  ): Promise<void> {
+    const attemptCount = entry.attempts ?? 0;
+    if (attemptCount >= this.maxRetries) {
+      await this.markFailed(entry.id, message);
+      return;
+    }
+    const backoffSeconds = Math.min(Math.pow(2, attemptCount), 300);
+    const retryAfter = new Date(Date.now() + backoffSeconds * 1000);
+    await this.dataSource
+      .createQueryBuilder()
+      .update(InstanceEventOutbox)
+      .set({
+        status: 'pending',
+        lockedAt: retryAfter,
+        errorMessage: `Retry ${attemptCount}/${this.maxRetries}: ${message}`,
+      })
+      .where('id = :id', { id: entry.id })
       .execute();
   }
 

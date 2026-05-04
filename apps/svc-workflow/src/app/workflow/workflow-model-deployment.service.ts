@@ -202,7 +202,7 @@ export class WorkflowModelDeploymentService {
     metadata: Record<string, unknown>,
   ): Promise<void> {
     const event = this.analyticsRepo.create({
-      userId: userId || null,
+      userId,
       eventType,
       eventCategory: 'modelops',
       eventAction: eventType.split('.').pop(),

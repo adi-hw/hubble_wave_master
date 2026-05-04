@@ -1,0 +1,75 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: default-deny-ingress
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/canon-reference: "Section 9: Authorization Is Centralized"
+    hubblewave.io/policy-intent: "Default deny ingress; explicit allow policies open required paths."
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-ingress-controller
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: allow-ingress-from-ingress-controller
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/policy-intent: "Allow public traffic only via the cluster ingress controller."
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3003
+        - protocol: TCP
+          port: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-monitoring
+  namespace: hubblewave
+  labels:
+    app.kubernetes.io/name: allow-ingress-from-monitoring
+    app.kubernetes.io/part-of: hubblewave
+    app.kubernetes.io/component: network-policy
+  annotations:
+    hubblewave.io/policy-intent: "Permit Prometheus scrape on metrics ports from the monitoring namespace."
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9093

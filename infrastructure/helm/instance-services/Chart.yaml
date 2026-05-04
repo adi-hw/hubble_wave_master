@@ -1,0 +1,15 @@
+apiVersion: v2
+name: hubblewave-instance-services
+description: HubbleWave per-customer instance services. Bundles svc-identity, svc-metadata, svc-data, svc-ava, svc-workflow, svc-automation, svc-notify, svc-insights, svc-instance-api, svc-view-engine, and the customer-facing web-client.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.27.0"
+maintainers:
+  - name: HubbleWave Platform Team
+    email: platform@hubblewave.com
+keywords:
+  - hubblewave
+  - instance
+  - platform
+  - multi-service

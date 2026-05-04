@@ -12,6 +12,7 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { SessionService, SessionInfo } from './session.service';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface AuthenticatedUser {
   id: string;
@@ -20,6 +21,7 @@ interface AuthenticatedUser {
   email?: string;
 }
 
+@AuthenticatedOnly()
 @Controller('auth/sessions')
 @UseGuards(JwtAuthGuard)
 export class SessionController {

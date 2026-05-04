@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
 import {
   CollectionDefinition,
   PropertyDefinition,
-  AuditLog,
+  withAudit,
+  AuditRecorder,
 } from '@hubblewave/instance-db';
 import { OutboxPublisherService } from './outbox-publisher.service';
 
@@ -27,14 +28,19 @@ export class RecordMutationService {
   async getRecordById(
     collectionCode: string,
     recordId: string,
+    mgr?: EntityManager,
   ): Promise<Record<string, unknown> | null> {
-    const { collection, properties } = await this.getCollectionWithProperties(collectionCode);
+    const { collection, properties } = await this.getCollectionWithProperties(
+      collectionCode,
+      mgr,
+    );
     if (!collection) return null;
 
     const schema = this.ensureSafeIdentifier('public', 'schema');
     const safeTable = this.ensureSafeIdentifier(collection.tableName, 'table');
     const sql = `SELECT * FROM "${schema}"."${safeTable}" WHERE id = $1`;
-    const records = (await this.dataSource.query(sql, [recordId])) as Record<string, unknown>[];
+    const runner = mgr ?? this.dataSource;
+    const records = (await runner.query(sql, [recordId])) as Record<string, unknown>[];
     if (!records.length) return null;
     return this.mapRowToRecord(records[0], properties);
   }
@@ -43,14 +49,38 @@ export class RecordMutationService {
     collectionCode: string;
     values: Record<string, unknown>;
     actorId?: string | null;
+    // Cross-invocation cycle/depth state forwarded onto the outbox event the
+    // mutation emits, so the next runtime invocation can detect cycles and
+    // enforce MAX_DEPTH across automation chains.
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
-    const { collection, properties } = await this.getCollectionWithProperties(params.collectionCode);
-    const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'create');
+    return withAudit(this.dataSource, (mgr, recordAudit) =>
+      this.createRecordInTransaction(params, mgr, recordAudit),
+    );
+  }
 
-    const writable = await this.authz.filterWritableFields(
+  async createRecordInTransaction(
+    params: {
+      collectionCode: string;
+      values: Record<string, unknown>;
+      actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
+    },
+    mgr: EntityManager,
+    recordAudit: AuditRecorder,
+  ): Promise<Record<string, unknown>> {
+    const { collection, properties } = await this.getCollectionWithProperties(
+      params.collectionCode,
+      mgr,
+    );
+    const context = await this.buildRequestContext(params.actorId ?? null);
+    await this.authz.ensureCollectionAccess(context, collection.id, 'create');
+
+    const writable = await this.authz.filterWritableFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       this.toPropertyMeta(properties),
     );
     const writableCodes = new Set(writable.map((p) => p.code));
@@ -72,7 +102,7 @@ export class RecordMutationService {
       'table',
     )}`;
 
-    const result = await this.dataSource
+    const result = await mgr
       .createQueryBuilder()
       .insert()
       .into(tableName)
@@ -85,12 +115,12 @@ export class RecordMutationService {
       throw new Error('Failed to create record');
     }
 
-    const record = await this.getRecordById(collection.code, newId);
+    const record = await this.getRecordById(collection.code, newId, mgr);
     if (!record) {
       throw new Error('Created record could not be loaded');
     }
 
-    await this.writeAuditLog({
+    recordAudit({
       userId: params.actorId ?? null,
       action: 'create',
       collectionCode: collection.code,
@@ -98,15 +128,20 @@ export class RecordMutationService {
       newValues: record,
     });
 
-    await this.outboxPublisher.publishRecordEvent({
-      eventType: 'record.created',
-      collectionCode: collection.code,
-      recordId: newId,
-      record,
-      previousRecord: null,
-      changedProperties: Object.keys(record || {}),
-      userId: params.actorId ?? null,
-    });
+    await this.outboxPublisher.publishRecordEvent(
+      {
+        eventType: 'record.created',
+        collectionCode: collection.code,
+        recordId: newId,
+        record,
+        previousRecord: null,
+        changedProperties: Object.keys(record || {}),
+        userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
+      },
+      mgr,
+    );
 
     return record;
   }
@@ -116,19 +151,44 @@ export class RecordMutationService {
     recordId: string;
     changes: Record<string, unknown>;
     actorId?: string | null;
+    // Cross-invocation cycle/depth state forwarded onto the outbox event the
+    // mutation emits, so the next runtime invocation can detect cycles and
+    // enforce MAX_DEPTH across automation chains.
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
-    const { collection, properties } = await this.getCollectionWithProperties(params.collectionCode);
-    const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'update');
+    return withAudit(this.dataSource, (mgr, recordAudit) =>
+      this.updateRecordInTransaction(params, mgr, recordAudit),
+    );
+  }
 
-    const previousRecord = await this.getRecordById(collection.code, params.recordId);
+  async updateRecordInTransaction(
+    params: {
+      collectionCode: string;
+      recordId: string;
+      changes: Record<string, unknown>;
+      actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
+    },
+    mgr: EntityManager,
+    recordAudit: AuditRecorder,
+  ): Promise<Record<string, unknown>> {
+    const { collection, properties } = await this.getCollectionWithProperties(
+      params.collectionCode,
+      mgr,
+    );
+    const context = await this.buildRequestContext(params.actorId ?? null);
+    await this.authz.ensureCollectionAccess(context, collection.id, 'update');
+
+    const previousRecord = await this.getRecordById(collection.code, params.recordId, mgr);
     if (!previousRecord) {
       throw new Error(`Record '${params.recordId}' not found`);
     }
 
-    const writable = await this.authz.filterWritableFields(
+    const writable = await this.authz.filterWritableFieldsForCollection(
       context,
-      collection.tableName,
+      collection.id,
       this.toPropertyMeta(properties),
     );
     const writableCodes = new Set(writable.map((p) => p.code));
@@ -153,19 +213,19 @@ export class RecordMutationService {
       'table',
     )}`;
 
-    await this.dataSource
+    await mgr
       .createQueryBuilder()
       .update(tableName)
       .set(updateData)
       .where('id = :id', { id: params.recordId })
       .execute();
 
-    const updatedRecord = await this.getRecordById(collection.code, params.recordId);
+    const updatedRecord = await this.getRecordById(collection.code, params.recordId, mgr);
     if (!updatedRecord) {
       throw new Error('Updated record could not be loaded');
     }
 
-    await this.writeAuditLog({
+    recordAudit({
       userId: params.actorId ?? null,
       action: 'update',
       collectionCode: collection.code,
@@ -174,15 +234,20 @@ export class RecordMutationService {
       newValues: updatedRecord,
     });
 
-    await this.outboxPublisher.publishRecordEvent({
-      eventType: 'record.updated',
-      collectionCode: collection.code,
-      recordId: params.recordId,
-      record: updatedRecord,
-      previousRecord,
-      changedProperties: this.calculateChangedProperties(previousRecord, updatedRecord),
-      userId: params.actorId ?? null,
-    });
+    await this.outboxPublisher.publishRecordEvent(
+      {
+        eventType: 'record.updated',
+        collectionCode: collection.code,
+        recordId: params.recordId,
+        record: updatedRecord,
+        previousRecord,
+        changedProperties: this.calculateChangedProperties(previousRecord, updatedRecord),
+        userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
+      },
+      mgr,
+    );
 
     return updatedRecord;
   }
@@ -191,12 +256,33 @@ export class RecordMutationService {
     collectionCode: string;
     recordId: string;
     actorId?: string | null;
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
-    const { collection } = await this.getCollectionWithProperties(params.collectionCode);
-    const context = await this.buildRequestContext(params.actorId ?? null);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'delete');
+    return withAudit(this.dataSource, (mgr, recordAudit) =>
+      this.deleteRecordInTransaction(params, mgr, recordAudit),
+    );
+  }
 
-    const record = await this.getRecordById(collection.code, params.recordId);
+  async deleteRecordInTransaction(
+    params: {
+      collectionCode: string;
+      recordId: string;
+      actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
+    },
+    mgr: EntityManager,
+    recordAudit: AuditRecorder,
+  ): Promise<Record<string, unknown>> {
+    const { collection } = await this.getCollectionWithProperties(
+      params.collectionCode,
+      mgr,
+    );
+    const context = await this.buildRequestContext(params.actorId ?? null);
+    await this.authz.ensureCollectionAccess(context, collection.id, 'delete');
+
+    const record = await this.getRecordById(collection.code, params.recordId, mgr);
     if (!record) {
       throw new Error(`Record '${params.recordId}' not found`);
     }
@@ -206,14 +292,14 @@ export class RecordMutationService {
       'table',
     )}`;
 
-    await this.dataSource
+    await mgr
       .createQueryBuilder()
       .delete()
       .from(tableName)
       .where('id = :id', { id: params.recordId })
       .execute();
 
-    await this.writeAuditLog({
+    recordAudit({
       userId: params.actorId ?? null,
       action: 'delete',
       collectionCode: collection.code,
@@ -221,24 +307,31 @@ export class RecordMutationService {
       oldValues: record,
     });
 
-    await this.outboxPublisher.publishRecordEvent({
-      eventType: 'record.deleted',
-      collectionCode: collection.code,
-      recordId: params.recordId,
-      record,
-      previousRecord: record,
-      changedProperties: Object.keys(record || {}),
-      userId: params.actorId ?? null,
-    });
+    await this.outboxPublisher.publishRecordEvent(
+      {
+        eventType: 'record.deleted',
+        collectionCode: collection.code,
+        recordId: params.recordId,
+        record,
+        previousRecord: record,
+        changedProperties: Object.keys(record || {}),
+        userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
+      },
+      mgr,
+    );
 
     return record;
   }
 
   private async getCollectionWithProperties(
     collectionCode: string,
+    mgr?: EntityManager,
   ): Promise<CollectionWithProperties> {
-    const collectionRepo = this.dataSource.getRepository(CollectionDefinition);
-    const propertyRepo = this.dataSource.getRepository(PropertyDefinition);
+    const runner = mgr ?? this.dataSource;
+    const collectionRepo = runner.getRepository(CollectionDefinition);
+    const propertyRepo = runner.getRepository(PropertyDefinition);
 
     const collection = await collectionRepo.findOne({
       where: { code: collectionCode, isActive: true },
@@ -313,28 +406,6 @@ export class RecordMutationService {
       }
     }
     return changes;
-  }
-
-  private async writeAuditLog(params: {
-    userId: string | null;
-    action: string;
-    collectionCode: string;
-    recordId?: string | null;
-    oldValues?: Record<string, unknown> | null;
-    newValues?: Record<string, unknown> | null;
-    permissionCode?: string | null;
-  }): Promise<void> {
-    const repo: Repository<AuditLog> = this.dataSource.getRepository(AuditLog);
-    const entry = repo.create({
-      userId: params.userId ?? null,
-      collectionCode: params.collectionCode,
-      recordId: params.recordId ?? null,
-      action: params.action,
-      oldValues: params.oldValues ?? null,
-      newValues: params.newValues ?? null,
-      permissionCode: params.permissionCode ?? null,
-    });
-    await repo.save(entry);
   }
 
   private async buildRequestContext(userId: string | null): Promise<RequestContext> {

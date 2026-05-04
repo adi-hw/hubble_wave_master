@@ -5,17 +5,47 @@
  * Manages webhook subscriptions and delivery with retry logic.
  */
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
+import { validateOutboundUrl as validateOutboundUrlCentral } from '@hubblewave/integrations';
 import {
   WebhookSubscription,
   WebhookDelivery,
   WebhookEvent,
   WebhookDeliveryStatus,
 } from '@hubblewave/instance-db';
+
+/**
+ * Wraps the central platform-wide URL validator so webhook errors surface as
+ * `BadRequestException` with the existing user-facing message contract.
+ */
+function validateOutboundUrl(rawUrl: string): URL {
+  try {
+    return validateOutboundUrlCentral(rawUrl);
+  } catch (err) {
+    const detail = (err as Error).message.replace(/^Outbound URL invalid:\s*/, '');
+    throw new BadRequestException(`Webhook endpointUrl invalid: ${detail}`);
+  }
+}
+
+/**
+ * Reject header maps that could be used for header smuggling. Names containing
+ * CR, LF, or colons (which would be interpreted as separators) are rejected.
+ */
+function validateHeaderMap(headers: Record<string, string> | undefined): void {
+  if (!headers) return;
+  for (const [name, value] of Object.entries(headers)) {
+    if (typeof name !== 'string' || /[\r\n:]/.test(name)) {
+      throw new BadRequestException(`Webhook header name invalid: '${name}'`);
+    }
+    if (typeof value !== 'string' || /[\r\n]/.test(value)) {
+      throw new BadRequestException(`Webhook header value invalid for '${name}'`);
+    }
+  }
+}
 
 interface DeliverWebhookOptions {
   subscriptionId: string;
@@ -86,6 +116,8 @@ export class WebhookService {
   }
 
   async create(dto: CreateWebhookDto): Promise<WebhookSubscription> {
+    validateOutboundUrl(dto.endpointUrl);
+    validateHeaderMap(dto.headers);
     const secret = dto.secret || crypto.randomBytes(32).toString('hex');
 
     const subscription = this.subscriptionRepo.create({
@@ -134,11 +166,17 @@ export class WebhookService {
       throw new Error('Webhook subscription not found');
     }
 
+    if (dto.endpointUrl !== undefined) {
+      validateOutboundUrl(dto.endpointUrl);
+      subscription.endpointUrl = dto.endpointUrl;
+    }
+    if (dto.headers !== undefined) {
+      validateHeaderMap(dto.headers);
+      subscription.headers = dto.headers;
+    }
     if (dto.name !== undefined) subscription.name = dto.name;
-    if (dto.endpointUrl !== undefined) subscription.endpointUrl = dto.endpointUrl;
     if (dto.events !== undefined) subscription.events = dto.events;
     if (dto.filterConditions !== undefined) subscription.filterConditions = dto.filterConditions;
-    if (dto.headers !== undefined) subscription.headers = dto.headers;
     if (dto.isActive !== undefined) subscription.isActive = dto.isActive;
     if (dto.retryCount !== undefined) subscription.retryCount = dto.retryCount;
     if (dto.timeoutSeconds !== undefined) subscription.timeoutSeconds = dto.timeoutSeconds;
@@ -318,6 +356,11 @@ export class WebhookService {
     timeout: number;
     verifySsl: boolean;
   }): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+    // Defense-in-depth: re-validate at delivery time in case the persisted URL
+    // was mutated by another path or the IP was assumed safe at registration.
+    validateOutboundUrl(options.url);
+    validateHeaderMap(options.headers);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout);
 
@@ -405,6 +448,10 @@ export class WebhookService {
     });
 
     return { items, total };
+  }
+
+  async findDeliveryById(deliveryId: string): Promise<WebhookDelivery | null> {
+    return this.deliveryRepo.findOne({ where: { id: deliveryId } });
   }
 
   async retryDelivery(deliveryId: string): Promise<WebhookDelivery> {

@@ -2,14 +2,49 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiKey } from '@hubblewave/instance-db';
-import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
+
+/**
+ * Argon2id parameters for API-key hashing. API keys are 48-byte
+ * cryptographically random strings (192 bits of entropy), so the threat
+ * model differs from user-chosen passwords: we tune for fast verification
+ * on the hot validation path rather than maximum offline-attack cost.
+ */
+const ARGON2_API_KEY_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 19456, // 19 MB - meets RFC 9106 minimum, low latency
+  timeCost: 2,
+  parallelism: 1,
+  hashLength: 32,
+};
 
 export interface ValidatedApiKey {
   id: string;
   name: string;
   userId: string;
   scopes: string[];
+}
+
+/**
+ * Verify a plain API key against a stored hash. Supports two formats:
+ * - Argon2id (`$argon2id$...`) - canonical hash for all newly created keys
+ * - bcrypt (`$2a$` / `$2b$` / `$2y$`) - keys created on prior installations
+ *
+ * Both branches produce identical user-visible behavior. There is no
+ * automatic rotation for API keys: their plaintext is only known to the
+ * client at creation time, and the platform never sees it again, so the
+ * only way to migrate an API key's stored hash is to issue a new key.
+ */
+async function verifyKeyHash(plainKey: string, hash: string): Promise<boolean> {
+  if (hash.startsWith('$argon2')) {
+    return argon2.verify(hash, plainKey);
+  }
+  if (hash.startsWith('$2')) {
+    const { compare } = await import('bcrypt');
+    return compare(plainKey, hash);
+  }
+  return false;
 }
 
 @Injectable()
@@ -35,7 +70,7 @@ export class ApiKeyService {
     const randomPart = crypto.randomBytes(24).toString('hex');
     const plainKey = `${prefix}${randomPart}`;
 
-    const keyHash = await bcrypt.hash(plainKey, 10);
+    const keyHash = await argon2.hash(plainKey, ARGON2_API_KEY_OPTIONS);
     const keyPrefix = plainKey.substring(0, 12); // Store prefix for lookup optimization
 
     const apiKey = this.apiKeyRepo.create({
@@ -55,8 +90,9 @@ export class ApiKeyService {
   }
 
   /**
-   * Validate an API key and return the associated metadata
-   * Uses prefix-based lookup for efficiency, then bcrypt comparison
+   * Validate an API key and return the associated metadata.
+   * Uses prefix-based lookup for efficiency, then Argon2id comparison
+   * (with bcrypt fallback for keys provisioned on prior installations).
    */
   async validateKey(plainKey: string): Promise<ValidatedApiKey | null> {
     if (!plainKey || !plainKey.startsWith('sk_live_')) {
@@ -81,7 +117,7 @@ export class ApiKeyService {
       }
 
       // Compare hash
-      const isValid = await bcrypt.compare(plainKey, candidate.keyHash);
+      const isValid = await verifyKeyHash(plainKey, candidate.keyHash);
       if (isValid) {
         // Update last used timestamp (fire and forget)
         this.apiKeyRepo.update({ id: candidate.id }, { lastUsedAt: new Date() }).catch((err) => {

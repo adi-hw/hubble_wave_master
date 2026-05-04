@@ -15,7 +15,10 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '@hubblewave/auth-guard';
 import { AVACoreService } from './ava-core.service';
 import { ConversationStatus, FeedbackType } from '@hubblewave/instance-db';
 
@@ -25,6 +28,42 @@ interface AuthenticatedRequest {
     username: string;
     roles: string[];
     permissions: string[];
+    instanceSlug?: string;
+    organizationId?: string;
+    organizationName?: string;
+  };
+  headers: {
+    'x-instance-slug'?: string | string[];
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Resolve the caller's instance/organization context from the request.
+ * Order of resolution:
+ *   1. JWT claim (organizationId / instanceSlug) populated by the identity service
+ *   2. `X-Instance-Slug` request header (set by the gateway / web client)
+ * Fails closed: if no instance context is available, the request is rejected.
+ */
+function resolveInstanceContext(req: AuthenticatedRequest): {
+  organizationId: string;
+  organizationName: string;
+} {
+  const claim = req.user as Record<string, unknown> | undefined;
+  const claimOrgId = (claim?.organizationId as string | undefined) ?? (claim?.instanceSlug as string | undefined);
+  const claimOrgName = claim?.organizationName as string | undefined;
+
+  const headerRaw = req.headers?.['x-instance-slug'];
+  const headerSlug = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;
+
+  const organizationId = claimOrgId || headerSlug;
+  if (!organizationId || typeof organizationId !== 'string' || !organizationId.trim()) {
+    throw new UnauthorizedException('Instance context missing');
+  }
+
+  return {
+    organizationId: organizationId.trim(),
+    organizationName: claimOrgName || organizationId.trim(),
   };
 }
 
@@ -45,21 +84,27 @@ interface SuggestionResponseDto {
 }
 
 @Controller('ava')
+@UseGuards(JwtAuthGuard)
 export class AVAController {
   constructor(private readonly avaService: AVACoreService) {}
 
-  @Post('chat')
-  @HttpCode(HttpStatus.OK)
-  async chat(@Body() dto: ChatRequestDto, @Req() req: AuthenticatedRequest) {
-    const userContext = {
+  private buildUserContext(req: AuthenticatedRequest) {
+    const instance = resolveInstanceContext(req);
+    return {
       id: req.user.sub,
       name: req.user.username,
       email: `${req.user.username}@hubblewave.com`,
       role: req.user.roles[0] || 'user',
       permissions: req.user.permissions,
-      organizationId: 'org-1',
-      organizationName: 'HubbleWave',
+      organizationId: instance.organizationId,
+      organizationName: instance.organizationName,
     };
+  }
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async chat(@Body() dto: ChatRequestDto, @Req() req: AuthenticatedRequest) {
+    const userContext = this.buildUserContext(req);
 
     return this.avaService.chat(
       {
@@ -77,7 +122,8 @@ export class AVAController {
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
   ) {
-    return this.avaService.getConversations(req.user.sub, {
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getConversations(req.user.sub, instance.organizationId, {
       status,
       limit: limit ? parseInt(String(limit)) : undefined,
       offset: offset ? parseInt(String(offset)) : undefined,
@@ -89,16 +135,19 @@ export class AVAController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.avaService.getConversation(id, req.user.sub);
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getConversation(id, req.user.sub, instance.organizationId);
   }
 
   @Get('conversations/:id/messages')
   async getMessages(
     @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
   ) {
-    return this.avaService.getMessages(id, {
+    const instance = resolveInstanceContext(req);
+    return this.avaService.getMessagesForConversation(id, req.user.sub, instance.organizationId, {
       limit: limit ? parseInt(String(limit)) : undefined,
       offset: offset ? parseInt(String(offset)) : undefined,
     });
@@ -110,7 +159,8 @@ export class AVAController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    await this.avaService.endConversation(id, req.user.sub);
+    const instance = resolveInstanceContext(req);
+    await this.avaService.endConversation(id, req.user.sub, instance.organizationId);
   }
 
   @Post('messages/:id/feedback')
@@ -119,6 +169,7 @@ export class AVAController {
     @Body() dto: FeedbackRequestDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    resolveInstanceContext(req);
     return this.avaService.submitFeedback(id, req.user.sub, dto);
   }
 
@@ -128,6 +179,7 @@ export class AVAController {
     @Query('entity') entity?: string,
     @Query('property') property?: string,
   ) {
+    resolveInstanceContext(req);
     return this.avaService.getSuggestions(req.user.sub, { entity, property });
   }
 
@@ -138,6 +190,7 @@ export class AVAController {
     @Body() dto: SuggestionResponseDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    resolveInstanceContext(req);
     await this.avaService.respondToSuggestion(id, req.user.sub, dto);
   }
 
@@ -147,6 +200,7 @@ export class AVAController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
+    resolveInstanceContext(req);
     const dateRange =
       startDate && endDate
         ? { start: new Date(startDate), end: new Date(endDate) }

@@ -97,8 +97,8 @@ export const AvaInlineSuggestion: React.FC<AvaInlineSuggestionProps> = ({
         const data = await response.json();
         setSuggestions(data.suggestions || []);
       }
-    } catch (err) {
-      console.error('Failed to fetch suggestions:', err);
+    } catch {
+      // Suggestions fetch failed - list remains empty
     } finally {
       setIsLoading(false);
     }
@@ -142,8 +142,8 @@ export const AvaInlineSuggestion: React.FC<AvaInlineSuggestionProps> = ({
         }),
       });
       setFeedbackGiven((prev) => ({ ...prev, [suggestion.id]: true }));
-    } catch (err) {
-      console.error('Failed to submit feedback:', err);
+    } catch {
+      // Feedback submission failed - silently ignore
     }
   };
 

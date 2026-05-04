@@ -1,0 +1,149 @@
+# Default values for the HubbleWave Control Plane chart.
+# Environment-specific overrides live in values-staging.yaml and values-production.yaml.
+# CD substitutes image.tag with the immutable commit SHA at deploy time.
+
+environment: production
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Container registry shared by both API and Web images.
+image:
+  registry: ghcr.io
+  repository: hubblewave/hw-platform
+  # tag is set by CD (helm --set image.tag=$GITHUB_SHA). Leave empty so a missing tag fails fast.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: true
+  name: control-plane-sa
+  annotations: {}
+
+# Non-secret runtime configuration. Rendered into a single ConfigMap.
+config:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  CONTROL_PLANE_URL: https://control.hubblewave.com
+  CONTROL_PLANE_PORT: "3003"
+  CONTROL_PLANE_CORS_ORIGINS: https://control.hubblewave.com,https://hubblewave.com
+  DB_SSL: "true"
+
+# Secret material. Values flow in via --set-string from CD or, ideally, are
+# materialised by an external-secrets controller / SealedSecret outside Helm.
+# When secrets.create=false the chart references existingSecret by name and
+# does not template the values.
+secrets:
+  create: true
+  existingSecret: ""
+  jwtSecret: ""
+  licenseSigningKey: ""
+  database:
+    host: ""
+    port: "5432"
+    user: ""
+    password: ""
+    name: ""
+  redis:
+    host: ""
+    port: "6379"
+    password: ""
+
+api:
+  name: control-plane-api
+  replicaCount: 2
+  port: 3003
+  image:
+    component: svc-control-plane
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 3003
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 3003
+    initialDelaySeconds: 30
+    periodSeconds: 30
+  service:
+    type: ClusterIP
+    port: 80
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+web:
+  name: control-plane-web
+  replicaCount: 2
+  port: 80
+  image:
+    component: web-control-plane
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  service:
+    type: ClusterIP
+    port: 80
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+  api:
+    host: api.hubblewave.com
+    tlsSecret: control-plane-api-tls
+  web:
+    host: control.hubblewave.com
+    tlsSecret: control-plane-web-tls
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

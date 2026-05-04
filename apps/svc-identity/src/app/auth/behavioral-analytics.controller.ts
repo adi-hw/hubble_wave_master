@@ -22,6 +22,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionGuard } from '../roles/guards/permission.guard';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 import { BehavioralAnalyticsService, BehaviorEvent } from './behavioral-analytics.service';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
 interface RequestWithUser {
   user: {
@@ -45,6 +46,7 @@ export class BehavioralAnalyticsController {
    * Get my behavioral profile summary
    */
   @Get('profile')
+  @AuthenticatedOnly()
   async getMyProfile(@Request() req: RequestWithUser) {
     const summary = await this.analyticsService.getProfileSummary(req.user.sub);
 
@@ -156,6 +158,7 @@ export class BehavioralAnalyticsController {
    * Get my security alerts
    */
   @Get('my-alerts')
+  @AuthenticatedOnly()
   async getMyAlerts(
     @Request() req: RequestWithUser,
     @Query('status') status?: string,

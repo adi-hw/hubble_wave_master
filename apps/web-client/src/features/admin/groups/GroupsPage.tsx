@@ -186,8 +186,8 @@ export const GroupsPage: React.FC = () => {
 
       const rootIds = treeResponse.data.data.map((g) => g.id);
       setExpandedIds(new Set(rootIds));
-    } catch (error) {
-      console.error('Failed to fetch groups:', error);
+    } catch {
+      // Groups fetch failed - tree remains empty
     } finally {
       setLoading(false);
     }
@@ -267,8 +267,8 @@ export const GroupsPage: React.FC = () => {
         default:
           break;
       }
-    } catch (error) {
-      console.error(`Failed to ${action} group:`, error);
+    } catch {
+      // Group action failed - state unchanged
     }
   };
 

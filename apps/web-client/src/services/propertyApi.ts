@@ -1,6 +1,9 @@
 import metadataApi from './metadataApi';
 
-// Frontend PropertyDefinition interface
+// Frontend PropertyDefinition interface — uses canvas-friendly names
+// (label, dataType, displayOrder). The mapPropertyResponse adapter
+// translates backend (name, propertyType.code, position) into this
+// shape, and the create/update payloads translate back when POSTing.
 export interface PropertyDefinition {
   id: string;
   collectionId: string;
@@ -13,126 +16,207 @@ export interface PropertyDefinition {
   isReadonly: boolean;
   displayOrder: number;
   choiceList?: { value: string; label: string; color?: string }[];
-  [key: string]: any;
+  referenceCollectionId?: string | null;
+  referenceDisplayProperty?: string | null;
+  behavioralAttributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
-// API response format (matches backend entity)
 interface PropertyApiResponse {
   id: string;
   collectionId: string;
   code: string;
-  name: string;  // Backend uses 'name', frontend uses 'label'
+  name: string;
   propertyTypeId?: string;
-  position: number;  // Backend uses 'position', frontend uses 'displayOrder'
+  position: number;
   isSystem: boolean;
   isRequired: boolean;
   isUnique: boolean;
   isReadonly: boolean;
   config?: Record<string, unknown>;
   propertyType?: { code: string; name: string };
-  [key: string]: any;
+  referenceCollectionId?: string | null;
+  referenceDisplayProperty?: string | null;
+  behavioralAttributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
-// Map API response to frontend format
-function mapPropertyResponse(apiProp: PropertyApiResponse): PropertyDefinition {
-  return {
-    ...apiProp,
-    label: apiProp.name,  // API 'name' → 'label'
-    displayOrder: apiProp.position ?? 0,  // API 'position' → 'displayOrder'
-    dataType: apiProp.propertyType?.code || apiProp.config?.type as string || 'text',
-    isReadonly: apiProp.isReadonly ?? false,
+/**
+ * PropertyService.listProperties returns this shape. The frontend
+ * unwraps `data` so the canvas hook can treat the result as a record
+ * list with metadata.
+ */
+interface PropertyListResult {
+  data: PropertyApiResponse[];
+  meta: {
+    collectionId: string;
+    total: number;
+    includeSystem: boolean;
+    includeInactive: boolean;
   };
 }
 
+type PropertyListWireResult = PropertyListResult | PropertyApiResponse[];
+
+const unwrapPropertyList = (result: PropertyListWireResult) => {
+  if (Array.isArray(result)) {
+    return {
+      properties: result,
+      total: result.length,
+    };
+  }
+
+  const properties = Array.isArray(result?.data) ? result.data : [];
+  return {
+    properties,
+    total: result?.meta?.total ?? properties.length,
+  };
+};
+
+const mapPropertyResponse = (apiProp: PropertyApiResponse): PropertyDefinition => ({
+  ...apiProp,
+  label: apiProp.name,
+  displayOrder: apiProp.position ?? 0,
+  dataType:
+    apiProp.propertyType?.code || (apiProp.config?.type as string) || 'text',
+  isReadonly: apiProp.isReadonly ?? false,
+});
+
+/**
+ * Frontend-shape DTO. The API client translates label → name and
+ * dataType → propertyTypeCode at the wire boundary, so callers never
+ * need to know the backend's canonical names.
+ */
 export interface CreatePropertyDto {
   code: string;
   label: string;
   dataType: string;
-  [key: string]: any;
+  isRequired?: boolean;
+  isUnique?: boolean;
+  isReadonly?: boolean;
+  referenceCollectionId?: string | null;
+  referenceDisplayProperty?: string | null;
+  description?: string;
+  validationRules?: Record<string, unknown>;
+  defaultValue?: string;
+  helpText?: string;
+  placeholder?: string;
+  behavioralAttributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface UpdatePropertyDto {
   label?: string;
-  [key: string]: any;
+  isRequired?: boolean;
+  isUnique?: boolean;
+  isReadonly?: boolean;
+  referenceCollectionId?: string | null;
+  referenceDisplayProperty?: string | null;
+  description?: string;
+  validationRules?: Record<string, unknown>;
+  defaultValue?: string;
+  helpText?: string;
+  placeholder?: string;
+  behavioralAttributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
+const toCreateWirePayload = (dto: CreatePropertyDto): Record<string, unknown> => {
+  const { label, dataType, ...rest } = dto;
+  return {
+    ...rest,
+    name: label,
+    propertyTypeCode: dataType,
+  };
+};
+
+const toUpdateWirePayload = (dto: UpdatePropertyDto): Record<string, unknown> => {
+  const { label, ...rest } = dto;
+  const payload: Record<string, unknown> = { ...rest };
+  if (label !== undefined) payload.name = label;
+  return payload;
+};
+
 export const propertyApi = {
-  // List properties for a collection
   list: async (collectionId: string) => {
-    const response = await metadataApi.get<PropertyApiResponse[]>(
-      `/collections/${collectionId}/properties`
+    const response = await metadataApi.get<PropertyListWireResult>(
+      `/collections/${collectionId}/properties`,
     );
-    // API returns array directly, map and wrap for consistency
-    const apiProperties = Array.isArray(response.data) ? response.data : [];
-    const properties = apiProperties.map(mapPropertyResponse);
-    return { data: properties, total: properties.length };
+    const { properties: apiProperties, total } = unwrapPropertyList(response.data);
+    return { data: apiProperties.map(mapPropertyResponse), total };
   },
 
-  // Get a single property
   get: async (collectionId: string, propertyId: string) => {
     const response = await metadataApi.get<PropertyApiResponse>(
-      `/collections/${collectionId}/properties/${propertyId}`
+      `/collections/${collectionId}/properties/${propertyId}`,
     );
     return mapPropertyResponse(response.data);
   },
 
-  // Check code availability
   checkAvailability: async (collectionId: string, code: string) => {
     const response = await metadataApi.get<{ available: boolean }>(
-      `/collections/${collectionId}/properties/check-availability?code=${code}`
+      `/collections/${collectionId}/properties/check-availability?code=${code}`,
     );
     return response.data;
   },
 
-  // Create a new property
   create: async (collectionId: string, data: CreatePropertyDto) => {
-    const response = await metadataApi.post<{ property: PropertyDefinition; warnings: string[] }>(
+    const response = await metadataApi.post<{ property: PropertyApiResponse; warnings?: string[] }>(
       `/collections/${collectionId}/properties`,
-      data
+      toCreateWirePayload(data),
     );
-    return response.data;
+    const raw = (response.data as unknown as PropertyApiResponse) ?? response.data;
+    const property = (raw && 'id' in raw)
+      ? mapPropertyResponse(raw)
+      : mapPropertyResponse((response.data as { property: PropertyApiResponse }).property);
+    return { property, warnings: (response.data as { warnings?: string[] }).warnings ?? [] };
   },
 
-  // Update an existing property
   update: async (collectionId: string, propertyId: string, data: UpdatePropertyDto) => {
-    const response = await metadataApi.put<PropertyDefinition>(
+    const response = await metadataApi.put<PropertyApiResponse>(
       `/collections/${collectionId}/properties/${propertyId}`,
-      data
+      toUpdateWirePayload(data),
     );
-    return response.data;
+    return mapPropertyResponse(response.data);
   },
 
-  // Delete a property
   delete: async (collectionId: string, propertyId: string, force = false) => {
     const response = await metadataApi.delete<{ deleted: boolean; dataLost: boolean }>(
-      `/collections/${collectionId}/properties/${propertyId}?force=${force}`
+      `/collections/${collectionId}/properties/${propertyId}?force=${force}`,
     );
     return response.data;
   },
 
-  // Reorder properties
-  reorder: async (collectionId: string, order: { id: string; displayOrder: number }[]) => {
+  /**
+   * Reorder uses the backend's wire-level field name `position`. The
+   * frontend's PropertyDraft / canvas uses displayOrder; this method
+   * is the only place that translation matters.
+   */
+  reorder: async (
+    collectionId: string,
+    order: { id: string; displayOrder: number }[],
+  ) => {
     const response = await metadataApi.put<{ updated: number }>(
       `/collections/${collectionId}/properties/reorder`,
-      { order }
+      { order: order.map((o) => ({ id: o.id, position: o.displayOrder })) },
     );
     return response.data;
   },
 
-  // AVA Suggestions
   suggest: async (collectionId: string, name: string) => {
     const response = await metadataApi.get<Partial<CreatePropertyDto>>(
-      `/collections/${collectionId}/properties/suggest?name=${encodeURIComponent(name)}`
+      `/collections/${collectionId}/properties/suggest?name=${encodeURIComponent(name)}`,
     );
     return response.data;
   },
 
-  // AVA Type Detection
   detectType: async (collectionId: string, samples: string[]) => {
-    const response = await metadataApi.post<{ dataType: string; confidence: number; formatOptions?: any }>(
-      `/collections/${collectionId}/properties/detect-type`,
-      { samples }
-    );
+    const response = await metadataApi.post<{
+      dataType: string;
+      confidence: number;
+      explanation?: string;
+      formatOptions?: Record<string, unknown>;
+    }>(`/collections/${collectionId}/properties/detect-type`, { samples });
     return response.data;
   },
 };

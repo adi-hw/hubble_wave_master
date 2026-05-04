@@ -100,8 +100,8 @@ export const WebhooksPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch webhooks');
       const data = await response.json();
       setWebhooks(data.items || []);
-    } catch (error) {
-      console.error('Error fetching webhooks:', error);
+    } catch {
+      // Webhooks fetch failed - UI shows empty state
     } finally {
       setLoading(false);
     }
@@ -113,8 +113,8 @@ export const WebhooksPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch deliveries');
       const data = await response.json();
       setDeliveries(data.items || []);
-    } catch (error) {
-      console.error('Error fetching deliveries:', error);
+    } catch {
+      // Deliveries fetch failed - UI shows empty state
     }
   };
 
@@ -129,8 +129,8 @@ export const WebhooksPage: React.FC = () => {
       setShowCreateModal(false);
       setFormData({ name: '', endpointUrl: '', events: [] });
       fetchWebhooks();
-    } catch (error) {
-      console.error('Error creating webhook:', error);
+    } catch {
+      // Create failed - modal remains open
     }
   };
 
@@ -142,8 +142,8 @@ export const WebhooksPage: React.FC = () => {
       });
       if (!response.ok) throw new Error('Failed to toggle webhook');
       fetchWebhooks();
-    } catch (error) {
-      console.error('Error toggling webhook:', error);
+    } catch {
+      // Toggle failed - status unchanged
     }
   };
 
@@ -154,8 +154,8 @@ export const WebhooksPage: React.FC = () => {
       });
       const result = await response.json();
       alert(result.success ? 'Test successful!' : `Test failed: ${result.error}`);
-    } catch (error) {
-      console.error('Error testing webhook:', error);
+    } catch {
+      // Test failed - user sees error in alert
     }
   };
 
@@ -171,8 +171,8 @@ export const WebhooksPage: React.FC = () => {
         setSelectedWebhook(null);
       }
       fetchWebhooks();
-    } catch (error) {
-      console.error('Error deleting webhook:', error);
+    } catch {
+      // Delete failed - webhook remains in list
     }
   };
 
@@ -194,7 +194,7 @@ export const WebhooksPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-subtle rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg">
             <Webhook className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -240,7 +240,7 @@ export const WebhooksPage: React.FC = () => {
                     onClick={() => setSelectedWebhook(webhook)}
                     className={`w-full p-3 rounded-lg text-left transition-colors ${
                       selectedWebhook?.id === webhook.id
-                        ? 'bg-primary-subtle border border-primary'
+                        ? 'bg-primary/10 border border-primary'
                         : 'hover:bg-muted border border-transparent'
                     }`}
                   >
@@ -361,7 +361,7 @@ export const WebhooksPage: React.FC = () => {
                     </label>
                     <div className="flex flex-wrap gap-1">
                       {selectedWebhook.events.map((event) => (
-                        <Badge key={event} className="bg-primary-subtle text-primary">
+                        <Badge key={event} className="bg-primary/10 text-primary">
                           {event}
                         </Badge>
                       ))}
@@ -503,7 +503,7 @@ export const WebhooksPage: React.FC = () => {
                       key={event.value}
                       className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
                         formData.events.includes(event.value)
-                          ? 'bg-primary-subtle border border-primary'
+                          ? 'bg-primary/10 border border-primary'
                           : 'bg-muted border border-transparent hover:bg-muted'
                       }`}
                     >

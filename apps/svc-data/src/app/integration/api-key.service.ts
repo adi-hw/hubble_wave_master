@@ -260,7 +260,7 @@ export class ApiKeyService {
     return { items, total };
   }
 
-  async getUsageStats(apiKeyId: string, days: number = 30): Promise<{
+  async getUsageStats(apiKeyId: string, days = 30): Promise<{
     totalRequests: number;
     successfulRequests: number;
     failedRequests: number;

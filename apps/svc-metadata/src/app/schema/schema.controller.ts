@@ -20,10 +20,13 @@ export class SchemaController {
   getPlan(
     @Query('schema') schema?: string,
     @Query('collectionCodes') collectionCodes?: string,
+    @Query('source') source?: string,
+    @Query('includeDraft') includeDraft?: string,
   ) {
     return this.diffService.buildPlan({
       schema,
       collectionCodes: this.parseCollectionCodes(collectionCodes),
+      includeDraft: source === 'draft' || includeDraft === 'true',
     });
   }
 

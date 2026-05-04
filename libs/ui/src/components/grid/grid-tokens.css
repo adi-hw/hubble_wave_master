@@ -330,10 +330,11 @@
   right: 0;
   top: 0;
   height: 100%;
-  width: 4px;
+  width: 8px;
   cursor: col-resize;
   background: transparent;
   transition: background var(--grid-transition-fast);
+  z-index: 10;
 }
 
 .grid-resize-handle:hover,

@@ -8,14 +8,20 @@
 import React, { useState, useEffect } from 'react';
 import { GripVertical, Pencil, Trash2, Lock, Loader2, AlertCircle } from 'lucide-react';
 import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult,
-  DroppableProvided,
-  DraggableProvided,
-  DraggableStateSnapshot,
-} from '@hello-pangea/dnd';
+  DndContext,
+  DragEndEvent,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { PropertyDefinition, propertyApi } from '../../../services/propertyApi';
 
 interface PropertyListProps {
@@ -43,6 +49,106 @@ const getTypeBadgeClasses = (type: string): string => {
   }
 };
 
+interface SortablePropertyRowProps {
+  property: PropertyDefinition;
+  onEdit: (property: PropertyDefinition) => void;
+  onDelete: (property: PropertyDefinition) => void;
+}
+
+const SortablePropertyRow: React.FC<SortablePropertyRowProps> = ({
+  property,
+  onEdit,
+  onDelete,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: property.id, disabled: property.isSystem });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className={`border-b border-border transition-colors ${
+        isDragging ? 'bg-muted/60 border-transparent' : ''
+      }`}
+    >
+      <td className="p-3">
+        {!property.isSystem && (
+          <div
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing flex items-center"
+          >
+            <GripVertical className="w-4 h-4 text-muted-foreground/50" />
+          </div>
+        )}
+      </td>
+      <td className="p-3">
+        <div className="flex items-center gap-2">
+          <span className="text-foreground">{property.label}</span>
+          {property.isSystem && (
+            <span title="System Property">
+              <Lock className="w-3 h-3 text-muted-foreground/50" />
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="p-3">
+        <code className="text-xs font-mono text-muted-foreground">
+          {property.code}
+        </code>
+      </td>
+      <td className="p-3">
+        <span
+          className={`px-2 py-0.5 text-xs font-medium border rounded ${getTypeBadgeClasses(property.dataType)}`}
+        >
+          {property.dataType}
+        </span>
+      </td>
+      <td className="p-3 text-center">
+        {property.isRequired && (
+          <span className="px-2 py-0.5 text-xs font-medium rounded border border-destructive text-destructive">
+            Req
+          </span>
+        )}
+      </td>
+      <td className="p-3">
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            onClick={() => onEdit(property)}
+            disabled={property.isSystem && property.isReadonly}
+            className="p-1.5 rounded transition-colors hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Edit property"
+          >
+            <Pencil className="w-4 h-4 text-muted-foreground" />
+          </button>
+          {!property.isSystem && (
+            <button
+              type="button"
+              onClick={() => onDelete(property)}
+              className="p-1.5 rounded transition-colors hover:bg-danger-subtle"
+              aria-label="Delete property"
+            >
+              <Trash2 className="w-4 h-4 text-destructive" />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 export const PropertyList: React.FC<PropertyListProps> = ({
   collectionId,
   onEdit,
@@ -52,6 +158,11 @@ export const PropertyList: React.FC<PropertyListProps> = ({
   const [properties, setProperties] = useState<PropertyDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
 
   useEffect(() => {
     loadProperties();
@@ -63,20 +174,25 @@ export const PropertyList: React.FC<PropertyListProps> = ({
     try {
       const result = await propertyApi.list(collectionId);
       setProperties(result.data || []);
-    } catch (err) {
-      console.error('Failed to load properties', err);
+    } catch {
+      // Properties fetch failed - show error message
       setError('Failed to load properties. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-    const items = Array.from(properties);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
+    const oldIndex = properties.findIndex((p) => p.id === active.id);
+    const newIndex = properties.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const items = [...properties];
+    const [moved] = items.splice(oldIndex, 1);
+    items.splice(newIndex, 0, moved);
 
     const updatedItems = items.map((item, index) => ({
       ...item,
@@ -87,10 +203,10 @@ export const PropertyList: React.FC<PropertyListProps> = ({
     try {
       await propertyApi.reorder(
         collectionId,
-        updatedItems.map((p) => ({ id: p.id, displayOrder: p.displayOrder }))
+        updatedItems.map((p) => ({ id: p.id, displayOrder: p.displayOrder })),
       );
-    } catch (err) {
-      console.error('Failed to reorder properties', err);
+    } catch {
+      // Reorder failed - reload properties to restore original order
       loadProperties();
     }
   };
@@ -133,7 +249,11 @@ export const PropertyList: React.FC<PropertyListProps> = ({
 
   return (
     <div className="rounded-lg border overflow-hidden bg-card border-border">
-      <DragDropContext onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted border-border">
@@ -155,102 +275,23 @@ export const PropertyList: React.FC<PropertyListProps> = ({
               </th>
             </tr>
           </thead>
-          <Droppable droppableId="properties">
-            {(provided: DroppableProvided) => (
-              <tbody ref={provided.innerRef} {...provided.droppableProps}>
-                {properties.map((prop, index) => (
-                  <Draggable
-                    key={prop.id}
-                    draggableId={prop.id}
-                    index={index}
-                    isDragDisabled={prop.isSystem}
-                  >
-                    {(
-                      dragProvided: DraggableProvided,
-                      snapshot: DraggableStateSnapshot
-                    ) => (
-                      <tr
-                        ref={dragProvided.innerRef}
-                        {...dragProvided.draggableProps}
-                        className={`border-b border-border transition-colors ${
-                          snapshot.isDragging ? 'bg-muted/60 border-transparent' : ''
-                        }`}
-                        style={dragProvided.draggableProps.style}
-                      >
-                        <td className="p-3">
-                          {!prop.isSystem && (
-                            <div
-                              {...dragProvided.dragHandleProps}
-                              className="cursor-grab flex items-center"
-                            >
-                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-foreground">
-                              {prop.label}
-                            </span>
-                            {prop.isSystem && (
-                              <span title="System Property">
-                                <Lock className="w-3 h-3 text-muted-foreground/50" />
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <code className="text-xs font-mono text-muted-foreground">
-                            {prop.code}
-                          </code>
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 text-xs font-medium border rounded ${getTypeBadgeClasses(prop.dataType)}`}
-                          >
-                            {prop.dataType}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          {prop.isRequired && (
-                            <span className="px-2 py-0.5 text-xs font-medium rounded border border-destructive text-destructive">
-                              Req
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => onEdit(prop)}
-                              disabled={prop.isSystem && prop.isReadonly}
-                              className="p-1.5 rounded transition-colors hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                              aria-label="Edit property"
-                            >
-                              <Pencil className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                            {!prop.isSystem && (
-                              <button
-                                type="button"
-                                onClick={() => onDelete(prop)}
-                                className="p-1.5 rounded transition-colors hover:bg-danger-subtle"
-                                aria-label="Delete property"
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-              </tbody>
-            )}
-          </Droppable>
+          <SortableContext
+            items={properties.map((p) => p.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <tbody>
+              {properties.map((prop) => (
+                <SortablePropertyRow
+                  key={prop.id}
+                  property={prop}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
+            </tbody>
+          </SortableContext>
         </table>
-      </DragDropContext>
+      </DndContext>
     </div>
   );
 };

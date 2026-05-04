@@ -3,13 +3,15 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AIModule } from '@hubblewave/ai';
 import { InstanceDbModule } from '@hubblewave/instance-db';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import { AuthorizationModule } from '@hubblewave/authorization';
+import { RedisModule } from '@hubblewave/redis';
 import { ChatController } from './chat.controller';
 import { EmbeddingController } from './embedding.controller';
 import { AVAController } from './ava.controller';
 import { AVAGovernanceController } from './ava-governance.controller';
 import { AVASchemaController } from './ava-schema.controller';
+import { AvaProposalController } from './ava-proposal.controller';
 import { HealthController } from './health.controller';
 import { SearchModule } from './search/search.module';
 import { AvaToolsModule } from './ava-tools/ava-tools.module';
@@ -42,7 +44,9 @@ import {
     InstanceDbModule,
     AIModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     AuthorizationModule.forInstance(),
+    RedisModule.forRoot(),
     SearchModule,
     AvaToolsModule,
     DatasetModule,
@@ -58,6 +62,7 @@ import {
     AVAController,
     AVAGovernanceController,
     AVASchemaController,
+    AvaProposalController,
     // Phase 7 Controllers
     NLQueryController,
     AIReportsController,

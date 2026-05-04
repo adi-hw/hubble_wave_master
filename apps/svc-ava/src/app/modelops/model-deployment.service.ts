@@ -156,7 +156,7 @@ export class ModelDeploymentService {
     if (existing) {
       if (!existing.isActive) {
         existing.isActive = true;
-        existing.updatedBy = actorId || null;
+        existing.updatedBy = actorId || undefined;
         return this.workflowRepo.save(existing);
       }
       return existing;
@@ -193,8 +193,8 @@ export class ModelDeploymentService {
           { id: 'approval-end', fromNode: 'approval', toNode: 'end' },
         ],
       },
-      createdBy: actorId || null,
-      updatedBy: actorId || null,
+      createdBy: actorId,
+      updatedBy: actorId,
     });
 
     return this.workflowRepo.save(definition);
@@ -253,7 +253,7 @@ export class ModelDeploymentService {
     metadata: Record<string, unknown>,
   ): Promise<void> {
     const event = this.analyticsRepo.create({
-      userId: userId || null,
+      userId: userId,
       eventType,
       eventCategory: 'modelops',
       eventAction: eventType.split('.').pop(),

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   CollectionDefinition,
+  DisplayRule,
   PropertyDefinition,
   ViewDefinition,
   ViewDefinitionRevision,
@@ -14,6 +15,7 @@ import { ViewService } from './view.service';
   imports: [
     TypeOrmModule.forFeature([
       CollectionDefinition,
+      DisplayRule,
       PropertyDefinition,
       ViewDefinition,
       ViewDefinitionRevision,

@@ -153,8 +153,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       clearInterval(progressInterval);
       setProgress(100);
       setStep('complete');
-    } catch (error) {
-      console.error('Export failed:', error);
+    } catch {
+      // Export failed - return to configure step
       clearInterval(progressInterval);
       setStep('configure');
     }

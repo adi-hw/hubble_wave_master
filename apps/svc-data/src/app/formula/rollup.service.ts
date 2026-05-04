@@ -8,6 +8,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface RollupConfig {
@@ -33,7 +35,8 @@ export class RollupService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly cacheService: FormulaCacheService
+    private readonly cacheService: FormulaCacheService,
+    private readonly authz: AuthorizationService,
   ) {}
 
   /**
@@ -44,24 +47,38 @@ export class RollupService {
   }
 
   /**
-   * Calculate a rollup value for a record
+   * Calculate a rollup value for a record. The caller's RequestContext is used
+   * to enforce row- and field-level access on the source collection. If the
+   * caller cannot read the aggregate field, the rollup returns 0 (count) or
+   * null (other aggregations) without exposing protected values.
    */
   async calculateRollup(
     collectionCode: string,
     recordId: string,
-    config: RollupConfig
+    config: RollupConfig,
+    ctx: RequestContext,
   ): Promise<RollupResult> {
     try {
-      // Check cache first
-      const cacheKey = `rollup:${collectionCode}:${recordId}:${config.relationProperty}:${config.aggregation}:${config.aggregateProperty}`;
+      // Field-level access on source collection: required for any aggregation
+      // other than 'count' (which only depends on row visibility).
+      if (config.aggregation !== 'count') {
+        const fieldReadable = await this.isFieldReadable(ctx, config.sourceCollection, config.aggregateProperty);
+        if (!fieldReadable) {
+          return { success: true, value: null, count: 0 };
+        }
+      }
+
+      // Cache key includes user identity so users with different access do not
+      // share rollup results.
+      const cacheKey = `rollup:${ctx.userId}:${collectionCode}:${recordId}:${config.relationProperty}:${config.aggregation}:${config.aggregateProperty}`;
       const cached = await this.cacheService.get(cacheKey);
       if (cached !== null) {
         return { success: true, value: cached as number | string | null };
       }
 
-      // Get related records
+      // Get related records (RLS-filtered)
       const relatedRecords = await this.getRelatedRecords(
-        collectionCode,
+        ctx,
         recordId,
         config.relationProperty,
         config.sourceCollection
@@ -69,7 +86,7 @@ export class RollupService {
 
       if (relatedRecords.length === 0) {
         await this.cacheService.set(cacheKey, null);
-        return { success: true, value: null, count: 0 };
+        return { success: true, value: config.aggregation === 'count' ? 0 : null, count: 0 };
       }
 
       // Extract values for aggregation
@@ -96,10 +113,10 @@ export class RollupService {
   }
 
   /**
-   * Get related records for rollup calculation
+   * Get related records for rollup calculation, filtered by RLS for the caller.
    */
   private async getRelatedRecords(
-    _collectionCode: string,
+    ctx: RequestContext,
     recordId: string,
     relationProperty: string,
     sourceCollection: string
@@ -111,19 +128,54 @@ export class RollupService {
         return [];
       }
 
-      // Query for related records where the relation property points to this record
-      const result = await this.dataSource.query(
-        `SELECT * FROM "${sourceCollection}"
-         WHERE "${relationProperty}" = $1
-         AND deleted_at IS NULL`,
-        [recordId]
-      );
+      // Row-level access: if caller cannot read the source table, return [].
+      const canRead = await this.authz.canAccessTable(ctx, sourceCollection, 'read');
+      if (!canRead) {
+        return [];
+      }
 
-      return result;
+      const qb = this.dataSource
+        .createQueryBuilder()
+        .select('t.*')
+        .from(`public."${sourceCollection}"`, 't')
+        .where(`t."${relationProperty}" = :rollup_record_id`, { rollup_record_id: recordId })
+        .andWhere('t.deleted_at IS NULL');
+
+      const rls = await this.authz.buildRowLevelClause(ctx, sourceCollection, 'read', 't');
+      rls.clauses.forEach((clause, index) => {
+        const prefixed: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rls.params)) {
+          prefixed[`rollup_rls_${index}_${k}`] = v;
+        }
+        const replaced = clause.replace(/:([a-zA-Z0-9_]+)/g, (_, name) => `:rollup_rls_${index}_${name}`);
+        qb.andWhere(replaced, prefixed);
+      });
+
+      return await qb.getRawMany();
     } catch (error) {
       this.logger.debug(`Failed to get related records: ${(error as Error).message}`);
       return [];
     }
+  }
+
+  /**
+   * Check whether the caller can read a specific property on a collection.
+   */
+  private async isFieldReadable(
+    ctx: RequestContext,
+    sourceCollection: string,
+    sourceProperty: string,
+  ): Promise<boolean> {
+    if (ctx.isAdmin) {
+      return true;
+    }
+    if (!this.validateIdentifier(sourceCollection) || !this.validateIdentifier(sourceProperty)) {
+      return false;
+    }
+    const fields = await this.authz.getAuthorizedFields(ctx, sourceCollection, [
+      { code: sourceProperty, storagePath: `column:${sourceProperty}`, label: sourceProperty },
+    ]);
+    return fields[0]?.canRead === true;
   }
 
   /**

@@ -59,8 +59,8 @@ export const UpgradeAssistantPage: React.FC = () => {
       if (response.pendingAnalysis) {
         setAnalysis(response.pendingAnalysis);
       }
-    } catch (error) {
-      console.error('Failed to load status:', error);
+    } catch {
+      // Load failed - use default versions
       setCurrentVersion('2.4.0');
       setTargetVersion('2.5.0');
     } finally {
@@ -74,8 +74,8 @@ export const UpgradeAssistantPage: React.FC = () => {
     try {
       const response = await upgradeAssistantApi.analyzeUpgrade(currentVersion, targetVersion);
       setAnalysis(response.analysis);
-    } catch (error) {
-      console.error('Failed to analyze:', error);
+    } catch {
+      // Analysis failed
     } finally {
       setAnalyzing(false);
     }
@@ -87,8 +87,8 @@ export const UpgradeAssistantPage: React.FC = () => {
     try {
       await upgradeAssistantApi.applyUpgrade(analysis.id);
       loadCurrentStatus();
-    } catch (error) {
-      console.error('Failed to apply upgrade:', error);
+    } catch {
+      // Upgrade failed
     } finally {
       setUpgrading(false);
     }
@@ -100,8 +100,8 @@ export const UpgradeAssistantPage: React.FC = () => {
       if (analysis) {
         handleAnalyze();
       }
-    } catch (error) {
-      console.error('Failed to apply fix:', error);
+    } catch {
+      // Fix application failed
     }
   };
 

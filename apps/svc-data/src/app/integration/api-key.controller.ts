@@ -10,6 +10,8 @@ import {
   Put,
   Delete,
   Body,
+  ForbiddenException,
+  NotFoundException,
   Param,
   Query,
   UseGuards,
@@ -44,6 +46,24 @@ interface UpdateApiKeyDto {
 export class ApiKeyController {
   constructor(private readonly apiKeyService: ApiKeyService) {}
 
+  /**
+   * Confirm the caller owns the API key (or is an admin). Returns the entity
+   * for downstream use. Throws NotFound when the id is unknown so we don't
+   * leak existence to other tenants/users; throws Forbidden when the key
+   * exists but belongs to someone else.
+   */
+  private async assertOwnership(id: string, user: RequestUser) {
+    const apiKey = await this.apiKeyService.findById(id);
+    if (!apiKey) {
+      throw new NotFoundException('API key not found');
+    }
+    const isAdmin = user.roles?.includes('admin');
+    if (!isAdmin && apiKey.createdBy !== user.id) {
+      throw new ForbiddenException('Not the owner of this API key');
+    }
+    return apiKey;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new API key' })
   @ApiResponse({ status: 201, description: 'API key created' })
@@ -75,21 +95,27 @@ export class ApiKeyController {
   @Get(':id')
   @ApiOperation({ summary: 'Get API key by ID' })
   @ApiResponse({ status: 200, description: 'API key details' })
-  async findById(@Param('id') id: string) {
-    return this.apiKeyService.findById(id);
+  async findById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.assertOwnership(id, user);
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update API key' })
   @ApiResponse({ status: 200, description: 'API key updated' })
-  async update(@Param('id') id: string, @Body() dto: UpdateApiKeyDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateApiKeyDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    await this.assertOwnership(id, user);
     return this.apiKeyService.update(id, dto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete API key' })
   @ApiResponse({ status: 200, description: 'API key deleted' })
-  async delete(@Param('id') id: string) {
+  async delete(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.assertOwnership(id, user);
     await this.apiKeyService.delete(id);
     return { success: true };
   }
@@ -98,13 +124,15 @@ export class ApiKeyController {
   @ApiOperation({ summary: 'Revoke API key' })
   @ApiResponse({ status: 200, description: 'API key revoked' })
   async revoke(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.assertOwnership(id, user);
     return this.apiKeyService.revoke(id, user.id);
   }
 
   @Post(':id/roll')
   @ApiOperation({ summary: 'Roll API key (generate new key value)' })
   @ApiResponse({ status: 200, description: 'API key rolled' })
-  async roll(@Param('id') id: string) {
+  async roll(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    await this.assertOwnership(id, user);
     return this.apiKeyService.rollKey(id);
   }
 
@@ -123,11 +151,13 @@ export class ApiKeyController {
   @ApiResponse({ status: 200, description: 'Request logs' })
   async getLogs(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
+    await this.assertOwnership(id, user);
     return this.apiKeyService.getRequestLogs(id, {
       limit: limit ? parseInt(limit) : undefined,
       offset: offset ? parseInt(offset) : undefined,
@@ -139,7 +169,12 @@ export class ApiKeyController {
   @Get(':id/stats')
   @ApiOperation({ summary: 'Get API key usage statistics' })
   @ApiResponse({ status: 200, description: 'Usage statistics' })
-  async getStats(@Param('id') id: string, @Query('days') days?: string) {
+  async getStats(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Query('days') days?: string,
+  ) {
+    await this.assertOwnership(id, user);
     return this.apiKeyService.getUsageStats(id, days ? parseInt(days) : 30);
   }
 }

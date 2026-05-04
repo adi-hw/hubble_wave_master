@@ -54,8 +54,8 @@ export const NavSearch: React.FC<NavSearchProps> = ({
         const searchResults = onSearch(searchQuery);
         setResults(searchResults);
         setSelectedIndex(0);
-      } catch (err) {
-        console.error('Search failed:', err);
+      } catch {
+        // Search failed - clear results
         setResults([]);
       } finally {
         setLoading(false);

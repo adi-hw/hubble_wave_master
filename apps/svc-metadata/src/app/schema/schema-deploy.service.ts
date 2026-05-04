@@ -11,6 +11,26 @@ import { SchemaDiffService, SchemaOperation, SchemaPlan } from './schema-diff.se
 
 const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
+/**
+ * Operation types `applyPlan` is permitted to deploy directly without
+ * going through the ADR-17 publish-impact classifier. All entries here
+ * are additive — they never lose data or break dependents:
+ *   - `create_table`: net-new storage; no dependents possible
+ *   - `add_column`:   net-new column; no dependents possible
+ *   - `add_index`:    pure performance addition; no semantic change
+ *
+ * Any non-additive operation (drop_column, rename_column, change_type,
+ * narrow_type, etc.) MUST route through the publish-impact pipeline so
+ * the dependent_review_queue is populated and breaking changes surface
+ * in the publish-confirm dialog. Adding a new entry here without that
+ * routing is an ADR-17 violation.
+ */
+const ADDITIVE_OPERATION_TYPES: ReadonlySet<SchemaOperation['type']> = new Set([
+  'create_table',
+  'add_column',
+  'add_index',
+]);
+
 @Injectable()
 export class SchemaDeployService {
   constructor(
@@ -28,8 +48,24 @@ export class SchemaDeployService {
     actorId?: string,
   ): Promise<{ plan: SchemaPlan; applied: SchemaOperation[] }> {
     const plan = await this.diffService.buildPlan(options);
+    const blockingIssues = plan.issues.filter((issue) => issue.severity === 'blocking');
+    if (blockingIssues.length > 0) {
+      throw new BadRequestException(blockingIssues.map((issue) => issue.message).join('; '));
+    }
     if (plan.operations.length === 0) {
       return { plan, applied: [] };
+    }
+
+    // ADR-17 architectural fence: applyPlan must only deploy additive
+    // operations. Anything else routes through publish-impact so the
+    // dependent_review_queue captures breakage potential before DDL
+    // executes. See ADDITIVE_OPERATION_TYPES note above.
+    const unsafeOps = plan.operations.filter((op) => !ADDITIVE_OPERATION_TYPES.has(op.type));
+    if (unsafeOps.length > 0) {
+      const kinds = [...new Set(unsafeOps.map((op) => op.type))].join(', ');
+      throw new BadRequestException(
+        `Operations of type [${kinds}] must be deployed through the publish-impact pipeline; applyPlan only handles additive DDL.`,
+      );
     }
 
     const queryRunner = this.dataSource.createQueryRunner();

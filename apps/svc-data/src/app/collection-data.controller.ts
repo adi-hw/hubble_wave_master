@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  BadRequestException,
   Query,
   UseGuards,
   HttpCode,
@@ -36,7 +37,7 @@ interface BulkDeleteDto {
   ids: string[];
 }
 
-@Controller('collections')
+@Controller('data/collections')
 @UseGuards(JwtAuthGuard)
 export class CollectionDataController {
   private readonly logger = new Logger(CollectionDataController.name);
@@ -70,26 +71,39 @@ export class CollectionDataController {
       options.searchProperties = query.searchFields.split(',').map((s) => s.trim());
     }
 
-    // Parse sort
+    // Parse sort. JSON is preferred; the comma-separated form is the fallback
+    // for older clients. Anything that is neither is rejected so the caller
+    // gets explicit feedback instead of silently dropping the sort.
     if (query.sort) {
-      try {
-        // Try JSON parse first
-        options.sort = JSON.parse(query.sort);
-      } catch {
-        // Fallback: comma-separated "property:direction"
-        options.sort = query.sort.split(',').map((s) => {
+      const trimmed = query.sort.trim();
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+        try {
+          options.sort = JSON.parse(trimmed);
+        } catch (e) {
+          throw new BadRequestException(
+            `Invalid sort JSON: ${(e as Error).message}`,
+          );
+        }
+      } else {
+        options.sort = trimmed.split(',').map((s) => {
           const [property, dir] = s.trim().split(':');
+          if (!property) {
+            throw new BadRequestException(`Invalid sort entry: '${s}'`);
+          }
           return { property, direction: (dir?.toLowerCase() === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc' };
         });
       }
     }
 
-    // Parse filters
+    // Parse filters. Must be valid JSON; an unparseable value is an error so
+    // callers cannot accidentally bypass filtering and pull the full table.
     if (query.filters) {
       try {
         options.filters = JSON.parse(query.filters);
-      } catch {
-        // Invalid JSON, ignore
+      } catch (e) {
+        throw new BadRequestException(
+          `Invalid filter JSON: ${(e as Error).message}`,
+        );
       }
     }
 
@@ -235,6 +249,23 @@ export class CollectionDataController {
     const ctx = this.buildContext(user);
 
     return this.collectionData.getOne(ctx, collectionCode, id);
+  }
+
+  /**
+   * Phase 5 §10.2 — list audit-log entries for a single record.
+   * Backs the Workspace ActivityFeedPanel.
+   */
+  @Get(':collectionCode/data/:id/audit-log')
+  async listAuditLog(
+    @Param('collectionCode') collectionCode: string,
+    @Param('id') id: string,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const ctx = this.buildContext(user);
+    return this.collectionData.listAuditLog(ctx, collectionCode, id, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   /**

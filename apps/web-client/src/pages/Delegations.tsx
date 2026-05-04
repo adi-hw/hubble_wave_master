@@ -86,8 +86,8 @@ export function DelegationsPage() {
       ]);
       setCreatedDelegations(created.delegations);
       setReceivedDelegations(received.delegations);
-    } catch (err) {
-      console.error('Failed to load delegations:', err);
+    } catch {
+      // Delegations fetch failed - show error message
       setMessage({ type: 'error', text: 'Failed to load delegations' });
     } finally {
       setLoading(false);

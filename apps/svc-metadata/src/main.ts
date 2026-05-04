@@ -1,21 +1,19 @@
+import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   assertSecureConfig();
+  assertJwtConfig();
 
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
+  // Ensure JWT secret is set BEFORE module initialization so AuthGuardModule picks it up
+  process.env.JWT_SECRET = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+  if (!process.env.JWT_SECRET) {
+    throw new Error('REQUIRED env var JWT_SECRET (or IDENTITY_JWT_SECRET) not set');
   }
-
-  // Ensure JWT secret is set BEFORE module initialization so AuthGuardModule picks it up (dev fallback only)
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-only-insecure-secret' : undefined);
 
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';
@@ -36,6 +34,9 @@ async function bootstrap() {
   // Support *.localhost patterns for instance subdomains in development
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   app.enableCors({
@@ -67,8 +68,14 @@ async function bootstrap() {
       'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/metadata';
   app.setGlobalPrefix(globalPrefix);
+
+  // Add health check endpoint at /api/health for ALB health checks
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api/health', (_req: any, res: any) => {
+    res.status(200).json({ status: 'ok', service: 'svc-metadata' });
+  });
 
   // Prefer service-specific port vars and fall back to 3003
   const port =

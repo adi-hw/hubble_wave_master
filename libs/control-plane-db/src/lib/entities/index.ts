@@ -28,6 +28,8 @@ export { ControlPlaneAuditLog } from './control-plane-audit-log.entity';
 export { InstanceMetrics } from './instance-metrics.entity';
 export { TerraformJob, TerraformJobStatus, TerraformOperation, TerraformOutputLine, TerraformPlan, TerraformResourceChange } from './terraform-job.entity';     
 export { GlobalSettings } from './global-settings.entity';
+export { RevokedToken } from './revoked-token.entity';
+export { RefreshToken } from './refresh-token.entity';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -39,10 +41,12 @@ import { Subscription } from './subscription.entity';
 import { License } from './license.entity';
 import { PackRegistry, PackRelease } from './pack.entity';
 import { ControlPlaneUser } from './control-plane-user.entity';
-import { ControlPlaneAuditLog } from './control-plane-audit-log.entity';        
+import { ControlPlaneAuditLog } from './control-plane-audit-log.entity';
 import { InstanceMetrics } from './instance-metrics.entity';
 import { TerraformJob } from './terraform-job.entity';
 import { GlobalSettings } from './global-settings.entity';
+import { RevokedToken } from './revoked-token.entity';
+import { RefreshToken } from './refresh-token.entity';
 
 export const controlPlaneEntities = [
   Customer,
@@ -56,4 +60,6 @@ export const controlPlaneEntities = [
   InstanceMetrics,
   TerraformJob,
   GlobalSettings,
+  RevokedToken,
+  RefreshToken,
 ];

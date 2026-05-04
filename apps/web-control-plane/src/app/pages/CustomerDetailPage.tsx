@@ -23,6 +23,12 @@ import {
 } from 'lucide-react';
 import { colors } from '../theme/theme';
 import { controlPlaneApi, Customer, CustomerSettings, AuditLog } from '../services/api';
+import { TypedConfirmDialog } from '../components/TypedConfirmDialog';
+
+// Hostnames opened via window.open are user-controlled (instance domain). We
+// only allow shapes that look like real registrable hostnames so a malformed
+// value can't redirect the operator to an attacker-controlled origin.
+const HOSTNAME_PATTERN = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
   active: { color: colors.success.base, bg: colors.success.glow, label: 'Active' },
@@ -206,6 +212,7 @@ export function CustomerDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activityLogs, setActivityLogs] = useState<AuditLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
@@ -292,14 +299,11 @@ export function CustomerDetailPage() {
 
   const handleDeleteCustomer = async () => {
     if (!customer) return;
-    const confirmed = window.confirm(
-      `Delete ${customer.name}? This removes the customer from the control plane.`
-    );
-    if (!confirmed) return;
     try {
       setDeleteSaving(true);
       setActionError(null);
       await controlPlaneApi.deleteCustomer(customer.id);
+      setDeleteDialogOpen(false);
       navigate('/customers');
     } catch (err) {
       console.error('Failed to delete customer:', err);
@@ -333,8 +337,11 @@ export function CustomerDetailPage() {
 
   const handleOpenInstance = (domain?: string | null) => {
     if (!domain) return;
-    const url = domain.startsWith('http') ? domain : `https://${domain}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Strip any protocol prefix so we always validate the bare hostname before
+    // composing the target URL.
+    const bareHost = domain.replace(/^https?:\/\//i, '').split('/')[0];
+    if (!HOSTNAME_PATTERN.test(bareHost)) return;
+    window.open(`https://${bareHost}`, '_blank', 'noopener,noreferrer');
   };
 
   const loadActivity = useCallback(async () => {
@@ -442,7 +449,10 @@ export function CustomerDetailPage() {
           </button>
           <button
             type="button"
-            onClick={handleDeleteCustomer}
+            onClick={() => {
+              setActionError(null);
+              setDeleteDialogOpen(true);
+            }}
             disabled={deleteSaving}
             className="px-4 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-60"
             style={{ borderColor: colors.danger.base, color: colors.danger.base }}
@@ -1589,6 +1599,26 @@ export function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      <TypedConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete customer"
+        description={
+          <>
+            <p className="mb-2">
+              This permanently removes <strong>{customer.name}</strong> from the control
+              plane, including all associated metadata.
+            </p>
+            <p>This action cannot be undone.</p>
+          </>
+        }
+        confirmationValue={customer.code}
+        confirmationLabel="To confirm, type the customer code"
+        confirmButtonLabel="Delete customer"
+        busy={deleteSaving}
+        onCancel={() => setDeleteDialogOpen(false)}
+        onConfirm={() => handleDeleteCustomer()}
+      />
     </div>
   );
 }

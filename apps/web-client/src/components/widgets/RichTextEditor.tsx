@@ -10,14 +10,19 @@ interface RichTextEditorProps {
   error?: boolean;
 }
 
-// SECURITY: Configure DOMPurify to allow only safe HTML tags for rich text
-// This prevents XSS attacks while allowing basic formatting
+// Configure DOMPurify to allow only safe HTML tags for rich text formatting.
+// Inline `style` attributes are intentionally excluded: they enable CSS-based
+// injection (e.g. position:fixed overlays, expression()-style payloads on
+// older engines, exfiltration via background-image: url(...)). Visual styling
+// must be applied through the predefined `class` whitelist below — class names
+// resolve to CSS rules defined by the application stylesheet, so an attacker
+// cannot supply arbitrary declarations.
 const ALLOWED_TAGS = [
   'b', 'strong', 'i', 'em', 'u', 'p', 'br', 'div', 'span',
   'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'blockquote', 'pre', 'code'
+  'blockquote', 'pre', 'code',
 ];
-const ALLOWED_ATTR = ['href', 'target', 'rel', 'class', 'style'];
+const ALLOWED_ATTR = ['href', 'target', 'rel', 'class'];
 
 const sanitizeHtml = (dirty: string): string => {
   return DOMPurify.sanitize(dirty, {
@@ -26,8 +31,12 @@ const sanitizeHtml = (dirty: string): string => {
     ALLOW_DATA_ATTR: false,
     // Force safe link target behavior
     ADD_ATTR: ['target'],
+    // Defense-in-depth: even if a future ALLOWED_TAGS edit slips, these are
+    // never executable.
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
-    FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
+    // DOMPurify already strips on* event handlers because they are not in
+    // ALLOWED_ATTR; the explicit list here makes the policy self-documenting.
+    FORBID_ATTR: ['style', 'onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
   });
 };
 

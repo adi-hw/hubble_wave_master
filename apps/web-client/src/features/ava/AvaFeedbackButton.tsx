@@ -81,8 +81,8 @@ export const AvaFeedbackButton: React.FC<AvaFeedbackButtonProps> = ({
       if (onSubmit) {
         onSubmit({ type, comment: feedbackComment });
       }
-    } catch (err) {
-      console.error('Failed to submit feedback:', err);
+    } catch {
+      // Feedback submission failed - silently ignore
     } finally {
       setIsSubmitting(false);
       setShowComment(false);

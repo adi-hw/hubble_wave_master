@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import {
   CollectionAccessRule,
+  CollectionDefinition,
   PropertyAccessRule,
   PropertyDefinition,
   AccessAuditLog,
@@ -24,6 +25,7 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
   imports: [
     TypeOrmModule.forFeature([
       CollectionAccessRule,
+      CollectionDefinition,
       PropertyAccessRule,
       PropertyDefinition,
       AccessAuditLog,

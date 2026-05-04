@@ -714,6 +714,10 @@ const HeaderCell = memo(function HeaderCell<TData extends GridRowData>({
   const headerContent = header.column.columnDef.header;
   const columnLabel = typeof headerContent === 'string' ? headerContent : columnId;
 
+  // Get column description for tooltip (from meta)
+  const columnMeta = header.column.columnDef.meta as { description?: string } | undefined;
+  const columnDescription = columnMeta?.description;
+
   // Get sort direction for ARIA attribute
   const ariaSortDirection = isSorted === 'asc' ? 'ascending' : isSorted === 'desc' ? 'descending' : 'none';
 
@@ -811,7 +815,10 @@ const HeaderCell = memo(function HeaderCell<TData extends GridRowData>({
           </svg>
         </button>
       ) : (
-        <div className={cn('flex-1 flex items-center gap-2 overflow-hidden', isPinned && 'pl-4')}>
+        <div
+          className={cn('flex-1 flex items-center gap-2 overflow-hidden', isPinned && 'pl-4')}
+          title={columnDescription || columnLabel}
+        >
           {/* Grouping indicator */}
           {isGrouped && (
             <span className="flex-shrink-0" style={{ color: 'var(--text-brand)' }}>
@@ -843,8 +850,7 @@ const HeaderCell = memo(function HeaderCell<TData extends GridRowData>({
       {enableResize && header.column.getCanResize() && (
         <div
           className={cn(
-            'grid-resize-handle absolute right-0 top-0 h-full w-2 cursor-col-resize',
-            'hover:bg-[var(--grid-resize-handle)] transition-colors',
+            'grid-resize-handle',
             isResizing && 'bg-[var(--grid-resize-handle-hover)]'
           )}
           onMouseDown={(e) => {

@@ -85,12 +85,37 @@ const DEFAULT_PERMISSIONS: PermissionDefinition[] = [
   { slug: 'process-flows.update', name: 'Update Process Flows', description: 'Modify process flow definitions', category: 'process-flows' },
   { slug: 'process-flows.delete', name: 'Delete Process Flows', description: 'Remove process flows', category: 'process-flows' },
   { slug: 'process-flows.execute', name: 'Execute Process Flows', description: 'Manually trigger process flows', category: 'process-flows' },
+  { slug: 'process-flows.publish', name: 'Publish Process Flows', description: 'Promote a draft process flow revision to published (ADR-5 lifecycle)', category: 'process-flows' },
+  { slug: 'process-flows.activate', name: 'Activate Process Flows', description: 'Toggle isActive on a published process flow (route runtime traffic to it)', category: 'process-flows' },
 
   // Collections (Schema)
   { slug: 'collections.view', name: 'View Collections', description: 'View collection definitions', category: 'collections' },
   { slug: 'collections.create', name: 'Create Collections', description: 'Create new collections/tables', category: 'collections' },
   { slug: 'collections.update', name: 'Update Collections', description: 'Modify collection schema', category: 'collections' },
   { slug: 'collections.delete', name: 'Delete Collections', description: 'Remove collections', category: 'collections', requiresMfa: true },
+
+  // App Studio / metadata slugs consumed by route guards and builder APIs
+  { slug: 'system.admin', name: 'System Administrator', description: 'Platform superuser permission', category: 'admin', requiresMfa: true },
+  { slug: 'collection.admin', name: 'Collection Administrator', description: 'Operation-agnostic collection access gate', category: 'collections', requiresMfa: true },
+  { slug: 'collection.read', name: 'Read Collections', description: 'Read collection records and metadata', category: 'collections' },
+  { slug: 'collection.create', name: 'Create Collection Records', description: 'Create records in collections', category: 'collections' },
+  { slug: 'collection.update', name: 'Update Collection Records', description: 'Update records in collections', category: 'collections' },
+  { slug: 'collection.delete', name: 'Delete Collection Records', description: 'Delete records in collections', category: 'collections', requiresMfa: true },
+  { slug: 'property.read', name: 'Read Properties', description: 'Read property definitions on a collection', category: 'collections' },
+  { slug: 'property.create', name: 'Create Properties', description: 'Create property definitions on a collection', category: 'collections' },
+  { slug: 'property.update', name: 'Update Properties', description: 'Update property definitions on a collection', category: 'collections' },
+  { slug: 'property.delete', name: 'Delete Properties', description: 'Delete property definitions on a collection', category: 'collections', requiresMfa: true },
+  { slug: 'metadata.collections.edit', name: 'Edit Collections', description: 'Edit collection schema in App Studio', category: 'metadata' },
+  { slug: 'metadata.properties.edit', name: 'Edit Properties', description: 'Edit property definitions in App Studio', category: 'metadata' },
+  { slug: 'metadata.forms.edit', name: 'Edit Forms', description: 'Edit Record Form layouts in App Studio', category: 'metadata' },
+  { slug: 'metadata.policies.edit', name: 'Edit Policies and Rules', description: 'Edit access rules, Display Rules, and Automation Rules', category: 'metadata' },
+  { slug: 'metadata.choices.edit', name: 'Edit Choice Lists', description: 'Edit choice list definitions', category: 'metadata' },
+  { slug: 'metadata.flows.edit', name: 'Edit Flows', description: 'Edit Process Flow and flow-adjacent metadata', category: 'metadata' },
+  { slug: 'metadata.collections.spreadsheet.write', name: 'Write Spreadsheet', description: 'Enter App Studio spreadsheet edit mode', category: 'metadata', requiresMfa: true },
+  { slug: 'metadata.workspaces.edit', name: 'Edit Workspaces', description: 'Edit App Studio Workspace definitions', category: 'metadata' },
+  { slug: 'metadata.change-packages.edit', name: 'Edit Change Packages', description: 'Author and apply App Studio Change Packages', category: 'metadata', requiresMfa: true },
+  { slug: 'ava.admin', name: 'AVA Administrator', description: 'Manage AVA prompts, governance, and execution policies', category: 'ava', requiresMfa: true },
+  { slug: 'workflow.run-as-system', name: 'Run Workflow As System', description: 'Execute Process Flows under the system actor identity', category: 'process-flows', requiresMfa: true },
 
   // Scripts
   { slug: 'scripts.view', name: 'View Scripts', description: 'View script definitions', category: 'scripts' },

@@ -86,8 +86,8 @@ export const BusinessScheduleEditor: React.FC<BusinessScheduleEditorProps> = ({
       setLoading(true);
       const data = await commitmentApi.getSchedule(id);
       setFormData(data);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Schedule load failed - form remains with defaults
     } finally {
       setLoading(false);
     }
@@ -101,8 +101,8 @@ export const BusinessScheduleEditor: React.FC<BusinessScheduleEditorProps> = ({
         await commitmentApi.createSchedule(formData);
       }
       if (onSave) onSave();
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Schedule save failed - notify user
       alert('Failed to save schedule');
     }
   };

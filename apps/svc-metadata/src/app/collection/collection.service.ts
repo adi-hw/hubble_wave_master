@@ -15,18 +15,23 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  NotImplementedException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryRunner, DataSource, IsNull, Not } from 'typeorm';
 import {
   CollectionDefinition,
+  CollectionDefinitionRevision,
   PropertyDefinition,
+  PropertyDefinitionRevision,
   PropertyType,
   AuditLog,
 } from '@hubblewave/instance-db';
 import { CollectionStorageService } from './collection-storage.service';
 import { CollectionAvaService } from './collection-ava.service';
+import { PublishImpactService } from '../publish-impact/publish-impact.service';
+import { DependentReviewQueueService } from '../publish-impact/dependent-review-queue.service';
 
 // ============================================================================
 // DTOs (Data Transfer Objects)
@@ -73,7 +78,18 @@ export interface CreateCollectionDto {
   /** Whether to keep full version history (default: false) */
   isVersioned?: boolean;
 
-  /** Module this collection belongs to */
+  /**
+   * Application this collection belongs to (ADR-6). When omitted the
+   * collection is rolled into the `default` Application created during
+   * Slice A backfill.
+   */
+  applicationId?: string;
+
+  /**
+   * Alias for `applicationId` accepted on incoming DTOs only. The
+   * service normalizes it to `applicationId` immediately; downstream
+   * code reads from `applicationId`.
+   */
   moduleId?: string;
 
   /** ID of collection this extends */
@@ -187,13 +203,17 @@ export class CollectionService {
   constructor(
     @InjectRepository(CollectionDefinition)
     private readonly collectionRepo: Repository<CollectionDefinition>,
+    @InjectRepository(CollectionDefinitionRevision)
+    private readonly collectionRevisionRepo: Repository<CollectionDefinitionRevision>,
     @InjectRepository(PropertyDefinition)
     private readonly propertyRepo: Repository<PropertyDefinition>,
     @InjectRepository(PropertyType)
     private readonly propertyTypeRepo: Repository<PropertyType>,
     private readonly dataSource: DataSource,
     private readonly storageService: CollectionStorageService,
-    private readonly avaService: CollectionAvaService
+    private readonly avaService: CollectionAvaService,
+    private readonly publishImpactService: PublishImpactService,
+    private readonly dependentQueueService: DependentReviewQueueService,
   ) {}
 
   // --------------------------------------------------------------------------
@@ -217,7 +237,7 @@ export class CollectionService {
     const qb = this.collectionRepo.createQueryBuilder('c');
 
     if (options.moduleId) {
-      qb.andWhere('c.application_id = :moduleId', { moduleId: options.moduleId });
+      qb.andWhere('c.applicationId = :moduleId', { moduleId: options.moduleId });
     }
 
     if (options.category) {
@@ -225,11 +245,11 @@ export class CollectionService {
     }
 
     if (!options.includeSystem) {
-      qb.andWhere('c.is_system = false');
+      qb.andWhere('c.isSystem = false');
     }
 
     if (options.ownerType) {
-      qb.andWhere('c.owner_type = :ownerType', { ownerType: options.ownerType });
+      qb.andWhere('c.ownerType = :ownerType', { ownerType: options.ownerType });
     }
 
     if (options.search) {
@@ -239,10 +259,7 @@ export class CollectionService {
       );
     }
     if (options.status) {
-      qb.andWhere(
-        "COALESCE(c.metadata->>'status','published') = :status",
-        { status: options.status }
-      );
+      qb.andWhere('c.status = :status', { status: options.status });
     }
 
     // Count total before pagination
@@ -271,9 +288,9 @@ export class CollectionService {
     // Get property counts for each collection
     const propertyCountsResult = await this.propertyRepo
       .createQueryBuilder('p')
-      .select('p.collection_id', 'collectionId')
+      .select('p.collectionId', 'collectionId')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('p.collection_id')
+      .groupBy('p.collectionId')
       .getRawMany();
 
     const propertyCountMap = new Map<string, number>();
@@ -521,17 +538,24 @@ export class CollectionService {
       // 2. Create storage table if requested
       let storageCreated = false;
       if (createStorage) {
-        try {
-          await this.storageService.createStorageTable(queryRunner, storageSchema, storageTable);
-          storageCreated = true;
-        } catch (error) {
-          this.logger.warn(`Storage creation failed: ${(error as Error).message}`);
-          warnings.push(`Storage table creation failed: ${(error as Error).message}`);
-          // Continue without storage - user can create manually
-        }
+        await queryRunner.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1))',
+          [`collection-schema:${dto.code}`],
+        );
+
+        // Failure here aborts the outer transaction so no CollectionDefinition
+        // row is committed without its backing physical table.
+        await this.storageService.createStorageTable(queryRunner, storageSchema, storageTable);
+        storageCreated = true;
       }
 
-      // 3. Create collection record
+      // 3. Create collection record. application_id is NOT NULL post Slice A
+      //    (migration 1833) — fall back to the `default` Application if
+      //    the caller didn't supply one.
+      const applicationId = await this.resolveApplicationId(
+        queryRunner,
+        dto.applicationId ?? dto.moduleId,
+      );
       const collection = queryRunner.manager.create(CollectionDefinition, {
         code: dto.code,
         name: dto.label,
@@ -540,6 +564,7 @@ export class CollectionService {
         icon: dto.icon || 'Layers',
         color: dto.color || '#7c3aed',
         category: dto.category,
+        applicationId,
         tableName: storageTable,
         labelProperty: 'name',
         ownerType: 'custom',
@@ -553,20 +578,36 @@ export class CollectionService {
         defaultAccess: 'read',
         createdBy: userId,
         updatedBy: userId,
-        metadata: this.mergeMetadata(dto.metadata, 'draft'),
+        metadata: this.mergeMetadata(dto.metadata),
+        status: 'draft',
       });
 
       const savedCollection = await queryRunner.manager.save(CollectionDefinition, collection);
+
+      // 3b. Seed revision 1 (draft) so currentRevisionId is non-null from
+      //     the start. Mirrors ApplicationService.create.
+      const revision = queryRunner.manager.create(CollectionDefinitionRevision, {
+        collectionId: savedCollection.id,
+        revision: 1,
+        status: 'draft',
+        payload: this.snapshotCollection(savedCollection),
+        createdBy: userId ?? null,
+      });
+      const savedRevision = await queryRunner.manager.save(
+        CollectionDefinitionRevision,
+        revision,
+      );
+      savedCollection.currentRevisionId = savedRevision.id;
 
       // 4. Create default system properties
       const propertiesCreated = await this.createDefaultProperties(
         queryRunner,
         savedCollection.id,
-        userId
+        savedCollection.applicationId ?? null,
+        userId,
       );
 
-      // Update property count
-      // property count tracking removed
+      // Update property count + persist currentRevisionId.
       await queryRunner.manager.save(CollectionDefinition, savedCollection);
 
       // 5. Log audit event
@@ -619,12 +660,6 @@ export class CollectionService {
       if (!collection) {
         throw new NotFoundException(`Collection ${collectionId} not found`);
       }
-      const currentStatus = this.getMetadataStatus(collection.metadata);
-      const requestedStatus = (dto.metadata as { status?: string } | undefined)?.status;
-      const targetStatus = this.normalizeStatus(requestedStatus) || currentStatus;
-      if (currentStatus === 'published' && targetStatus !== 'draft') {
-        throw new ConflictException('Published collections are immutable');
-      }
 
       // System collections have restricted modifications
       if (collection.isSystem) {
@@ -642,7 +677,9 @@ export class CollectionService {
       // Capture previous state for audit
       const previousState = this.toAuditState(collection);
 
-      // Apply updates
+      // Apply updates. Per ADR-5 every edit becomes a new draft revision;
+      // the parent flips back to `draft` so consumers know the published
+      // revision is no longer the freshest authoring state.
       const changedFields: string[] = [];
       for (const [key, value] of Object.entries(dto)) {
         if (value !== undefined && (collection as unknown as Record<string, unknown>)[key] !== value) {
@@ -650,7 +687,6 @@ export class CollectionService {
           if (key === 'metadata') {
             (collection as unknown as Record<string, unknown>)[key] = this.mergeMetadata(
               value as Record<string, unknown>,
-              targetStatus,
               collection.metadata,
             );
           } else {
@@ -665,9 +701,28 @@ export class CollectionService {
       }
 
       collection.updatedBy = userId;
-      // version tracking disabled
+      collection.status = 'draft';
 
       const savedCollection = await queryRunner.manager.save(CollectionDefinition, collection);
+
+      // Append a new draft revision capturing the post-edit snapshot.
+      const nextRev = await this.nextCollectionRevisionNumber(
+        queryRunner,
+        savedCollection.id,
+      );
+      const revision = queryRunner.manager.create(CollectionDefinitionRevision, {
+        collectionId: savedCollection.id,
+        revision: nextRev,
+        status: 'draft',
+        payload: this.snapshotCollection(savedCollection),
+        createdBy: userId ?? null,
+      });
+      const savedRevision = await queryRunner.manager.save(
+        CollectionDefinitionRevision,
+        revision,
+      );
+      savedCollection.currentRevisionId = savedRevision.id;
+      await queryRunner.manager.save(CollectionDefinition, savedCollection);
 
       // Log audit event
       await this.logAudit(queryRunner, {
@@ -773,6 +828,22 @@ export class CollectionService {
     _userId?: string,
     _context?: { ipAddress?: string; userAgent?: string }
   ): Promise<CollectionDefinition> {
+    // ADR-17: capture the impact report before mutating state. After
+    // publish flips revisions to 'published', the diff against the
+    // newly-published state is empty — so we snapshot the dependents
+    // first, then enqueue them post-commit if any non-cosmetic
+    // changes shipped.
+    const impactReport = await this.publishImpactService
+      .previewCollectionPublish(collectionId)
+      .catch((err) => {
+        this.logger.warn(
+          `publish-impact preview failed for ${collectionId}: ${
+            err instanceof Error ? err.message : String(err)
+          }. Continuing without queue capture.`,
+        );
+        return null;
+      });
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.startTransaction();
 
@@ -786,23 +857,55 @@ export class CollectionService {
       }
 
       const previousState = this.toAuditState(collection);
+      const now = new Date();
+
+      // Flip the current revision to published (idempotent if already so).
+      if (collection.currentRevisionId) {
+        const revision = await queryRunner.manager.findOne(
+          CollectionDefinitionRevision,
+          { where: { id: collection.currentRevisionId } },
+        );
+        if (revision && revision.status !== 'published') {
+          revision.status = 'published';
+          revision.publishedBy = _userId ?? null;
+          revision.publishedAt = now;
+          await queryRunner.manager.save(CollectionDefinitionRevision, revision);
+        }
+      }
+
       collection.metadata = this.mergeMetadata(
         collection.metadata,
-        'published',
         collection.metadata,
       );
+      collection.status = 'published';
+      collection.publishedAt = now;
       collection.updatedBy = _userId;
       const saved = await queryRunner.manager.save(CollectionDefinition, collection);
 
+      // Cascade publish to current property revisions so the read-side
+      // sees a coherent snapshot.
       const properties = await queryRunner.manager.find(PropertyDefinition, {
         where: { collectionId: collection.id },
       });
       for (const property of properties) {
         property.metadata = this.mergeMetadata(
           property.metadata,
-          'published',
           property.metadata,
         );
+        property.status = 'published';
+        property.publishedAt = now;
+        if (property.currentRevisionId) {
+          const propRev = await queryRunner.manager.findOne(
+            PropertyDefinitionRevision,
+            { where: { id: property.currentRevisionId } },
+          );
+          if (propRev && propRev.status !== 'published') {
+            propRev.status = 'published';
+            propRev.publishedBy = _userId ?? null;
+            propRev.publishedAt = now;
+            await queryRunner.manager.save(PropertyDefinitionRevision, propRev);
+          }
+        }
         await queryRunner.manager.save(PropertyDefinition, property);
       }
 
@@ -817,6 +920,23 @@ export class CollectionService {
       });
 
       await queryRunner.commitTransaction();
+
+      // Post-commit: enqueue dependents flagged by the publish-impact
+      // analyzers. Done outside the transaction so a queue write
+      // failure cannot roll back a successful publish — the queue is
+      // a follow-up surface, not part of the publish atomic unit.
+      if (impactReport && impactReport.classification !== 'no_changes') {
+        try {
+          await this.dependentQueueService.enqueueFromImpactReport(impactReport, _userId);
+        } catch (err) {
+          this.logger.warn(
+            `Failed to enqueue dependents for ${collectionId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+
       return saved;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -849,7 +969,8 @@ export class CollectionService {
       }
 
       const previousState = this.toAuditState(collection);
-      collection.metadata = this.mergeMetadata(collection.metadata, 'deprecated', collection.metadata);
+      collection.metadata = this.mergeMetadata(collection.metadata, collection.metadata);
+      collection.status = 'deprecated';
       collection.updatedBy = _userId;
       const saved = await queryRunner.manager.save(CollectionDefinition, collection);
 
@@ -930,13 +1051,12 @@ export class CollectionService {
    * Clone a collection.
    */
   async cloneCollection(
-    collectionId: string,
+    _collectionId: string,
     _newCode: string,
     _newLabel: string,
     _userId?: string
   ): Promise<CollectionDefinition> {
-    // Cloning disabled in trimmed build; return original collection
-    return this.getCollection(collectionId);
+    throw new NotImplementedException('Collection cloning is not available');
   }
 
   // --------------------------------------------------------------------------
@@ -950,11 +1070,11 @@ export class CollectionService {
     const map: Record<string, string> = {
       label: 'c.name',
       code: 'c.code',
-      ownerType: 'c.owner_type',
+      ownerType: 'c.ownerType',
       category: 'c.category',
-      tableName: 'c.table_name',
-      createdAt: 'c.created_at',
-      updatedAt: 'c.updated_at',
+      tableName: 'c.tableName',
+      createdAt: 'c.createdAt',
+      updatedAt: 'c.updatedAt',
     };
     return map[field] || 'c.name';
   }
@@ -987,107 +1107,275 @@ export class CollectionService {
     };
   }
 
-  private getMetadataStatus(metadata?: Record<string, unknown>): 'draft' | 'published' | 'deprecated' {
-    const status = (metadata as { status?: string } | undefined)?.status;
-    return this.normalizeStatus(status) || 'published';
-  }
-
-  private normalizeStatus(value?: string): 'draft' | 'published' | 'deprecated' | null {
-    if (value === 'draft' || value === 'published' || value === 'deprecated') {
-      return value;
-    }
-    return null;
-  }
-
+  /**
+   * Merge user-supplied metadata onto the existing JSONB blob. The
+   * `status` lifecycle column is the typed source of truth and never
+   * appears in the JSONB payload; this helper strips it defensively
+   * in case any input carries it.
+   */
   private mergeMetadata(
     incoming: Record<string, unknown> | undefined,
-    status: 'draft' | 'published' | 'deprecated',
     existing: Record<string, unknown> = {},
   ): Record<string, unknown> {
-    return {
-      ...existing,
-      ...incoming,
-      status,
-    };
+    const merged: Record<string, unknown> = { ...existing, ...incoming };
+    delete (merged as { status?: unknown }).status;
+    return merged;
   }
 
   /**
-   * Helper: Create default system properties
+   * Helper: Create default system properties.
+   *
+   * Resolves PropertyType records by code (seeded by
+   * `1787000010002-seed-platform-collections`) so each row gets a
+   * proper propertyTypeId. Uses canonical entity field names —
+   * `name`, `position`, `isReadonly`, `columnName` — instead of the
+   * older alias shape, dropping the previously suppressed cast.
+   * If a PropertyType lookup fails, the create throws rather than
+   * silently writing a row with a null FK; system properties are
+   * load-bearing (forms, runtime queries reference them) and a
+   * partial seed is worse than a failed create.
    */
   private async createDefaultProperties(
     queryRunner: QueryRunner,
     collectionId: string,
-    userId?: string
+    applicationId: string | null,
+    userId?: string,
   ): Promise<number> {
-    const defaults = [
+    const defaults: Array<{
+      code: string;
+      name: string;
+      typeCode: string;
+      isReadonly: boolean;
+      isRequired: boolean;
+      position: number;
+      columnName: string;
+    }> = [
       {
         code: 'id',
-        label: 'ID',
-        type: 'uuid',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'ID',
+        typeCode: 'uuid',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 0,
+        position: 0,
+        columnName: 'id',
       },
       {
         code: 'created_at',
-        label: 'Created At',
-        type: 'datetime',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Created At',
+        typeCode: 'datetime',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 900,
+        position: 900,
+        columnName: 'created_at',
       },
       {
         code: 'updated_at',
-        label: 'Updated At',
-        type: 'datetime',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Updated At',
+        typeCode: 'datetime',
+        isReadonly: true,
         isRequired: true,
-        displayOrder: 901,
+        position: 901,
+        columnName: 'updated_at',
       },
       {
         code: 'created_by',
-        label: 'Created By',
-        type: 'user_reference',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Created By',
+        typeCode: 'user',
+        isReadonly: true,
         isRequired: false,
-        displayOrder: 902,
+        position: 902,
+        columnName: 'created_by',
       },
       {
         code: 'updated_by',
-        label: 'Updated By',
-        type: 'user_reference',
-        isSystem: true,
-        isReadOnly: true,
+        name: 'Updated By',
+        typeCode: 'user',
+        isReadonly: true,
         isRequired: false,
-        displayOrder: 903,
+        position: 903,
+        columnName: 'updated_by',
       },
     ];
+
+    const typeCodes = Array.from(new Set(defaults.map((d) => d.typeCode)));
+    const types = await queryRunner.manager.find(PropertyType, {
+      where: typeCodes.map((c) => ({ code: c })),
+    });
+    const typeIdByCode = new Map<string, string>(types.map((t) => [t.code, t.id]));
+    const missing = typeCodes.filter((c) => !typeIdByCode.has(c));
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot seed default properties — PropertyType codes not found: ${missing.join(
+          ', ',
+        )}. Run migration 1787000010002-seed-platform-collections first.`,
+      );
+    }
 
     let count = 0;
     for (const p of defaults) {
       const prop = queryRunner.manager.create(PropertyDefinition, {
         collectionId,
+        applicationId,
         code: p.code,
-        label: p.label,
-        type: p.type as any,
-        isSystem: p.isSystem,
-        isReadOnly: p.isReadOnly,
+        name: p.name,
+        propertyTypeId: typeIdByCode.get(p.typeCode),
+        columnName: p.columnName,
+        isSystem: true,
+        isReadonly: p.isReadonly,
         isRequired: p.isRequired,
-        displayOrder: p.displayOrder,
+        position: p.position,
+        ownerType: 'system',
+        isActive: true,
         createdBy: userId,
-        updatedBy: userId,
-        metadata: this.mergeMetadata({}, 'draft'),
+        metadata: this.mergeMetadata({}),
+        status: 'draft',
       });
 
-      await queryRunner.manager.save(PropertyDefinition, prop);
+      const savedProp = await queryRunner.manager.save(PropertyDefinition, prop);
+
+      // Seed revision 1 (draft) for each default property so the
+      // currentRevisionId pointer is non-null from the start.
+      const propRev = queryRunner.manager.create(PropertyDefinitionRevision, {
+        propertyId: savedProp.id,
+        revision: 1,
+        status: 'draft',
+        payload: this.snapshotProperty(savedProp),
+        createdBy: userId ?? null,
+      });
+      const savedPropRev = await queryRunner.manager.save(
+        PropertyDefinitionRevision,
+        propRev,
+      );
+      savedProp.currentRevisionId = savedPropRev.id;
+      await queryRunner.manager.save(PropertyDefinition, savedProp);
+
       count++;
     }
 
     return count;
+  }
+
+  // --------------------------------------------------------------------------
+  // Lifecycle helpers (ADR-5)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Resolve the Application a new collection should belong to. When the
+   * caller supplies an explicit id we trust it; otherwise we fall back
+   * to the `default` Application created during Slice A backfill.
+   */
+  private async resolveApplicationId(
+    queryRunner: QueryRunner,
+    requested?: string | null,
+  ): Promise<string> {
+    if (requested) {
+      const exists: Array<{ id: string }> = await queryRunner.query(
+        `SELECT id FROM applications WHERE id = $1 LIMIT 1`,
+        [requested],
+      );
+      if (exists.length > 0) {
+        return exists[0].id;
+      }
+      throw new NotFoundException(`Application ${requested} not found`);
+    }
+    const fallback: Array<{ id: string }> = await queryRunner.query(
+      `SELECT id FROM applications WHERE code = 'default' LIMIT 1`,
+    );
+    if (fallback.length === 0) {
+      throw new NotFoundException(
+        'Default Application missing — applications-registry migration must run first.',
+      );
+    }
+    return fallback[0].id;
+  }
+
+  /** Authoring snapshot persisted on every CollectionDefinitionRevision row. */
+  private snapshotCollection(c: CollectionDefinition): Record<string, unknown> {
+    return {
+      code: c.code,
+      name: c.name,
+      pluralName: c.pluralName,
+      description: c.description,
+      category: c.category,
+      applicationId: c.applicationId,
+      tableName: c.tableName,
+      labelProperty: c.labelProperty,
+      secondaryLabelProperty: c.secondaryLabelProperty,
+      isExtensible: c.isExtensible,
+      isAudited: c.isAudited,
+      enableVersioning: c.enableVersioning,
+      enableAttachments: c.enableAttachments,
+      enableActivityLog: c.enableActivityLog,
+      enableSearch: c.enableSearch,
+      icon: c.icon,
+      color: c.color,
+      defaultAccess: c.defaultAccess,
+      metadata: c.metadata,
+    };
+  }
+
+  /** Authoring snapshot persisted on every PropertyDefinitionRevision row. */
+  private snapshotProperty(p: PropertyDefinition): Record<string, unknown> {
+    return {
+      code: p.code,
+      name: p.name,
+      description: p.description,
+      collectionId: p.collectionId,
+      applicationId: p.applicationId,
+      propertyTypeId: p.propertyTypeId,
+      columnName: p.columnName,
+      config: p.config,
+      isRequired: p.isRequired,
+      isUnique: p.isUnique,
+      isIndexed: p.isIndexed,
+      validationRules: p.validationRules,
+      defaultValue: p.defaultValue,
+      defaultValueType: p.defaultValueType,
+      position: p.position,
+      isVisible: p.isVisible,
+      isReadonly: p.isReadonly,
+      displayFormat: p.displayFormat,
+      placeholder: p.placeholder,
+      helpText: p.helpText,
+      referenceCollectionId: p.referenceCollectionId,
+      referenceDisplayProperty: p.referenceDisplayProperty,
+      referenceFilter: p.referenceFilter,
+      choiceListId: p.choiceListId,
+      ownerType: p.ownerType,
+      isSystem: p.isSystem,
+      isActive: p.isActive,
+      isSearchable: p.isSearchable,
+      isSortable: p.isSortable,
+      isFilterable: p.isFilterable,
+      isPhi: p.isPhi,
+      isPii: p.isPii,
+      isSensitive: p.isSensitive,
+      maskingStrategy: p.maskingStrategy,
+      maskValue: p.maskValue,
+      requiresBreakGlass: p.requiresBreakGlass,
+      metadata: p.metadata,
+    };
+  }
+
+  private async nextCollectionRevisionNumber(
+    queryRunner: QueryRunner,
+    collectionId: string,
+  ): Promise<number> {
+    const result: Array<{ max: number | string | null }> = await queryRunner.manager
+      .createQueryBuilder(CollectionDefinitionRevision, 'rev')
+      .select('MAX(rev.revision)', 'max')
+      .where('rev.collection_id = :collectionId', { collectionId })
+      .getRawMany();
+    const current = Number(result[0]?.max ?? 0);
+    return Number.isFinite(current) ? current + 1 : 1;
+  }
+
+  /** List revisions for a collection, newest first. */
+  listCollectionRevisions(collectionId: string): Promise<CollectionDefinitionRevision[]> {
+    return this.collectionRevisionRepo.find({
+      where: { collectionId },
+      order: { revision: 'DESC' },
+    });
   }
 
   /**
@@ -1148,16 +1436,32 @@ export class CollectionService {
    * Get audit log for a collection
    */
   async getAuditLog(
-    _collectionId: string,
+    collectionId: string,
     options: { page?: number; limit?: number } = {}
   ) {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const auditRepo = this.dataSource.getRepository(AuditLog);
+
+    const [data, total] = await auditRepo.findAndCount({
+      where: {
+        collectionCode: 'collection_definitions',
+        recordId: collectionId,
+      },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+
     return {
-      data: [],
+      data,
       pagination: {
-        page: 1,
-        limit: options.limit || 20,
-        total: 0,
-        totalPages: 0,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }
