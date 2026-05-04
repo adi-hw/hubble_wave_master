@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   AutomationRule,
   AuditLog,
@@ -521,5 +521,196 @@ describe('AutomationRuntimeService', () => {
         expect.stringContaining('collection'),
       );
     });
+  });
+});
+
+/**
+ * In-memory transactional simulation. Mirrors TypeORM behaviour:
+ *   - dataSource.transaction(fn) runs fn inside a "transaction"
+ *   - if fn rejects, no writes performed inside it are visible
+ *   - if fn resolves, all writes are flushed
+ *
+ * This lets us assert the rollback contract: when an audit save fails after
+ * a record mutation, neither the record nor the audit row exists.
+ */
+type CommittedWrite =
+  | { kind: 'record'; payload: Record<string, unknown> }
+  | { kind: 'audit'; payload: Record<string, unknown> }
+  | { kind: 'execution-log'; payload: Record<string, unknown> };
+
+function buildFakeDataSource(options: {
+  failAuditSave?: boolean;
+  failExecutionLogSave?: boolean;
+}): { dataSource: DataSource; committed: CommittedWrite[]; auditRepoSpy: jest.Mock } {
+  const committed: CommittedWrite[] = [];
+  const auditRepoSpy = jest.fn();
+
+  const buildMgr = (pending: CommittedWrite[]): EntityManager => {
+    const mgr: Partial<EntityManager> = {};
+    mgr.getRepository = jest.fn((entity: any) => {
+      const entityName = entity?.name || String(entity);
+
+      if (entityName === 'AuditLog') {
+        return {
+          create: (e: any) => e,
+          save: jest.fn(async (entries: any) => {
+            auditRepoSpy(entries);
+            if (options.failAuditSave) {
+              throw new Error('audit save failed');
+            }
+            const list = Array.isArray(entries) ? entries : [entries];
+            for (const entry of list) {
+              pending.push({ kind: 'audit', payload: entry });
+            }
+            return list;
+          }),
+        } as any;
+      }
+
+      if (entityName === 'AutomationExecutionLog') {
+        return {
+          create: (e: any) => e,
+          save: jest.fn(async (entry: any) => {
+            if (options.failExecutionLogSave) {
+              throw new Error('execution log save failed');
+            }
+            pending.push({ kind: 'execution-log', payload: entry });
+            return entry;
+          }),
+        } as any;
+      }
+
+      return {
+        create: (e: any) => e,
+        save: jest.fn(async (entry: any) => entry),
+        findOne: jest.fn(async () => null),
+        find: jest.fn(async () => []),
+        update: jest.fn(),
+        increment: jest.fn(),
+      } as any;
+    });
+
+    (mgr as any).createQueryBuilder = jest.fn(() => ({
+      insert: () => ({ into: () => ({ values: () => ({ returning: () => ({ execute: jest.fn(async () => ({ identifiers: [{ id: 'rec-1' }] })) }) }) }) }),
+      update: () => ({ set: () => ({ where: () => ({ execute: jest.fn(async () => ({ affected: 1 })) }) }) }),
+      delete: () => ({ from: () => ({ where: () => ({ execute: jest.fn(async () => ({ affected: 1 })) }) }) }),
+    }));
+    (mgr as any).query = jest.fn(async () => [{ id: 'rec-1' }]);
+
+    return mgr as EntityManager;
+  };
+
+  const dataSource = {
+    transaction: jest.fn(async <T,>(fn: (m: EntityManager) => Promise<T>): Promise<T> => {
+      const pending: CommittedWrite[] = [];
+      const mgr = buildMgr(pending);
+      // If fn rejects, the await throws and `committed.push(...pending)`
+      // is never reached — pending writes are discarded (rollback).
+      const result = await fn(mgr);
+      committed.push(...pending);
+      return result;
+    }),
+    getRepository: jest.fn(() => {
+      // Outside-tx reads: return empty so the "automation processing" short-circuits
+      return {
+        find: jest.fn(async () => []),
+        findOne: jest.fn(async () => null),
+        update: jest.fn(),
+        increment: jest.fn(),
+      } as any;
+    }),
+  } as unknown as DataSource;
+
+  return { dataSource, committed, auditRepoSpy };
+}
+
+describe('AutomationRuntimeService — transactional audit', () => {
+  function buildService(dataSource: DataSource): {
+    service: AutomationRuntimeService;
+    executionLog: ExecutionLogService;
+    recordMutation: RecordMutationService;
+  } {
+    const conditionEvaluator = {
+      evaluate: jest.fn(),
+    } as unknown as ConditionEvaluatorService;
+    const actionHandler = {
+      execute: jest.fn(),
+    } as unknown as ActionHandlerService;
+    const scriptSandbox = {
+      execute: jest.fn(),
+    } as unknown as ScriptSandboxService;
+
+    const executionLog = new ExecutionLogService(dataSource);
+    const outboxPublisher = new OutboxPublisherService(dataSource);
+    const authz = {
+      ensureTableAccess: jest.fn(),
+      filterWritableFields: jest.fn(async (_ctx: any, _t: any, p: any) => p),
+    } as any;
+    const recordMutation = new RecordMutationService(dataSource, authz, outboxPublisher);
+
+    const service = new AutomationRuntimeService(
+      dataSource,
+      conditionEvaluator,
+      actionHandler,
+      scriptSandbox,
+      executionLog,
+      recordMutation,
+      outboxPublisher,
+    );
+
+    return { service, executionLog, recordMutation };
+  }
+
+  it('rolls back the record mutation when audit log save fails', async () => {
+    const { dataSource, committed } = buildFakeDataSource({ failAuditSave: true });
+    const { recordMutation } = buildService(dataSource);
+
+    // Patch out collection lookup/properties — both use mgr.getRepository
+    const fakeCollection = { id: 'c-1', code: 'incidents', tableName: 'incidents', isActive: true } as any;
+    (recordMutation as any).getCollectionWithProperties = jest.fn(async () => ({
+      collection: fakeCollection,
+      properties: [
+        { code: 'status', columnName: 'status', isSystem: false, name: 'Status' },
+      ],
+    }));
+    (recordMutation as any).getRecordById = jest.fn(async () => ({ id: 'rec-1', status: 'open' }));
+
+    await expect(
+      recordMutation.updateRecord({
+        collectionCode: 'incidents',
+        recordId: 'rec-1',
+        changes: { status: 'closed' },
+        actorId: 'u-1',
+      }),
+    ).rejects.toThrow('audit save failed');
+
+    // Critical assertion: NO record write AND NO audit row exists after rollback.
+    expect(committed.filter((w) => w.kind === 'audit')).toHaveLength(0);
+    expect(committed.filter((w) => w.kind === 'record')).toHaveLength(0);
+  });
+
+  it('commits both record mutation and audit log on success', async () => {
+    const { dataSource, committed, auditRepoSpy } = buildFakeDataSource({});
+    const { recordMutation } = buildService(dataSource);
+
+    const fakeCollection = { id: 'c-1', code: 'incidents', tableName: 'incidents', isActive: true } as any;
+    (recordMutation as any).getCollectionWithProperties = jest.fn(async () => ({
+      collection: fakeCollection,
+      properties: [
+        { code: 'status', columnName: 'status', isSystem: false, name: 'Status' },
+      ],
+    }));
+    (recordMutation as any).getRecordById = jest.fn(async () => ({ id: 'rec-1', status: 'open' }));
+
+    await recordMutation.updateRecord({
+      collectionCode: 'incidents',
+      recordId: 'rec-1',
+      changes: { status: 'closed' },
+      actorId: 'u-1',
+    });
+
+    // Audit save was invoked exactly once and the resulting row reached the committed log.
+    expect(auditRepoSpy).toHaveBeenCalledTimes(1);
+    expect(committed.filter((w) => w.kind === 'audit')).toHaveLength(1);
   });
 });

@@ -2,9 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import {
   AutomationRule,
-  AuditLog,
   CollectionDefinition,
   PropertyDefinition,
+  withAudit,
+  AuditRecorder,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
@@ -125,18 +126,33 @@ export class AutomationRuntimeService {
       }
 
       if (baseContext.executionChain.includes(automation.id)) {
-        await this.executionLog.log({
-          automationId: automation.id,
-          automationName: automation.name,
-          collectionId: automation.collectionId,
-          recordId: payload.recordId,
-          triggerEvent: operation,
-          triggerTiming: automation.triggerTiming,
-          status: 'skipped',
-          skippedReason: 'Circular automation reference detected',
-          triggeredBy: payload.userId ?? null,
-          triggeredByPrincipalType: principalType,
-          executionDepth: baseContext.depth,
+        await withAudit(this.dataSource, async (mgr, recordAudit) => {
+          await this.executionLog.log(
+            {
+              automationId: automation.id,
+              automationName: automation.name,
+              collectionId: automation.collectionId,
+              recordId: payload.recordId,
+              triggerEvent: operation,
+              triggerTiming: automation.triggerTiming,
+              status: 'skipped',
+              skippedReason: 'Circular automation reference detected',
+              triggeredBy: payload.userId ?? null,
+              triggeredByPrincipalType: principalType,
+              executionDepth: baseContext.depth,
+            },
+            mgr,
+          );
+
+          this.recordAutomationAudit(recordAudit, {
+            userId: payload.userId ?? null,
+            automationId: automation.id,
+            automationName: automation.name,
+            collectionCode: collection.code,
+            recordId: payload.recordId,
+            status: 'skipped',
+            details: { reason: 'Circular automation reference detected' },
+          });
         });
         continue;
       }
@@ -179,31 +195,36 @@ export class AutomationRuntimeService {
     if (automation.conditionType !== 'always') {
       const conditionResult = await this.evaluateCondition(automation, context);
       if (!conditionResult.result) {
-        await this.executionLog.log({
-          automationId: automation.id,
-          automationName: automation.name,
-          collectionId: automation.collectionId,
-          recordId: context.record.id as string,
-          triggerEvent: operation,
-          triggerTiming: automation.triggerTiming,
-          status: 'skipped',
-          skippedReason: 'Condition not met',
-          inputData: { condition: automation.condition, evaluation: conditionResult.trace },
-          triggeredBy: context.user.id,
-          triggeredByPrincipalType: principalType,
-          executionDepth: context.depth,
-          durationMs: Date.now() - startTime,
-        });
+        await withAudit(this.dataSource, async (mgr, recordAudit) => {
+          await this.executionLog.log(
+            {
+              automationId: automation.id,
+              automationName: automation.name,
+              collectionId: automation.collectionId,
+              recordId: context.record.id as string,
+              triggerEvent: operation,
+              triggerTiming: automation.triggerTiming,
+              status: 'skipped',
+              skippedReason: 'Condition not met',
+              inputData: { condition: automation.condition, evaluation: conditionResult.trace },
+              triggeredBy: context.user.id,
+              triggeredByPrincipalType: principalType,
+              executionDepth: context.depth,
+              durationMs: Date.now() - startTime,
+            },
+            mgr,
+          );
 
-        await this.writeAutomationAudit({
-          userId: context.user.id,
-          automationId: automation.id,
-          automationName: automation.name,
-          collectionCode,
-          recordId: context.record.id as string,
-          status: 'skipped',
-          principalType,
-          details: { reason: 'Condition not met' },
+          this.recordAutomationAudit(recordAudit, {
+            userId: context.user.id,
+            automationId: automation.id,
+            automationName: automation.name,
+            collectionCode,
+            recordId: context.record.id as string,
+            status: 'skipped',
+            principalType,
+            details: { reason: 'Condition not met' },
+          });
         });
 
         return;
@@ -365,16 +386,6 @@ export class AutomationRuntimeService {
       }
     }
 
-    let persistedRecord: Record<string, unknown> | undefined;
-    if (!aborted && operation !== 'delete' && this.hasRecordChanges(context.record, modifiedRecord)) {
-      persistedRecord = await this.recordMutation.updateRecord({
-        collectionCode,
-        recordId: context.record.id as string,
-        changes: this.diffRecord(context.record, modifiedRecord),
-        actorId: context.user.id,
-      });
-    }
-
     // 'success' is reserved for executions where every action ran without
     // error. If any action failed but the automation continued (because the
     // failing action set continueOnError), we report 'partial_failure' to
@@ -388,39 +399,61 @@ export class AutomationRuntimeService {
     } else {
       status = 'success';
     }
-    await this.executionLog.log({
-      automationId: automation.id,
-      automationName: automation.name,
-      collectionId: automation.collectionId,
-      recordId: context.record.id as string,
-      triggerEvent: operation,
-      triggerTiming: automation.triggerTiming,
-      status: aborted ? 'skipped' : status,
-      skippedReason: aborted ? abortMessage : undefined,
-      inputData: context.record,
-      outputData: persistedRecord || modifiedRecord,
-      actionsExecuted: actionsExecuted as unknown as Record<string, unknown>[],
-      triggeredBy: context.user.id,
-      triggeredByPrincipalType: principalType,
-      executionDepth: context.depth,
-      durationMs: Date.now() - startTime,
-      errorMessage: errors[0]?.message,
-    });
 
-    await this.writeAutomationAudit({
-      userId: context.user.id,
-      automationId: automation.id,
-      automationName: automation.name,
-      collectionCode,
-      recordId: context.record.id as string,
-      status: aborted ? 'skipped' : status,
-      principalType,
-      details: {
-        errors,
-        warnings,
-        aborted,
-        abortMessage,
-      },
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      let persistedRecord: Record<string, unknown> | undefined;
+      if (
+        !aborted &&
+        operation !== 'delete' &&
+        this.hasRecordChanges(context.record, modifiedRecord)
+      ) {
+        persistedRecord = await this.recordMutation.updateRecordInTransaction(
+          {
+            collectionCode,
+            recordId: context.record.id as string,
+            changes: this.diffRecord(context.record, modifiedRecord),
+            actorId: context.user.id,
+          },
+          mgr,
+          recordAudit,
+        );
+      }
+
+      await this.executionLog.log(
+        {
+          automationId: automation.id,
+          automationName: automation.name,
+          collectionId: automation.collectionId,
+          recordId: context.record.id as string,
+          triggerEvent: operation,
+          triggerTiming: automation.triggerTiming,
+          status: aborted ? 'skipped' : status,
+          skippedReason: aborted ? abortMessage : undefined,
+          inputData: context.record,
+          outputData: persistedRecord || modifiedRecord,
+          actionsExecuted: actionsExecuted as unknown as Record<string, unknown>[],
+          triggeredBy: context.user.id,
+          executionDepth: context.depth,
+          durationMs: Date.now() - startTime,
+          errorMessage: errors[0]?.message,
+        },
+        mgr,
+      );
+
+      this.recordAutomationAudit(recordAudit, {
+        userId: context.user.id,
+        automationId: automation.id,
+        automationName: automation.name,
+        collectionCode,
+        recordId: context.record.id as string,
+        status: aborted ? 'skipped' : status,
+        details: {
+          errors,
+          warnings,
+          aborted,
+          abortMessage,
+        },
+      });
     });
 
     if (errors.length > 0) {
@@ -604,19 +637,21 @@ export class AutomationRuntimeService {
     }
   }
 
-  private async writeAutomationAudit(params: {
-    userId: string | null;
-    automationId: string;
-    automationName: string;
-    collectionCode: string;
-    recordId: string;
-    status: string;
-    principalType: TriggeredByPrincipalType;
-    details?: Record<string, unknown>;
-  }): Promise<void> {
-    const repo = this.dataSource.getRepository(AuditLog);
-    const entry = repo.create({
-      userId: params.userId ?? null,
+  private recordAutomationAudit(
+    recordAudit: AuditRecorder,
+    params: {
+      userId: string | null;
+      automationId: string;
+      automationName: string;
+      collectionCode: string;
+      recordId: string;
+      status: string;
+      principalType?: TriggeredByPrincipalType;
+      details?: Record<string, unknown>;
+    },
+  ): void {
+    recordAudit({
+      userId: params.userId,
       collectionCode: 'automation_rule',
       recordId: params.automationId,
       action: 'automation.execute',
@@ -629,6 +664,5 @@ export class AutomationRuntimeService {
         details: params.details || {},
       },
     });
-    await repo.save(entry);
   }
 }

@@ -11,10 +11,11 @@ import {
   PropertyDefinition,
   ViewDefinition as ViewEntity,
   ViewDefinitionRevision,
+  withAudit,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
-import { SelectQueryBuilder, ObjectLiteral, DataSource } from 'typeorm';
+import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'typeorm';
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
 import { EventOutboxService } from './events/event-outbox.service';
@@ -710,7 +711,7 @@ export class CollectionDataService {
   ): Promise<{ entries: AuditLog[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
-    await this.authz.ensureTableAccess(context, collection.tableName, 'read');
+    await this.authz.ensureCollectionAccess(context, collection.id, 'read');
 
     const repo = this.dataSource.getRepository(AuditLog);
     const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
@@ -722,26 +723,22 @@ export class CollectionDataService {
     return { entries };
   }
 
-  private async writeAuditLog(params: {
-    userId: string;
-    action: string;
-    collectionCode: string;
-    recordId?: string | null;
-    oldValues?: Record<string, unknown> | null;
-    newValues?: Record<string, unknown> | null;
-    permissionCode?: string | null;
-  }): Promise<void> {
-    const repo = this.dataSource.getRepository(AuditLog);
-    const entry = repo.create({
-      userId: params.userId,
-      collectionCode: params.collectionCode,
-      recordId: params.recordId ?? null,
-      action: params.action,
-      oldValues: params.oldValues ?? null,
-      newValues: params.newValues ?? null,
-      permissionCode: params.permissionCode ?? null,
+  private async readRecord(
+    mgr: EntityManager,
+    collection: CollectionDefinition,
+    properties: PropertyDefinition[],
+    id: string,
+  ): Promise<Record<string, unknown> | null> {
+    const schema = this.ensureSafeIdentifier('public', 'schema');
+    const safeTable = this.ensureSafeIdentifier(collection.tableName, 'table');
+    const selectParts: string[] = ['t."id"', 't."created_at"', 't."updated_at"'];
+    properties.forEach((prop) => {
+      const col = this.ensureSafeIdentifier(this.getStorageColumn(prop), 'column');
+      selectParts.push(`t."${col}" AS "${prop.code}"`);
     });
-    await repo.save(entry);
+    const sql = `SELECT ${selectParts.join(', ')} FROM "${schema}"."${safeTable}" t WHERE t."id" = $1`;
+    const rows = (await mgr.query(sql, [id])) as Record<string, unknown>[];
+    return rows[0] ?? null;
   }
 
   // Get view definition with columns
@@ -1368,66 +1365,80 @@ export class CollectionDataService {
       throw new BadRequestException('No valid properties to insert');
     }
 
-    const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
-    const result = await ds.createQueryBuilder().insert().into(tableName).values(insertData).returning('id').execute();
+    const createdRow = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const result = await mgr
+        .createQueryBuilder()
+        .insert()
+        .into(tableName)
+        .values(insertData)
+        .returning('id')
+        .execute();
 
-    const newId = result.identifiers[0]?.id;
-    if (!newId) {
-      throw new BadRequestException('Failed to create record');
-    }
+      const newId = result.identifiers[0]?.id;
+      if (!newId) {
+        throw new BadRequestException('Failed to create record');
+      }
 
-    const createdRecord = await this.getOne(context, collectionCode, newId);
+      const record = await this.readRecord(mgr, collection, allProperties, newId);
+      if (!record) {
+        throw new BadRequestException('Created record could not be loaded');
+      }
 
-      await this.writeAuditLog({
+      recordAudit({
         userId: context.userId,
         action: 'create',
         collectionCode: collection.code,
         recordId: newId,
-        newValues: createdRecord.record,
+        newValues: record,
       });
 
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.created',
-        collectionCode: collection.code,
-        recordId: newId,
-        record: createdRecord.record,
-        previousRecord: null,
-        changedProperties: Object.keys(createdRecord.record || {}),
-        userId: context.userId,
-      });
-
-      // Drain the before-pass asyncQueue now that the parent has
-      // committed. CreateRecord, FireEvent, CallFlow, SendNotification
-      // attached to before-rules produce their downstream effects
-      // here. After-trigger rules then run with the parent record
-      // visible. The bumped depth bounds recursive CreateRecord
-      // chains: drainQueuedActions → createInternal → executor sees
-      // depth+1 → after MAX_DEPTH levels the executor skips its
-      // automation pass.
-      await this.drainQueuedActions(ctx, collection, newId, beforeInsertResult.asyncQueue, {
-        depth: parentAutomationContext.depth + 1,
-        executionChain: parentAutomationContext.executionChain,
-      });
-
-      await this.runAfterAutomations(ctx, collection, 'insert', createdRecord.record, undefined);
-
-      // Plan §6.5 — formulas + lookups recompute and persist; rollups
-      // enqueue a debounced parent-recompute via the outbox;
-      // hierarchical maintains the path column. After every save.
-      const mergedRecord = await this.runComputedDispatch(
-        ctx,
-        collection,
-        allProperties,
-        newId,
-        createdRecord.record,
-        'create',
+      await this.outboxService.enqueueRecordEvent(
+        {
+          eventType: 'record.created',
+          collectionCode: collection.code,
+          recordId: newId,
+          record,
+          previousRecord: null,
+          changedProperties: Object.keys(record || {}),
+          userId: context.userId,
+        },
+        mgr,
       );
-      createdRecord.record = mergedRecord;
 
-      return createdRecord;
-    }
+      return { id: newId, record };
+    });
+
+    // Drain the before-pass asyncQueue now that the parent has
+    // committed. CreateRecord, FireEvent, CallFlow, SendNotification
+    // attached to before-rules produce their downstream effects
+    // here. After-trigger rules then run with the parent record
+    // visible. The bumped depth bounds recursive CreateRecord
+    // chains: drainQueuedActions → createInternal → executor sees
+    // depth+1 → after MAX_DEPTH levels the executor skips its
+    // automation pass.
+    await this.drainQueuedActions(ctx, collection, createdRow.id, beforeInsertResult.asyncQueue, {
+      depth: parentAutomationContext.depth + 1,
+      executionChain: parentAutomationContext.executionChain,
+    });
+
+    await this.runAfterAutomations(ctx, collection, 'insert', createdRow.record, undefined);
+
+    // Plan §6.5 — formulas + lookups recompute and persist; rollups
+    // enqueue a debounced parent-recompute via the outbox;
+    // hierarchical maintains the path column. After every save.
+    const mergedRecord = await this.runComputedDispatch(
+      ctx,
+      collection,
+      allProperties,
+      createdRow.id,
+      createdRow.record,
+      'create',
+    );
+
+    return { record: mergedRecord, fields: allProperties };
+  }
 
   // Update record
   async update(
@@ -1608,62 +1619,72 @@ export class CollectionDataService {
 
     updateData['updated_at'] = new Date();
 
-    const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
-    await ds.createQueryBuilder().update(tableName).set(updateData).where('id = :id', { id }).execute();
+    const updatedRow = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      await mgr
+        .createQueryBuilder()
+        .update(tableName)
+        .set(updateData)
+        .where('id = :id', { id })
+        .execute();
 
+      const row = await this.readRecord(mgr, collection, allProperties, id);
+      if (!row) {
+        throw new NotFoundException(`Record '${id}' not found after update`);
+      }
 
-
-
-    const updatedRecord = await this.getOne(context, collectionCode, id);
-
-      await this.writeAuditLog({
+      recordAudit({
         userId: context.userId,
         action: 'update',
         collectionCode: collection.code,
         recordId: id,
         oldValues: existingRecord,
-        newValues: updatedRecord.record,
+        newValues: row,
       });
 
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.updated',
-        collectionCode: collection.code,
-        recordId: id,
-        record: updatedRecord.record,
-        previousRecord: existingRecord,
-        changedProperties: this.calculateChangedProperties(existingRecord, updatedRecord.record),
-        userId: context.userId,
-      });
-
-      // Mirror the createInternal pattern (line ~1409): bump depth so
-      // a CreateRecord queued by a before-update can recurse without
-      // bypassing MAX_DEPTH. Inherit executionChain from the parent
-      // so the executor sees the full run history.
-      await this.drainQueuedActions(ctx, collection, id, beforeUpdateResult.asyncQueue, {
-        depth: parentAutomationContext.depth + 1,
-        executionChain: parentAutomationContext.executionChain,
-      });
-
-      await this.runAfterAutomations(ctx, collection, 'update', updatedRecord.record, existingRecord);
-
-      // Plan §6.5 — same dispatch as on create. The previous record
-      // is passed so the hierarchical executor can short-circuit
-      // when the parent reference hasn't changed.
-      const mergedRecord = await this.runComputedDispatch(
-        ctx,
-        collection,
-        updatedRecord.fields,
-        id,
-        updatedRecord.record,
-        'update',
-        existingRecord,
+      await this.outboxService.enqueueRecordEvent(
+        {
+          eventType: 'record.updated',
+          collectionCode: collection.code,
+          recordId: id,
+          record: row,
+          previousRecord: existingRecord,
+          changedProperties: this.calculateChangedProperties(existingRecord, row),
+          userId: context.userId,
+        },
+        mgr,
       );
-      updatedRecord.record = mergedRecord;
 
-      return updatedRecord;
-    }
+      return row;
+    });
+
+    // Mirror the createInternal pattern (line ~1409): bump depth so
+    // a CreateRecord queued by a before-update can recurse without
+    // bypassing MAX_DEPTH. Inherit executionChain from the parent
+    // so the executor sees the full run history.
+    await this.drainQueuedActions(ctx, collection, id, beforeUpdateResult.asyncQueue, {
+      depth: parentAutomationContext.depth + 1,
+      executionChain: parentAutomationContext.executionChain,
+    });
+
+    await this.runAfterAutomations(ctx, collection, 'update', updatedRow, existingRecord);
+
+    // Plan §6.5 — same dispatch as on create. The previous record
+    // is passed so the hierarchical executor can short-circuit
+    // when the parent reference hasn't changed.
+    const mergedRecord = await this.runComputedDispatch(
+      ctx,
+      collection,
+      allProperties,
+      id,
+      updatedRow,
+      'update',
+      existingRecord,
+    );
+
+    return { record: mergedRecord, fields: allProperties };
+  }
 
   // Delete record
   async delete(ctx: RequestContext, collectionCode: string, id: string): Promise<{ success: boolean }> {
@@ -1688,16 +1709,21 @@ export class CollectionDataService {
       existingResult.record,
     );
 
-    const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
-    const result = await ds.createQueryBuilder().delete().from(tableName).where('id = :id', { id }).execute();
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const result = await mgr
+        .createQueryBuilder()
+        .delete()
+        .from(tableName)
+        .where('id = :id', { id })
+        .execute();
 
-    if (result.affected === 0) {
-      throw new NotFoundException(`Record '${id}' not found`);
-    }
+      if (result.affected === 0) {
+        throw new NotFoundException(`Record '${id}' not found`);
+      }
 
-      await this.writeAuditLog({
+      recordAudit({
         userId: context.userId,
         action: 'delete',
         collectionCode: collection.code,
@@ -1705,46 +1731,50 @@ export class CollectionDataService {
         oldValues: existingResult.record,
       });
 
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.deleted',
-        collectionCode: collection.code,
-        recordId: id,
-        record: existingResult.record,
-        previousRecord: existingResult.record,
-        changedProperties: Object.keys(existingResult.record || {}),
-        userId: context.userId,
-      });
-
-      await this.drainQueuedActions(ctx, collection, id, beforeDeleteResult.asyncQueue, {
-        depth: 1,
-        executionChain: [],
-      });
-
-      await this.runAfterAutomations(
-        ctx,
-        collection,
-        'delete',
-        existingResult.record,
-        existingResult.record,
-      );
-
-      // Plan §6.5 — recompute parent rollups whose source was this
-      // collection. The deleted child contributed to the parent's
-      // aggregate; without this enqueue the parent rollup keeps the
-      // stale value.
-      await this.computedDispatcher.applyOnDelete({
-        ctx: {
-          userId: ctx.userId ?? 'system',
-          username: ctx.username,
-          permissions: ctx.permissions,
-          roles: ctx.roles,
+      await this.outboxService.enqueueRecordEvent(
+        {
+          eventType: 'record.deleted',
+          collectionCode: collection.code,
+          recordId: id,
+          record: existingResult.record,
+          previousRecord: existingResult.record,
+          changedProperties: Object.keys(existingResult.record || {}),
+          userId: context.userId,
         },
-        collectionCode: collection.code,
-        deletedRecord: existingResult.record,
-      });
+        mgr,
+      );
+    });
 
-      return { success: true };
-    }
+    await this.drainQueuedActions(ctx, collection, id, beforeDeleteResult.asyncQueue, {
+      depth: 1,
+      executionChain: [],
+    });
+
+    await this.runAfterAutomations(
+      ctx,
+      collection,
+      'delete',
+      existingResult.record,
+      existingResult.record,
+    );
+
+    // Plan §6.5 — recompute parent rollups whose source was this
+    // collection. The deleted child contributed to the parent's
+    // aggregate; without this enqueue the parent rollup keeps the
+    // stale value.
+    await this.computedDispatcher.applyOnDelete({
+      ctx: {
+        userId: ctx.userId ?? 'system',
+        username: ctx.username,
+        permissions: ctx.permissions,
+        roles: ctx.roles,
+      },
+      collectionCode: collection.code,
+      deletedRecord: existingResult.record,
+    });
+
+    return { success: true };
+  }
 
   // Bulk operations
   async bulkUpdate(
@@ -1799,7 +1829,9 @@ export class CollectionDataService {
     // before/after automations, computed dispatch, and the queued-
     // action drain — plan §6.5 / ADR-4 require these on every
     // mutation path. Per-record cost is the trade-off for correctness;
-    // chunk at the caller for very large bulks.
+    // chunk at the caller for very large bulks. Each per-record call
+    // already runs in its own withAudit transaction (audit log + outbox
+    // emit committed atomically with the SQL write).
     const updatedIds: string[] = [];
     const failureSkippedIds: string[] = [];
     for (const id of authorizedIds) {
@@ -1815,11 +1847,17 @@ export class CollectionDataService {
 
     const skippedIds = [...accessSkippedIds, ...failureSkippedIds];
 
-    await this.writeAuditLog({
-      userId: context.userId,
-      action: 'bulk_update',
-      collectionCode: collection.code,
-      newValues: { ids: updatedIds, data, accessSkippedIds, failureSkippedIds },
+    // Write a single bulk-summary audit row alongside the per-record
+    // entries already produced inside each `this.update` call. The
+    // standalone withAudit transaction here only inserts the audit row;
+    // the underlying record changes have already committed.
+    await withAudit(this.dataSource, async (_mgr, recordAudit) => {
+      recordAudit({
+        userId: context.userId,
+        action: 'bulk_update',
+        collectionCode: collection.code,
+        newValues: { ids: updatedIds, data, accessSkippedIds, failureSkippedIds },
+      });
     });
 
     return {
@@ -1850,37 +1888,61 @@ export class CollectionDataService {
       throw new ForbiddenException('No accessible records in selection');
     }
 
-    const ds = this.dataSource;
     const tableName = `${this.ensureSafeIdentifier('public', 'schema')}.${this.ensureSafeIdentifier(collection.tableName, 'table')}`;
 
     const properties = await this.getProperties(collection.id);
-    const deletedRecords = await this.fetchRecordsByIds(collection.tableName, authorizedIds, properties);
 
-    const result = await ds.createQueryBuilder().delete().from(tableName).whereInIds(authorizedIds).execute();
+    const { affected, deletedRecords } = await withAudit(
+      this.dataSource,
+      async (mgr, recordAudit) => {
+        const records = await this.fetchRecordsByIdsWithManager(
+          mgr,
+          collection.tableName,
+          authorizedIds,
+          properties,
+        );
 
-    await this.writeAuditLog({
-      userId: context.userId,
-      action: 'bulk_delete',
-      collectionCode: collection.code,
-      newValues: { ids: authorizedIds, skippedIds },
-    });
+        const result = await mgr
+          .createQueryBuilder()
+          .delete()
+          .from(tableName)
+          .whereInIds(authorizedIds)
+          .execute();
 
+        recordAudit({
+          userId: context.userId,
+          action: 'bulk_delete',
+          collectionCode: collection.code,
+          newValues: { ids: authorizedIds, skippedIds },
+        });
+
+        for (const record of records) {
+          const recordId = record.id as string;
+          await this.outboxService.enqueueRecordEvent(
+            {
+              eventType: 'record.deleted',
+              collectionCode: collection.code,
+              recordId,
+              record,
+              previousRecord: record,
+              changedProperties: Object.keys(record || {}),
+              userId: context.userId,
+            },
+            mgr,
+          );
+        }
+
+        return { affected: result.affected || 0, deletedRecords: records };
+      },
+    );
+
+    // Plan §6.5 — recompute parent rollups for each deleted child.
+    // The processor coalesces by `(parentId, rollupPropertyId)`,
+    // so deleting N children of one parent results in one parent
+    // recompute, not N. See `applyOnDelete` for the per-row path.
+    // Runs post-commit so a transient rollup-write failure cannot
+    // undo the deletes that have already landed.
     for (const record of deletedRecords) {
-      const recordId = record.id as string;
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.deleted',
-        collectionCode: collection.code,
-        recordId,
-        record,
-        previousRecord: record,
-        changedProperties: Object.keys(record || {}),
-        userId: context.userId,
-      });
-
-      // Plan §6.5 — recompute parent rollups for each deleted child.
-      // The processor coalesces by `(parentId, rollupPropertyId)`,
-      // so deleting N children of one parent results in one parent
-      // recompute, not N. See `applyOnDelete` for the per-row path.
       await this.computedDispatcher.applyOnDelete({
         ctx: {
           userId: ctx.userId ?? 'system',
@@ -1895,7 +1957,7 @@ export class CollectionDataService {
 
     return {
       success: true,
-      deletedCount: result.affected || 0,
+      deletedCount: affected,
       skippedCount: skippedIds.length,
       skippedIds,
     };
@@ -1950,7 +2012,8 @@ export class CollectionDataService {
     return changes;
   }
 
-  private async fetchRecordsByIds(
+  private async fetchRecordsByIdsWithManager(
+    mgr: EntityManager,
     tableName: string,
     ids: string[],
     properties: PropertyDefinition[],
@@ -1961,7 +2024,7 @@ export class CollectionDataService {
     const schema = this.ensureSafeIdentifier('public', 'schema');
     const safeTable = this.ensureSafeIdentifier(tableName, 'table');
     const sql = `SELECT * FROM "${schema}"."${safeTable}" WHERE id = ANY($1)`;
-    const records = await this.dataSource.query(sql, [ids]);
+    const records = await mgr.query(sql, [ids]);
     return (records as Record<string, unknown>[]).map((row) => this.mapRowToRecord(row, properties));
   }
 

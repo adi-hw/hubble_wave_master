@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { InstanceEventOutbox } from '@hubblewave/instance-db';
 
 export type RecordEventPayload = {
@@ -18,8 +18,11 @@ export type RecordEventPayload = {
 export class EventOutboxService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async enqueueRecordEvent(payload: Omit<RecordEventPayload, 'occurredAt'>): Promise<void> {
-    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+  async enqueueRecordEvent(
+    payload: Omit<RecordEventPayload, 'occurredAt'>,
+    mgr?: EntityManager,
+  ): Promise<void> {
+    const repo = (mgr ?? this.dataSource).getRepository(InstanceEventOutbox);
     const occurredAt = new Date().toISOString();
     const entry = repo.create({
       eventType: payload.eventType,
@@ -46,14 +49,17 @@ export class EventOutboxService {
     await repo.save([entry, searchEntry]);
   }
 
-  async enqueueWorkflowStart(payload: {
-    workflowId: string;
-    collectionCode?: string;
-    recordId?: string;
-    inputs?: Record<string, unknown>;
-    userId?: string | null;
-  }): Promise<void> {
-    const repo = this.dataSource.getRepository(InstanceEventOutbox);
+  async enqueueWorkflowStart(
+    payload: {
+      workflowId: string;
+      collectionCode?: string;
+      recordId?: string;
+      inputs?: Record<string, unknown>;
+      userId?: string | null;
+    },
+    mgr?: EntityManager,
+  ): Promise<void> {
+    const repo = (mgr ?? this.dataSource).getRepository(InstanceEventOutbox);
     const entry = repo.create({
       eventType: 'automation.workflow.start',
       collectionCode: payload.collectionCode ?? null,
