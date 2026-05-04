@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthGuardModule } from '@hubblewave/auth-guard';
@@ -44,6 +45,10 @@ import { ScheduleModule } from '@nestjs/schedule';
     AuthorizationModule.forRoot({
       enableCaching: true,
     }),
+    // Backs ModelRegistryService cache. 30-second TTL keeps schema
+    // discovery responsive after metadata changes; 1000-key cap bounds
+    // memory growth as new collections are discovered.
+    CacheModule.register({ ttl: 30_000, max: 1000 }),
     RedisModule.forRoot(),
     AutomationModule,
     IntegrationModule,
