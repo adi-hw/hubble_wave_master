@@ -49,10 +49,10 @@ import { ScheduleModule } from '@nestjs/schedule';
     RuntimeAnomalyModule,
     AuthGuardModule,
     GlobalGuardsModule,
-    CacheModule.register({
-      ttl: 30_000,
-      max: 1000,
-    }),
+    // Backs ModelRegistryService cache. 30-second TTL keeps schema
+    // discovery responsive after metadata changes; 1000-key cap bounds
+    // memory growth as new collections are discovered.
+    CacheModule.register({ ttl: 30_000, max: 1000 }),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,

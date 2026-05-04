@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
 import {
   ControlPlaneUser,
   ControlPlaneRole,
@@ -20,6 +20,39 @@ import {
 import { LoginDto, RegisterDto, ChangePasswordDto, UpdateProfileDto, VerifyMfaDto } from './auth.dto';
 import { authenticator } from 'otplib';
 import * as crypto from 'crypto';
+
+/**
+ * OWASP-recommended Argon2id parameters for password hashing.
+ * Mirrors svc-identity AuthService for consistency across planes.
+ */
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 65536,  // 64 MB - resistant to GPU attacks
+  timeCost: 3,        // 3 iterations
+  parallelism: 4,     // 4 threads
+  hashLength: 32,     // 256-bit output
+};
+
+/**
+ * Verify a password against a stored hash. Supports two formats:
+ * - Argon2id (`$argon2id$...`) - canonical hash for all new and rotated passwords
+ * - bcrypt (`$2a$` / `$2b$` / `$2y$`) - prior installations where bcrypt was used
+ *
+ * Both branches produce identical user-visible behavior. A successful bcrypt
+ * verify by callers that update `passwordHash` (login flow, change-password)
+ * rotates the hash to Argon2id, so each user's hash format converges to
+ * Argon2id over time without requiring forced password resets.
+ */
+async function verifyPassword(plain: string, hash: string): Promise<boolean> {
+  if (hash.startsWith('$argon2')) {
+    return argon2.verify(hash, plain);
+  }
+  if (hash.startsWith('$2')) {
+    const { compare } = await import('bcrypt');
+    return compare(plain, hash);
+  }
+  return false;
+}
 
 export interface JwtPayload {
   sub: string;
@@ -92,7 +125,7 @@ export class AuthService {
       return null;
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    const isPasswordValid = await verifyPassword(password, user.passwordHash);
 
     if (!isPasswordValid) {
       // Increment failed login attempts
@@ -105,6 +138,12 @@ export class AuthService {
 
       await this.userRepo.save(user);
       return null;
+    }
+
+    // Rotate legacy bcrypt hashes to Argon2id on successful login so that
+    // password verification eventually runs solely through argon2.
+    if (user.passwordHash.startsWith('$2')) {
+      user.passwordHash = await argon2.hash(password, ARGON2_OPTIONS);
     }
 
     // Reset failed attempts on successful login
@@ -367,8 +406,8 @@ export class AuthService {
 
     this.assertPasswordComplexity(dto.password);
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    // Hash password with OWASP-recommended Argon2id parameters
+    const passwordHash = await argon2.hash(dto.password, ARGON2_OPTIONS);
 
     const displayName = [dto.firstName, dto.lastName].filter(Boolean).join(' ') || dto.email;
     void createdBy; // Reserved for audit tracking
@@ -404,7 +443,7 @@ export class AuthService {
       throw new UnauthorizedException('Password not set for this account');
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const isCurrentPasswordValid = await verifyPassword(dto.currentPassword, user.passwordHash);
 
     if (!isCurrentPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
@@ -412,7 +451,7 @@ export class AuthService {
 
     this.assertPasswordComplexity(dto.newPassword);
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    user.passwordHash = await argon2.hash(dto.newPassword, ARGON2_OPTIONS);
     user.passwordChangedAt = new Date();
 
     await this.userRepo.save(user);
