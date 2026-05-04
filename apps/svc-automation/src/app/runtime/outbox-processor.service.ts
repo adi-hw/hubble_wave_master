@@ -67,6 +67,17 @@ export class OutboxProcessorService implements OnModuleInit, OnModuleDestroy {
                 typeof payload.occurredAt === 'string'
                   ? payload.occurredAt
                   : new Date().toISOString(),
+              // Forward cycle/depth state so the runtime can reconstruct the
+              // chain across outbox-driven re-invocations. Absent on
+              // user-originated events (the runtime defaults to depth=1 and
+              // an empty chain).
+              executionChain: Array.isArray(payload.executionChain)
+                ? (payload.executionChain as string[])
+                : undefined,
+              executionDepth:
+                typeof payload.executionDepth === 'number'
+                  ? (payload.executionDepth as number)
+                  : undefined,
             };
 
             if (!recordPayload.collectionCode || !recordPayload.recordId) {

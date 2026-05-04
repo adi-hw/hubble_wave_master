@@ -80,6 +80,41 @@ export class AutomationRuntimeService {
       payload.userId ?? null,
     );
 
+    // Reconstruct chain/depth state from the inbound event. Outbox events
+    // emitted by an automation chain carry these fields; user-originated
+    // events do not, so they default to an empty chain at depth=1.
+    const inboundChain = new Set<string>(payload.executionChain ?? []);
+    const inboundDepth = Math.max(1, payload.executionDepth ?? 1);
+
+    const principalType = this.resolvePrincipalType(payload);
+
+    // Depth gate: a chain that already reached MAX_DEPTH must not produce
+    // another generation. Record a structured 'skipped' execution log so
+    // operators can alert on truncated chains rather than silently dropping.
+    if (inboundDepth > MAX_DEPTH) {
+      this.logger.warn(
+        `Automation execution depth exceeded MAX_DEPTH=${MAX_DEPTH}, dropping chain ` +
+          `(collection=${collection.code} record=${payload.recordId} depth=${inboundDepth})`,
+      );
+      await withAudit(this.dataSource, async (mgr) => {
+        await this.executionLog.log(
+          {
+            automationName: '_chain_depth_exceeded',
+            collectionId: collection.id,
+            recordId: payload.recordId,
+            triggerEvent: operation,
+            status: 'skipped',
+            skippedReason: `Automation chain depth exceeded MAX_DEPTH=${MAX_DEPTH}`,
+            triggeredBy: payload.userId ?? null,
+            triggeredByPrincipalType: principalType,
+            executionDepth: inboundDepth,
+          },
+          mgr,
+        );
+      });
+      return;
+    }
+
     const baseContext: ExecutionContext = {
       user: {
         id: payload.userId ?? null,
@@ -88,16 +123,14 @@ export class AutomationRuntimeService {
       previousRecord,
       changes,
       automation: null as unknown as ExecutionContext['automation'],
-      depth: 1,
+      depth: inboundDepth,
       maxDepth: MAX_DEPTH,
-      executionChain: [],
+      executionChain: inboundChain,
       outputs: {},
       errors: [],
       warnings: [],
       authorizedFields,
     };
-
-    const principalType = this.resolvePrincipalType(payload);
 
     const automations = await this.getAutomationsForCollection(collection.id);
     let executedCount = 0;
@@ -125,7 +158,13 @@ export class AutomationRuntimeService {
         continue;
       }
 
-      if (baseContext.executionChain.includes(automation.id)) {
+      // Cycle key: `${automationId}:${recordId}`. Including the record id
+      // means the same automation is allowed to fire on a different record
+      // (legitimate cross-record fan-out — e.g. A on rec-1 → A on rec-2)
+      // while same (automation, record) re-entry inside one chain is
+      // detected as a cycle.
+      const cycleKey = `${automation.id}:${payload.recordId}`;
+      if (baseContext.executionChain.has(cycleKey)) {
         await withAudit(this.dataSource, async (mgr, recordAudit) => {
           await this.executionLog.log(
             {
@@ -163,14 +202,14 @@ export class AutomationRuntimeService {
         triggerTiming: automation.triggerTiming,
         abortOnError: automation.abortOnError,
       };
-      baseContext.executionChain.push(automation.id);
+      baseContext.executionChain.add(cycleKey);
 
       try {
         await this.executeAutomation(automation, baseContext, collection.code, operation, principalType);
         executedCount++;
-        baseContext.executionChain.pop();
+        baseContext.executionChain.delete(cycleKey);
       } catch (error) {
-        baseContext.executionChain.pop();
+        baseContext.executionChain.delete(cycleKey);
         this.logger.error(
           `Automation ${automation.id} failed: ${(error as Error).message}`,
         );
@@ -280,10 +319,15 @@ export class AutomationRuntimeService {
             }
           } else if (result.type === 'create_record') {
             const output = result.output as { collection: string; values: Record<string, unknown> };
+            // Forward chain + depth onto the outbox event the mutation
+            // emits so the next runtime invocation can detect cycles and
+            // honour MAX_DEPTH across the chain.
             await this.recordMutation.createRecord({
               collectionCode: output.collection,
               values: output.values,
               actorId: context.user.id,
+              executionChain: Array.from(context.executionChain),
+              executionDepth: context.depth + 1,
             });
           } else if (result.type === 'send_notification') {
             await this.outboxPublisher.publishEvent({
@@ -407,12 +451,18 @@ export class AutomationRuntimeService {
         operation !== 'delete' &&
         this.hasRecordChanges(context.record, modifiedRecord)
       ) {
+        // Forward chain + depth onto the outbox event the mutation emits so
+        // the next runtime invocation can detect cycles and honour MAX_DEPTH
+        // across the chain. Without this, A→B→A cycles on the same record
+        // and chains deeper than MAX_DEPTH escape detection.
         persistedRecord = await this.recordMutation.updateRecordInTransaction(
           {
             collectionCode,
             recordId: context.record.id as string,
             changes: this.diffRecord(context.record, modifiedRecord),
             actorId: context.user.id,
+            executionChain: Array.from(context.executionChain),
+            executionDepth: context.depth + 1,
           },
           mgr,
           recordAudit,

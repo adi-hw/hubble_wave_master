@@ -29,7 +29,7 @@ describe('ScriptSandboxService', () => {
     },
     depth: 1,
     maxDepth: 5,
-    executionChain: [],
+    executionChain: new Set<string>(),
     outputs: {},
     errors: [],
     warnings: [],
