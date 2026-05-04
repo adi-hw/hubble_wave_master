@@ -92,6 +92,19 @@ export class PropertyController {
     return this.propertyService.getProperty(id);
   }
 
+  /**
+   * "Where used" report — returns every dependent (formula, view, automation,
+   * form, validation rule, display rule) that references this property. Backs
+   * the admin UI's pre-delete inspection view.
+   */
+  @Get(':id/references')
+  @RequirePermission('property.read')
+  async references(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.propertyService.findReferences(id);
+  }
+
   @Post()
   @RequirePermission('property.create')
   async create(
