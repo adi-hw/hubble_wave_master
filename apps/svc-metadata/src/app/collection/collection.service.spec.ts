@@ -1,11 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { CollectionDefinition, PropertyDefinition, PropertyType } from '@hubblewave/instance-db';
+import {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+  PropertyDefinition,
+  PropertyType,
+} from '@hubblewave/instance-db';
 
 import { CollectionService } from './collection.service';
 import { CollectionStorageService } from './collection-storage.service';
 import { CollectionAvaService } from './collection-ava.service';
+import { PublishImpactService } from '../publish-impact/publish-impact.service';
+import { DependentReviewQueueService } from '../publish-impact/dependent-review-queue.service';
 
 describe('CollectionService.createCollection (W1.4 atomicity)', () => {
   let service: CollectionService;
@@ -16,7 +23,12 @@ describe('CollectionService.createCollection (W1.4 atomicity)', () => {
     commitTransaction: jest.Mock;
     rollbackTransaction: jest.Mock;
     release: jest.Mock;
-    manager: { create: jest.Mock; save: jest.Mock; find: jest.Mock };
+    manager: {
+      create: jest.Mock;
+      save: jest.Mock;
+      find: jest.Mock;
+      createQueryBuilder: jest.Mock;
+    };
   };
   let collectionRepo: { findOne: jest.Mock };
 
@@ -24,7 +36,16 @@ describe('CollectionService.createCollection (W1.4 atomicity)', () => {
     jest.clearAllMocks();
 
     queryRunner = {
-      query: jest.fn().mockResolvedValue(undefined),
+      // resolveApplicationId reads the applications table; the seeded
+      // 'default' Application row is non-null so createCollection can
+      // proceed through resolveApplicationId. Other queries (the
+      // pg_advisory_xact_lock call) take no result.
+      query: jest.fn(async (sql: string) => {
+        if (typeof sql === 'string' && sql.includes('FROM applications')) {
+          return [{ id: 'app-default' }];
+        }
+        return undefined;
+      }),
       startTransaction: jest.fn().mockResolvedValue(undefined),
       commitTransaction: jest.fn().mockResolvedValue(undefined),
       rollbackTransaction: jest.fn().mockResolvedValue(undefined),
@@ -35,7 +56,24 @@ describe('CollectionService.createCollection (W1.4 atomicity)', () => {
           ...payload,
         })),
         save: jest.fn((_entity: unknown, payload: Record<string, unknown>) => Promise.resolve(payload)),
-        find: jest.fn().mockResolvedValue([]),
+        // createDefaultProperties looks up PropertyType rows by code; return
+        // a stub for each system code so the happy path completes.
+        find: jest.fn(async (entity: unknown) => {
+          if (entity === PropertyType) {
+            return [
+              { id: 'pt-uuid', code: 'uuid' },
+              { id: 'pt-datetime', code: 'datetime' },
+              { id: 'pt-user', code: 'user' },
+            ];
+          }
+          return [];
+        }),
+        // nextCollectionRevisionNumber issues a query through createQueryBuilder.
+        createQueryBuilder: jest.fn(() => ({
+          select: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ max: 0 }),
+        })),
       },
     };
 
@@ -51,22 +89,34 @@ describe('CollectionService.createCollection (W1.4 atomicity)', () => {
       findOne: jest.fn().mockResolvedValue(null),
     };
 
+    const collectionRevisionRepo = { findOne: jest.fn(), find: jest.fn() };
     const propertyRepo = { find: jest.fn(), createQueryBuilder: jest.fn() };
     const propertyTypeRepo = { find: jest.fn() };
     const avaService = {
       getNamingSuggestions: jest.fn(),
       analyzeImportStructure: jest.fn(),
     };
+    // PublishImpactService and DependentReviewQueueService are dependencies of
+    // the SUT but createCollection does not invoke them; minimal stubs satisfy
+    // Nest's DI graph.
+    const publishImpactService = {};
+    const dependentQueueService = {};
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CollectionService,
         { provide: getRepositoryToken(CollectionDefinition), useValue: collectionRepo },
+        {
+          provide: getRepositoryToken(CollectionDefinitionRevision),
+          useValue: collectionRevisionRepo,
+        },
         { provide: getRepositoryToken(PropertyDefinition), useValue: propertyRepo },
         { provide: getRepositoryToken(PropertyType), useValue: propertyTypeRepo },
         { provide: DataSource, useValue: dataSource },
         { provide: CollectionStorageService, useValue: storageService },
         { provide: CollectionAvaService, useValue: avaService },
+        { provide: PublishImpactService, useValue: publishImpactService },
+        { provide: DependentReviewQueueService, useValue: dependentQueueService },
       ],
     }).compile();
 

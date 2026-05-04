@@ -112,11 +112,18 @@ function buildFakeDataSource(opts: { failAuditSave?: boolean }) {
 
 describe('CollectionDataService — transactional audit', () => {
   function buildService(dataSource: DataSource): CollectionDataService {
+    // W1.5 renamed the AuthorizationService methods from `*Table` to
+    // `*Collection`. The CRUD path resolves access by collection id; the
+    // mock mirrors every variant the SUT touches so a future rename does
+    // not silently re-break the chaos test.
     const authz: any = {
-      ensureTableAccess: jest.fn(async () => undefined),
-      getAuthorizedFields: jest.fn(async (_ctx: any, _t: any, fields: any[]) =>
-        fields.map((f: any) => ({ ...f, canRead: true, canWrite: true })),
+      ensureCollectionAccess: jest.fn(async () => undefined),
+      getAuthorizedFieldsForCollection: jest.fn(
+        async (_ctx: any, _id: string, fields: any[]) =>
+          fields.map((f: any) => ({ ...f, canRead: true, canWrite: true })),
       ),
+      buildCollectionRowLevelClause: jest.fn(async () => null),
+      buildRowLevelClause: jest.fn(async () => null),
     };
     const validation: any = {
       validateRecord: jest.fn(async () => ({ isValid: true, properties: [] })),
@@ -128,13 +135,29 @@ describe('CollectionDataService — transactional audit', () => {
     const outbox = {
       enqueueRecordEvent: jest.fn(async () => undefined),
     } as unknown as EventOutboxService;
+    // The runBefore/AfterAutomations helpers route through one
+    // executeAutomations entry point (W2.B) and read aborted / errors /
+    // warnings / asyncQueue / modifiedRecord off the result. A no-op
+    // mock returning the record unchanged keeps the chaos test focused
+    // on the audit-rollback contract.
     const automationExecutor: any = {
-      executeBefore: jest.fn(async (_ctx: any, _c: any, _r: any, data: any) => data),
-      executeAfter: jest.fn(async () => undefined),
+      executeAutomations: jest.fn(async (
+        _collectionId: string,
+        _phase: 'before' | 'after',
+        _operation: string,
+        record: Record<string, unknown>,
+      ) => ({
+        modifiedRecord: record ?? {},
+        errors: [],
+        warnings: [],
+        asyncQueue: [],
+        aborted: false,
+      })),
     };
+    // runComputedDispatch calls applyOnSave (returns merged record).
+    // applyOnDelete is the per-row hook used by single-record delete.
     const computedDispatcher: any = {
-      applyOnInsert: jest.fn(async () => ({})),
-      applyOnUpdate: jest.fn(async () => ({})),
+      applyOnSave: jest.fn(async ({ record }: { record: Record<string, unknown> }) => record ?? {}),
       applyOnDelete: jest.fn(async () => undefined),
     };
     const runtimeAnomaly: any = {
@@ -298,8 +321,7 @@ describe('CollectionDataService — bulk partial-failure anomaly recording (W2.D
 
     const authz: any = {
       ensureCollectionAccess: jest.fn(async () => undefined),
-      ensureTableAccess: jest.fn(async () => undefined),
-      getAuthorizedFields: jest.fn(async () => [
+      getAuthorizedFieldsForCollection: jest.fn(async () => [
         { code: 'status', canRead: true, canWrite: true },
       ]),
       filterWritableFieldsForCollection: jest.fn(async (_ctx: any, _c: any, p: any) => p),
