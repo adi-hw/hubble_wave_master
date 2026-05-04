@@ -27,15 +27,7 @@ const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']
  * accepted as deferred work. Listed by relative path. Each entry must be
  * accompanied by a follow-up reference (Wave/Fix/issue).
  */
-const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [
-  // Connector flows write multi-step audit and outbox without a single
-  // transactional boundary. Refactor planned alongside the broader
-  // integrations cleanup.
-  {
-    file: 'apps/svc-data/src/app/integration/connector.service.ts',
-    followUp: 'W3 follow-up: connector sync audit transactions',
-  },
-];
+const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [];
 
 const AUDIT_WRITE_PATTERNS = [
   /\bauditLog(?:Repo|Repository)?\s*\.\s*save\s*\(/,
