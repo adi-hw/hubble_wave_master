@@ -6,10 +6,12 @@ import { LdapService } from './ldap.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SkipAbac } from '../abac/abac.guard';
 
 @Controller('admin/auth/ldap')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
+@SkipAbac()
 export class LdapController {
   constructor(
     @InjectRepository(LdapConfig) private readonly ldapConfigRepo: Repository<LdapConfig>,

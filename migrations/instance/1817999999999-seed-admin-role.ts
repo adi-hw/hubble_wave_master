@@ -79,6 +79,11 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
     { slug: 'admin.audit', name: 'View Audit Logs', description: 'Access audit trail', category: 'admin', isDangerous: false },
     { slug: 'admin.integrations', name: 'Manage Integrations', description: 'Configure external integrations', category: 'admin', isDangerous: false },
     { slug: 'admin.backup', name: 'Backup/Restore', description: 'Create and restore backups', category: 'admin', isDangerous: true },
+    { slug: 'admin.policies.view', name: 'View Access Policies', description: 'Inspect row-level and field-level access rules', category: 'admin', isDangerous: false },
+
+    // Delegation
+    { slug: 'delegations.approve', name: 'Approve Delegations', description: 'Approve pending authority delegations on behalf of others', category: 'delegations', isDangerous: false },
+    { slug: 'delegations.admin', name: 'Administer Delegations', description: 'View and manage delegations across all users', category: 'delegations', isDangerous: true },
 
     // Navigation
     { slug: 'navigation.view', name: 'View Navigation', description: 'View navigation configuration', category: 'navigation', isDangerous: false },
@@ -92,73 +97,70 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
 
     // API
     { slug: 'api.access', name: 'API Access', description: 'Access API Explorer', category: 'api', isDangerous: false },
+
+    // Notifications. Direct-send via POST /notifications/send is privileged
+    // because the recipient sees an "official system" notification — a
+    // phishing vector if held by anyone other than admins. Workflow,
+    // automation, and AVA paths originate notifications server-side
+    // through NotificationService directly and do not consume this slug.
+    { slug: 'notifications.send.direct', name: 'Send Direct Notifications', description: 'Send notifications directly to any recipient via the admin API (workflows do not need this)', category: 'admin', isDangerous: true },
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Check if admin role already exists
+    // Idempotent seed: insert permissions, ensure admin role exists, and grant
+    // every permission to admin. Re-running this migration is safe and lets
+    // newly added permissions reach existing installations without a follow-up
+    // migration.
+
+    for (const perm of this.permissions) {
+      await queryRunner.query(
+        `INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at)
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, true, NOW())
+         ON CONFLICT (code) DO NOTHING`,
+        [perm.slug, perm.name, perm.description, perm.category, perm.isDangerous]
+      );
+    }
+
     const existingRole = await queryRunner.query(
       `SELECT id FROM roles WHERE code = 'admin' LIMIT 1`
     );
 
+    let adminRoleId: string;
     if (existingRole && existingRole.length > 0) {
-      console.log('Admin role already exists, skipping seed');
-      return;
-    }
-
-    // Create all permissions
-    for (const perm of this.permissions) {
-      await queryRunner.query(`
-        INSERT INTO permissions (id, code, name, description, category, is_dangerous, is_system, created_at, updated_at)
+      adminRoleId = existingRole[0].id;
+    } else {
+      const roleResult = await queryRunner.query(`
+        INSERT INTO roles (id, code, name, description, color, is_system, is_active, is_default, created_at, updated_at)
         VALUES (
           uuid_generate_v4(),
-          '${perm.slug}',
-          '${perm.name}',
-          '${perm.description}',
-          '${perm.category}',
-          ${perm.isDangerous},
+          'admin',
+          'Administrator',
+          'Full system access with all permissions',
+          '#ef4444',
           true,
+          true,
+          false,
           NOW(),
           NOW()
         )
-        ON CONFLICT (code) DO NOTHING
+        RETURNING id
       `);
+      adminRoleId = roleResult[0]?.id;
+      if (!adminRoleId) {
+        throw new Error('Failed to create admin role');
+      }
     }
 
-    // Create admin role
-    const roleResult = await queryRunner.query(`
-      INSERT INTO roles (id, code, name, description, color, is_system, is_active, is_default, created_at, updated_at)
-      VALUES (
-        uuid_generate_v4(),
-        'admin',
-        'Administrator',
-        'Full system access with all permissions',
-        '#ef4444',
-        true,
-        true,
-        false,
-        NOW(),
-        NOW()
-      )
-      RETURNING id
-    `);
-
-    const adminRoleId = roleResult[0]?.id;
-    if (!adminRoleId) {
-      throw new Error('Failed to create admin role');
-    }
-
-    // Assign all permissions to admin role
     const allPermissions = await queryRunner.query(`SELECT id FROM permissions`);
 
     for (const perm of allPermissions) {
-      await queryRunner.query(`
-        INSERT INTO role_permissions (id, role_id, permission_id, created_at)
-        VALUES (uuid_generate_v4(), '${adminRoleId}', '${perm.id}', NOW())
-        ON CONFLICT DO NOTHING
-      `);
+      await queryRunner.query(
+        `INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+         VALUES (uuid_generate_v4(), $1, $2, NOW())
+         ON CONFLICT DO NOTHING`,
+        [adminRoleId, perm.id]
+      );
     }
-
-    console.log('Admin role created with all permissions');
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -172,7 +174,10 @@ export class SeedAdminRole1817999999999 implements MigrationInterface {
     await queryRunner.query(`DELETE FROM roles WHERE code = 'admin'`);
 
     // Remove seeded permissions
-    const slugs = this.permissions.map(p => `'${p.slug}'`).join(',');
-    await queryRunner.query(`DELETE FROM permissions WHERE code IN (${slugs})`);
+    const slugs = this.permissions.map(p => p.slug);
+    await queryRunner.query(
+      `DELETE FROM permissions WHERE code = ANY($1::text[])`,
+      [slugs]
+    );
   }
 }

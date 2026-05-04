@@ -31,7 +31,7 @@ export interface CreateScheduledJobDto {
   metadata?: Record<string, unknown>;
 }
 
-export interface UpdateScheduledJobDto extends Partial<CreateScheduledJobDto> {}
+export type UpdateScheduledJobDto = Partial<CreateScheduledJobDto>;
 
 @Injectable()
 export class ScheduledJobService {

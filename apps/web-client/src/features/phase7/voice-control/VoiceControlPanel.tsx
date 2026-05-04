@@ -113,8 +113,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({ isOpen, on
           }
         };
 
-        recognitionRef.current.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
+        recognitionRef.current.onerror = () => {
+          // Speech recognition error - stop listening
           setIsListening(false);
         };
 
@@ -137,8 +137,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({ isOpen, on
     try {
       const response = await voiceControlApi.getCommandHistory(10);
       setCommandHistory(response.commands);
-    } catch (error) {
-      console.error('Failed to load command history:', error);
+    } catch {
+      // Command history fetch failed - list remains empty
     }
   };
 
@@ -152,8 +152,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({ isOpen, on
         speak(response.command.response);
       }
       loadCommandHistory();
-    } catch (error) {
-      console.error('Failed to process command:', error);
+    } catch {
+      // Voice command processing failed - reset transcript
     } finally {
       setProcessing(false);
       setTranscript('');

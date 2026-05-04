@@ -423,10 +423,9 @@ const AppShellInner: React.FC<AppShellProps> = ({ children }) => {
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   return (
     <ErrorBoundary
-      onError={(error, errorInfo) => {
-        // Log to console in development, could send to error service in production
-        console.error('AppShell Error:', error);
-        console.error('Component Stack:', errorInfo.componentStack);
+      onError={() => {
+        // Error boundary caught an error - errors are captured by ErrorBoundary
+        // Production would send to error reporting service
       }}
     >
       <ThemeProvider>

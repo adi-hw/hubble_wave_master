@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, Inject, Optional, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { RequestContext } from '@hubblewave/auth-guard';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -13,7 +13,7 @@ import {
   AccessConditionData,
   SPECIAL_VALUES,
 } from './types';
-import { AbacService, SafePredicate } from './abac.service';
+import { AbacService, SafePredicate, LeafPredicate } from './abac.service';
 import { PolicyCompilerService } from './policy-compiler.service';
 
 export interface RowLevelClause {
@@ -23,6 +23,7 @@ export interface RowLevelClause {
 
 export const COLLECTION_ACL_REPOSITORY = 'COLLECTION_ACL_REPOSITORY';
 export const PROPERTY_ACL_REPOSITORY = 'PROPERTY_ACL_REPOSITORY';
+export const COLLECTION_DEFINITION_REPOSITORY = 'COLLECTION_DEFINITION_REPOSITORY';
 
 interface CollectionAclRepo {
   find(options: { where: Record<string, unknown>; order?: Record<string, string> }): Promise<CollectionAccessRuleData[]>;
@@ -30,6 +31,15 @@ interface CollectionAclRepo {
 
 interface PropertyAclRepo {
   find(options: { where: Record<string, unknown>; order?: Record<string, string> }): Promise<PropertyAccessRuleData[]>;
+}
+
+/**
+ * Minimal repository contract used to translate a `tableName` (mutable label)
+ * into the stable `collectionId` UUID. Any repository whose entity exposes
+ * `id` and `tableName` columns can satisfy this interface.
+ */
+interface CollectionDefinitionLookupRepo {
+  findOne(options: { where: { tableName: string } }): Promise<{ id: string } | null>;
 }
 
 @Injectable()
@@ -47,19 +57,25 @@ export class AuthorizationService {
     @Optional()
     private readonly abacService: AbacService | null,
     private readonly policyCompiler: PolicyCompilerService,
+    @Optional() @Inject(COLLECTION_DEFINITION_REPOSITORY)
+    private readonly collectionDefinitionRepo: CollectionDefinitionLookupRepo | null = null,
   ) {}
 
   // ============================================================================
-  // Public API
+  // Public API — Collection variants (preferred)
+  //
+  // These methods take the stable `collectionId` UUID and are the canonical
+  // entry points. Use them whenever the caller already has a `collectionId`
+  // in scope (which is true for nearly every direct caller).
   // ============================================================================
 
   /**
-   * Check if user can access a table/collection for a given operation.
+   * Check if user can access a collection for a given operation.
    * Returns true if access is allowed, false otherwise.
    */
-  async canAccessTable(
+  async canAccessCollection(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
     // Admin bypass
@@ -69,12 +85,12 @@ export class AuthorizationService {
 
     // If no repository configured, deny by default (secure)
     if (!this.collectionAclRepo) {
-      this.logger.warn(`No collection access rule repository configured - denying access to ${tableName}`);
+      this.logger.warn(`No collection access rule repository configured - denying access to collection ${collectionId}`);
       return false;
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(collectionId);
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -90,28 +106,28 @@ export class AuthorizationService {
   }
 
   /**
-   * Ensure user has access to a table, throwing ForbiddenException if not.
+   * Ensure user has access to a collection, throwing ForbiddenException if not.
    */
-  async ensureTableAccess(
+  async ensureCollectionAccess(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     operation: CollectionOperation,
   ): Promise<void> {
-    const hasAccess = await this.canAccessTable(ctx, tableName, operation);
+    const hasAccess = await this.canAccessCollection(ctx, collectionId, operation);
     if (!hasAccess) {
       throw new ForbiddenException(
-        `Access denied: You do not have permission to ${operation} records in ${tableName}`,
+        `Access denied: You do not have permission to ${operation} records in collection ${collectionId}`,
       );
     }
   }
 
   /**
-   * Get safe row-level predicates for a table operation.
+   * Get safe row-level predicates for a collection operation.
    * These can be used to build parameterized WHERE clauses.
    */
-  async getSafeRowLevelPredicates(
+  async getSafeRowLevelPredicatesForCollection(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
     // Admin bypass - no row restrictions
@@ -124,7 +140,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(collectionId);
     const predicates: SafePredicate[] = [];
 
     for (const rule of rules) {
@@ -150,12 +166,12 @@ export class AuthorizationService {
   }
 
   /**
-   * Build row-level security clause for SQL queries.
+   * Build row-level security clause for SQL queries against a collection.
    * Returns parameterized WHERE clause components.
    */
-  async buildRowLevelClause(
+  async buildCollectionRowLevelClause(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     operation: CollectionOperation,
     tableAlias = 't',
   ): Promise<RowLevelClause> {
@@ -164,7 +180,7 @@ export class AuthorizationService {
       return { clauses: [], params: {} };
     }
 
-    const predicates = await this.getSafeRowLevelPredicates(ctx, tableName, operation);
+    const predicates = await this.getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation);
 
     if (predicates.length === 0) {
       return { clauses: [], params: {} };
@@ -186,11 +202,11 @@ export class AuthorizationService {
   }
 
   /**
-   * Get authorized fields with read/write permissions and masking strategies.
+   * Get authorized fields for a collection with read/write permissions and masking strategies.
    */
-  async getAuthorizedFields(
+  async getAuthorizedFieldsForCollection(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
     // Admin bypass - full access
@@ -214,7 +230,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const propertyRules = await this.getPropertyRules(tableName);
+    const propertyRules = await this.getPropertyRules(collectionId);
 
     return fields.map((field) => {
       const fieldRules = propertyRules.filter(
@@ -249,35 +265,37 @@ export class AuthorizationService {
   }
 
   /**
-   * Filter fields to only those readable by the user.
+   * Filter fields to only those readable by the user, scoped to a collection.
    */
-  async filterReadableFields(
+  async filterReadableFieldsForCollection(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
-    const authorized = await this.getAuthorizedFields(ctx, tableName, fields);
+    const authorized = await this.getAuthorizedFieldsForCollection(ctx, collectionId, fields);
     return authorized.filter((f) => f.canRead);
   }
 
   /**
-   * Filter fields to only those writable by the user.
+   * Filter fields to only those writable by the user, scoped to a collection.
    */
-  async filterWritableFields(
+  async filterWritableFieldsForCollection(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
-    const authorized = await this.getAuthorizedFields(ctx, tableName, fields);
+    const authorized = await this.getAuthorizedFieldsForCollection(ctx, collectionId, fields);
     return authorized.filter((f) => f.canWrite);
   }
 
   /**
    * Apply field masking to a record based on authorization.
+   * Note: Masking is driven by the `fields` array (which already encodes
+   * canRead and maskingStrategy), so this method does not need a collection
+   * identifier. Provided alongside the *Collection variants for symmetry.
    */
-  async maskRecord(
+  async maskCollectionRecord(
     ctx: RequestContext,
-    _tableName: string,
     record: Record<string, unknown>,
     fields: AuthorizedPropertyMeta[],
   ): Promise<Record<string, unknown>> {
@@ -304,12 +322,12 @@ export class AuthorizationService {
   }
 
   /**
-   * Check if user can perform operation on a specific record.
+   * Check if user can perform operation on a specific record in a collection.
    * Evaluates row-level conditions against the record data.
    */
-  async canAccessRecord(
+  async canAccessCollectionRecord(
     ctx: RequestContext,
-    tableName: string,
+    collectionId: string,
     operation: CollectionOperation,
     record: Record<string, unknown>,
   ): Promise<boolean> {
@@ -323,7 +341,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(tableName);
+    const rules = await this.getCollectionRules(collectionId);
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -350,8 +368,182 @@ export class AuthorizationService {
   }
 
   // ============================================================================
+  // Public API — Table-name variants (deprecated)
+  //
+  // These wrappers exist to keep callers that only have a `tableName` working
+  // during the migration. They resolve `tableName -> collectionId` via the
+  // CollectionDefinition repo and throw `NotFoundException` on failure.
+  // The previous behaviour treated the parameter as a collectionId directly,
+  // which silently produced empty rule sets when the value was a table name.
+  // ============================================================================
+
+  /**
+   * @deprecated Use `canAccessCollection(ctx, collectionId, operation)` instead.
+   * `tableName` is mutable; `collectionId` is stable. Resolution failures throw.
+   */
+  async canAccessTable(
+    ctx: RequestContext,
+    tableName: string,
+    operation: CollectionOperation,
+  ): Promise<boolean> {
+    if (ctx.isAdmin) {
+      return true;
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    return this.canAccessCollection(ctx, collectionId, operation);
+  }
+
+  /**
+   * @deprecated Use `ensureCollectionAccess(ctx, collectionId, operation)` instead.
+   */
+  async ensureTableAccess(
+    ctx: RequestContext,
+    tableName: string,
+    operation: CollectionOperation,
+  ): Promise<void> {
+    if (ctx.isAdmin) {
+      return;
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    await this.ensureCollectionAccess(ctx, collectionId, operation);
+  }
+
+  /**
+   * @deprecated Use `getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation)` instead.
+   */
+  async getSafeRowLevelPredicates(
+    ctx: RequestContext,
+    tableName: string,
+    operation: CollectionOperation,
+  ): Promise<SafePredicate[]> {
+    if (ctx.isAdmin) {
+      return [];
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    return this.getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation);
+  }
+
+  /**
+   * @deprecated Use `buildCollectionRowLevelClause(ctx, collectionId, operation, tableAlias)` instead.
+   */
+  async buildRowLevelClause(
+    ctx: RequestContext,
+    tableName: string,
+    operation: CollectionOperation,
+    tableAlias = 't',
+  ): Promise<RowLevelClause> {
+    if (ctx.isAdmin) {
+      return { clauses: [], params: {} };
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    return this.buildCollectionRowLevelClause(ctx, collectionId, operation, tableAlias);
+  }
+
+  /**
+   * @deprecated Use `getAuthorizedFieldsForCollection(ctx, collectionId, fields)` instead.
+   */
+  async getAuthorizedFields(
+    ctx: RequestContext,
+    tableName: string,
+    fields: PropertyMeta[],
+  ): Promise<AuthorizedPropertyMeta[]> {
+    if (ctx.isAdmin) {
+      return fields.map((field) => ({
+        ...field,
+        canRead: true,
+        canWrite: true,
+        maskingStrategy: 'NONE' as MaskingStrategy,
+      }));
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    return this.getAuthorizedFieldsForCollection(ctx, collectionId, fields);
+  }
+
+  /**
+   * @deprecated Use `filterReadableFieldsForCollection(ctx, collectionId, fields)` instead.
+   */
+  async filterReadableFields(
+    ctx: RequestContext,
+    tableName: string,
+    fields: PropertyMeta[],
+  ): Promise<AuthorizedPropertyMeta[]> {
+    const authorized = await this.getAuthorizedFields(ctx, tableName, fields);
+    return authorized.filter((f) => f.canRead);
+  }
+
+  /**
+   * @deprecated Use `filterWritableFieldsForCollection(ctx, collectionId, fields)` instead.
+   */
+  async filterWritableFields(
+    ctx: RequestContext,
+    tableName: string,
+    fields: PropertyMeta[],
+  ): Promise<AuthorizedPropertyMeta[]> {
+    const authorized = await this.getAuthorizedFields(ctx, tableName, fields);
+    return authorized.filter((f) => f.canWrite);
+  }
+
+  /**
+   * @deprecated Use `maskCollectionRecord(ctx, record, fields)` instead.
+   * The `tableName` argument is unused — masking is driven entirely by `fields`.
+   */
+  async maskRecord(
+    ctx: RequestContext,
+    _tableName: string,
+    record: Record<string, unknown>,
+    fields: AuthorizedPropertyMeta[],
+  ): Promise<Record<string, unknown>> {
+    return this.maskCollectionRecord(ctx, record, fields);
+  }
+
+  /**
+   * @deprecated Use `canAccessCollectionRecord(ctx, collectionId, operation, record)` instead.
+   */
+  async canAccessRecord(
+    ctx: RequestContext,
+    tableName: string,
+    operation: CollectionOperation,
+    record: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (ctx.isAdmin) {
+      return true;
+    }
+    const collectionId = await this.resolveTableNameToCollectionId(tableName);
+    return this.canAccessCollectionRecord(ctx, collectionId, operation, record);
+  }
+
+  // ============================================================================
   // Private Helpers
   // ============================================================================
+
+  /**
+   * Resolve a (mutable) `tableName` to its (stable) `collectionId` UUID via
+   * the `CollectionDefinition` repository. Throws `NotFoundException` when no
+   * matching collection exists — never returns null/undefined and never
+   * silently degrades to "no rules" behaviour.
+   */
+  private async resolveTableNameToCollectionId(tableName: string): Promise<string> {
+    if (!tableName) {
+      throw new NotFoundException('Cannot resolve authorization rules: tableName is empty');
+    }
+
+    if (!this.collectionDefinitionRepo) {
+      throw new NotFoundException(
+        `Cannot resolve tableName "${tableName}" to collectionId: ` +
+          'no CollectionDefinition repository is configured for AuthorizationService',
+      );
+    }
+
+    const definition = await this.collectionDefinitionRepo.findOne({ where: { tableName } });
+    if (!definition || !definition.id) {
+      throw new NotFoundException(
+        `No collection found for tableName "${tableName}". ` +
+          'tableName is mutable; use the stable collectionId via the *Collection methods.',
+      );
+    }
+
+    return definition.id;
+  }
 
   private buildUserContext(ctx: RequestContext): UserAccessContext {
     const attributes = ctx.attributes || {};
@@ -370,11 +562,15 @@ export class AuthorizationService {
     };
   }
 
-  private async getCollectionRules(collectionId: string): Promise<CollectionAccessRuleData[]> {
+  private async getCollectionRules(
+    collectionId: string,
+  ): Promise<CollectionAccessRuleData[]> {
     if (!this.collectionAclRepo) {
       return [];
     }
 
+    // Canon §5: one instance per customer — no tenant scoping needed in the
+    // cache key. The process IS the tenant.
     const cacheKey = `auth:collection-rules:${collectionId}`;
 
     if (this.cache) {
@@ -396,7 +592,9 @@ export class AuthorizationService {
     return rules;
   }
 
-  private async getPropertyRules(collectionId: string): Promise<PropertyAccessRuleData[]> {
+  private async getPropertyRules(
+    collectionId: string,
+  ): Promise<PropertyAccessRuleData[]> {
     if (!this.propertyAclRepo) {
       return [];
     }
@@ -587,6 +785,33 @@ export class AuthorizationService {
     return this.policyCompiler.compile(condition, user);
   }
 
+  /**
+   * Resolve the predicate's runtime value. Array context refs (roles, groups,
+   * sites) yield string[]; scalar refs (userId) yield string. Callers MUST
+   * inspect the operator before binding so we never bind a string[] into a
+   * scalar comparison or vice versa.
+   */
+  private resolvePredicateValue(
+    pred: LeafPredicate,
+    ctx: RequestContext,
+  ): string | string[] | number | boolean | null | undefined {
+    if (!pred.contextRef) {
+      return pred.value ?? null;
+    }
+    switch (pred.contextRef) {
+      case 'userId':
+        return ctx.userId;
+      case 'roles':
+        return Array.isArray(ctx.roles) ? ctx.roles : [];
+      case 'groups':
+        return (ctx.attributes?.['groupIds'] as string[] | undefined) ?? [];
+      case 'sites':
+        return (ctx.attributes?.['siteIds'] as string[] | undefined) ?? [];
+      default:
+        return undefined;
+    }
+  }
+
   private buildPredicateClauseInternal(
     predicates: SafePredicate[],
     ctx: RequestContext,
@@ -594,77 +819,106 @@ export class AuthorizationService {
   ): RowLevelClause {
     const clauses: string[] = [];
     const params: Record<string, unknown> = {};
-    let paramIndex = 0;
+    const counter = { value: 0 };
 
     for (const pred of predicates) {
-      const field = `${tableAlias}."${pred.field}"`;
-      const paramName = `rls_p${paramIndex++}`;
-
-      let value = pred.value;
-      if (pred.contextRef) {
-        switch (pred.contextRef) {
-          case 'userId':
-            value = ctx.userId;
-            break;
-          case 'roles':
-            value = ctx.roles as unknown as string;
-            break;
-          case 'groups':
-            value = (ctx.attributes?.['groupIds'] || []) as unknown as string;
-            break;
-          case 'sites':
-            value = (ctx.attributes?.['siteIds'] || []) as unknown as string;
-            break;
-        }
-      }
-
-      switch (pred.operator) {
-        case 'eq':
-          clauses.push(`${field} = :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'neq':
-          clauses.push(`${field} != :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} = ANY(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
-        case 'not_in':
-          if (Array.isArray(value) && value.length > 0) {
-            clauses.push(`${field} != ALL(:${paramName})`);
-            params[paramName] = value;
-          }
-          break;
-        case 'gt':
-          clauses.push(`${field} > :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'gte':
-          clauses.push(`${field} >= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lt':
-          clauses.push(`${field} < :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'lte':
-          clauses.push(`${field} <= :${paramName}`);
-          params[paramName] = value;
-          break;
-        case 'is_null':
-          clauses.push(`${field} IS NULL`);
-          break;
-        case 'is_not_null':
-          clauses.push(`${field} IS NOT NULL`);
-          break;
-      }
+      this.renderPredicateInternal(pred, ctx, tableAlias, clauses, params, counter);
     }
 
     return { clauses, params };
+  }
+
+  private renderPredicateInternal(
+    pred: SafePredicate,
+    ctx: RequestContext,
+    tableAlias: string,
+    clauses: string[],
+    params: Record<string, unknown>,
+    counter: { value: number },
+  ): void {
+    if (pred.kind === 'or') {
+      const branchClauses: string[] = [];
+      for (const branch of pred.branches) {
+        const innerClauses: string[] = [];
+        for (const inner of branch) {
+          this.renderPredicateInternal(inner, ctx, tableAlias, innerClauses, params, counter);
+        }
+        if (innerClauses.length > 0) {
+          branchClauses.push(innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`);
+        }
+      }
+      if (branchClauses.length > 0) {
+        clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
+      }
+      return;
+    }
+
+    const field = `${tableAlias}."${pred.field}"`;
+    const paramName = `rls_p${counter.value++}`;
+    const value = this.resolvePredicateValue(pred, ctx);
+
+    switch (pred.operator) {
+      case 'eq':
+      case 'neq': {
+        // Array values do not legally bind to scalar comparisons. Refuse
+        // rather than coerce so a misconfigured policy fails closed.
+        if (Array.isArray(value)) {
+          this.logger.warn(
+            `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for scalar operator`,
+          );
+          counter.value--;
+          return;
+        }
+        clauses.push(`${field} ${pred.operator === 'eq' ? '=' : '!='} :${paramName}`);
+        params[paramName] = value ?? null;
+        break;
+      }
+      case 'in':
+      case 'not_in': {
+        // Postgres ANY/ALL bind to array params. Coerce scalars into
+        // single-element arrays so a literal-value `in` policy still works.
+        const arr = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
+        if (arr.length === 0) {
+          counter.value--;
+          return;
+        }
+        clauses.push(
+          pred.operator === 'in'
+            ? `${field} = ANY(:${paramName})`
+            : `${field} != ALL(:${paramName})`,
+        );
+        params[paramName] = arr;
+        break;
+      }
+      case 'gt':
+      case 'gte':
+      case 'lt':
+      case 'lte': {
+        if (Array.isArray(value)) {
+          this.logger.warn(
+            `Skipping ${pred.operator} predicate on ${pred.field}: array value not supported for range operator`,
+          );
+          counter.value--;
+          return;
+        }
+        const opSql =
+          pred.operator === 'gt' ? '>' :
+          pred.operator === 'gte' ? '>=' :
+          pred.operator === 'lt' ? '<' :
+          '<=';
+        clauses.push(`${field} ${opSql} :${paramName}`);
+        params[paramName] = value;
+        break;
+      }
+      case 'is_null':
+        counter.value--;
+        clauses.push(`${field} IS NULL`);
+        break;
+      case 'is_not_null':
+        counter.value--;
+        clauses.push(`${field} IS NOT NULL`);
+        break;
+    }
   }
 
   private applyMask(value: unknown, strategy: MaskingStrategy): unknown {

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Loader2, Eye, EyeOff, Mail, Lock, ArrowLeft, Key, Smartphone, Building2, AlertCircle, Sparkles, Wand2 } from 'lucide-react';
 import { useAuth, LoginCredentials } from '../auth/AuthContext';
 import { authService, SsoConfig } from '../services/auth';
+import { validateInternalUrl } from '../lib/safe-navigate';
 
 // ============================================================================
 // Animated Background Component
@@ -158,6 +159,10 @@ export const Login = () => {
   const { login, requestPasswordReset, auth } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const getRequestedPath = () => {
+    const from = (location.state as { from?: string | { pathname?: string } } | null)?.from;
+    return typeof from === 'string' ? from : from?.pathname;
+  };
 
   // Fetch SSO configuration on mount
   useEffect(() => {
@@ -175,11 +180,14 @@ export const Login = () => {
     });
   }, []);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated. The `from` location is router state
+  // populated from a previous URL but could be tampered with by a malicious
+  // link, so it must pass open-redirect validation before being used.
   useEffect(() => {
     if (auth.isAuthenticated && !auth.loading) {
-      const from = (location.state as any)?.from?.pathname || '/';
-      navigate(from, { replace: true });
+      const requested = getRequestedPath();
+      const target = validateInternalUrl(requested) ?? '/';
+      navigate(target, { replace: true });
     }
   }, [auth.isAuthenticated, auth.loading, navigate, location]);
 
@@ -208,8 +216,9 @@ export const Login = () => {
         setView('expired-password');
         setError('');
       } else if (result.success) {
-        const from = (location.state as any)?.from?.pathname || '/';
-        navigate(from, { replace: true });
+        const requested = getRequestedPath();
+        const target = validateInternalUrl(requested) ?? '/';
+        navigate(target, { replace: true });
       } else if (result.error) {
         setError(result.error);
       }

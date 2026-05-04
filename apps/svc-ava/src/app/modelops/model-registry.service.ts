@@ -126,6 +126,7 @@ export class ModelRegistryService implements OnModuleInit {
       artifact.status = payload.status;
     }
     if (payload.metadata) {
+      this.validateMetadata(payload.metadata);
       artifact.metadata = { ...(artifact.metadata || {}), ...payload.metadata };
     }
     artifact.updatedBy = actorId || null;
@@ -148,6 +149,30 @@ export class ModelRegistryService implements OnModuleInit {
     const artifact = await this.getArtifact(id);
     if (!payload.checksum || !payload.checksum.trim()) {
       throw new BadRequestException('Checksum is required');
+    }
+    // Checksums must be a hex / base64 digest, not free-form. Lock the format
+    // down to defeat any attempt to smuggle data through the column.
+    if (!/^[A-Za-z0-9+/=:_-]{16,256}$/.test(payload.checksum.trim())) {
+      throw new BadRequestException('Checksum format is invalid');
+    }
+    if (payload.sizeBytes !== undefined) {
+      if (
+        typeof payload.sizeBytes !== 'number' ||
+        !Number.isFinite(payload.sizeBytes) ||
+        payload.sizeBytes < 0 ||
+        payload.sizeBytes > Number.MAX_SAFE_INTEGER
+      ) {
+        throw new BadRequestException('sizeBytes must be a non-negative number');
+      }
+    }
+    if (payload.contentType !== undefined) {
+      if (
+        typeof payload.contentType !== 'string' ||
+        !/^[\w.+\-]+\/[\w.+\-]+$/.test(payload.contentType) ||
+        payload.contentType.length > 128
+      ) {
+        throw new BadRequestException('Invalid contentType MIME format');
+      }
     }
 
     const previous = {
@@ -201,6 +226,78 @@ export class ModelRegistryService implements OnModuleInit {
     if (!payload.version || !payload.version.trim()) {
       throw new BadRequestException('Model version is required');
     }
+    if (!/^[A-Za-z0-9._+\-]{1,64}$/.test(payload.version)) {
+      throw new BadRequestException(
+        'Model version must be 1-64 chars of [A-Za-z0-9._+-]',
+      );
+    }
+    if (payload.filename !== undefined) {
+      if (typeof payload.filename !== 'string' || !/^[A-Za-z0-9._\-]{1,128}$/.test(payload.filename)) {
+        throw new BadRequestException('Filename must be 1-128 safe characters');
+      }
+    }
+    if (payload.contentType !== undefined) {
+      if (
+        typeof payload.contentType !== 'string' ||
+        !/^[\w.+\-]+\/[\w.+\-]+$/.test(payload.contentType) ||
+        payload.contentType.length > 128
+      ) {
+        throw new BadRequestException('Invalid contentType MIME format');
+      }
+    }
+    if (payload.metadata !== undefined) {
+      this.validateMetadata(payload.metadata);
+    }
+  }
+
+  /**
+   * Validate user-supplied metadata bag. Rejects prototype-pollution keys,
+   * binary blobs masquerading as strings, function payloads, and
+   * unreasonably deep / large structures. Keeps the metadata column purely
+   * descriptive.
+   */
+  private validateMetadata(value: unknown, depth = 0): void {
+    if (depth > 6) {
+      throw new BadRequestException('Metadata nesting too deep');
+    }
+    if (value === null || value === undefined) return;
+    const t = typeof value;
+    if (t === 'string') {
+      if ((value as string).length > 8192) {
+        throw new BadRequestException('Metadata string value too large');
+      }
+      return;
+    }
+    if (t === 'number' || t === 'boolean') return;
+    if (t === 'function') {
+      throw new BadRequestException('Metadata may not contain functions');
+    }
+    if (Array.isArray(value)) {
+      if (value.length > 256) {
+        throw new BadRequestException('Metadata array too large');
+      }
+      for (const item of value) {
+        this.validateMetadata(item, depth + 1);
+      }
+      return;
+    }
+    if (t === 'object') {
+      const keys = Object.keys(value as Record<string, unknown>);
+      if (keys.length > 128) {
+        throw new BadRequestException('Metadata object too large');
+      }
+      for (const key of keys) {
+        if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+          throw new BadRequestException(`Metadata key not allowed: ${key}`);
+        }
+        if (key.length > 128) {
+          throw new BadRequestException('Metadata key too long');
+        }
+        this.validateMetadata((value as Record<string, unknown>)[key], depth + 1);
+      }
+      return;
+    }
+    throw new BadRequestException(`Unsupported metadata value type: ${t}`);
   }
 
   private async resolveSnapshot(snapshotId?: string): Promise<DatasetSnapshot | null> {

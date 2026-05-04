@@ -7,6 +7,16 @@ import {
   User,
 } from '@hubblewave/instance-db';
 import { EmailService } from '../email/email.service';
+import { RedisService } from '@hubblewave/redis';
+
+/**
+ * Per-token failed attempt limit. After this many failed verification attempts
+ * the token is forcibly marked as used regardless of its TTL. This stops an
+ * attacker from grinding random token values against a known token id.
+ */
+const EMAIL_VERIFY_MAX_FAILURES_PER_TOKEN = 3;
+const EMAIL_VERIFY_FAILURE_KEY_PREFIX = 'email-verify:fail:';
+const EMAIL_VERIFY_FAILURE_TTL_SECONDS = 24 * 60 * 60;
 
 @Injectable()
 export class EmailVerificationService {
@@ -18,6 +28,7 @@ export class EmailVerificationService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly emailService: EmailService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -79,13 +90,29 @@ export class EmailVerificationService {
       throw new BadRequestException('Invalid or expired verification token');
     }
 
+    const failureKey = `${EMAIL_VERIFY_FAILURE_KEY_PREFIX}${verificationToken.id}`;
+
+    // If this token has already burned through its per-token failure budget,
+    // refuse it even if its calendar TTL has not elapsed yet.
+    const priorFailures = await this.redisService.get(failureKey);
+    const priorCount = priorFailures ? parseInt(priorFailures, 10) : 0;
+    if (Number.isFinite(priorCount) && priorCount >= EMAIL_VERIFY_MAX_FAILURES_PER_TOKEN) {
+      if (!verificationToken.verifiedAt) {
+        verificationToken.verifiedAt = new Date();
+        await this.verificationTokenRepo.save(verificationToken);
+      }
+      throw new BadRequestException('Verification token has been invalidated due to repeated failed attempts. Please request a new verification email.');
+    }
+
     // Check if already used
     if (verificationToken.verifiedAt) {
+      await this.redisService.incrWithExpiry(failureKey, EMAIL_VERIFY_FAILURE_TTL_SECONDS);
       throw new BadRequestException('This verification link has already been used');
     }
 
     // Check expiry
     if (new Date() > verificationToken.expiresAt) {
+      await this.redisService.incrWithExpiry(failureKey, EMAIL_VERIFY_FAILURE_TTL_SECONDS);
       throw new BadRequestException('Verification token has expired. Please request a new verification email.');
     }
 
@@ -95,6 +122,7 @@ export class EmailVerificationService {
     });
 
     if (!user) {
+      await this.redisService.incrWithExpiry(failureKey, EMAIL_VERIFY_FAILURE_TTL_SECONDS);
       throw new NotFoundException('User not found');
     }
 
@@ -114,6 +142,10 @@ export class EmailVerificationService {
     }
 
     await this.userRepo.save(user);
+
+    // Successful verification clears the per-token failure counter so a new
+    // verification request for the same user starts with a clean budget.
+    await this.redisService.del(failureKey);
 
     return {
       userId: user.id,

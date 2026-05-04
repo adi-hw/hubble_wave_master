@@ -152,8 +152,7 @@ export function SecuritySettingsPage() {
       setLoading(true);
       const data = await authService.getSessions();
       setSessions(data);
-    } catch (err) {
-      console.error('Failed to load sessions:', err);
+    } catch {
       // Create a fallback current session from browser info
       const userAgent = navigator.userAgent;
       const browser = getBrowserName(userAgent);
@@ -205,8 +204,8 @@ export function SecuritySettingsPage() {
     try {
       const status = await authService.getEmailVerificationStatus();
       setEmailStatus(status);
-    } catch (err) {
-      console.error('Failed to load email verification status:', err);
+    } catch {
+      // Email status unavailable - non-critical
     }
   };
 
@@ -214,8 +213,8 @@ export function SecuritySettingsPage() {
     try {
       const status = await authService.getMfaStatus();
       setMfaStatus(status);
-    } catch (err) {
-      console.error('Failed to load MFA status:', err);
+    } catch {
+      // MFA status unavailable - non-critical
     }
   };
 
@@ -224,8 +223,8 @@ export function SecuritySettingsPage() {
       setPasskeysLoading(true);
       const data = await authService.listPasskeys();
       setPasskeys(data);
-    } catch (err) {
-      console.error('Failed to load passkeys:', err);
+    } catch {
+      // Passkeys unavailable - non-critical
     } finally {
       setPasskeysLoading(false);
     }
@@ -236,8 +235,8 @@ export function SecuritySettingsPage() {
       setTrustedDevicesLoading(true);
       const data = await authService.listTrustedDevices();
       setTrustedDevices(data);
-    } catch (err) {
-      console.error('Failed to load trusted devices:', err);
+    } catch {
+      // Trusted devices unavailable - non-critical
     } finally {
       setTrustedDevicesLoading(false);
     }
@@ -248,8 +247,8 @@ export function SecuritySettingsPage() {
       setAlertsLoading(true);
       const data = await authService.getSecurityAlerts({ limit: 5 });
       setSecurityAlerts(data.alerts);
-    } catch (err) {
-      console.error('Failed to load security alerts:', err);
+    } catch {
+      // Alerts unavailable - non-critical
     } finally {
       setAlertsLoading(false);
     }
@@ -284,8 +283,7 @@ export function SecuritySettingsPage() {
       await authService.revokeSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       setMessage({ type: 'success', text: 'Session revoked successfully' });
-    } catch (err) {
-      console.error('Failed to revoke session:', err);
+    } catch {
       setMessage({ type: 'error', text: 'Failed to revoke session' });
     } finally {
       setRevoking(null);
@@ -298,8 +296,7 @@ export function SecuritySettingsPage() {
       await authService.revokeAllOtherSessions();
       await loadSessions();
       setMessage({ type: 'success', text: 'All other sessions revoked successfully' });
-    } catch (err) {
-      console.error('Failed to revoke sessions:', err);
+    } catch {
       setMessage({ type: 'error', text: 'Failed to revoke sessions' });
     } finally {
       setRevokingAll(false);
@@ -506,8 +503,8 @@ export function SecuritySettingsPage() {
     try {
       await authService.acknowledgeSecurityAlert(alertId);
       await loadSecurityAlerts();
-    } catch (err) {
-      console.error('Failed to acknowledge alert:', err);
+    } catch {
+      // Alert acknowledgment failed - non-critical
     }
   };
 

@@ -1,6 +1,27 @@
 export type TriggerTiming = 'before' | 'after' | 'async';
 export type TriggerOperation = 'insert' | 'update' | 'delete' | 'query';
 
+// Distinguishes the source of an automation trigger for audit attribution.
+// 'user'        - direct user action (login session)
+// 'service'     - internal service (no human actor)
+// 'schedule'    - scheduled trigger (cron/scheduler)
+// 'integration' - external integration callback or webhook
+export type TriggeredByPrincipalType = 'user' | 'service' | 'schedule' | 'integration';
+
+// Top-level outcome reported by the automation runtime.
+// 'success'         - all actions ran without errors
+// 'partial_failure' - at least one action failed but execution continued
+//                     because continueOnError was set on the failing action
+// 'error'           - execution failed (no successful actions, or aborted)
+// 'skipped'         - condition was not met or runtime opted out
+// 'timeout'         - script/condition exceeded allowed time budget
+export type AutomationExecutionStatus =
+  | 'success'
+  | 'partial_failure'
+  | 'error'
+  | 'skipped'
+  | 'timeout';
+
 export interface AutomationUserContext {
   id: string | null;
   email?: string;
@@ -20,10 +41,20 @@ export interface ExecutionContext {
   };
   depth: number;
   maxDepth: number;
-  executionChain: string[];
+  // Set of `${automationId}:${recordId}` keys representing every
+  // (automation, record) pair already executed in this chain. Includes the
+  // triggering record id so legitimate cross-record fan-out (same automation
+  // firing on different records) is allowed while the same (automation,
+  // record) re-entry is detected as a cycle. Set provides O(1) lookup
+  // versus the prior array.includes() linear scan.
+  executionChain: Set<string>;
   outputs: Record<string, unknown>;
   errors: Array<{ property: string; message: string }>;
   warnings: Array<{ property: string; message: string }>;
+  // Property codes the actor is permitted to read on this collection. When
+  // present, condition/action evaluation must treat unlisted properties as
+  // unreadable rather than silently exposing their values.
+  authorizedFields?: Set<string>;
 }
 
 export interface ActionExecutionResult {
@@ -41,6 +72,7 @@ export interface ActionResult {
     | 'create_record'
     | 'send_notification'
     | 'start_workflow'
+    | 'fire_event'
     | 'abort'
     | 'add_error'
     | 'add_warning'
@@ -179,4 +211,13 @@ export interface RecordEventPayload {
   userId?: string | null;
   metadata?: Record<string, unknown>;
   occurredAt: string;
+  // Cross-invocation cycle / depth state. Populated when an outbox event was
+  // emitted by an automation chain so the next runtime invocation can:
+  //  - detect (automation, record) re-entry (executionChain), and
+  //  - enforce MAX_DEPTH across outbox-driven re-invocations (executionDepth).
+  // Absent on user-originated events (depth defaults to 1, chain to empty).
+  // Wire format is a string array because outbox payloads are persisted as
+  // JSON; the runtime reconstructs a Set on entry.
+  executionChain?: string[];
+  executionDepth?: number;
 }

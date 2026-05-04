@@ -2,20 +2,28 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
+  Connector,
+  DecisionInput,
+  DecisionRow,
+  DecisionTable,
   InstanceEventOutbox,
+  RuntimeAnomalyModule,
   TranslationRequest,
   ModelDeployment,
   AnalyticsEvent,
   AuditLog,
   CollectionDefinition,
   PropertyDefinition,
+  User,
 } from '@hubblewave/instance-db';
 import { WorkflowDefinitionsController } from './workflow-definitions.controller';
 import { WorkflowInstancesController } from './workflow-instances.controller';
 import { WorkflowApprovalsController } from './workflow-approvals.controller';
+import { WorkflowWebhookController } from './workflow-webhook.controller';
 import { WorkflowDefinitionService } from './workflow-definition.service';
 import { WorkflowInstanceService } from './workflow-instance.service';
 import { WorkflowApprovalService } from './workflow-approval.service';
@@ -32,9 +40,14 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
   imports: [
     TypeOrmModule.forFeature([
       ProcessFlowDefinition,
+      ProcessFlowDefinitionRevision,
       ProcessFlowInstance,
       ProcessFlowExecutionHistory,
       Approval,
+      Connector,
+      DecisionTable,
+      DecisionInput,
+      DecisionRow,
       InstanceEventOutbox,
       TranslationRequest,
       ModelDeployment,
@@ -42,12 +55,15 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
       AuditLog,
       CollectionDefinition,
       PropertyDefinition,
+      User,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     WorkflowDefinitionsController,
     WorkflowInstancesController,
     WorkflowApprovalsController,
+    WorkflowWebhookController,
   ],
   providers: [
     WorkflowDefinitionService,

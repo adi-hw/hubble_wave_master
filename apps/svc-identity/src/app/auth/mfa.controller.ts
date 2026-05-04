@@ -3,7 +3,9 @@ import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedRequest } from '@hubblewave/auth-guard';
 import { MfaService } from './mfa.service';
+import { AuthenticatedOnly } from './decorators/public.decorator';
 
+@AuthenticatedOnly()
 @Controller('auth/mfa')
 @UseGuards(AuthGuard('jwt'))
 export class MfaController {

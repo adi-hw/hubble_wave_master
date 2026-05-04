@@ -5,10 +5,12 @@ import { PasswordPolicy } from '@hubblewave/instance-db';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
+import { SkipAbac } from '../abac/abac.guard';
 
 @Controller('admin/auth/password-policy')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
+@SkipAbac()
 export class PasswordPolicyController {
   constructor(
     @InjectRepository(PasswordPolicy) private readonly passwordPolicyRepo: Repository<PasswordPolicy>,

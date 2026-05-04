@@ -82,7 +82,7 @@ export class MetadataIngestService {
     for (const collection of asset.collections) {
       const existing = await collectionRepo.findOne({ where: { code: collection.code } });
       if (existing) {
-        this.assertPackOwnership(existing.metadata, context.packCode, 'collection', collection.code);
+        this.assertPackOwnership(existing, context.packCode, 'collection', collection.code);
         this.applyCollectionUpdate(existing, collection, context);
         const saved = await collectionRepo.save(existing);
         collectionMap.set(saved.code, saved);
@@ -120,7 +120,7 @@ export class MetadataIngestService {
         });
 
         if (existingProperty) {
-          this.assertPackOwnership(existingProperty.metadata, context.packCode, 'property', property.code);
+          this.assertPackOwnership(existingProperty, context.packCode, 'property', property.code);
           this.applyPropertyUpdate(existingProperty, property, propertyType.id, referenceCollectionId, choiceListId, context);
           await propertyRepo.save(existingProperty);
           continue;
@@ -150,7 +150,7 @@ export class MetadataIngestService {
       if (!existing) {
         continue;
       }
-      this.assertPackOwnership(existing.metadata, context.packCode, 'collection', collection.code);
+      this.assertPackOwnership(existing, context.packCode, 'collection', collection.code);
       existing.isActive = false;
       existing.metadata = this.mergeMetadata(
         collection.metadata,
@@ -179,7 +179,7 @@ export class MetadataIngestService {
         if (!existingProperty) {
           continue;
         }
-        this.assertPackOwnership(existingProperty.metadata, context.packCode, 'property', property.code);
+        this.assertPackOwnership(existingProperty, context.packCode, 'property', property.code);
         existingProperty.isActive = false;
         existingProperty.metadata = this.mergeMetadata(
           property.metadata,
@@ -250,6 +250,7 @@ export class MetadataIngestService {
       enableAttachments: collection.flags?.enable_attachments ?? true,
       enableActivityLog: collection.flags?.enable_activity_log ?? true,
       enableSearch: collection.flags?.enable_search ?? true,
+      source: `pack:${context.packCode}`,
       metadata: this.mergeMetadata(collection.metadata, context),
       createdBy: context.actorId,
       updatedBy: context.actorId,
@@ -277,6 +278,7 @@ export class MetadataIngestService {
     existing.enableActivityLog = collection.flags?.enable_activity_log ?? existing.enableActivityLog;
     existing.enableSearch = collection.flags?.enable_search ?? existing.enableSearch;
     existing.metadata = this.mergeMetadata(collection.metadata, context, existing.metadata);
+    existing.source = `pack:${context.packCode}`;
     existing.updatedBy = context.actorId;
   }
 
@@ -315,6 +317,7 @@ export class MetadataIngestService {
       isSearchable: property.is_searchable ?? false,
       isSortable: property.is_sortable ?? true,
       isFilterable: property.is_filterable ?? true,
+      source: `pack:${context.packCode}`,
       metadata: this.mergeMetadata(property.metadata, context),
       ownerType: 'platform',
       isSystem: false,
@@ -356,6 +359,7 @@ export class MetadataIngestService {
     existing.isSortable = property.is_sortable ?? existing.isSortable;
     existing.isFilterable = property.is_filterable ?? existing.isFilterable;
     existing.metadata = this.mergeMetadata(property.metadata, context, existing.metadata);
+    existing.source = `pack:${context.packCode}`;
   }
 
   private resolveCollectionId(collections: Map<string, CollectionDefinition>, code: string): string {
@@ -395,16 +399,49 @@ export class MetadataIngestService {
     };
   }
 
+  /**
+   * ADR-7 source-of-truth check for pack upgrades. The `source`
+   * column on every metadata row is the canonical authority. The
+   * legacy `metadata.pack.code` is consulted as a *promotion* path:
+   * if `source` is the default `'custom'` but the row's metadata
+   * already identifies this pack as owner (pre-Phase-6 install), we
+   * treat it as a same-pack upgrade and let the caller's
+   * `apply*Update` rewrite the source column. Without this, every
+   * pre-existing pack row whose `source` defaulted to `'custom'`
+   * (and somehow escaped the migration backfill) would throw on the
+   * next pack release.
+   */
   private assertPackOwnership(
-    metadata: Record<string, unknown>,
+    entity: { source?: string | null; metadata?: Record<string, unknown> },
     packCode: string,
     entityType: 'collection' | 'property',
     entityCode: string,
   ): void {
-    const existingPack = (metadata as { pack?: { code?: string } }).pack?.code;
-    if (existingPack && existingPack !== packCode) {
+    const expected = `pack:${packCode}`;
+    const source = entity.source && entity.source.length > 0 ? entity.source : null;
+    const legacyPack = (entity.metadata as { pack?: { code?: string } } | undefined)?.pack?.code;
+
+    // Same pack — happy path.
+    if (source === expected) return;
+
+    // Legacy promotion: the source column wasn't backfilled (or the
+    // row pre-dates the column entirely) and metadata identifies us
+    // as the owner. The caller will rewrite source on save.
+    if (legacyPack === packCode) return;
+
+    if (source === 'custom') {
       throw new ConflictException(
-        `${entityType} ${entityCode} is owned by pack ${existingPack}`
+        `${entityType} "${entityCode}" is customer-authored (source=custom); pack "${packCode}" cannot overwrite a custom row. Resolve via a variant override.`,
+      );
+    }
+    if (source) {
+      throw new ConflictException(
+        `${entityType} "${entityCode}" is owned by ${source}; pack "${packCode}" cannot overwrite a row owned by another pack.`,
+      );
+    }
+    if (legacyPack && legacyPack !== packCode) {
+      throw new ConflictException(
+        `${entityType} "${entityCode}" is owned by pack "${legacyPack}"`,
       );
     }
   }

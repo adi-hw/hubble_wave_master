@@ -12,6 +12,7 @@ import { FormulaCacheService } from './formula-cache.service';
 import { DependencyService } from './dependency.service';
 import { RollupService } from './rollup.service';
 import { LookupService } from './lookup.service';
+import { HierarchicalService } from './hierarchical.service';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 
 @Module({
@@ -23,7 +24,8 @@ import { InstanceDbModule } from '@hubblewave/instance-db';
     DependencyService,
     RollupService,
     LookupService,
+    HierarchicalService,
   ],
-  exports: [FormulaService, RollupService, LookupService],
+  exports: [FormulaService, RollupService, LookupService, HierarchicalService],
 })
 export class FormulaModule {}

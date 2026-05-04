@@ -1,7 +1,7 @@
 // Integrations Library - HubbleWave
-// Notifications, HTTP Client, and Webhooks
+// HTTP Client, Webhooks, and outbound-URL safety helpers.
+// Notification delivery is owned by svc-notify (apps/svc-notify).
 
-export * from './lib/integrations.module';
-export * from './lib/notification.service';
 export * from './lib/http-client.service';
 export * from './lib/webhook.service';
+export * from './lib/url-validator';

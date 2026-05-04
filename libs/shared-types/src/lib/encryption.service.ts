@@ -1,5 +1,7 @@
 import * as crypto from 'crypto';
 
+const HEX_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+
 /**
  * Encryption service for sensitive data using AES-256-GCM
  *
@@ -23,8 +25,11 @@ export class EncryptionService {
       );
     }
 
-    if (key.length !== 64) {
-      throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+    if (!HEX_KEY_PATTERN.test(key)) {
+      // Validating format BEFORE Buffer.from(...) is critical: Node silently
+      // skips invalid hex bytes, which would produce a malformed key without
+      // any error and result in subtle crypto failures.
+      throw new Error('Encryption key must be 64 hex chars');
     }
 
     this.key = Buffer.from(key, 'hex');
@@ -75,10 +80,26 @@ export class EncryptionService {
     const decipher = crypto.createDecipheriv(this.algorithm, this.key, iv);
     decipher.setAuthTag(authTag);
 
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+    try {
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } catch (err) {
+      // GCM auth-tag mismatch surfaces here. Emit a structured security event
+      // so downstream observability (SIEM, audit log) can correlate tampering
+      // attempts. The original error is re-thrown unchanged to preserve
+      // existing caller semantics.
+      console.error(
+        JSON.stringify({
+          severity: 'error',
+          kind: 'crypto.tamper-detected',
+          ciphertextLength: ciphertext.length,
+          ivPrefix: ivHex.slice(0, 8),
+          message: (err as Error).message,
+        }),
+      );
+      throw err;
+    }
   }
 
   /**

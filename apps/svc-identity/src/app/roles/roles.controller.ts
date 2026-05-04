@@ -19,6 +19,10 @@ import { RequirePermission } from './decorators/permission.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
+import { SkipAbac } from '../abac/abac.guard';
+
+
 
 interface UserContext {
   userId: string;
@@ -32,6 +36,7 @@ interface UserContext {
  */
 @Controller('admin/roles')
 @UseGuards(JwtAuthGuard)
+@SkipAbac()
 export class RolesController {
   constructor(
     private readonly roleService: RoleService,
@@ -43,7 +48,7 @@ export class RolesController {
    * List all roles with optional filters
    */
   @Get()
-  @RequirePermission('roles.view')
+  @RequirePermission(['roles.view', 'metadata.forms.edit'], 'any')
   @UseGuards(PermissionGuard)
   async listRoles(
     @Query('search') search?: string,
@@ -295,6 +300,7 @@ export class RolesController {
    * Get my roles (current user) - primarily for single-instance deployments
    */
   @Get('me/roles')
+  @AuthenticatedOnly()
   async getMyRoles(@Query('userId') userId: string) {
     const assignments = await this.userRoleService.getUserRoles(userId);
     return {
@@ -307,6 +313,7 @@ export class RolesController {
    * Get my permissions (current user)
    */
   @Get('me/permissions')
+  @AuthenticatedOnly()
   async getMyPermissions(@Query('userId') userId: string) {
     const cache = await this.permissionResolver.getUserPermissions(userId);
 
@@ -327,6 +334,7 @@ export class RolesController {
    * Check if I have a specific permission
    */
   @Get('me/check/:permission')
+  @AuthenticatedOnly()
   async checkMyPermission(
     @Query('userId') userId: string,
     @Param('permission') permission: string,

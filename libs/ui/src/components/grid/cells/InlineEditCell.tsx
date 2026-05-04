@@ -67,6 +67,8 @@ const EditableCellWrapper = memo(function EditableCellWrapper({
   }
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Stop propagation to prevent row's click handler from firing
+    e.stopPropagation();
     // Find the parent grid-cell element
     const cellElement = e.currentTarget.closest('.grid-cell') as HTMLElement;
     if (cellElement) {
@@ -75,6 +77,8 @@ const EditableCellWrapper = memo(function EditableCellWrapper({
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Stop propagation to prevent row's double-click handler from navigating to detail view
+    e.stopPropagation();
     // Find the parent grid-cell element
     const cellElement = e.currentTarget.closest('.grid-cell') as HTMLElement;
     if (cellElement) {

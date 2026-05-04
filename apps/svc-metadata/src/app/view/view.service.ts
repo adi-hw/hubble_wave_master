@@ -11,6 +11,8 @@ import {
   ViewVariant,
 } from '@hubblewave/instance-db';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type CreateViewRequest = {
   code: string;
   name: string;
@@ -300,6 +302,12 @@ export class ViewService {
     if (!request.name || request.name.trim().length === 0) {
       throw new BadRequestException('view.name is required');
     }
+    if (request.name.length > 255) {
+      throw new BadRequestException('view.name must be 255 characters or fewer');
+    }
+    if (request.description !== undefined && request.description !== null && request.description.length > 4000) {
+      throw new BadRequestException('view.description must be 4000 characters or fewer');
+    }
     if (!request.kind || !['form', 'list', 'page'].includes(request.kind)) {
       throw new BadRequestException('view.kind must be form, list, or page');
     }
@@ -324,18 +332,37 @@ export class ViewService {
       }
       return { scope, scopeKey: null, priority };
     }
-    if (scope === 'role' || scope === 'group') {
-      if (!variant.scope_key) {
-        throw new BadRequestException(`scope_key is required for ${scope} scope`);
-      }
-      return { scope, scopeKey: variant.scope_key, priority };
-    }
-    if (scope === 'personal') {
-      const scopeKey = variant.scope_key || actorId;
+    if (scope === 'role') {
+      const scopeKey = variant.scope_key?.trim();
       if (!scopeKey) {
-        throw new BadRequestException('scope_key is required for personal scope');
+        throw new BadRequestException('scope_key is required for role scope');
+      }
+      // Role identifier: lowercase letters, digits, underscore, dash; bounded length.
+      if (!/^[a-z0-9_-]{1,120}$/.test(scopeKey)) {
+        throw new BadRequestException('scope_key must be a valid role identifier');
       }
       return { scope, scopeKey, priority };
+    }
+    if (scope === 'group') {
+      const scopeKey = variant.scope_key?.trim();
+      if (!scopeKey) {
+        throw new BadRequestException('scope_key is required for group scope');
+      }
+      if (!UUID_PATTERN.test(scopeKey)) {
+        throw new BadRequestException('scope_key must be a valid UUID for group scope');
+      }
+      return { scope, scopeKey, priority };
+    }
+    if (scope === 'personal') {
+      // Personal variants are owned by the requesting user; scope_key cannot
+      // be used to install a variant for another user.
+      if (variant.scope_key && variant.scope_key !== actorId) {
+        throw new BadRequestException('scope_key for personal scope must match the requester');
+      }
+      if (!actorId) {
+        throw new BadRequestException('Authenticated user required for personal scope');
+      }
+      return { scope, scopeKey: actorId, priority };
     }
     throw new BadRequestException('Invalid view scope');
   }

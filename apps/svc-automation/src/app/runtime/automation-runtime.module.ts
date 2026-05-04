@@ -7,6 +7,7 @@ import {
   PropertyDefinition,
   AuditLog,
   InstanceEventOutbox,
+  RuntimeAnomalyModule,
 } from '@hubblewave/instance-db';
 import { ConditionEvaluatorService } from './condition-evaluator.service';
 import { ActionHandlerService } from './action-handler.service';
@@ -27,6 +28,7 @@ import { OutboxPublisherService } from './outbox-publisher.service';
       AuditLog,
       InstanceEventOutbox,
     ]),
+    RuntimeAnomalyModule,
   ],
   providers: [
     ConditionEvaluatorService,

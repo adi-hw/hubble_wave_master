@@ -102,7 +102,7 @@ export const BreakGlassModal: React.FC<BreakGlassModalProps> = ({
         onSuccess();
         onClose();
       } catch (err: any) {
-        console.error('Break glass failed', err);
+        // Break glass request failed - show error message
         setError(err.response?.data?.message || 'Failed to request access.');
       } finally {
         setLoading(false);

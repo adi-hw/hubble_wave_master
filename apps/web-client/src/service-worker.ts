@@ -1,211 +1,157 @@
 /**
  * HubbleWave PWA Service Worker
  *
- * Provides offline support with:
- * - Cache-first strategy for static assets
- * - Network-first strategy for API requests
- * - Background sync for pending changes
- * - Push notification handling
+ * Source-of-truth service worker, compiled by VitePWA's `injectManifest`
+ * strategy. Combines workbox-managed precache + runtime caching with the
+ * platform's auth-aware cache gating, notification URL validation, and
+ * CLEAR_USER_CACHE handler.
+ *
+ * Caching strategies:
+ * - Precache: every asset emitted by the build (JS/CSS/HTML/icons/fonts).
+ * - /api/(identity|data|metadata)/: NetworkFirst, 5 min, cache only when an
+ *   Authorization header was on the request — anonymous responses must never
+ *   be cached on a per-user disk.
+ * - Image extensions: CacheFirst, 30 days.
+ * - Font extensions: CacheFirst, 1 year.
  */
 
 /// <reference lib="webworker" />
-declare const self: ServiceWorkerGlobalScope;
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+};
 
-const CACHE_NAME = 'hubblewave-cache';
-const STATIC_CACHE_NAME = 'hubblewave-static-cache';
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { NetworkFirst, CacheFirst } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+
 const API_CACHE_NAME = 'hubblewave-api-cache';
+const LOCAL_API_CACHE_NAME = 'hubblewave-local-api-cache';
+const IMAGES_CACHE_NAME = 'hubblewave-images-cache';
+const FONTS_CACHE_NAME = 'hubblewave-fonts-cache';
 
-// Static assets to precache
-const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-];
+// Workbox-injected precache list. Populated at build time by VitePWA from
+// `injectManifest.globPatterns`.
+precacheAndRoute(self.__WB_MANIFEST ?? []);
+cleanupOutdatedCaches();
 
-// API endpoints to cache
-const CACHEABLE_API_PATTERNS = [
-  /\/api\/collections$/,
-  /\/api\/collections\/[^/]+\/properties$/,
-  /\/api\/views$/,
-  /\/api\/users\/me$/,
-];
+/**
+ * NetworkFirst for instance APIs. Only caches a response when the originating
+ * request carried an Authorization header — otherwise the response is either
+ * anonymous or unauthenticated and persisting it would let a logged-out user
+ * read prior content. The session logout flow additionally posts
+ * CLEAR_USER_CACHE to wipe any residue.
+ */
+const authGatedCachePlugin = {
+  cacheWillUpdate: async ({
+    request,
+    response,
+  }: {
+    request: Request;
+    response: Response;
+  }) => {
+    if (!response || !response.ok) return null;
+    if (!request.headers.has('Authorization')) return null;
+    return response;
+  },
+};
 
-// Install event - precache static assets
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS);
-    })
-  );
+registerRoute(
+  ({ url }) => /\/api\/(identity|data|metadata)\//i.test(url.pathname),
+  new NetworkFirst({
+    cacheName: LOCAL_API_CACHE_NAME,
+    networkTimeoutSeconds: 10,
+    plugins: [
+      authGatedCachePlugin,
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 60 * 5, // 5 minutes
+      }),
+    ],
+  }),
+  'GET',
+);
+
+registerRoute(
+  ({ url }) => /\.(png|jpg|jpeg|svg|gif|webp)$/i.test(url.pathname),
+  new CacheFirst({
+    cacheName: IMAGES_CACHE_NAME,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 100,
+        maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+      }),
+    ],
+  }),
+  'GET',
+);
+
+registerRoute(
+  ({ url }) => /\.(woff|woff2|ttf|eot)$/i.test(url.pathname),
+  new CacheFirst({
+    cacheName: FONTS_CACHE_NAME,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 20,
+        maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+      }),
+    ],
+  }),
+  'GET',
+);
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => {
-            return (
-              name.startsWith('hubblewave-') &&
-              name !== CACHE_NAME &&
-              name !== STATIC_CACHE_NAME &&
-              name !== API_CACHE_NAME
-            );
-          })
-          .map((name) => caches.delete(name))
-      );
-    })
-  );
-  self.clients.claim();
+  event.waitUntil(self.clients.claim());
 });
-
-// Fetch event - handle caching strategies
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
-
-  // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith('http')) {
-    return;
-  }
-
-  // API requests - network first, cache fallback
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirstStrategy(request, API_CACHE_NAME));
-    return;
-  }
-
-  // Static assets - cache first
-  if (isStaticAsset(url.pathname)) {
-    event.respondWith(cacheFirstStrategy(request, STATIC_CACHE_NAME));
-    return;
-  }
-
-  // HTML navigation - network first
-  if (request.mode === 'navigate') {
-    event.respondWith(networkFirstStrategy(request, CACHE_NAME));
-    return;
-  }
-
-  // Default - network first with cache fallback
-  event.respondWith(networkFirstStrategy(request, CACHE_NAME));
-});
-
-/**
- * Cache-first strategy: try cache, fall back to network
- */
-async function cacheFirstStrategy(
-  request: Request,
-  cacheName: string
-): Promise<Response> {
-  const cachedResponse = await caches.match(request);
-  if (cachedResponse) {
-    return cachedResponse;
-  }
-
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch {
-    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-  }
-}
-
-/**
- * Network-first strategy: try network, fall back to cache
- */
-async function networkFirstStrategy(
-  request: Request,
-  cacheName: string
-): Promise<Response> {
-  try {
-    const networkResponse = await fetch(request);
-
-    // Cache successful API responses for specified patterns
-    if (networkResponse.ok && shouldCacheApiResponse(request.url)) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
-    }
-
-    return networkResponse;
-  } catch {
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-
-    // Return offline page for navigation requests
-    if (request.mode === 'navigate') {
-      const cachedIndex = await caches.match('/index.html');
-      if (cachedIndex) {
-        return cachedIndex;
-      }
-    }
-
-    // Return offline indicator for API requests
-    if (request.url.includes('/api/')) {
-      return new Response(
-        JSON.stringify({
-          error: 'offline',
-          message: 'You are currently offline. This action will be synced when you reconnect.',
-        }),
-        {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-  }
-}
-
-/**
- * Check if URL is a static asset
- */
-function isStaticAsset(pathname: string): boolean {
-  const staticExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf'];
-  return staticExtensions.some((ext) => pathname.endsWith(ext));
-}
-
-/**
- * Check if API response should be cached
- */
-function shouldCacheApiResponse(url: string): boolean {
-  return CACHEABLE_API_PATTERNS.some((pattern) => pattern.test(url));
-}
 
 // Background sync for pending changes
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-pending-changes') {
-    event.waitUntil(syncPendingChanges());
+self.addEventListener('sync', (event: Event) => {
+  const syncEvent = event as Event & { tag: string; waitUntil(p: Promise<unknown>): void };
+  if (syncEvent.tag === 'sync-pending-changes') {
+    syncEvent.waitUntil(syncPendingChanges());
   }
 });
 
 /**
- * Sync pending changes stored in IndexedDB
+ * Sync pending changes stored in IndexedDB. Notifies open clients so the
+ * application layer can drain its queue.
  */
 async function syncPendingChanges(): Promise<void> {
-  // This would integrate with IndexedDB to retrieve and sync pending changes
-  // Implementation depends on how the app stores offline changes
   const clients = await self.clients.matchAll();
   clients.forEach((client) => {
     client.postMessage({ type: 'SYNC_COMPLETE' });
   });
+}
+
+/**
+ * Validate notification target URLs before opening them. Mirrors the
+ * validateInternalUrl policy in src/lib/safe-navigate.ts so push payloads
+ * cannot redirect users to attacker-controlled origins.
+ */
+function isSafeInternalNotificationUrl(url: unknown): url is string {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.includes('\\') || trimmed.includes('\0') || trimmed.includes('..')) return false;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.hostname === self.location.hostname;
+    } catch {
+      return false;
+    }
+  }
+  if (!trimmed.startsWith('/')) return false;
+  if (trimmed.startsWith('//')) return false;
+  return true;
 }
 
 // Push notification handling
@@ -230,7 +176,7 @@ self.addEventListener('push', (event) => {
     ],
     vibrate: [200, 100, 200],
     requireInteraction: data.priority === 'high',
-  };
+  } as NotificationOptions;
 
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
@@ -240,7 +186,14 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   if (event.action === 'view' && event.notification.data?.url) {
-    event.waitUntil(self.clients.openWindow(event.notification.data.url));
+    const targetUrl = event.notification.data.url;
+    if (isSafeInternalNotificationUrl(targetUrl)) {
+      event.waitUntil(self.clients.openWindow(targetUrl));
+    } else {
+      // Refuse to follow notification payloads that point off-origin or
+      // contain traversal markers — open the app root instead.
+      event.waitUntil(self.clients.openWindow('/'));
+    }
   } else if (!event.action) {
     // Default click action - open the app
     event.waitUntil(
@@ -262,13 +215,20 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 
-  if (event.data?.type === 'CACHE_URLS') {
-    caches.open(CACHE_NAME).then((cache) => {
-      cache.addAll(event.data.urls);
-    });
-  }
-
   if (event.data?.type === 'CLEAR_CACHE') {
     caches.delete(API_CACHE_NAME);
+    caches.delete(LOCAL_API_CACHE_NAME);
+  }
+
+  // CLEAR_USER_CACHE is dispatched by the auth logout flow before local state
+  // is wiped. It removes any per-user API responses cached by the SW so the
+  // next session cannot read prior data from disk.
+  if (event.data?.type === 'CLEAR_USER_CACHE') {
+    event.waitUntil(
+      Promise.all([
+        caches.delete(API_CACHE_NAME),
+        caches.delete(LOCAL_API_CACHE_NAME),
+      ])
+    );
   }
 });

@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   UseGuards,
   ForbiddenException,
+  NotFoundException,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -87,9 +88,29 @@ export class PropertyController {
   @Get(':id')
   @RequirePermission('property.read')
   async getById(
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.propertyService.getProperty(id);
+    const property = await this.propertyService.getProperty(id);
+    // IDOR protection: verify the property actually belongs to the collection
+    // declared in the route. Use NotFound (not Forbidden) to avoid leaking existence.
+    if (!property || property.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    return property;
+  }
+
+  /**
+   * "Where used" report — returns every dependent (formula, view, automation,
+   * form, validation rule, display rule) that references this property. Backs
+   * the admin UI's pre-delete inspection view.
+   */
+  @Get(':id/references')
+  @RequirePermission('property.read')
+  async references(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.propertyService.findReferences(id);
   }
 
   @Post()
@@ -155,12 +176,20 @@ export class PropertyController {
   @RequirePermission('property.update')
   async update(
     @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePropertyDto,
     @Req() request: Request,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
+    }
+    // IDOR protection: confirm the property belongs to the collection in the
+    // route before mutating. Without this an attacker who guesses an id from
+    // another collection can update fields they shouldn't see.
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
     }
     const context = {
       ipAddress: request.ip,
@@ -173,6 +202,7 @@ export class PropertyController {
   @RequirePermission('property.delete')
   async delete(
     @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
     @Query('force') force?: string,
@@ -180,10 +210,72 @@ export class PropertyController {
     if (!user) {
       throw new ForbiddenException('Authentication required');
     }
+    // IDOR protection: same as update — block cross-collection mutation.
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
     const context = {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'] as string | undefined,
     };
     return this.propertyService.deleteProperty(id, force === 'true', user.id, context);
+  }
+
+  @Post(':id/publish')
+  @RequirePermission('property.update')
+  async publish(
+    @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ) {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    const context = {
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] as string | undefined,
+    };
+    return this.propertyService.publishProperty(id, user.id, context);
+  }
+
+  @Post(':id/deprecate')
+  @RequirePermission('property.update')
+  async deprecate(
+    @CurrentUser() user: RequestUser,
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ) {
+    if (!user) {
+      throw new ForbiddenException('Authentication required');
+    }
+    const existing = await this.propertyService.getProperty(id);
+    if (!existing || existing.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    const context = {
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'] as string | undefined,
+    };
+    return this.propertyService.deprecateProperty(id, user.id, context);
+  }
+
+  @Get(':id/revisions')
+  @RequirePermission('property.read')
+  async listRevisions(
+    @Param('collectionId', ParseUUIDPipe) collectionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const property = await this.propertyService.getProperty(id);
+    if (!property || property.collectionId !== collectionId) {
+      throw new NotFoundException('Property not found');
+    }
+    return this.propertyService.listRevisions(id);
   }
 }

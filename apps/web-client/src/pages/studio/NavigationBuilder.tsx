@@ -164,8 +164,8 @@ export const NavigationBuilder: React.FC = () => {
       setModules(list);
       const selected = list.find((item) => item.module.code === DEFAULT_NAVIGATION_CODE) || list[0] || null;
       setSelectedModule(selected || null);
-    } catch (err) {
-      console.error('Failed to load navigation modules:', err);
+    } catch {
+      // Load failed - show error state
       setError('Failed to load navigation modules.');
     } finally {
       setLoading(false);
@@ -184,8 +184,8 @@ export const NavigationBuilder: React.FC = () => {
         applicationKey: collection.code,
       }));
       setModuleOptions(options);
-    } catch (err) {
-      console.error('Failed to load module options:', err);
+    } catch {
+      // Module options load failed - list remains empty
     }
   }, []);
 
@@ -268,8 +268,8 @@ export const NavigationBuilder: React.FC = () => {
       await navigationMetadataApi.publish(moduleEditor.isNew ? moduleCodeDraft.trim() : selectedModule?.module.code || moduleCodeDraft.trim());
       closeModuleEditor();
       await loadModules();
-    } catch (err) {
-      console.error('Failed to save navigation module:', err);
+    } catch {
+      // Save failed - show error state
       setError('Failed to save navigation module.');
     }
   };
@@ -292,8 +292,8 @@ export const NavigationBuilder: React.FC = () => {
       });
       await navigationMetadataApi.publish(selectedModule.module.code);
       await loadModules();
-    } catch (err) {
-      console.error('Failed to publish navigation layout:', err);
+    } catch {
+      // Publish failed - show error state
       setError('Failed to publish navigation layout.');
     } finally {
       setSaving(false);

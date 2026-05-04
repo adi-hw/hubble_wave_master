@@ -11,6 +11,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { Plus, X, Code, Layers } from 'lucide-react';
+import { DataPillButton } from '../data-pill/DataPillButton';
+import { useDataPillCategories } from '../data-pill/useDataPillCategories';
 
 export type ConditionType = 'always' | 'condition' | 'script';
 
@@ -106,6 +108,19 @@ export const AutomationConditionBuilder: React.FC<AutomationConditionBuilderProp
   onConditionScriptChange,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(conditionType === 'script');
+
+  // Plan §8.1.4 — DataPillPicker categories. The collection's
+  // properties become Trigger pills (since automation rules fire on
+  // record events, the trigger record IS the collection record); the
+  // hook also seeds the User + System pills.
+  const pillCategories = useDataPillCategories({
+    runtime: 'automation',
+    triggerProperties: properties.map((p) => ({
+      code: p.code,
+      label: p.label,
+      type: p.type as never,
+    })),
+  });
 
   const handleTypeChange = (type: ConditionType) => {
     onConditionTypeChange(type);
@@ -342,13 +357,24 @@ export const AutomationConditionBuilder: React.FC<AutomationConditionBuilderProp
         </select>
 
         {needsValue && (
-          <input
-            type="text"
-            placeholder="Value"
-            value={(item.value as string) ?? ''}
-            onChange={(e) => handleConditionChange(path, 'value', e.target.value)}
-            className="flex-[2] min-w-[160px] px-3 py-1.5 text-sm rounded border focus:outline-none focus:ring-2 bg-card border-border text-foreground"
-          />
+          <div className="flex-[2] min-w-[160px] flex gap-1">
+            <input
+              type="text"
+              placeholder="Value or {trigger.field}"
+              value={(item.value as string) ?? ''}
+              onChange={(e) => handleConditionChange(path, 'value', e.target.value)}
+              className="flex-1 px-3 py-1.5 text-sm rounded border focus:outline-none focus:ring-2 bg-card border-border text-foreground"
+            />
+            {/* Plan §8.1.4 — DataPillPicker insertion. Categories are
+                derived from the property list via useDataPillCategories
+                so the variable taxonomy matches Form Builder + Display
+                Rules + Flow Action panels. */}
+            <DataPillButton
+              categories={pillCategories}
+              onSelect={(token) => handleConditionChange(path, 'value', token)}
+              title="Insert variable"
+            />
+          </div>
         )}
 
         {groupIndex !== undefined && (

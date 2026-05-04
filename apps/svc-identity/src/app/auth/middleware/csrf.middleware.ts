@@ -11,6 +11,22 @@ import * as crypto from 'crypto';
  * 3. Server verifies cookie value matches header value
  *
  * Combined with SameSite=Strict cookies for refresh tokens, this provides defense-in-depth.
+ *
+ * Cookie attribute notes
+ * ----------------------
+ * The XSRF-TOKEN cookie is intentionally set with httpOnly: false. The
+ * double-submit pattern requires that browser-side JavaScript can read the
+ * cookie and copy its value into the X-XSRF-TOKEN request header. An
+ * httpOnly cookie would break that read path and the pattern entirely.
+ * Confidentiality of the token does not matter: an attacker on a foreign
+ * origin cannot read it (cross-origin cookie read is blocked) and an
+ * attacker who can already read it from the same origin already has XSS,
+ * which is a more severe vulnerability that this middleware does not claim
+ * to defend against.
+ *
+ * The session refresh cookie is httpOnly and SameSite=Strict; that is the
+ * cookie whose confidentiality matters. The CSRF cookie's value is a public
+ * nonce, not a secret.
  */
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -22,18 +38,21 @@ export class CsrfMiddleware implements NestMiddleware {
   private readonly protectedMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
   // Path patterns that are exempt from CSRF (public/stateless endpoints)
-  // Uses pattern matching to handle paths with or without /api prefix
+  // Uses pattern matching to handle paths with various prefixes:
+  // - /auth/... (direct)
+  // - /api/auth/... (with api prefix)
+  // - /api/identity/auth/... (with full service prefix from ingress)
   private readonly exemptPatterns = [
-    /^\/(?:api\/)?auth\/login$/,
-    /^\/(?:api\/)?auth\/refresh$/,
-    /^\/(?:api\/)?auth\/logout$/,
-    /^\/(?:api\/)?auth\/change-password-expired$/,
-    /^\/(?:api\/)?auth\/password-reset\/.*/,
-    /^\/(?:api\/)?auth\/email-verification\/.*/,
-    /^\/(?:api\/)?auth\/sso\/.*/,
-    /^\/(?:api\/)?auth\/api-keys/,
-    /^\/(?:api\/)?auth\/mfa\/.*/,
-    /^\/(?:api\/)?health$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/login$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/refresh$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/logout$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/change-password-expired$/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/password-reset\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/email-verification\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/sso\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/api-keys/,
+    /^\/(?:api\/)?(?:identity\/)?auth\/mfa\/.*/,
+    /^\/(?:api\/)?(?:identity\/)?health$/,
   ];
 
   use(req: Request, res: Response, next: NextFunction) {

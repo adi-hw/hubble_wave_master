@@ -94,7 +94,7 @@ export class ConfigServiceLocal {
       const newConfig = this.customizationRepo.create({
         configType,
         resourceKey,
-        value,
+        value: value as any,
         isActive: true,
         createdBy: userId,
         updatedBy: userId,
@@ -109,8 +109,8 @@ export class ConfigServiceLocal {
         code: resourceKey,
         changeType: existing ? 'update' : 'create',
         details: {
-          previousValue,
-          newValue: value,
+          previousValue: previousValue as any,
+          newValue: value as any,
         },
         userId,
       })

@@ -122,8 +122,8 @@ export const SSOConfigPage: React.FC = () => {
     try {
       const response = await identityApi.get<{ data: SSOProvider[] }>('/admin/auth/sso/providers');
       setProviders(response.data.data || []);
-    } catch (err) {
-      console.error('Failed to fetch providers:', err);
+    } catch {
+      // Providers fetch failed - list remains empty
     }
   }, []);
 
@@ -538,18 +538,14 @@ export const SSOConfigPage: React.FC = () => {
             setSelectedConfig(null);
           }}
           onSave={async (data) => {
-            try {
-              if (selectedConfig) {
-                await identityApi.put(`/admin/auth/sso/${selectedConfig.id}`, data);
-              } else {
-                await identityApi.post('/admin/auth/sso', data);
-              }
-              fetchConfigs();
-              setShowAddModal(false);
-              setSelectedConfig(null);
-            } catch (err) {
-              throw err;
+            if (selectedConfig) {
+              await identityApi.put(`/admin/auth/sso/${selectedConfig.id}`, data);
+            } else {
+              await identityApi.post('/admin/auth/sso', data);
             }
+            fetchConfigs();
+            setShowAddModal(false);
+            setSelectedConfig(null);
           }}
         />
       )}

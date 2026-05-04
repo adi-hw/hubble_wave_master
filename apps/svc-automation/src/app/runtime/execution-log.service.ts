@@ -1,9 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AutomationExecutionLog } from '@hubblewave/instance-db';
-
-export type AutomationExecutionStatus = 'success' | 'error' | 'skipped' | 'timeout';
+import { AutomationExecutionStatus, TriggeredByPrincipalType } from './automation-runtime.types';
 
 export interface LogOptions {
   automationId?: string;
@@ -20,6 +18,7 @@ export interface LogOptions {
   outputData?: Record<string, unknown>;
   actionsExecuted?: Record<string, unknown>[];
   triggeredBy?: string | null;
+  triggeredByPrincipalType?: TriggeredByPrincipalType;
   executionDepth?: number;
   durationMs?: number;
 }
@@ -28,13 +27,22 @@ export interface LogOptions {
 export class ExecutionLogService {
   private readonly logger = new Logger(ExecutionLogService.name);
 
-  constructor(
-    @InjectRepository(AutomationExecutionLog)
-    private readonly logRepo: Repository<AutomationExecutionLog>,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
-  async log(options: LogOptions): Promise<AutomationExecutionLog> {
-    const entry = this.logRepo.create({
+  async log(options: LogOptions, mgr?: EntityManager): Promise<AutomationExecutionLog> {
+    // The execution-log entity's persisted status enum predates the
+    // 'partial_failure' bucket, so we keep the rich status in outputData and
+    // map it to the closest persisted value for indexing/back-compat.
+    const persistedStatus =
+      options.status === 'partial_failure' ? 'error' : options.status;
+    const enrichedOutput: Record<string, unknown> = {
+      ...(options.outputData || {}),
+      _runtimeStatus: options.status,
+      _triggeredByPrincipalType: options.triggeredByPrincipalType,
+    };
+
+    const repo = (mgr ?? this.dataSource).getRepository(AutomationExecutionLog);
+    const entry = repo.create({
       automationRuleId: options.automationId,
       automationType: 'data',
       automationName: options.automationName,
@@ -42,12 +50,13 @@ export class ExecutionLogService {
       recordId: options.recordId,
       triggerEvent: options.triggerEvent,
       triggerTiming: options.triggerTiming,
-      status: options.status,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      status: persistedStatus as any,
       skippedReason: options.skippedReason,
       errorMessage: options.errorMessage,
       errorStack: options.errorStack,
       inputData: options.inputData,
-      outputData: options.outputData,
+      outputData: enrichedOutput,
       actionsExecuted: options.actionsExecuted,
       triggeredBy: options.triggeredBy ?? undefined,
       executionDepth: options.executionDepth || 1,
@@ -55,7 +64,7 @@ export class ExecutionLogService {
     } as Partial<AutomationExecutionLog>);
 
     try {
-      return await this.logRepo.save(entry);
+      return await repo.save(entry);
     } catch (error) {
       this.logger.error(`Automation execution log save failed: ${(error as Error).message}`);
       throw error;

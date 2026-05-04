@@ -52,7 +52,7 @@ export const GroupPickerField: React.FC<FieldComponentProps<unknown>> = ({
       identityApi
         .get(`/groups/${strValue}`)
         .then((res) => setSelectedGroup(res.data))
-        .catch(() => {});
+        .catch(() => undefined);
     }
   }, [strValue, selectedGroup]);
 

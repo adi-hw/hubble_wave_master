@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
@@ -9,7 +8,6 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
   CollectionDefinition,
-  PropertyDefinition,
   Role,
   Group,
   User,
@@ -116,8 +114,6 @@ export interface PolicyStats {
 
 @Injectable()
 export class PoliciesService {
-  private readonly logger = new Logger(PoliciesService.name);
-
   constructor(
     @InjectRepository(CollectionAccessRule)
     private readonly collectionRuleRepo: Repository<CollectionAccessRule>,
@@ -125,8 +121,6 @@ export class PoliciesService {
     private readonly propertyRuleRepo: Repository<PropertyAccessRule>,
     @InjectRepository(CollectionDefinition)
     private readonly collectionRepo: Repository<CollectionDefinition>,
-    @InjectRepository(PropertyDefinition)
-    private readonly propertyRepo: Repository<PropertyDefinition>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     @InjectRepository(Group)

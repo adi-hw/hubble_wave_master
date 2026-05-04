@@ -27,7 +27,7 @@ interface GetSuggestionsDto {
 
 @ApiTags('Phase 7 - Predictive UI')
 @ApiBearerAuth()
-@Controller('api/phase7/predictive-ui')
+@Controller('phase7/predictive-ui')
 @UseGuards(JwtAuthGuard)
 export class PredictiveUIController {
   constructor(
@@ -73,6 +73,7 @@ export class PredictiveUIController {
   @ApiOperation({ summary: 'Record feedback on a suggestion' })
   @ApiResponse({ status: 200, description: 'Feedback recorded' })
   async recordFeedback(
+    @CurrentUser() _user: RequestUser,
     @Param('id') suggestionId: string,
     @Body() dto: { accepted: boolean },
   ) {

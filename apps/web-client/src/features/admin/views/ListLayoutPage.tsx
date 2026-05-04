@@ -206,7 +206,7 @@ export const ListLayoutPage: React.FC = () => {
         setActiveViewId(listViews[0].id);
       }
     } catch (err) {
-      console.error('Failed to load list builder data:', err);
+      // Load failed - show error state
       setError(err instanceof Error ? err.message : 'Failed to load list builder');
     } finally {
       setLoading(false);
@@ -279,8 +279,8 @@ export const ListLayoutPage: React.FC = () => {
       await loadData();
       showSuccess('List view created.');
       closeViewEditor();
-    } catch (err) {
-      console.error('Failed to create list view:', err);
+    } catch {
+      // Create failed - show error notification
       showError('Failed to create list view.');
     }
   };
@@ -306,8 +306,8 @@ export const ListLayoutPage: React.FC = () => {
       await viewApi.publish(activeView.code);
       await loadData();
       showSuccess('List layout saved.');
-    } catch (err) {
-      console.error('Failed to save list layout:', err);
+    } catch {
+      // Save failed - show error notification
       showError('Failed to save list layout.');
     }
   };

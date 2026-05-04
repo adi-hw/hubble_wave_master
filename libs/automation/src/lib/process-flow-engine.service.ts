@@ -70,6 +70,17 @@ export interface ProcessFlowContext {
   input: Record<string, unknown>;
   variables: Record<string, unknown>;
   stepOutputs: Record<string, unknown>;
+  /**
+   * Plan §8.1.4 — author-facing namespaces injected so DataPillPicker
+   * tokens (`{{trigger.x}}`, `{{user.x}}`, `{{system.now}}`)
+   * actually resolve. `trigger` is an alias of `input` (the trigger
+   * record); `user` carries id + loaded profile fields where
+   * available; `system` exposes platform values. Without these,
+   * picker-emitted pills would resolve to undefined at runtime.
+   */
+  trigger?: Record<string, unknown>;
+  user?: Record<string, unknown>;
+  system?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -98,15 +109,17 @@ export class ProcessFlowEngineService {
     triggeredBy?: string,
     correlationId?: string
   ): Promise<ProcessFlowInstance> {
-    // Find process flow definition
+    // Runtime enforces both flags. `isActive` is the operational
+    // switch; `status='published'` is the lifecycle gate. Either alone
+    // is insufficient — a stale `isActive=true` from a seed, import,
+    // or direct data correction must not let an unreviewed draft or
+    // a retired deprecated definition fire.
     const processFlow = await this.processFlowRepo.findOne({
-      where: [
-        { code: processFlowCode, isActive: true },
-      ],
+      where: { code: processFlowCode, isActive: true, status: 'published' },
     });
 
     if (!processFlow) {
-      throw new Error(`Process flow not found: ${processFlowCode}`);
+      throw new Error(`Process flow not found or not in a runnable state: ${processFlowCode}`);
     }
 
     // Create process flow instance
@@ -152,20 +165,40 @@ export class ProcessFlowEngineService {
       throw new Error(`Process flow definition not found: ${instance.processFlowId}`);
     }
 
+    // ADR-5 lifecycle gate, re-checked here. `startProcessFlow` already
+    // gated `status='published' AND isActive=true` at instance creation,
+    // but a deprecation between create and execute (mid-`setImmediate`
+    // dispatch) could otherwise let the engine run a deprecated
+    // definition. Re-validating after the reload closes that race.
+    if (processFlow.status !== 'published' || !processFlow.isActive) {
+      throw new Error(
+        `Process flow ${processFlow.code} is not published or active; refusing to execute.`,
+      );
+    }
+
     // Update instance state
     instance.state = 'running';
     instance.startedAt = new Date();
     await this.instanceRepo.save(instance);
 
     // Build process flow context
+    const triggerInput = ((instance.context as any)?.input ?? {}) as Record<string, unknown>;
+    const triggeredById = (instance.context as any)?.triggeredBy as string | undefined;
     const context: ProcessFlowContext = {
-      userId: (instance.context as any)?.triggeredBy || 'system',
+      userId: triggeredById || 'system',
       instanceId,
       processFlowId: processFlow.id,
-      triggeredBy: (instance.context as any)?.triggeredBy,
-      input: (instance.context as any)?.input || {},
+      triggeredBy: triggeredById,
+      input: triggerInput,
       variables: (instance.context as any)?.variables || {},
       stepOutputs: {},
+      // Author-facing namespaces (plan §8.1.4). `trigger` aliases
+      // `input` so {{trigger.x}} resolves to the trigger record's
+      // x. `user` carries id (and profile fields if loaded). `system`
+      // exposes deterministic-at-instance-start now/today/instanceCode.
+      trigger: triggerInput,
+      user: this.buildUserNamespace(triggeredById),
+      system: this.buildSystemNamespace(),
     };
 
     try {
@@ -315,11 +348,12 @@ export class ProcessFlowEngineService {
           await this.executeWait(node, history, instance);
           return; // Process flow paused until wait complete
 
-        case 'subflow':
+        case 'subflow': {
           const subResult = await this.executeSubProcessFlow(node, context);
           context.stepOutputs[nodeId] = subResult;
           nextNodeId = this.findNextNode(nodeId, connections);
           break;
+        }
 
         default:
           this.logger.warn(`Unknown node type: ${nodeType}`);
@@ -331,6 +365,15 @@ export class ProcessFlowEngineService {
       history.outputData = context.stepOutputs[nodeId] as Record<string, any>;
       history.executionTimeMs = Date.now() - history.createdAt.getTime();
       await this.historyRepo.save(history);
+
+      // Persist stepOutputs to instance.context after every node so a
+      // subsequent pause+resume preserves the bindings authors wired
+      // (e.g. WaitForApproval reading `{{stepOutputs.<createApproval>.approvalId}}`).
+      // Without this every resume path rebuilds context with an empty
+      // stepOutputs map and any cross-node binding resolves to undefined.
+      if (context.stepOutputs[nodeId] !== undefined) {
+        await this.persistStepOutputs(instance.id, context.stepOutputs);
+      }
 
       // Emit step completed event
       this.eventEmitter.emit('processFlow.step_completed', {
@@ -345,6 +388,38 @@ export class ProcessFlowEngineService {
         await this.executeNode(instance, processFlow, nextNodeId, context);
       }
     } catch (error: any) {
+      // The catalog's WaitForApproval handler throws an
+      // `ApprovalPendingException` (name-tagged across the
+      // event-bus boundary; we can't `instanceof` across the
+      // package split, so we match by `error.name`) when the
+      // referenced approval is still pending. That isn't a flow
+      // failure — it's the *normal* park-until-resolved path.
+      // Mark the history step as `waiting`, flip the instance to
+      // `waiting_approval`, and return without rethrowing so the
+      // caller doesn't cascade into the failed-instance handler.
+      // Resolution is driven by `resumeFromApproval` when the
+      // Approval row transitions out of `pending`.
+      if (error?.name === 'ApprovalPendingException') {
+        history.status = 'waiting';
+        await this.historyRepo.save(history);
+
+        const instanceState = await this.instanceRepo.findOne({ where: { id: instance.id } });
+        if (instanceState) {
+          instanceState.state = 'waiting_approval';
+          // currentNodeId is the field `resumeProcessFlow` looks at
+          // when an approval response arrives.
+          instanceState.currentNodeId = nodeId;
+          await this.instanceRepo.save(instanceState);
+        }
+
+        this.eventEmitter.emit('processFlow.waiting_approval', {
+          instanceId: instance.id,
+          nodeId,
+          approvalId: error.approvalId,
+        });
+        return;
+      }
+
       history.status = 'failed';
       history.errorMessage = error.message;
       history.errorStack = error.stack;
@@ -369,7 +444,16 @@ export class ProcessFlowEngineService {
     node: { id: string; config: Record<string, unknown> },
     context: ProcessFlowContext
   ): Promise<unknown> {
-    // Emit event for action handlers
+    // Resolve {{path.to.value}} bindings against the runtime context
+    // before the dispatcher sees the config. Without this, every
+    // action that exposes bindings to authors (MakeDecision inputs,
+    // UpdateRecord values, SendNotification recipientUserId,
+    // HTTPRequest body, …) ends up comparing literal `{{record.x}}`
+    // strings to real data — flows look authored correctly but
+    // never match.
+    const rawActionConfig = (node.config.actionConfig ?? {}) as Record<string, unknown>;
+    const resolvedConfig = this.interpolateObject(rawActionConfig, context);
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Action timeout'));
@@ -379,7 +463,7 @@ export class ProcessFlowEngineService {
         instanceId: context.instanceId,
         nodeId: node.id,
         actionType: node.config.actionType,
-        config: node.config.actionConfig,
+        config: resolvedConfig,
         context: context.variables,
         callback: (error: Error | null, result: unknown) => {
           clearTimeout(timeout);
@@ -517,12 +601,19 @@ export class ProcessFlowEngineService {
   }
 
   /**
-   * Resume a paused process flow
+   * Resume a paused process flow.
+   *
+   * `fromNodeId` is the node the resume advances *past* — the next
+   * node from this id is what executes. `seedStepOutputs` pre-populates
+   * `stepOutputs[fromNodeId]` so the resumed-from node's outputs are
+   * available to downstream bindings (used by the approval-response
+   * path to seed the WaitForApproval node's `decision` / `comment`).
    */
   async resumeProcessFlow(
     instanceId: string,
     fromNodeId: string,
-    resumeData?: Record<string, unknown>
+    resumeData?: Record<string, unknown>,
+    seedStepOutputs?: Record<string, unknown>,
   ): Promise<void> {
     const instance = await this.instanceRepo.findOne({ where: { id: instanceId } });
     if (!instance || (instance.state !== 'waiting_approval' && instance.state !== 'waiting_condition')) {
@@ -548,16 +639,34 @@ export class ProcessFlowEngineService {
     instance.state = 'running';
     await this.instanceRepo.save(instance);
 
-    // Build context
-    const instanceContext = instance.context as any;
+    // Build context — restore stepOutputs persisted across the pause
+    // so cross-node bindings (e.g. CreateApproval → WaitForApproval's
+    // approvalId) survive. The resumed-from node's own outputs are
+    // seeded from the resolution payload (decision/comment for an
+    // approval response).
+    const instanceContext = instance.context as Record<string, unknown> | null;
+    const restoredStepOutputs = this.toRecord(instanceContext?.stepOutputs);
+    if (seedStepOutputs) {
+      restoredStepOutputs[fromNodeId] = seedStepOutputs;
+      // Persist the seeded outputs so a re-resume hits the same state.
+      await this.persistStepOutputs(instanceId, restoredStepOutputs);
+    }
+    const resumedInput = this.toRecord(instanceContext?.input);
+    const resumedTriggeredBy = instanceContext?.triggeredBy as string | undefined;
     const context: ProcessFlowContext = {
-      userId: instanceContext?.triggeredBy || 'system',
+      userId: resumedTriggeredBy || 'system',
       instanceId,
       processFlowId: processFlow.id,
-      triggeredBy: instanceContext?.triggeredBy,
-      input: instanceContext?.input || {},
-      variables: { ...instanceContext?.variables, ...resumeData },
-      stepOutputs: {},
+      triggeredBy: resumedTriggeredBy,
+      input: resumedInput,
+      variables: { ...this.toRecord(instanceContext?.variables), ...(resumeData ?? {}) },
+      stepOutputs: restoredStepOutputs,
+      // Plan §8.1.4 — same author-facing namespace injection as the
+      // initial-start path; resume must reproduce the same scope so
+      // post-pause bindings keep resolving.
+      trigger: resumedInput,
+      user: this.buildUserNamespace(resumedTriggeredBy),
+      system: this.buildSystemNamespace(),
     };
 
     // Find next node
@@ -567,6 +676,66 @@ export class ProcessFlowEngineService {
     if (nextNodeId) {
       await this.executeNode(instance, processFlow, nextNodeId, context);
     }
+  }
+
+  /**
+   * Merge stepOutputs into `instance.context` and save. Called from
+   * executeNode after a node completes and from resumeProcessFlow
+   * when seeding a resumed node's outputs.
+   */
+  private async persistStepOutputs(
+    instanceId: string,
+    stepOutputs: Record<string, unknown>,
+  ): Promise<void> {
+    const instance = await this.instanceRepo.findOne({ where: { id: instanceId } });
+    if (!instance) return;
+    const existing = (instance.context as Record<string, unknown> | null) ?? {};
+    instance.context = { ...existing, stepOutputs } as Record<string, unknown>;
+    await this.instanceRepo.save(instance);
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...(value as Record<string, unknown>) }
+      : {};
+  }
+
+  /**
+   * Plan §8.1.4 — author-facing `user` namespace. The engine keeps
+   * the user id as a single string field (`userId`); the namespace
+   * shape mirrors the DataPillPicker contract (`user.id`,
+   * `user.email`, `user.username`). Profile fields are populated
+   * from the loaded user record when available; missing fields stay
+   * undefined and resolve to '' in the engine's `interpolateString`.
+   */
+  private buildUserNamespace(userId: string | undefined): Record<string, unknown> {
+    return {
+      id: userId ?? null,
+      // Email / username could be looked up via UserRepository here.
+      // We don't fetch synchronously inside context-build because
+      // engine startup is on the hot path; downstream actions that
+      // need the full user record can call LookUpRecord against
+      // `users` with `{{userId}}`.
+      email: undefined,
+      username: undefined,
+    };
+  }
+
+  /**
+   * Plan §8.1.4 — author-facing `system` namespace. `now` is captured
+   * at context-build time so all bindings inside one flow execution
+   * see the SAME timestamp (no drift across nodes that take measurable
+   * time). `instanceCode` reads the platform env so authors can
+   * route on which instance is running the flow.
+   */
+  private buildSystemNamespace(): Record<string, unknown> {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return {
+      now: now.toISOString(),
+      today: today.toISOString().slice(0, 10),
+      instanceCode: process.env.INSTANCE_CODE ?? 'default',
+    };
   }
 
   // ============ Helper Methods ============
@@ -610,16 +779,26 @@ export class ProcessFlowEngineService {
     const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(obj)) {
-      if (typeof value === 'string') {
-        result[key] = this.resolveValue(value, context);
-      } else if (typeof value === 'object' && value !== null) {
-        result[key] = this.interpolateObject(value as Record<string, unknown>, context);
-      } else {
-        result[key] = value;
-      }
+      result[key] = this.interpolateAny(value, context);
     }
 
     return result;
+  }
+
+  /**
+   * Walks any JSON-like value, interpolating {{...}} bindings while
+   * preserving the original shape. Arrays must round-trip as arrays;
+   * routing them through interpolateObject would Object.entries them
+   * into `{0, 1, ...}` and corrupt list-valued action inputs (decision
+   * table multi-value inputs, HTTP request bodies, notification data).
+   */
+  private interpolateAny(value: unknown, context: ProcessFlowContext): unknown {
+    if (typeof value === 'string') return this.resolveValue(value, context);
+    if (Array.isArray(value)) return value.map((entry) => this.interpolateAny(entry, context));
+    if (value && typeof value === 'object') {
+      return this.interpolateObject(value as Record<string, unknown>, context);
+    }
+    return value;
   }
 
   private resolveApprovers(
@@ -660,10 +839,34 @@ export class ProcessFlowEngineService {
 
   @OnEvent('approval.response')
   async handleApprovalResponse(payload: any): Promise<void> {
+    // The Approval row stores the CreateApproval node id (the action
+    // that authored it), but the parked node — the one we actually
+    // need to resume past — is the WaitForApproval downstream of it.
+    // The engine writes that node id to `instance.currentNodeId`
+    // when the catalog's WaitForApproval handler throws
+    // ApprovalPendingException. Prefer that over the Approval row's
+    // nodeId so resume targets the parked node, not the
+    // already-completed CreateApproval. Falls back to the legacy
+    // engine `approval` node (which IS the parked node) when
+    // currentNodeId isn't set.
+    const instance = await this.instanceRepo.findOne({
+      where: { id: payload.processFlowInstanceId },
+    });
+    const resumeFromNodeId = instance?.currentNodeId ?? payload.nodeId;
+
+    // Translate the runtime approval-response shape into the
+    // catalog WaitForApproval output shape so downstream bindings
+    // see what the catalog declares (`decision` / `comment`).
+    const seedOutputs = {
+      decision: payload.approved ? 'approved' : 'rejected',
+      comment: payload.comments,
+    };
+
     await this.resumeProcessFlow(
       payload.processFlowInstanceId,
-      payload.nodeId,
-      { approved: payload.approved, approver: payload.approver, comments: payload.comments }
+      resumeFromNodeId,
+      { approved: payload.approved, approver: payload.approver, comments: payload.comments },
+      seedOutputs,
     );
   }
 

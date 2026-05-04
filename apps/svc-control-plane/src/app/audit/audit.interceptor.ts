@@ -1,12 +1,33 @@
 import {
   CallHandler,
   ExecutionContext,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NestInterceptor,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
+import { Observable, from, mergeMap, tap } from 'rxjs';
 import { AuditService } from './audit.service';
+
+/**
+ * Operations whose audit trail is part of the authorization decision itself —
+ * compliance and incident-response would be unable to reconstruct the action
+ * without the audit record. For these, we block the response on a successful
+ * audit write and fail the request with 503 if persistence fails. All other
+ * mutations fall back to the warn-and-continue policy.
+ */
+const HIGH_STAKES_PATHS: ReadonlyArray<{ method: string; pattern: RegExp }> = [
+  { method: 'DELETE', pattern: /^\/customers\/[^/]+$/i },
+  { method: 'POST', pattern: /^\/licenses\/[^/]+\/revoke$/i },
+  { method: 'POST', pattern: /^\/subscriptions\/[^/]+\/cancel$/i },
+  { method: 'PATCH', pattern: /^\/subscriptions\/[^/]+\/cancel$/i },
+];
+
+function isHighStakes(method: string, url: string): boolean {
+  const path = (url || '').split('?')[0] || '';
+  return HIGH_STAKES_PATHS.some((entry) => entry.method === method && entry.pattern.test(path));
+}
 
 const SENSITIVE_FIELDS = [
   'password',
@@ -69,52 +90,74 @@ export class AuditInterceptor implements NestInterceptor {
     const correlationId = req.headers['x-correlation-id'] || undefined;
 
     const start = Date.now();
+    const highStakes = isHighStakes(method, req.url || '');
+
+    const buildPayload = (
+      result: 'success' | 'failure',
+      error?: unknown,
+    ) => ({
+      userId: user?.id,
+      customerId: req.body?.customerId || req.query?.customerId,
+      resourceType: targetType,
+      resourceId: req.params?.id,
+      result,
+      errorMessage: error ? (error as { message?: string })?.message || String(error) : undefined,
+      ipAddress,
+      userAgent,
+      requestId: correlationId,
+      details: {
+        method,
+        url: req.url,
+        actor,
+        actorType,
+        durationMs: Date.now() - start,
+        body: sanitizeBody(req.body),
+      },
+    });
+
+    if (highStakes) {
+      // For high-stakes operations the audit write must succeed before we
+      // consider the request complete. If persistence fails we abort the
+      // response with 503 so callers retry; better to surface the error than
+      // to silently complete an action with no audit trail.
+      return next.handle().pipe(
+        mergeMap((value) =>
+          from(
+            this.auditService
+              .log(`${targetType}.${method.toLowerCase()}`, buildPayload('success'))
+              .catch((err) => {
+                this.logger.error(
+                  `High-stakes audit failed for ${method} ${req.url}: ${err?.message || err}`,
+                );
+                throw new HttpException(
+                  'Audit log write failed; high-stakes operation cannot be confirmed',
+                  HttpStatus.SERVICE_UNAVAILABLE,
+                );
+              }),
+          ).pipe(mergeMap(() => Promise.resolve(value))),
+        ),
+        tap({
+          error: (error) => {
+            this.auditService
+              .log(`${targetType}.${method.toLowerCase()}`, buildPayload('failure', error))
+              .catch((err) =>
+                this.logger.warn(`Audit log failed (failure path): ${err?.message || err}`),
+              );
+          },
+        }),
+      );
+    }
 
     return next.handle().pipe(
       tap({
         next: () => {
           this.auditService
-            .log(`${targetType}.${method.toLowerCase()}`, {
-              userId: user?.id,
-              customerId: req.body?.customerId || req.query?.customerId,
-              resourceType: targetType,
-              resourceId: req.params?.id,
-              result: 'success',
-              ipAddress,
-              userAgent,
-              requestId: correlationId,
-              details: {
-                method,
-                url: req.url,
-                actor,
-                actorType,
-                durationMs: Date.now() - start,
-                body: sanitizeBody(req.body),
-              },
-            })
+            .log(`${targetType}.${method.toLowerCase()}`, buildPayload('success'))
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));
         },
         error: (error) => {
           this.auditService
-            .log(`${targetType}.${method.toLowerCase()}`, {
-              userId: user?.id,
-              customerId: req.body?.customerId || req.query?.customerId,
-              resourceType: targetType,
-              resourceId: req.params?.id,
-              result: 'failure',
-              errorMessage: error?.message || String(error),
-              ipAddress,
-              userAgent,
-              requestId: correlationId,
-              details: {
-                method,
-                url: req.url,
-                actor,
-                actorType,
-                durationMs: Date.now() - start,
-                body: sanitizeBody(req.body),
-              },
-            })
+            .log(`${targetType}.${method.toLowerCase()}`, buildPayload('failure', error))
             .catch((err) => this.logger.warn(`Audit log failed: ${err?.message || err}`));
         },
       }),

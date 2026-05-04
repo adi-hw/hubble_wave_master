@@ -35,8 +35,8 @@ export function ImpersonationBanner() {
       try {
         const result = await authService.getImpersonationStatus();
         setStatus(result);
-      } catch (err) {
-        console.error('Failed to check impersonation status:', err);
+      } catch {
+        // Status check failed - banner remains hidden
       }
     };
 
@@ -50,8 +50,8 @@ export function ImpersonationBanner() {
       setEnding(true);
       await authService.endImpersonation();
       window.location.reload();
-    } catch (err) {
-      console.error('Failed to end impersonation:', err);
+    } catch {
+      // End impersonation failed - button re-enabled
       setEnding(false);
     }
   };

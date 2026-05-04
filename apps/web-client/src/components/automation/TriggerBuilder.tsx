@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 
 export type TriggerTiming = 'before' | 'after' | 'async';
-export type TriggerOperation = 'insert' | 'update' | 'delete';
+export type TriggerOperation = 'insert' | 'update' | 'delete' | 'query';
 
 interface TriggerBuilderProps {
   timing: TriggerTiming;

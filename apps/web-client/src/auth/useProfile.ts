@@ -57,7 +57,7 @@ export const useProfile = () => {
         }
       } catch (err: any) {
         if (!cancelled) {
-          console.warn('Failed to load profile:', err?.message);
+          // Profile load failed - use default profile
           setError(err?.message || 'Failed to load profile');
           // Set a default profile so the app doesn't break
           setProfile({

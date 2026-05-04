@@ -38,6 +38,49 @@ interface ThemeConfig {
   spacing?: Record<string, string>;
 }
 
+// Top-level keys that an imported theme is allowed to contain. Anything else
+// is rejected so a malicious paste cannot expand into custom fields the rest
+// of the app would treat as trusted.
+const ALLOWED_THEME_KEYS = new Set(['colors', 'glass', 'typography', 'spacing']);
+
+// Pattern fragments that indicate an attempt to inject script-like content
+// into a CSS value. Mirrors the backend IsSafeThemeConfig allow-list policy:
+// theme values are CSS literals, never markup or URLs to active resources.
+const UNSAFE_THEME_VALUE_PATTERNS: RegExp[] = [
+  /<script/i,
+  /<\/script/i,
+  /javascript:/i,
+  /vbscript:/i,
+  /data:text\/html/i,
+  /\bon[a-z]+\s*=/i,
+  /expression\s*\(/i,
+];
+
+/**
+ * Validate the parsed theme configuration. Returns true when the value is a
+ * plain object whose keys are all in ALLOWED_THEME_KEYS, every nested entry
+ * is a string, and no string contains script-like markers. Rejects on the
+ * first violation.
+ */
+function isSafeThemeConfig(value: unknown): value is ThemeConfig {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  for (const [key, section] of Object.entries(value as Record<string, unknown>)) {
+    if (!ALLOWED_THEME_KEYS.has(key)) return false;
+    if (typeof section !== 'object' || section === null || Array.isArray(section)) {
+      return false;
+    }
+    for (const cssValue of Object.values(section as Record<string, unknown>)) {
+      if (typeof cssValue !== 'string') return false;
+      if (UNSAFE_THEME_VALUE_PATTERNS.some((pattern) => pattern.test(cssValue))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // ============================================================================
 // UTILITIES
 // ============================================================================
@@ -478,8 +521,8 @@ function AvaAssistant({ currentTheme, onApplySuggestion: _onApplySuggestion }: A
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        console.error('AVA API error:', response.status, errorText);
+        await response.text().catch(() => '');
+        // AVA API request failed
         if (response.status === 401) {
           throw new Error('Please log in to use AVA');
         }
@@ -720,45 +763,64 @@ function ImportModal({ isOpen, onClose, onImport }: ImportModalProps) {
   if (!isOpen) return null;
 
   const handleImport = () => {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(json);
-
-      // Handle both export formats:
-      // 1. Direct config: { colors: {...}, glass: {...}, ... }
-      // 2. Wrapped format: { config: { colors: {...}, ... }, customOverrides: {...} }
-      let configToImport: ThemeConfig;
-
-      if (parsed.config && typeof parsed.config === 'object') {
-        // Wrapped format - merge config with customOverrides
-        configToImport = { ...parsed.config };
-        if (parsed.customOverrides) {
-          if (parsed.customOverrides.colors) {
-            configToImport.colors = { ...configToImport.colors, ...parsed.customOverrides.colors };
-          }
-          if (parsed.customOverrides.glass) {
-            configToImport.glass = { ...configToImport.glass, ...parsed.customOverrides.glass };
-          }
-          if (parsed.customOverrides.typography) {
-            configToImport.typography = { ...configToImport.typography, ...parsed.customOverrides.typography };
-          }
-          if (parsed.customOverrides.spacing) {
-            configToImport.spacing = { ...configToImport.spacing, ...parsed.customOverrides.spacing };
-          }
-        }
-      } else if (parsed.colors || parsed.glass || parsed.typography || parsed.spacing) {
-        // Direct config format
-        configToImport = parsed;
-      } else {
-        throw new Error('Invalid theme format');
-      }
-
-      onImport(configToImport);
-      onClose();
-      setJson('');
-      setError('');
-    } catch (e) {
+      parsed = JSON.parse(json);
+    } catch {
       setError('Invalid JSON format. Please paste a valid theme configuration.');
+      return;
     }
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      setError('Theme must be a JSON object.');
+      return;
+    }
+
+    // Handle both export formats:
+    // 1. Direct config: { colors: {...}, glass: {...}, ... }
+    // 2. Wrapped format: { config: { colors: {...}, ... }, customOverrides: {...} }
+    const parsedRecord = parsed as Record<string, unknown>;
+    let configToImport: ThemeConfig;
+
+    if (parsedRecord.config && typeof parsedRecord.config === 'object' && !Array.isArray(parsedRecord.config)) {
+      // Wrapped format - merge config with customOverrides
+      configToImport = { ...(parsedRecord.config as ThemeConfig) };
+      const overrides = parsedRecord.customOverrides as Partial<ThemeConfig> | undefined;
+      if (overrides && typeof overrides === 'object') {
+        if (overrides.colors) {
+          configToImport.colors = { ...configToImport.colors, ...overrides.colors };
+        }
+        if (overrides.glass) {
+          configToImport.glass = { ...configToImport.glass, ...overrides.glass };
+        }
+        if (overrides.typography) {
+          configToImport.typography = { ...configToImport.typography, ...overrides.typography };
+        }
+        if (overrides.spacing) {
+          configToImport.spacing = { ...configToImport.spacing, ...overrides.spacing };
+        }
+      }
+    } else if (parsedRecord.colors || parsedRecord.glass || parsedRecord.typography || parsedRecord.spacing) {
+      // Direct config format
+      configToImport = parsedRecord as ThemeConfig;
+    } else {
+      setError('Invalid theme format.');
+      return;
+    }
+
+    // Final allow-list validation. Mirrors svc-metadata IsSafeThemeConfig so
+    // imported themes cannot smuggle script payloads through CSS values.
+    if (!isSafeThemeConfig(configToImport)) {
+      setError(
+        'Theme contains unsupported keys or unsafe values. Allowed sections: colors, glass, typography, spacing.'
+      );
+      return;
+    }
+
+    onImport(configToImport);
+    onClose();
+    setJson('');
+    setError('');
   };
 
   return (
@@ -850,8 +912,8 @@ export function ThemeCustomizerPage() {
     try {
       await setPreference({ customOverrides });
       setHasChanges(false);
-    } catch (err) {
-      console.error('Failed to save:', err);
+    } catch {
+      // Save failed - changes remain unsaved
     }
   };
 

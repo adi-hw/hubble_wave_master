@@ -108,8 +108,8 @@ export const AvaPanel: React.FC<AvaPanelProps> = ({ open, onClose, context }) =>
               : msg
           )
         );
-      } catch (err) {
-        console.error('AVA send failed', err);
+      } catch {
+        // AVA service unavailable - showing offline fallback
         setIsOffline(true);
         // Fallback demo response
         const responses = [

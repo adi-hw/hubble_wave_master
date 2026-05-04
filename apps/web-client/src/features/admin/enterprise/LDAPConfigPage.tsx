@@ -142,9 +142,6 @@ export const LDAPConfigPage: React.FC = () => {
       setError(null);
 
       const testData = { ...config };
-      if (!testData.bindPassword && originalConfig) {
-      }
-
       const response = await identityApi.post<TestResult>('/admin/auth/ldap/test', testData);
       setTestResult(response.data);
     } catch (err) {

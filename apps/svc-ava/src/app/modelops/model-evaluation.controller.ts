@@ -3,7 +3,7 @@ import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-
 import { ModelEvaluationService } from './model-evaluation.service';
 import { ModelEvaluationRequest, ModelEvaluationUpdate } from './model-evaluation.types';
 
-@Controller('api/ava/models/:modelId/evaluations')
+@Controller('ava/models/:modelId/evaluations')
 @UseGuards(JwtAuthGuard)
 export class ModelEvaluationController {
   constructor(private readonly evaluations: ModelEvaluationService) {}

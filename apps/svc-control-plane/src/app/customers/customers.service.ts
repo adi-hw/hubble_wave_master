@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Customer, CustomerSettings } from '@hubblewave/control-plane-db';
 import { CreateCustomerDto, UpdateCustomerDto, CustomerQueryParams } from './customers.dto';
+import { CustomerSettingsDto } from './customer-settings.dto';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
@@ -142,12 +143,14 @@ export class CustomersService {
     return saved;
   }
 
-  async updateSettings(id: string, settings: Partial<CustomerSettings>, updatedBy?: string): Promise<Customer> {
+  async updateSettings(id: string, settings: CustomerSettingsDto, updatedBy?: string): Promise<Customer> {
     const customer = await this.findOne(id);
 
+    // Settings has already been validated against CustomerSettingsDto by the
+    // ValidationPipe; the cast here is narrowing to the persistence type.
     customer.settings = {
       ...customer.settings,
-      ...settings,
+      ...(settings as Partial<CustomerSettings>),
     } as CustomerSettings;
     customer.updatedBy = updatedBy;
 

@@ -5,7 +5,9 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
+@AuthenticatedOnly()
 @Controller('iam')
 @UseGuards(JwtAuthGuard)
 @SkipThrottle()

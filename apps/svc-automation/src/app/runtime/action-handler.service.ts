@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
 import {
   AutomationAction,
   ExecutionContext,
@@ -19,7 +20,15 @@ import {
 export class ActionHandlerService {
   async execute(action: AutomationAction, context: ExecutionContext): Promise<ActionResult> {
     const config = action.config;
-    switch (action.type) {
+    // Translate canonical PascalCase codes from BUILT_IN_AUTOMATION_ACTIONS
+    // (SetField, CreateRecord, FireEvent, CallFlow, Abort) onto the
+    // snake_case branches the handler's switch table dispatches on.
+    // Without this translation, a canvas authored with the canonical
+    // catalog falls through to the default `none` and the rule
+    // appears successful while doing nothing.
+    const canonical = AUTOMATION_CODE_ALIASES[action.type] ?? action.type;
+    const dispatchKey = this.canonicalToDispatchKey(canonical) ?? action.type;
+    switch (dispatchKey) {
       case 'set_value':
         this.assertStringField(config, 'property', 'set_value');
         this.assertField(config, 'value', 'set_value');
@@ -39,7 +48,10 @@ export class ActionHandlerService {
         this.assertStringField(config, 'message', 'add_warning');
         return this.handleAddWarning(config as unknown as AddWarningConfig);
       case 'create_record':
-        this.assertStringField(config, 'collection', 'create_record');
+        // Canonical CreateRecord uses `collectionCode`; the older
+        // alias `collection` is also accepted at the dispatcher
+        // boundary so both shapes execute correctly.
+        this.assertStringFieldAny(config, ['collectionCode', 'collection'], 'create_record');
         return this.handleCreateRecord(config as unknown as CreateRecordConfig, context);
       case 'send_notification':
         this.assertStringArrayField(config, 'recipients', 'send_notification');
@@ -48,7 +60,11 @@ export class ActionHandlerService {
         }
         return this.handleSendNotification(config as unknown as SendNotificationConfig, context);
       case 'start_workflow':
-        this.assertStringField(config, 'workflowId', 'start_workflow');
+        // Catalog CallFlow uses `flowCode`; the older alias
+        // `workflowId` is also accepted at the dispatcher boundary so
+        // canvas-authored CallFlow rules and existing start_workflow
+        // rows both execute correctly.
+        this.assertStringFieldAny(config, ['flowCode', 'workflowId'], 'start_workflow');
         return this.handleStartWorkflow(config as unknown as StartWorkflowConfig, context);
       case 'log_event':
         return this.handleLogEvent(config as unknown as LogEventConfig, context);
@@ -60,6 +76,28 @@ export class ActionHandlerService {
       default:
         return { type: 'none' };
     }
+  }
+
+  /**
+   * Map a canonical PascalCase catalog code to the snake_case branch
+   * the handler's switch table dispatches on. Returning the dispatch
+   * key keeps the switch table single-shaped while letting catalog
+   * authors write the canonical names.
+   */
+  private canonicalToDispatchKey(code: string): string | undefined {
+    const reverseMap: Record<string, string> = {
+      SetField: 'set_value',
+      CreateRecord: 'create_record',
+      FireEvent: 'log_event',
+      CallFlow: 'start_workflow',
+      Abort: 'abort',
+      // svc-automation also handles these, accept their PascalCase too.
+      SendNotification: 'send_notification',
+      AddError: 'add_error',
+      AddWarning: 'add_warning',
+      AddComment: 'add_comment',
+    };
+    return reverseMap[code];
   }
 
   private handleSetValue(config: SetValueConfig, context: ExecutionContext): ActionResult {
@@ -126,10 +164,17 @@ export class ActionHandlerService {
       }
     }
 
+    // Catalog uses `collectionCode`; the older alias `collection`
+    // remains accepted so already-saved rules keep executing. Prefer
+    // the canonical name and fall back to the alias.
+    const collection =
+      (config as unknown as { collectionCode?: string }).collectionCode ??
+      config.collection;
+
     return {
       type: 'create_record',
       output: {
-        collection: config.collection,
+        collection,
         values,
       },
     };
@@ -168,10 +213,13 @@ export class ActionHandlerService {
         )
       : undefined;
 
+    const workflowId =
+      (config as unknown as { flowCode?: string }).flowCode ?? config.workflowId;
+
     return {
       type: 'start_workflow',
       output: {
-        workflowId: config.workflowId,
+        workflowId,
         inputs,
       },
     };
@@ -202,8 +250,13 @@ export class ActionHandlerService {
         )
       : {};
 
+    // Phase 4 §9.1 FireEvent (also keyed under `log_event`) publishes to the
+    // platform event bus. Returning `type: 'none'` previously meant
+    // the runtime ignored the result, so the rule appeared to run
+    // while producing no downstream event. The runtime catches
+    // `fire_event` results and forwards them via OutboxPublisherService.
     return {
-      type: 'none',
+      type: 'fire_event',
       output: { event: config.event || config.eventType, data },
     };
   }
@@ -237,6 +290,11 @@ export class ActionHandlerService {
     if (value === '@today') {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+    if (value === '@instanceCode') {
+      // Plan §8.1.4 — pairs with the data-pill picker's `@instanceCode`
+      // automation token. Resolves to the platform `INSTANCE_CODE` env.
+      return process.env.INSTANCE_CODE ?? 'default';
     }
     if (value.startsWith('@now.addDays(')) {
       const match = value.match(/@now\.addDays\((-?\d+)\)/);
@@ -284,6 +342,22 @@ export class ActionHandlerService {
     if (typeof value !== 'string' || value.trim().length === 0) {
       throw new Error(`Automation action ${action} requires ${field}`);
     }
+  }
+
+  private assertStringFieldAny(
+    config: Record<string, unknown>,
+    fields: ReadonlyArray<string>,
+    action: string
+  ): void {
+    for (const field of fields) {
+      const value = config[field];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return;
+      }
+    }
+    throw new Error(
+      `Automation action ${action} requires one of: ${fields.join(', ')}`,
+    );
   }
 
   private assertStringArrayField(

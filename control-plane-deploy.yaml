@@ -1,5 +1,13 @@
 # =============================================================================
 # HubbleWave Control Plane - Kubernetes Deployment
+#
+# Image references in this manifest use the placeholder
+# `:WILL_BE_REPLACED_BY_CD`. The CD pipeline (.github/workflows/cd.yml)
+# is responsible for substituting these with an immutable image digest
+# of the form `@sha256:<digest>` before kubectl apply.
+#
+# Mutable tags (latest, vN) are deliberately not used here: deployments
+# must be reproducible and traceable to a specific commit SHA.
 # =============================================================================
 ---
 # Namespace
@@ -45,7 +53,7 @@ spec:
       serviceAccountName: control-plane-sa
       containers:
         - name: api
-          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/svc-control-plane:v1
+          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/svc-control-plane:WILL_BE_REPLACED_BY_CD
           ports:
             - containerPort: 3003
           envFrom:
@@ -113,7 +121,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/web-control-plane:v1
+          image: 687904696003.dkr.ecr.us-east-2.amazonaws.com/hubblewave/control/web-control-plane:WILL_BE_REPLACED_BY_CD
           ports:
             - containerPort: 80
           resources:

@@ -19,6 +19,7 @@ import {
   Search,
   LayoutDashboard,
   Languages,
+  AppWindow,
 } from 'lucide-react';
 import { AvaAssistPanel } from '../../ava';
 
@@ -72,6 +73,14 @@ const adminSections: AdminSection[] = [
     title: 'Data Platform',
     description: 'Manage data models and schemas',
     items: [
+      {
+        name: 'Applications',
+        description: 'Group Collections, Forms, and Workflows under named Applications',
+        href: '/studio/apps',
+        icon: AppWindow,
+        iconBgClass: 'bg-primary/10',
+        iconColorClass: 'text-primary',
+      },
       {
         name: 'Collections',
         description: 'Manage collection definitions and schema',

@@ -128,8 +128,8 @@ export const ApiExplorerPage: React.FC = () => {
       });
 
       setEndpoints(parsedEndpoints);
-    } catch (error) {
-      console.error('Error fetching API spec:', error);
+    } catch {
+      // API spec fetch failed - endpoints remain empty
     } finally {
       setLoading(false);
     }
@@ -146,8 +146,8 @@ export const ApiExplorerPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch API keys');
       const data = await response.json();
       setApiKeys(data.items || []);
-    } catch (error) {
-      console.error('Error fetching API keys:', error);
+    } catch {
+      // API keys fetch failed - keys remain empty
     }
   };
 
@@ -245,8 +245,8 @@ export const ApiExplorerPage: React.FC = () => {
       const data = await response.json();
       setCreatedKeySecret(data.secret || data.key || null);
       fetchApiKeys();
-    } catch (error) {
-      console.error('Error creating API key:', error);
+    } catch {
+      // API key creation failed - secret remains null
     } finally {
       setCreateLoading(false);
     }
@@ -257,7 +257,7 @@ export const ApiExplorerPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-subtle rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg">
             <Code className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -352,7 +352,7 @@ export const ApiExplorerPage: React.FC = () => {
                               onClick={() => setSelectedEndpoint(endpoint)}
                               className={`w-full flex items-center gap-2 p-2 text-left rounded transition-colors ${
                                 selectedEndpoint?.id === endpoint.id
-                                  ? 'bg-primary-subtle'
+                                  ? 'bg-primary/10'
                                   : 'hover:bg-muted'
                               }`}
                             >

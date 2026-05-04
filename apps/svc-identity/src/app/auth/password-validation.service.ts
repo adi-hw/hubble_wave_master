@@ -113,6 +113,15 @@ export class PasswordValidationService {
       displayName?: string;
     },
   ): Promise<PasswordValidationResult> {
+    // Hard cap before any regex evaluation. Some of the policy checks below
+    // run regex against the raw password; an attacker submitting an
+    // arbitrarily long string could trigger ReDoS-style backtracking on
+    // pathological patterns. Anything beyond 1024 chars is also far past any
+    // legitimate user password and well above what argon2 will hash.
+    if (password.length > 1024) {
+      throw new BadRequestException('Password too long');
+    }
+
     const settings = await this.getAuthSettings();
     const errors: string[] = [];
     let score = 0;

@@ -590,99 +590,149 @@ resource "kubernetes_service_account" "control_plane" {
     }
   }
 
+  # The control-plane API and worker pods need IRSA-backed token mounting to
+  # call AWS APIs (Secrets Manager, S3 state, RDS describe). Pods that should
+  # not see this token must opt out at the Pod spec level via
+  # automountServiceAccountToken: false.
   automount_service_account_token = true
 }
 
+# Harden the default ServiceAccount in the control-plane namespace so any
+# pod that forgets to set serviceAccountName does not silently pick up a
+# token. Defense in depth against accidental privilege.
+resource "kubernetes_default_service_account_v1" "control_plane_default" {
+  metadata {
+    namespace = kubernetes_namespace.control_plane.metadata[0].name
+  }
+
+  automount_service_account_token = false
+}
+
 # -----------------------------------------------------------------------------
-# RBAC - Cluster Role for Instance Management
+# RBAC - Instance Management
+#
+# Split into two roles to honour least privilege:
+#
+#   1. instance-manager-cluster (ClusterRole) - cluster-scoped operations only,
+#      strictly limited to namespace lifecycle (create/get/delete) plus
+#      read-only access to CustomResourceDefinitions and Nodes for provisioning
+#      decisions. No cluster-wide read or write of secrets, configmaps,
+#      deployments, services, etc.
+#
+#   2. instance-manager-namespace (Role + RoleBinding template) - per-namespace
+#      role granting full management of workloads, services, ingresses,
+#      secrets, and configmaps within ONE instance namespace. The control
+#      plane RoleBindings this role to each instance namespace as it is
+#      created (Terraform module customer-instance creates the RoleBinding
+#      against this Role name when the namespace is provisioned).
+#
+# This change ensures a control-plane SA token leak cannot read or mutate
+# secrets across the cluster - blast radius is bounded to namespaces where
+# the control plane has explicitly bound itself.
 # -----------------------------------------------------------------------------
 
-resource "kubernetes_cluster_role" "instance_manager" {
+resource "kubernetes_cluster_role" "instance_manager_cluster" {
   metadata {
-    name   = "hubblewave-instance-manager"
+    name   = "hubblewave-instance-manager-cluster"
     labels = local.common_labels
   }
 
-  # Namespace management for customer instances
+  # Namespace lifecycle - required to provision and tear down customer
+  # instance namespaces. List/watch are needed for the reconciliation loop.
   rule {
     api_groups = [""]
     resources  = ["namespaces"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
+    verbs      = ["create", "delete", "get", "list", "watch", "patch"]
   }
 
-  # Secret management
+  # CustomResourceDefinitions - read-only. Required for the provisioner to
+  # discover whether ALB controller / cert-manager / metrics-server CRDs are
+  # already installed before applying instance manifests.
   rule {
-    api_groups = [""]
-    resources  = ["secrets", "configmaps"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Deployment management
-  rule {
-    api_groups = ["apps"]
-    resources  = ["deployments", "statefulsets", "replicasets"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Service management
-  rule {
-    api_groups = [""]
-    resources  = ["services"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Ingress management
-  rule {
-    api_groups = ["networking.k8s.io"]
-    resources  = ["ingresses"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # HPA management
-  rule {
-    api_groups = ["autoscaling"]
-    resources  = ["horizontalpodautoscalers"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Network policies
-  rule {
-    api_groups = ["networking.k8s.io"]
-    resources  = ["networkpolicies"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Resource quotas
-  rule {
-    api_groups = [""]
-    resources  = ["resourcequotas"]
-    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
-  }
-
-  # Pod status for health checks
-  rule {
-    api_groups = [""]
-    resources  = ["pods", "pods/log"]
+    api_groups = ["apiextensions.k8s.io"]
+    resources  = ["customresourcedefinitions"]
     verbs      = ["get", "list", "watch"]
+  }
+
+  # Node read-only - required for capacity planning and tier scheduling.
+  rule {
+    api_groups = [""]
+    resources  = ["nodes"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # ClusterRole/ClusterRoleBinding read-only - required to detect existing
+  # bindings before creating the per-namespace RoleBinding from the
+  # instance-manager-namespace Role.
+  rule {
+    api_groups = ["rbac.authorization.k8s.io"]
+    resources  = ["clusterroles", "clusterrolebindings"]
+    verbs      = ["get", "list"]
   }
 }
 
-resource "kubernetes_cluster_role_binding" "instance_manager" {
+resource "kubernetes_cluster_role_binding" "instance_manager_cluster" {
   metadata {
-    name   = "hubblewave-instance-manager"
+    name   = "hubblewave-instance-manager-cluster"
     labels = local.common_labels
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.instance_manager.metadata[0].name
+    name      = kubernetes_cluster_role.instance_manager_cluster.metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
     name      = kubernetes_service_account.control_plane.metadata[0].name
     namespace = kubernetes_namespace.control_plane.metadata[0].name
+  }
+}
+
+# Per-namespace Role template - the control plane creates a Role with this
+# spec inside each instance namespace at provisioning time. Terraform here
+# defines it inside the control-plane namespace so the spec lives in one
+# canonical location; the customer-instance module replicates it into the
+# instance namespace and binds the control-plane SA to it.
+resource "kubernetes_role" "instance_manager_namespace_template" {
+  metadata {
+    name      = "hubblewave-instance-manager"
+    namespace = kubernetes_namespace.control_plane.metadata[0].name
+    labels    = merge(local.common_labels, {
+      "hubblewave.com/role-template" = "instance-manager-namespace"
+    })
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["secrets", "configmaps", "services", "resourcequotas"]
+    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments", "statefulsets", "replicasets"]
+    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses", "networkpolicies"]
+    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
+  }
+
+  rule {
+    api_groups = ["autoscaling"]
+    resources  = ["horizontalpodautoscalers"]
+    verbs      = ["create", "delete", "get", "list", "watch", "patch", "update"]
+  }
+
+  # Pod read-only for health checks and rollout monitoring.
+  rule {
+    api_groups = [""]
+    resources  = ["pods", "pods/log"]
+    verbs      = ["get", "list", "watch"]
   }
 }
 

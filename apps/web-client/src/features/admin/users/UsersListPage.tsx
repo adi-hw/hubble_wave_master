@@ -104,8 +104,8 @@ export const UsersListPage: React.FC = () => {
         }
       });
       setStatusCounts(counts);
-    } catch (error) {
-      console.error('Failed to fetch status counts:', error);
+    } catch {
+      // Status counts fetch failed - counts remain at default
     }
   };
 
@@ -127,8 +127,8 @@ export const UsersListPage: React.FC = () => {
         total: response.data.total,
         totalPages: response.data.totalPages,
       }));
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
+    } catch {
+      // Users fetch failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -174,8 +174,8 @@ export const UsersListPage: React.FC = () => {
       }
       fetchUsers(); // Refresh list
       fetchStatusCounts(); // Refresh counts after status change
-    } catch (error) {
-      console.error(`Failed to ${action} user:`, error);
+    } catch {
+      // User action failed - state unchanged
     }
   };
 

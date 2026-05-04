@@ -7,16 +7,16 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-hubblewave}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hubblewave}
-      POSTGRES_DB: ${POSTGRES_DB:-hubblewave}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db:/docker-entrypoint-initdb.d:ro
     networks:
       - hw_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hubblewave} -d ${POSTGRES_DB:-hubblewave}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,8 +48,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in .env}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -69,7 +69,7 @@ services:
     ports:
       - "8108:8108"
     environment:
-      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123}
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY must be set in .env}
       TYPESENSE_DATA_DIR: /data
       TYPESENSE_ENABLE_CORS: "true"
     volumes:

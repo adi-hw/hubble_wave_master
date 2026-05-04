@@ -172,6 +172,15 @@ export class MetricDefinition {
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })
   updatedBy?: string | null;
 
+  /**
+   * Identity used by the rollup loop to evaluate the metric query. The rollup
+   * runs on a schedule with no request actor, so it must impersonate a real
+   * user whose row-level permissions bound the aggregate. Without this, an
+   * "incidents created" metric would count rows the metric definer cannot see.
+   */
+  @Column({ name: 'definition_owner_id', type: 'uuid', nullable: true })
+  definitionOwnerId?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
@@ -204,6 +213,17 @@ export class MetricPoint {
   createdAt!: Date;
 }
 
+/**
+ * Dashboard visibility scope. The instance-level DataSource already enforces
+ * tenant isolation by virtue of one-database-per-customer; this scope governs
+ * who within the instance may read the dashboard.
+ *  - system  : visible to every authenticated user in the instance
+ *  - tenant  : visible to every authenticated user in the instance (default)
+ *  - role    : visible only to users carrying a role listed in metadata.roles
+ *  - personal: visible only to the dashboard owner (createdBy)
+ */
+export type DashboardScope = 'system' | 'tenant' | 'role' | 'personal';
+
 @Entity('dashboard_definitions')
 @Index(['code'], { unique: true })
 export class DashboardDefinition {
@@ -218,6 +238,9 @@ export class DashboardDefinition {
 
   @Column({ type: 'text', nullable: true })
   description?: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'tenant' })
+  scope!: DashboardScope;
 
   @Column({ type: 'jsonb', default: () => `'{}'` })
   layout!: Record<string, unknown>;

@@ -1,9 +1,14 @@
 import { Injectable, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, MoreThan } from 'typeorm';
-import { BreakGlassSession, BreakGlassReasonCode } from '@hubblewave/instance-db';
+import {
+  BreakGlassSession,
+  BreakGlassReasonCode,
+  CollectionDefinition,
+} from '@hubblewave/instance-db';
 import { UserAccessContext } from '../types/access.types';
 import { AccessAuditService } from './access-audit.service';
+import { AccessRuleService } from './access-rule.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export interface BreakGlassRequest {
@@ -46,7 +51,10 @@ export class BreakGlassService {
   constructor(
     @InjectRepository(BreakGlassSession)
     private readonly sessionRepo: Repository<BreakGlassSession>,
+    @InjectRepository(CollectionDefinition)
+    private readonly collectionRepo: Repository<CollectionDefinition>,
     private readonly auditService: AccessAuditService,
+    private readonly accessRuleService: AccessRuleService,
     private readonly eventEmitter: EventEmitter2
   ) {}
 
@@ -69,6 +77,31 @@ export class BreakGlassService {
       request.durationMinutes || DEFAULT_DURATION_MINUTES,
       MAX_DURATION_MINUTES
     );
+
+    // If a collection is targeted, it must exist in this instance and the
+    // requester must not already have ordinary access to it.
+    if (request.collectionId) {
+      const collection = await this.collectionRepo.findOne({
+        where: { id: request.collectionId },
+      });
+      if (!collection) {
+        throw new BadRequestException('Collection not found');
+      }
+
+      // Pick the highest-impact operation that is being unlocked. We default
+      // to 'read' because break-glass exists primarily to grant visibility
+      // into otherwise-restricted records.
+      const existingAccess = await this.accessRuleService.checkAccess({
+        user,
+        collectionId: request.collectionId,
+        operation: 'read',
+      });
+      if (existingAccess.allowed) {
+        throw new BadRequestException(
+          'User already has access — break glass not required'
+        );
+      }
+    }
 
     // Check for existing active session for the same scope
     const existing = await this.checkActiveSession(user, request.collectionId, request.recordId);

@@ -5,6 +5,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  */
 export interface RequestUser {
   id: string;
+  userId: string;
   username: string;
   roles: string[];
   permissions: string[];
@@ -19,7 +20,7 @@ export interface RequestUser {
  * @Get('profile')
  * @UseGuards(JwtAuthGuard)
  * getProfile(@CurrentUser() user: RequestUser) {
- *   return { userId: user.id };
+ *   return { userId: user.userId };
  * }
  */
 export const CurrentUser = createParamDecorator(
@@ -32,8 +33,10 @@ export const CurrentUser = createParamDecorator(
     }
 
     // Map authenticated user to RequestUser format
+    const uid = user.userId || user.id;
     const requestUser: RequestUser = {
-      id: user.userId || user.id,
+      id: uid,
+      userId: uid,
       username: user.username,
       roles: user.roles || [],
       permissions: user.permissions || [],

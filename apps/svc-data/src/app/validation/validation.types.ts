@@ -20,6 +20,7 @@ export type ValidationRuleType =
   | 'range'
   | 'email'
   | 'url'
+  | 'uuid'
   | 'phone'
   | 'custom';
 
@@ -103,6 +104,10 @@ export interface EmailRule extends ValidationRule {
 /**
  * URL format validation
  */
+export interface UuidRule extends ValidationRule {
+  type: 'uuid';
+}
+
 export interface UrlRule extends ValidationRule {
   type: 'url';
   protocols?: string[]; // Allowed protocols, default ['http', 'https']
@@ -138,6 +143,7 @@ export type AnyValidationRule =
   | RangeRule
   | EmailRule
   | UrlRule
+  | UuidRule
   | PhoneRule
   | CustomRule;
 
@@ -152,7 +158,11 @@ export interface PropertyValidationRules {
  * Result of a single validation rule check
  */
 export interface ValidationRuleResult {
-  rule: ValidationRuleType;
+  // Per Phase 1 §6.2 — the registry accepts custom validator type
+  // names beyond the canonical ValidationRuleType union, so this
+  // result field is widened to `string`. Built-in handlers continue
+  // to return canonical names; extensions may return their own.
+  rule: ValidationRuleType | string;
   passed: boolean;
   message?: string;
 }

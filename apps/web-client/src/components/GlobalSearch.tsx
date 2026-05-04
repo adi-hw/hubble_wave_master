@@ -115,8 +115,8 @@ export function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
       try {
         const searchResults = await searchService.globalSearch(searchQuery, { limit: 10 });
         setResults(searchResults);
-      } catch (err) {
-        console.error('Search failed:', err);
+      } catch {
+        // Search failed - results remain empty
         setResults([]);
       } finally {
         setLoading(false);

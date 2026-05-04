@@ -14,6 +14,12 @@ import {
   clearAllTokens,
   refreshAccessToken,
 } from '../services/token';
+import { sendMessageToSW } from '../lib/sw-register';
+
+// localStorage key written by services/token.ts for legacy cleanup, and used
+// by the cross-tab logout listener below to detect when another tab cleared
+// the session.
+const LEGACY_TOKEN_STORAGE_KEY = 'accessToken';
 
 // ============================================================================
 // Types
@@ -146,6 +152,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAuth((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
+        // POST /auth/login is intentionally exempt from the platform CSRF
+        // middleware (svc-identity CsrfMiddleware exemptPatterns). The login
+        // endpoint is rate-limited and is the request that *creates* the
+        // session — there is no pre-existing authenticated context to forge,
+        // so the double-submit token cannot meaningfully protect it. The
+        // attacks CSRF guards against (silent state changes from third-party
+        // origins) are addressed here by SameSite=Strict refresh cookies plus
+        // server-side throttling. Other state-changing endpoints continue to
+        // require the X-XSRF-TOKEN header (set by createApiClient).
         const response = await authService.login(
           credentials.username,
           credentials.password,
@@ -182,20 +197,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
         }
 
-        // Login successful
-        console.log('[AuthContext] Login successful, setting token', {
-          tokenLength: response.accessToken?.length,
-          userId: response.user?.id,
-        });
         setStoredToken(response.accessToken);
         setToken(response.accessToken);
-
-        // Verify token was stored
-        const storedCheck = getStoredToken();
-        console.log('[AuthContext] Token stored check', {
-          wasStored: !!storedCheck,
-          storedLength: storedCheck?.length,
-        });
 
         setAuth({
           user: response.user,
@@ -271,7 +274,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await authService.logout();
     } finally {
+      // Wipe service worker caches before local state so an attacker who
+      // gains read access after logout cannot recover per-user API responses.
+      sendMessageToSW({ type: 'CLEAR_USER_CACHE' });
       clearAllTokens();
+      // Signal sibling tabs that the session was terminated. The 'storage'
+      // event only fires in tabs other than the originator.
+      try {
+        localStorage.setItem('hw_auth_logout_signal', String(Date.now()));
+        localStorage.removeItem('hw_auth_logout_signal');
+      } catch {
+        // localStorage may be disabled (private mode); cross-tab sync skipped.
+      }
       setToken(null);
       setAuth({
         user: null,
@@ -291,19 +305,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
         user,
       }));
-    } catch (err) {
-      console.error('Failed to refresh user:', err);
+    } catch {
+      // Silent failure - user profile refresh is non-critical
     }
   }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
-    console.log('[AuthContext] refresh() called');
     try {
       const newToken = await refreshAccessToken();
-      console.log('[AuthContext] refresh() succeeded, token length:', newToken?.length);
       setToken(newToken);
 
-      // Fetch updated user profile
       const user = await authService.getCurrentUser();
       setAuth({
         user,
@@ -313,8 +324,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         mfaRequired: false,
         mfaSessionToken: null,
       });
-    } catch (err) {
-      console.error('[AuthContext] refresh() failed, clearing tokens', err);
+    } catch {
       clearAllTokens();
       setToken(null);
       setAuth({
@@ -517,6 +527,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const hasPermission = useCallback(
     (permission: string): boolean => {
+      if (auth.user?.roles?.some((role) => role === 'admin' || role === 'super_admin')) {
+        return true;
+      }
       return auth.user?.permissions?.includes(permission) ?? false;
     },
     [auth.user]
@@ -531,6 +544,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const hasAnyPermission = useCallback(
     (permissions: string[]): boolean => {
+      if (auth.user?.roles?.some((role) => role === 'admin' || role === 'super_admin')) {
+        return true;
+      }
       return permissions.some((perm) => auth.user?.permissions?.includes(perm));
     },
     [auth.user]
@@ -543,15 +559,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       const storedToken = getStoredToken();
-      const debugLog = sessionStorage.getItem('auth_debug');
-      if (debugLog) {
-        console.warn('[AuthContext] Previous auth failure:', JSON.parse(debugLog));
-        sessionStorage.removeItem('auth_debug');
-      }
-      console.log('[AuthContext] initializeAuth', { hasToken: !!storedToken });
+      sessionStorage.removeItem('auth_debug');
 
       if (storedToken) {
-        // Token exists in memory, fetch user profile
         try {
           const user = await authService.getCurrentUser();
           setAuth({
@@ -562,9 +572,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             mfaRequired: false,
             mfaSessionToken: null,
           });
-        } catch (err) {
-          console.error('[AuthContext] getCurrentUser failed, trying refresh', err);
-          // Token invalid, try refresh
+        } catch {
           await refresh();
         }
       } else {
@@ -587,6 +595,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     initializeAuth();
   }, [refresh]);
+
+  // Cross-tab logout synchronization. When any tab calls logout() it writes a
+  // sentinel value to localStorage which fires a 'storage' event in every
+  // other tab; those tabs clear their auth state so no tab is left believing
+  // the user is still signed in. The legacy token key is also watched in case
+  // it is ever cleared directly.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      const isLogoutSignal = event.key === 'hw_auth_logout_signal' && event.newValue !== null;
+      const isLegacyTokenCleared =
+        event.key === LEGACY_TOKEN_STORAGE_KEY && event.newValue === null;
+      if (isLogoutSignal || isLegacyTokenCleared) {
+        clearAllTokens();
+        setToken(null);
+        setAuth({
+          user: null,
+          loading: false,
+          isAuthenticated: false,
+          error: null,
+          mfaRequired: false,
+          mfaSessionToken: null,
+        });
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // =========================================================================
   // Context Value

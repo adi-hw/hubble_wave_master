@@ -1,5 +1,37 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
+/**
+ * Represents a field change in an audit log entry.
+ */
+export interface AuditFieldChange {
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+/**
+ * Structured changes recorded in access rule audit logs.
+ */
+export interface AccessRuleChanges {
+  changes: AuditFieldChange[];
+  previousState?: Record<string, unknown>;
+  newState?: Record<string, unknown>;
+}
+
+/**
+ * Context captured during access checks for auditing.
+ */
+export interface AccessAuditContext {
+  ipAddress?: string;
+  userAgent?: string;
+  sessionId?: string;
+  requestPath?: string;
+  requestMethod?: string;
+  matchedRules?: string[];
+  evaluationTime?: number;
+  additionalData?: Record<string, unknown>;
+}
+
 @Entity('access_rule_audit_logs')
 export class AccessRuleAuditLog {
   @PrimaryGeneratedColumn('uuid')
@@ -9,10 +41,10 @@ export class AccessRuleAuditLog {
   ruleId!: string;
 
   @Column()
-  action!: string; // 'create', 'update', 'delete'
+  action!: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  changes?: any | null;
+  changes?: AccessRuleChanges | null;
 
   @Column({ name: 'performed_by', type: 'uuid' })
   performedBy!: string;
@@ -36,10 +68,10 @@ export class AccessAuditLog {
   action!: string;
 
   @Column()
-  decision!: string; // 'ALLOW', 'DENY'
+  decision!: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  context?: any | null;
+  context?: AccessAuditContext | null;
 
   @CreateDateColumn()
   timestamp!: Date;

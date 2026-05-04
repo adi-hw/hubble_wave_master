@@ -53,8 +53,8 @@ export const AvaChatPage: React.FC = () => {
             }))
           );
         }
-      } catch (err) {
-        console.error('Failed to fetch conversations:', err);
+      } catch {
+        // Conversations fetch failed - list will remain empty
       } finally {
         setIsLoadingConversations(false);
       }
@@ -86,8 +86,8 @@ export const AvaChatPage: React.FC = () => {
         if (conversationId === id) {
           navigate('/ava/chat');
         }
-      } catch (err) {
-        console.error('Failed to delete conversation:', err);
+      } catch {
+        // Conversation delete failed - remains in list
       }
     },
     [conversationId, navigate]

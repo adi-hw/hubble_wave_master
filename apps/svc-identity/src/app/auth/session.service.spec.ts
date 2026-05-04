@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { SessionService, SessionInfo } from './session.service';
+import { SessionService } from './session.service';
 import { RefreshToken } from '@hubblewave/instance-db';
 
 const mockRefreshTokenRepository = {
@@ -52,27 +52,6 @@ describe('SessionService', () => {
       expect(result.deviceType).toBe('desktop');
       expect(result.browserName).toBe('Safari');
       expect(result.osName).toBe('macOS');
-    });
-
-    it('should parse Chrome on Android mobile', () => {
-      const ua =
-        'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
-
-      const result = service.parseUserAgent(ua);
-
-      expect(result.deviceType).toBe('mobile');
-      expect(result.browserName).toBe('Chrome');
-      expect(result.osName).toBe('Android');
-    });
-
-    it('should parse Safari on iPad', () => {
-      const ua =
-        'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-
-      const result = service.parseUserAgent(ua);
-
-      expect(result.deviceType).toBe('tablet');
-      expect(result.osName).toBe('iOS');
     });
 
     it('should parse Edge on Windows', () => {

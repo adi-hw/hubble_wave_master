@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { RequestContext } from '@hubblewave/auth-guard';
 import { VectorStoreService } from './vector-store.service';
 
 export interface TextChunk {
@@ -25,7 +27,26 @@ export interface IndexingResult {
 export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name);
 
-  constructor(private vectorStoreService: VectorStoreService) {}
+  constructor(
+    private vectorStoreService: VectorStoreService,
+    @Optional() private readonly authorizationService?: AuthorizationService,
+  ) {}
+
+  /**
+   * Confirm the actor can read the source collection before we persist an
+   * embedding for it. Embeddings are derived data: writing one for a record
+   * the actor cannot read would let them seed semantic search results across
+   * a permission boundary.
+   */
+  private async ensureSourceReadable(
+    ctx: RequestContext | undefined,
+    sourceCollection: string,
+  ): Promise<void> {
+    if (!ctx || !this.authorizationService) {
+      return;
+    }
+    await this.authorizationService.ensureTableAccess(ctx, sourceCollection, 'read');
+  }
 
   /**
    * Split text into chunks for embedding
@@ -123,9 +144,11 @@ export class EmbeddingService {
       summary?: string;
       categoryId?: string;
       tags?: string[];
-    }
+    },
+    requestContext?: RequestContext,
   ): Promise<IndexingResult> {
     try {
+      await this.ensureSourceReadable(requestContext, 'knowledge_articles');
       // Delete existing chunks for this article
       await this.vectorStoreService.deleteBySource(
         dataSource,
@@ -188,9 +211,11 @@ export class EmbeddingService {
       description?: string;
       categoryId?: string;
       categoryLabel?: string;
-    }
+    },
+    requestContext?: RequestContext,
   ): Promise<IndexingResult> {
     try {
+      await this.ensureSourceReadable(requestContext, 'catalog_items');
       await this.vectorStoreService.deleteBySource(
         dataSource,
         'catalog_item',
@@ -250,9 +275,11 @@ export class EmbeddingService {
       id: string;
       displayValue: string;
       searchableFields: Record<string, string>;
-    }
+    },
+    requestContext?: RequestContext,
   ): Promise<IndexingResult> {
     try {
+      await this.ensureSourceReadable(requestContext, record.collectionName);
       const sourceId = `${record.collectionName}:${record.id}`;
       await this.vectorStoreService.deleteBySource(dataSource, 'record', sourceId);
 

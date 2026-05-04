@@ -23,7 +23,8 @@ function getCsrfToken(): string | null {
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...fetchOptions } = options;
 
-  let url = `${API_BASE}${endpoint}`;
+  const normalizedEndpoint = normalizeEndpoint(endpoint);
+  let url = `${API_BASE}${normalizedEndpoint}`;
 
   if (params) {
     const searchParams = new URLSearchParams();
@@ -74,12 +75,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     } catch {
       error = { message: errorText || `HTTP ${response.status}` };
     }
-    console.error('API Error Response:', {
-      url,
-      status: response.status,
-      statusText: response.statusText,
-      error,
-    });
+    // API request failed - throw with details
     throw new Error(error.message || error.error || `HTTP ${response.status}`);
   }
 
@@ -90,6 +86,23 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
   }
 
   return JSON.parse(text) as T;
+}
+
+function normalizeEndpoint(endpoint: string): string {
+  if (endpoint.startsWith('/admin/')) {
+    return `/identity${endpoint}`;
+  }
+
+  // svc-data is mounted at /api/data and its collection/grid controllers
+  // are mounted under data/*, so legacy callers that use the shared /api
+  // base need the service segment inserted once.
+  if (
+    endpoint.startsWith('/data/collections') ||
+    endpoint.startsWith('/data/grid')
+  ) {
+    return `/data${endpoint}`;
+  }
+  return endpoint;
 }
 
 /**
@@ -193,34 +206,34 @@ export const dataApi = {
   // Collection Data
   list: (collectionCode: string, params?: Record<string, unknown>) =>
     apiGet<{ data: unknown[]; total: number; page: number; pageSize: number }>(
-      `/collections/${collectionCode}/data`,
+      `/data/collections/${collectionCode}/data`,
       params as Record<string, string | number | boolean | undefined>
     ),
   getOne: (collectionCode: string, id: string) =>
-    apiGet<unknown>(`/collections/${collectionCode}/data/${id}`),
+    apiGet<unknown>(`/data/collections/${collectionCode}/data/${id}`),
   create: (collectionCode: string, data: unknown) =>
-    apiPost<unknown>(`/collections/${collectionCode}/data`, data),
+    apiPost<unknown>(`/data/collections/${collectionCode}/data`, data),
   update: (collectionCode: string, id: string, data: unknown) =>
-    apiPatch<unknown>(`/collections/${collectionCode}/data/${id}`, data),
+    apiPatch<unknown>(`/data/collections/${collectionCode}/data/${id}`, data),
   delete: (collectionCode: string, id: string) =>
-    apiDelete<void>(`/collections/${collectionCode}/data/${id}`),
+    apiDelete<void>(`/data/collections/${collectionCode}/data/${id}`),
 
   // Bulk Operations
   bulkUpdate: (collectionCode: string, ids: string[], data: unknown) =>
-    apiPost<{ updated: number }>(`/collections/${collectionCode}/data/bulk-update`, { ids, data }),
+    apiPost<{ updated: number }>(`/data/collections/${collectionCode}/data/bulk-update`, { ids, data }),
   bulkDelete: (collectionCode: string, ids: string[]) =>
-    apiPost<{ deleted: number }>(`/collections/${collectionCode}/data/bulk-delete`, { ids }),
+    apiPost<{ deleted: number }>(`/data/collections/${collectionCode}/data/bulk-delete`, { ids }),
 
   // Reference Data
   getReferenceOptions: (collectionCode: string, propertyCode: string, query?: string) =>
     apiGet<{ id: string; label: string }[]>(
-      `/collections/${collectionCode}/references/${propertyCode}`,
+      `/data/collections/${collectionCode}/references/${propertyCode}`,
       { q: query }
     ),
 
   // Schema
   getSchema: (collectionCode: string) =>
-    apiGet<unknown>(`/collections/${collectionCode}/schema`),
+    apiGet<unknown>(`/data/collections/${collectionCode}/schema`),
 };
 
 // Combined API object for convenience

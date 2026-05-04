@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { RecordEventPayload } from './automation-runtime.types';
 
@@ -18,6 +18,7 @@ export class OutboxProcessorService implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly runtime: AutomationRuntimeService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('AUTOMATION_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('AUTOMATION_OUTBOX_POLL_MS', '2000'), 10);
@@ -67,6 +68,17 @@ export class OutboxProcessorService implements OnModuleInit, OnModuleDestroy {
                 typeof payload.occurredAt === 'string'
                   ? payload.occurredAt
                   : new Date().toISOString(),
+              // Forward cycle/depth state so the runtime can reconstruct the
+              // chain across outbox-driven re-invocations. Absent on
+              // user-originated events (the runtime defaults to depth=1 and
+              // an empty chain).
+              executionChain: Array.isArray(payload.executionChain)
+                ? (payload.executionChain as string[])
+                : undefined,
+              executionDepth:
+                typeof payload.executionDepth === 'number'
+                  ? (payload.executionDepth as number)
+                  : undefined,
             };
 
             if (!recordPayload.collectionCode || !recordPayload.recordId) {
@@ -78,6 +90,25 @@ export class OutboxProcessorService implements OnModuleInit, OnModuleDestroy {
           await this.markProcessed(entry.id);
         } catch (error) {
           await this.markFailed(entry.id, (error as Error).message);
+          // Outbox entries marked failed here are terminal — there is no
+          // retry once status flips to 'failed'. Record an anomaly so the
+          // drop is queryable even after the row is purged.
+          this.logger.error(
+            `Outbox entry ${entry.id} (${entry.eventType}) marked failed: ${(error as Error).message}`,
+          );
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_terminal_drop',
+            serviceCode: 'svc-automation',
+            message: `Outbox entry ${entry.id} (${entry.eventType}) terminally failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {

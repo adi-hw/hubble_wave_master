@@ -198,8 +198,8 @@ export const AuditExplorerPage: React.FC = () => {
         total: response.data.total,
         totalPages: response.data.totalPages,
       }));
-    } catch (err) {
-      console.error('Failed to fetch audit events:', err);
+    } catch {
+      // Fetch failed - show error state
       setError('Failed to load audit events. The audit API may not be available.');
       setEvents([]);
     } finally {
@@ -249,8 +249,8 @@ export const AuditExplorerPage: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export audit events:', err);
+    } catch {
+      // Export failed - download not triggered
     } finally {
       setExporting(false);
     }
@@ -262,8 +262,8 @@ export const AuditExplorerPage: React.FC = () => {
     try {
       const response = await api.get<HashVerificationResult>('/audit/events/verify');
       setVerificationStatus(response.data);
-    } catch (err) {
-      console.error('Failed to verify hash chain:', err);
+    } catch {
+      // Verification failed - show error status
       setVerificationStatus({
         valid: false,
         totalEvents: 0,

@@ -3,7 +3,7 @@ import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-
 import { DatasetService } from './dataset.service';
 import { DatasetDefinitionRequest, DatasetDefinitionUpdate } from './dataset.types';
 
-@Controller('api/ava/datasets')
+@Controller('ava/datasets')
 @UseGuards(JwtAuthGuard)
 export class DatasetController {
   constructor(private readonly datasetService: DatasetService) {}

@@ -26,7 +26,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload & { fam?: string }) {
+    if (payload.jti && (await this.authService.isTokenRevoked(payload.jti))) {
+      throw new UnauthorizedException('Token has been revoked');
+    }
+
     const user = await this.authService.findById(payload.sub);
 
     if (!user) {
@@ -39,6 +43,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,
+      jti: payload.jti,
+      family: payload.fam ?? null,
+      tokenExpiresAt: payload.exp ? new Date(payload.exp * 1000) : undefined,
     };
   }
 }

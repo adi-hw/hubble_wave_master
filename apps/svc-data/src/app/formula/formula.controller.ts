@@ -17,7 +17,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, RequestContext, RequestUser } from '@hubblewave/auth-guard';
 import { FormulaService } from './formula.service';
 import { RollupService } from './rollup.service';
 import { LookupService } from './lookup.service';
@@ -66,6 +66,15 @@ export class FormulaController {
     private readonly lookupService: LookupService,
     private readonly dependencyService: DependencyService
   ) {}
+
+  private buildContext(user: RequestUser): RequestContext {
+    return {
+      userId: user.id,
+      roles: user.roles,
+      permissions: user.permissions,
+      isAdmin: user.roles.includes('admin'),
+    };
+  }
 
   /**
    * Evaluate a formula for a specific record
@@ -164,7 +173,8 @@ export class FormulaController {
   async calculateRollup(
     @Param('collectionCode') collectionCode: string,
     @Param('recordId') recordId: string,
-    @Body() dto: CalculateRollupDto
+    @Body() dto: CalculateRollupDto,
+    @CurrentUser() user: RequestUser,
   ) {
     if (!dto.relationProperty || !dto.aggregation || !dto.aggregateProperty) {
       throw new BadRequestException('Missing required rollup configuration');
@@ -178,7 +188,8 @@ export class FormulaController {
         aggregation: dto.aggregation,
         aggregateProperty: dto.aggregateProperty,
         sourceCollection: dto.sourceCollection,
-      }
+      },
+      this.buildContext(user),
     );
 
     if (!result.success) {
@@ -199,7 +210,8 @@ export class FormulaController {
   async resolveLookup(
     @Param('collectionCode') collectionCode: string,
     @Param('recordId') recordId: string,
-    @Body() dto: ResolveLookupDto
+    @Body() dto: ResolveLookupDto,
+    @CurrentUser() user: RequestUser,
   ) {
     if (!dto.referenceProperty || !dto.sourceProperty) {
       throw new BadRequestException('Missing required lookup configuration');
@@ -213,7 +225,8 @@ export class FormulaController {
         referenceProperty: dto.referenceProperty,
         sourceProperty: dto.sourceProperty,
         sourceCollection: dto.sourceCollection,
-      }
+      },
+      this.buildContext(user),
     );
 
     if (!result.success) {

@@ -101,8 +101,8 @@ export function PinnedNavigation({ collapsed = false, onItemClick }: PinnedNavig
     try {
       await removePinnedItem(itemId);
       setShowContextMenu(null);
-    } catch (err) {
-      console.error('Failed to remove pinned item:', err);
+    } catch {
+      // Remove failed - item remains pinned
     }
   }, [removePinnedItem]);
 
@@ -275,8 +275,8 @@ export function PinButton({
           route: itemRoute,
         });
       }
-    } catch (err) {
-      console.error('Failed to toggle pin:', err);
+    } catch {
+      // Pin toggle failed - state unchanged
     } finally {
       setLoading(false);
     }

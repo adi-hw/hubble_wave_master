@@ -28,8 +28,8 @@ export const TextAreaField: React.FC<FieldComponentProps<unknown>> = ({
         context: { label: field.label }
       });
       onChange(result.text);
-    } catch (err) {
-      console.error('AI Transform failed', err);
+    } catch {
+      // AI transform failed - value unchanged
     } finally {
       setIsAiLoading(false);
     }

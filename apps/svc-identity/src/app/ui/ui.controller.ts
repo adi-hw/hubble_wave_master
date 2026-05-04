@@ -3,42 +3,51 @@ import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { UiService } from './ui.service';
 import { Request } from 'express';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
+import { RequirePermission } from '../roles/decorators/permission.decorator';
 
 @ApiTags('UI')
 @Controller()
 export class UiController {
   constructor(private readonly uiService: UiService) {}
 
-  // All UI endpoints require authentication (no @Public decorator)
+  // Theme and navigation are visible to any authenticated user; the UI can't
+  // render without them.
   @SkipThrottle()
   @Get('ui/theme')
+  @AuthenticatedOnly()
   getTheme() {
     return this.uiService.getTheme();
   }
 
   @SkipThrottle()
   @Get('ui/navigation')
+  @AuthenticatedOnly()
   getNavigation() {
     return this.uiService.getNavigation();
   }
 
   @Get('admin/ui/theme')
+  @RequirePermission('admin.settings')
   getAdminTheme() {
     return this.uiService.getTheme();
   }
 
   @Put('admin/ui/theme')
+  @RequirePermission('admin.settings')
   updateAdminTheme(@Req() req: Request, @Body() body: any) {
     const userId = (req as any).user?.userId;
     return this.uiService.updateTheme(body ?? {}, userId);
   }
 
   @Get('admin/ui/nav-profile')
+  @RequirePermission('navigation.manage')
   getAdminNavProfile() {
     return this.uiService.getNavigation();
   }
 
   @Put('admin/ui/nav-profile')
+  @RequirePermission('navigation.manage')
   updateAdminNavProfile(@Body() body: any) {
     return this.uiService.updateNavigation(body ?? {});
   }

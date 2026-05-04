@@ -110,8 +110,8 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
     try {
       await onRollback(version.id);
       setRollbackModal(null);
-    } catch (err) {
-      console.error('Rollback failed:', err);
+    } catch {
+      // Rollback failed - modal remains open for retry
     } finally {
       setIsRollingBack(false);
     }

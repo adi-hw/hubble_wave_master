@@ -41,8 +41,8 @@ export const UserPicker: React.FC<UserPickerProps> = ({ value, onChange, require
         const data = await response.json();
         setUsers(data);
       }
-    } catch (error) {
-      console.error('Failed to search users', error);
+    } catch {
+      // User search failed - results remain empty
     } finally {
       setLoading(false);
     }

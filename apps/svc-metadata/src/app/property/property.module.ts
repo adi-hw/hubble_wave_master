@@ -1,15 +1,40 @@
 import { Module } from '@nestjs/common';
-import { InstanceDbModule } from '@hubblewave/instance-db';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import {
+  AuditLog,
+  CollectionDefinition,
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+  PropertyType,
+  InstanceDbModule,
+} from '@hubblewave/instance-db';
 import { PropertyController } from './property.controller';
 import { PropertyService } from './property.service';
 import { PropertyStorageService } from './property-storage.service';
 import { PropertyAvaService } from './property-ava.service';
+import { BehavioralAttributesService } from './behavioral-attributes.service';
+import { PropertyReferenceScanner } from './reference-scanner.service';
 
 @Module({
-  imports: [InstanceDbModule],
+  imports: [
+    InstanceDbModule,
+    TypeOrmModule.forFeature([
+      CollectionDefinition,
+      PropertyDefinition,
+      PropertyDefinitionRevision,
+      PropertyType,
+      AuditLog,
+    ]),
+  ],
   controllers: [PropertyController],
-  providers: [PropertyService, PropertyStorageService, PropertyAvaService],
-  exports: [PropertyService, PropertyStorageService],
+  providers: [
+    PropertyService,
+    PropertyStorageService,
+    PropertyAvaService,
+    BehavioralAttributesService,
+    PropertyReferenceScanner,
+  ],
+  exports: [PropertyService, PropertyStorageService, BehavioralAttributesService, PropertyReferenceScanner],
 })
 export class PropertyModule {}
 

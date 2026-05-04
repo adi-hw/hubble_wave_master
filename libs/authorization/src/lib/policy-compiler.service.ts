@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AccessConditionData, UserAccessContext } from './types';
 import { SPECIAL_VALUES } from './types';
-import type { SafePredicate } from './abac.service';
+import type { LeafPredicate, SafePredicate } from './abac.service';
 
 @Injectable()
 export class PolicyCompilerService {
@@ -14,8 +14,16 @@ export class PolicyCompilerService {
       }
     }
 
-    if (condition.or && condition.or.length === 1) {
-      predicates.push(...this.compile(condition.or[0], user));
+    if (condition.or && condition.or.length > 0) {
+      if (condition.or.length === 1) {
+        predicates.push(...this.compile(condition.or[0], user));
+      } else {
+        const branches = condition.or.map((c) => this.compile(c, user));
+        if (branches.some((b) => b.length === 0)) {
+          throw new Error('OR branch compiled to empty predicate set; refusing to fail-open');
+        }
+        predicates.push({ kind: 'or', branches });
+      }
     }
 
     if (condition.property && condition.operator) {
@@ -31,12 +39,12 @@ export class PolicyCompilerService {
   private conditionToSafePredicate(
     condition: AccessConditionData,
     user: UserAccessContext,
-  ): SafePredicate | null {
+  ): LeafPredicate | null {
     if (!condition.property || !condition.operator) {
       return null;
     }
 
-    const operatorMap: Record<string, SafePredicate['operator']> = {
+    const operatorMap: Record<string, LeafPredicate['operator']> = {
       equals: 'eq',
       not_equals: 'neq',
       greater_than: 'gt',
@@ -68,6 +76,7 @@ export class PolicyCompilerService {
       const contextRef = contextRefMap[value];
       if (contextRef) {
         return {
+          kind: 'leaf',
           field: condition.property,
           operator: safeOperator,
           contextRef,
@@ -76,6 +85,7 @@ export class PolicyCompilerService {
 
       const resolvedValue = this.resolveValue(value, user);
       return {
+        kind: 'leaf',
         field: condition.property,
         operator: safeOperator,
         value: resolvedValue as string | number | boolean | null,
@@ -83,6 +93,7 @@ export class PolicyCompilerService {
     }
 
     return {
+      kind: 'leaf',
       field: condition.property,
       operator: safeOperator,
       value: value as string | number | boolean | null,

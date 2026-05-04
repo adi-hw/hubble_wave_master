@@ -78,6 +78,7 @@ export class ImpersonationController {
    * End impersonation session
    */
   @Post('end')
+  @RequirePermission('users.impersonate')
   @HttpCode(HttpStatus.OK)
   async endImpersonation(@Request() req: RequestWithUser) {
     const impersonation = req.user.impersonation;
@@ -106,6 +107,7 @@ export class ImpersonationController {
    * Get current impersonation status
    */
   @Get('status')
+  @RequirePermission('users.impersonate')
   @HttpCode(HttpStatus.OK)
   async getImpersonationStatus(@Request() req: RequestWithUser) {
     const session = await this.impersonationService.getActiveSession(req.user.sub);

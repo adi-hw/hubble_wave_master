@@ -18,6 +18,7 @@ export type ViewRevisionStatus = 'draft' | 'published';
 @Index(['code'], { unique: true })
 @Index(['kind'])
 @Index(['targetCollectionCode'])
+@Index(['applicationId'])
 export class ViewDefinition {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -36,6 +37,14 @@ export class ViewDefinition {
 
   @Column({ name: 'target_collection_code', type: 'varchar', length: 120, nullable: true })
   targetCollectionCode?: string | null;
+
+  /**
+   * Application this view belongs to (ADR-6). Backfilled from the
+   * targetCollectionCode's parent collection in slice C4, falling back
+   * to the `default` Application for views without a collection.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   @Column({ name: 'metadata', type: 'jsonb', default: () => `'{}'` })
   metadata!: Record<string, unknown>;
@@ -62,6 +71,10 @@ export class ViewDefinition {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
+
+  /** ADR-7 provenance. See CollectionDefinition.source. */
+  @Column({ name: 'source', type: 'varchar', length: 120, default: 'custom' })
+  source!: string;
 }
 
 @Entity('view_definition_revisions')
@@ -165,6 +178,7 @@ export class ViewVariant {
 
 @Entity('widget_catalog')
 @Index(['code'], { unique: true })
+@Index(['applicationId'])
 export class WidgetCatalog {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -180,6 +194,14 @@ export class WidgetCatalog {
 
   @Column({ name: 'contract', type: 'jsonb', default: () => `'{}'` })
   contract!: Record<string, unknown>;
+
+  /**
+   * Application this widget belongs to (ADR-6). Pack-shipped widgets
+   * eventually carry their pack's source Application; pre-Slice-C4
+   * rows are rolled into the `default` Application during backfill.
+   */
+  @Column({ name: 'application_id', type: 'uuid', nullable: true })
+  applicationId?: string | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;

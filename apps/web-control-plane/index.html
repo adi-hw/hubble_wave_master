@@ -5,6 +5,17 @@
     <title>WebControlPlane</title>
     <base href="/" />
 
+    <!--
+      Content-Security-Policy: defense-in-depth for the platform-owner UI.
+      Mirrors the directives applied to web-client. The control-plane SPA
+      makes XHR/fetch calls to its backend over the same origin (or a
+      sibling https://control.* host validated in services/api.ts), loads
+      images and fonts from itself, and never embeds third-party iframes.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://control.hubblewave.com https://*.hubblewave.com http://localhost:* ws://localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   </head>

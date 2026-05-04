@@ -76,7 +76,16 @@ export class OAuth2Service {
     @InjectRepository(OAuthRefreshToken)
     private readonly refreshTokenRepo: Repository<OAuthRefreshToken>,
   ) {
-    this.jwtSecret = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+    // Fail-closed: never sign tokens with an ephemeral random secret — that
+    // would silently produce tokens unverifiable across processes/restarts.
+    const secret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+    if (!secret) {
+      throw new Error(
+        'OAuth2Service requires JWT_SECRET (or IDENTITY_JWT_SECRET) to be configured. ' +
+        'Generate with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
+      );
+    }
+    this.jwtSecret = secret;
   }
 
   // Client Management

@@ -16,10 +16,36 @@ export { RolePermission, UserRole, AssignmentSource } from './role-permission.en
 export { Group, GroupType, GroupMember, GroupRole } from './group.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Application Registry (App Studio scope)
+// ─────────────────────────────────────────────────────────────────
+export {
+  Application,
+  ApplicationRevision,
+} from './application.entity';
+export type { ApplicationStatus, ApplicationRevisionStatus } from './application.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // Schema Engine (Collections & Properties)
 // ─────────────────────────────────────────────────────────────────
-export { CollectionDefinition, OwnerType } from './collection-definition.entity';
-export { PropertyDefinition, DefaultValueType } from './property-definition.entity';
+export {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+  OwnerType,
+} from './collection-definition.entity';
+export type {
+  CollectionDefinitionStatus,
+  CollectionDefinitionRevisionStatus,
+} from './collection-definition.entity';
+export {
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+  DefaultValueType,
+} from './property-definition.entity';
+export type {
+  PropertyDefinitionStatus,
+  PropertyDefinitionRevisionStatus,
+  PropertyBehavioralAttributes,
+} from './property-definition.entity';
 export { PropertyType, PropertyTypeCategory, ChoiceList, ChoiceItem } from './property-type.entity';
 export {
   CollectionIndex,
@@ -104,6 +130,7 @@ export { ModuleEntity, ModuleSecurity, ModuleType, ModuleTargetConfig } from './
 // Forms
 // ─────────────────────────────────────────────────────────────────
 export { FormDefinition, FormVersion } from './form.entity';
+export type { FormDefinitionStatus, FormVersionStatus } from './form.entity';
 
 // ─────────────────────────────────────────────────────────────────
 // Views
@@ -174,6 +201,73 @@ export { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.en
 
 export { InstanceEventOutbox, OutboxStatus } from './event-outbox.entity';
 
+export { DependentReviewQueueEntry } from './dependent-review-queue.entity';
+export type {
+  DependentReviewStatus,
+  DependentReviewChangeKind,
+  DependentReviewClassification,
+} from './dependent-review-queue.entity';
+
+export { DisplayRule, DisplayRuleRevision } from './display-rule.entity';
+export type {
+  DisplayRuleStatus,
+  DisplayRuleRevisionStatus,
+  DisplayActionKind,
+  DisplayAction,
+} from './display-rule.entity';
+
+export { Connector } from './connector.entity';
+export type { ConnectorKind, ConnectorStatus } from './connector.entity';
+
+export {
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+} from './decision-table.entity';
+export type {
+  DecisionTableStatus,
+  DecisionInputType,
+  DecisionRowOperator,
+  DecisionRowCondition,
+  DecisionTableRevisionStatus,
+} from './decision-table.entity';
+
+export {
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+} from './guided-process.entity';
+export type {
+  GuidedProcessStatus,
+  GuidedActivityKind,
+  GuidedProcessRevisionStatus,
+} from './guided-process.entity';
+
+export {
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+} from './workspace.entity';
+export type {
+  WorkspaceStatus,
+  WorkspacePageKind,
+  WorkspaceVariantScope,
+  PanelLayout,
+} from './workspace.entity';
+
+export { ChangePackage } from './change-package.entity';
+export type {
+  ChangePackageStatus,
+  MetadataChange,
+} from './change-package.entity';
+
+// ─────────────────────────────────────────────────────────────────
+// Runtime Anomaly Observability (W2.D)
+// ─────────────────────────────────────────────────────────────────
+export { RuntimeAnomaly } from './runtime-anomaly.entity';
+
 // ─────────────────────────────────────────────────────────────────
 // AVA (AI Virtual Assistant) - Phase 6 Enhanced
 // ─────────────────────────────────────────────────────────────────
@@ -224,6 +318,7 @@ export type {
   ReportSorting,
   ReportGrouping,
   ReportDataSource,
+  DashboardScope,
   MetricCadence,
   MetricAggregation,
   MetricSourceType,
@@ -234,6 +329,7 @@ export type {
 // ─────────────────────────────────────────────────────────────────
 export {
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
@@ -248,6 +344,8 @@ export type {
   AutomationAction,
   ClientScriptTrigger,
   ClientScriptAction,
+  AutomationRuleStatus,
+  AutomationRuleRevisionStatus,
 } from './automation.entity';
 
 // ─────────────────────────────────────────────────────────────────
@@ -275,6 +373,7 @@ export type {
 // ─────────────────────────────────────────────────────────────────
 export {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -290,6 +389,8 @@ export type {
   ApprovalStatus,
   ApproverType,
   ApprovalType,
+  ProcessFlowDefinitionStatus,
+  ProcessFlowDefinitionRevisionStatus,
 } from './process-flow.entity';
 
 // ─────────────────────────────────────────────────────────────────
@@ -393,7 +494,7 @@ export type {
 } from './integration.entity';
 
 // ─────────────────────────────────────────────────────────────────
-// Phase 7: Revolutionary Features
+// App-Builder
 // ─────────────────────────────────────────────────────────────────
 export {
   // AVA-Powered Agile Development
@@ -442,7 +543,7 @@ export {
   SuggestionStatus,
   PatternType,
   AppStatus,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 export type {
   // Types
   SprintRecordingStatus,
@@ -472,7 +573,7 @@ export type {
   SuggestionType as PredictiveSuggestionType,
   AppDefinition,
   AppComponent,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -483,8 +584,15 @@ import { Role } from './role.entity';
 import { Permission } from './permission.entity';
 import { RolePermission, UserRole } from './role-permission.entity';
 import { Group, GroupMember, GroupRole } from './group.entity';
-import { CollectionDefinition } from './collection-definition.entity';
-import { PropertyDefinition } from './property-definition.entity';
+import { Application, ApplicationRevision } from './application.entity';
+import {
+  CollectionDefinition,
+  CollectionDefinitionRevision,
+} from './collection-definition.entity';
+import {
+  PropertyDefinition,
+  PropertyDefinitionRevision,
+} from './property-definition.entity';
 import { PropertyType, ChoiceList, ChoiceItem } from './property-type.entity';
 import { CollectionIndex, CollectionConstraint } from './collection-index.entity';
 import { SchemaChangeLog } from './schema-change-log.entity';
@@ -544,6 +652,28 @@ import {
 } from './modelops.entity';
 import { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.entity';
 import { InstanceEventOutbox } from './event-outbox.entity';
+import { DependentReviewQueueEntry } from './dependent-review-queue.entity';
+import { DisplayRule, DisplayRuleRevision } from './display-rule.entity';
+import { Connector } from './connector.entity';
+import {
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+} from './decision-table.entity';
+import {
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+} from './guided-process.entity';
+import {
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+} from './workspace.entity';
+import { ChangePackage } from './change-package.entity';
+import { RuntimeAnomaly } from './runtime-anomaly.entity';
 import {
   AVAAuditTrail,
   AVAPermissionConfig,
@@ -586,12 +716,14 @@ import {
 } from './advanced-auth.entity';
 import {
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
 } from './automation.entity';
 import {
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -663,7 +795,7 @@ import {
   UserBehavior,
   PredictiveSuggestion,
   UserPattern,
-} from './phase7-revolutionary.entity';
+} from './app-builder.entity';
 
 /**
  * All instance database entities
@@ -682,9 +814,15 @@ export const instanceEntities = [
   GroupMember,
   GroupRole,
 
+  // Application Registry
+  Application,
+  ApplicationRevision,
+
   // Schema Engine
   CollectionDefinition,
+  CollectionDefinitionRevision,
   PropertyDefinition,
+  PropertyDefinitionRevision,
   PropertyType,
   ChoiceList,
   ChoiceItem,
@@ -774,6 +912,39 @@ export const instanceEntities = [
   // Event Stream
   InstanceEventOutbox,
 
+  // ADR-17 publish-impact review queue
+  DependentReviewQueueEntry,
+
+  // Phase 2 §7.3 Display Rules
+  DisplayRule,
+  DisplayRuleRevision,
+
+  // Phase 3 §8.1.10 Connector framework
+  Connector,
+
+  // Phase 3 §8.2 Decision Tables (ADR-14 typed-IO model)
+  DecisionTable,
+  DecisionInput,
+  DecisionRow,
+  DecisionTableRevision,
+
+  // Phase 3 §8.3 Guided Processes (Playbooks)
+  GuidedProcessDefinition,
+  GuidedProcessStage,
+  GuidedProcessActivity,
+  GuidedProcessRevision,
+
+  // Phase 5 Workspaces (ADR-15)
+  WorkspaceDefinition,
+  WorkspacePage,
+  WorkspaceVariant,
+
+  // Phase 6 Change Packages (§11.1)
+  ChangePackage,
+
+  // Runtime Anomaly Observability (W2.D)
+  RuntimeAnomaly,
+
   // AVA (AI Virtual Assistant) - Phase 6 Enhanced
   AVAAuditTrail,
   AVAPermissionConfig,
@@ -814,12 +985,14 @@ export const instanceEntities = [
 
   // Automation (Phase 3)
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
 
   // Process Flows (Phase 4)
   ProcessFlowDefinition,
+  ProcessFlowDefinitionRevision,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
   Approval,
@@ -863,7 +1036,7 @@ export const instanceEntities = [
   SyncRun,
   ApiRequestLog,
 
-  // Phase 7: Revolutionary Features
+  // App-Builder
   // AVA-Powered Agile Development
   SprintRecording,
   AvaStory,

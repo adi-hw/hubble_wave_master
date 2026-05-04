@@ -19,6 +19,7 @@ import { ApiKeyService } from './api-key.service';
 import { Roles } from '../decorators/roles.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
+import { SkipAbac } from '../../abac/abac.guard';
 
 // DTOs with validation
 class CreateApiKeyDto {
@@ -48,6 +49,7 @@ class UpdateApiKeyScopesDto {
 @ApiTags('API Keys')
 @Controller('api-keys')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@SkipAbac()
 @ApiBearerAuth()
 export class ApiKeyController {
   constructor(private readonly apiKeyService: ApiKeyService) {}

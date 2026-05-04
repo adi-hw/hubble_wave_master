@@ -10,7 +10,13 @@ const withOpacityValue = (variable) => {
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class', '[data-theme="dark"]'],
-  content: ['./apps/web-client/src/**/*.{js,ts,jsx,tsx}'],
+  content: [
+    './apps/web-client/src/**/*.{js,ts,jsx,tsx}',
+    './apps/web-control-plane/src/**/*.{js,ts,jsx,tsx}',
+    './libs/ui/src/**/*.{js,ts,jsx,tsx}',
+    './libs/shared-types/src/**/*.{js,ts,jsx,tsx}',
+    './libs/auth-guard/src/**/*.{js,ts,jsx,tsx}'
+  ],
   theme: {
     extend: {
       colors: {

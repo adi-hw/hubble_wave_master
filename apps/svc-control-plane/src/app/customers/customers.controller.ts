@@ -1,19 +1,22 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Patch,
-  Delete,
   Body,
-  Param,
-  Query,
-  ParseUUIDPipe,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto, CustomerQueryParams } from './customers.dto';
+import { CustomerSettingsDto } from './customer-settings.dto';
 import { Roles } from '../auth/roles.decorator';
 
 @Controller('customers')
@@ -55,11 +58,12 @@ export class CustomersController {
   }
 
   @Patch(':id/settings')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   async updateSettings(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() settings: Record<string, unknown>,
+    @Body() settings: CustomerSettingsDto,
   ) {
-    return this.customersService.updateSettings(id, settings as any);
+    return this.customersService.updateSettings(id, settings);
   }
 
   @Delete(':id')

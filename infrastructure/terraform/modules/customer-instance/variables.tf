@@ -1,11 +1,11 @@
 /**
  * HubbleWave Customer Instance Module - Variables
  *
- * Dedicated infrastructure per instance model
+ * Cluster-per-Customer architecture with dedicated VPC and EKS cluster
  */
 
 # -----------------------------------------------------------------------------
-# Required Variables
+# Required Variables - Instance Identity
 # -----------------------------------------------------------------------------
 
 variable "instance_id" {
@@ -54,7 +54,7 @@ variable "license_key" {
 # -----------------------------------------------------------------------------
 
 variable "resource_tier" {
-  description = "Resource tier for this instance (determines RDS/Redis size)"
+  description = "Resource tier for this instance (determines node size, RDS/Redis size)"
   type        = string
   default     = "standard"
 
@@ -75,32 +75,52 @@ variable "platform_release_id" {
 }
 
 # -----------------------------------------------------------------------------
-# VPC / Network Configuration
+# Control Plane Connection (for VPC Peering)
 # -----------------------------------------------------------------------------
 
-variable "vpc_id" {
-  description = "VPC ID where resources will be created"
+variable "control_plane_vpc_id" {
+  description = "Control plane VPC ID for VPC peering"
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR block for network policies"
+variable "control_plane_vpc_cidr" {
+  description = "Control plane VPC CIDR block for routing"
   type        = string
 }
 
-variable "db_subnet_ids" {
-  description = "Subnet IDs for the RDS instance (private subnets)"
+variable "control_plane_route_table_ids" {
+  description = "Control plane private route table IDs for peering routes"
   type        = list(string)
 }
 
-variable "redis_subnet_ids" {
-  description = "Subnet IDs for ElastiCache (private subnets)"
-  type        = list(string)
+variable "control_plane_role_arn" {
+  description = "Control plane IAM role ARN (for assuming customer cluster access)"
+  type        = string
 }
 
-variable "eks_security_group_ids" {
-  description = "EKS node security group IDs (for RDS/Redis ingress rules)"
-  type        = list(string)
+# -----------------------------------------------------------------------------
+# Customer VPC Configuration
+# -----------------------------------------------------------------------------
+
+variable "instance_vpc_cidr" {
+  description = "CIDR block for customer VPC (auto-assigned from instance ID if empty)"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.instance_vpc_cidr == "" || can(cidrhost(var.instance_vpc_cidr, 0))
+    error_message = "instance_vpc_cidr must be a valid CIDR block or empty for auto-assignment."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# AWS Configuration
+# -----------------------------------------------------------------------------
+
+variable "aws_region" {
+  description = "AWS region for resources"
+  type        = string
+  default     = "us-east-2"
 }
 
 # -----------------------------------------------------------------------------
@@ -110,7 +130,7 @@ variable "eks_security_group_ids" {
 variable "db_engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "16.4"
+  default     = "17.6"
 }
 
 variable "db_allocated_storage" {
@@ -136,36 +156,6 @@ variable "redis_engine_version" {
 }
 
 # -----------------------------------------------------------------------------
-# AWS Configuration
-# -----------------------------------------------------------------------------
-
-variable "aws_region" {
-  description = "AWS region for resources"
-  type        = string
-  default     = "us-east-2"
-}
-
-variable "eks_oidc_provider_arn" {
-  description = "EKS OIDC provider ARN for IRSA"
-  type        = string
-
-  validation {
-    condition     = length(var.eks_oidc_provider_arn) > 0
-    error_message = "eks_oidc_provider_arn must be set."
-  }
-}
-
-variable "eks_oidc_provider_host" {
-  description = "EKS OIDC provider host (without https://)"
-  type        = string
-
-  validation {
-    condition     = length(var.eks_oidc_provider_host) > 0
-    error_message = "eks_oidc_provider_host must be set."
-  }
-}
-
-# -----------------------------------------------------------------------------
 # DNS / Domain Configuration
 # -----------------------------------------------------------------------------
 
@@ -182,16 +172,6 @@ variable "root_domain" {
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for hubblewave.com"
   type        = string
-}
-
-variable "instance_ingress_hostname" {
-  description = "External ingress hostname for customer instances"
-  type        = string
-
-  validation {
-    condition     = length(var.instance_ingress_hostname) > 0
-    error_message = "instance_ingress_hostname must be set."
-  }
 }
 
 # -----------------------------------------------------------------------------
@@ -245,18 +225,12 @@ variable "web_replicas" {
   default     = 1
 }
 
-variable "cert_manager_issuer" {
-  description = "Cert-manager cluster issuer name for TLS certificates"
-  type        = string
-  default     = "letsencrypt-prod"
-}
-
 # -----------------------------------------------------------------------------
 # GPU / vLLM Configuration
 # -----------------------------------------------------------------------------
 
 variable "gpu_enabled" {
-  description = "Enable dedicated GPU node and vLLM deployment for this instance"
+  description = "Enable GPU node and vLLM deployment for this instance"
   type        = bool
   default     = false
 }
@@ -289,18 +263,6 @@ variable "huggingface_token" {
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "eks_cluster_name" {
-  description = "EKS cluster name (required for creating GPU node groups)"
-  type        = string
-  default     = ""
-}
-
-variable "gpu_subnet_ids" {
-  description = "Subnet IDs for GPU node placement (should be in AZs with GPU capacity)"
-  type        = list(string)
-  default     = []
 }
 
 variable "ava_image_tag" {

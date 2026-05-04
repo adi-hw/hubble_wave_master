@@ -10,6 +10,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import {
   AutomationRule,
+  AutomationRuleRevision,
   ScheduledJob,
   AutomationExecutionLog,
   ClientScript,
@@ -31,6 +32,7 @@ import { ConditionValidatorService } from './condition-validator.service';
   imports: [
     TypeOrmModule.forFeature([
       AutomationRule,
+      AutomationRuleRevision,
       ScheduledJob,
       AutomationExecutionLog,
       ClientScript,

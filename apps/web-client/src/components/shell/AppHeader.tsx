@@ -85,8 +85,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             createdAt: new Date(n.createdAt),
           }))
         );
-      } catch (err) {
-        console.error('Failed to load notifications', err);
+      } catch {
+        // Notifications load failed - show error message
         if (active) {
           setNotificationsError('Unable to load notifications');
         }
@@ -109,8 +109,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     );
     try {
       await notificationService.markRead(id);
-    } catch (err) {
-      console.warn('Failed to mark notification read', err);
+    } catch {
+      // Mark read failed - optimistic update stays
     }
   };
 
@@ -118,8 +118,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     try {
       await notificationService.markAllRead();
-    } catch (err) {
-      console.warn('Failed to mark all notifications read', err);
+    } catch {
+      // Mark all read failed - optimistic update stays
     }
   };
 
@@ -127,8 +127,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     try {
       await notificationService.dismiss(id);
-    } catch (err) {
-      console.warn('Failed to dismiss notification', err);
+    } catch {
+      // Dismiss failed - optimistic update stays
     }
   };
 
@@ -136,8 +136,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     setNotifications([]);
     try {
       await notificationService.clearAll();
-    } catch (err) {
-      console.warn('Failed to clear notifications', err);
+    } catch {
+      // Clear all failed - optimistic update stays
     }
   };
 

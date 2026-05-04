@@ -52,7 +52,7 @@ const DAYS_OF_WEEK = [
   { value: 6, label: 'Saturday' },
 ];
 
-function calculateNextRuns(config: ScheduleConfig, count: number = 5): Date[] {
+function calculateNextRuns(config: ScheduleConfig, count = 5): Date[] {
   const now = new Date();
   const runs: Date[] = [];
 
@@ -63,7 +63,7 @@ function calculateNextRuns(config: ScheduleConfig, count: number = 5): Date[] {
   }
 
   const [hours, minutes] = (config.time ?? '09:00').split(':').map(Number);
-  let nextRun = new Date(now);
+  const nextRun = new Date(now);
   nextRun.setHours(hours, minutes, 0, 0);
 
   if (nextRun <= now) {
@@ -150,9 +150,10 @@ export const ScheduleBuilder: React.FC<ScheduleBuilderProps> = ({ value, onChang
         return 'Every hour at minute 0';
       case 'daily':
         return `Every day at ${value.time ?? '09:00'} ${value.timezone}`;
-      case 'weekly':
+      case 'weekly': {
         const dayName = DAYS_OF_WEEK.find((d) => d.value === value.dayOfWeek)?.label ?? 'Sunday';
         return `Every ${dayName} at ${value.time ?? '09:00'} ${value.timezone}`;
+      }
       case 'monthly':
         return `On day ${value.dayOfMonth ?? 1} of every month at ${value.time ?? '09:00'} ${value.timezone}`;
       case 'cron':

@@ -2,6 +2,7 @@
  * Utility functions for formulas
  */
 
+import * as crypto from 'crypto';
 import { FormulaFunction } from '../function-registry';
 import { FormulaValue } from '../types';
 import { FormulaContext } from '../context';
@@ -154,17 +155,10 @@ export const utilityFunctions: FormulaFunction[] = [
   {
     name: 'UUID',
     category: 'utility',
-    description: 'Generates a new UUID',
+    description: 'Generates a new UUID v4 backed by the system CSPRNG',
     args: [],
     returnType: 'string',
-    implementation: () => {
-      // Simple UUID v4 generation
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    },
+    implementation: () => crypto.randomUUID(),
     examples: ['UUID() → "f47ac10b-58cc-4372-a567-0e02b2c3d479"'],
   },
   {

@@ -107,33 +107,118 @@ resource "aws_iam_role" "control_plane" {
   assume_role_policy = data.aws_iam_policy_document.control_plane_assume.json
 }
 
+locals {
+  control_plane_eks_arn               = "arn:aws:eks:${var.aws_region}:*:cluster/${var.eks_cluster_name}"
+  control_plane_state_bucket_arn      = "arn:aws:s3:::${var.instance_terraform_state_bucket}"
+  control_plane_state_bucket_objects  = "arn:aws:s3:::${var.instance_terraform_state_bucket}/*"
+  control_plane_pack_bucket_arn       = "arn:aws:s3:::${var.s3_bucket_pack_artifacts}"
+  control_plane_pack_bucket_objects   = "arn:aws:s3:::${var.s3_bucket_pack_artifacts}/*"
+  control_plane_secrets_arn_prefix    = "arn:aws:secretsmanager:${var.aws_region}:*:secret:hubblewave/*"
+  control_plane_lock_table_arn        = "arn:aws:dynamodb:${var.aws_region}:*:table/${var.instance_terraform_lock_table}"
+  control_plane_passrole_arns         = [
+    aws_iam_role.control_plane.arn,
+  ]
+}
+
 resource "aws_iam_policy" "control_plane" {
   name   = "hubblewave-control-plane"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "EksDescribeOnly"
         Effect = "Allow"
         Action = [
-          "acm:*",
-          "autoscaling:*",
-          "cloudwatch:*",
-          "ec2:*",
-          "ecr:*",
-          "eks:*",
-          "elasticache:*",
-          "elasticloadbalancing:*",
-          "iam:*",
-          "kms:*",
-          "logs:*",
-          "rds:*",
-          "route53:*",
-          "s3:*",
-          "secretsmanager:*",
-          "sts:*"
+          "eks:DescribeCluster",
+          "eks:ListClusters",
+          "eks:DescribeNodegroup",
+          "eks:ListNodegroups",
+          "eks:DescribeUpdate",
+        ]
+        Resource = [local.control_plane_eks_arn]
+      },
+      {
+        Sid    = "PassRoleScoped"
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
+        Resource = local.control_plane_passrole_arns
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = [
+              "eks.amazonaws.com",
+              "ec2.amazonaws.com",
+              "rds.amazonaws.com",
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "TerraformStateBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+        ]
+        Resource = [
+          local.control_plane_state_bucket_arn,
+          local.control_plane_state_bucket_objects,
+          local.control_plane_pack_bucket_arn,
+          local.control_plane_pack_bucket_objects,
+        ]
+      },
+      {
+        Sid    = "TerraformLockTable"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable",
+        ]
+        Resource = [local.control_plane_lock_table_arn]
+      },
+      {
+        Sid    = "SecretsManagerScoped"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:CreateSecret",
+          "secretsmanager:UpdateSecret",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:TagResource",
+        ]
+        Resource = [local.control_plane_secrets_arn_prefix]
+      },
+      {
+        Sid    = "RdsReadOnly"
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBClusters",
+          "rds:DescribeDBInstances",
+          "rds:DescribeDBSubnetGroups",
+          "rds:ListTagsForResource",
         ]
         Resource = ["*"]
-      }
+      },
+      {
+        Sid    = "ElastiCacheReadOnly"
+        Effect = "Allow"
+        Action = [
+          "elasticache:DescribeReplicationGroups",
+          "elasticache:DescribeCacheClusters",
+        ]
+        Resource = ["*"]
+      },
+      {
+        Sid    = "StsCallerIdentity"
+        Effect = "Allow"
+        Action = ["sts:GetCallerIdentity"]
+        Resource = ["*"]
+      },
     ]
   })
 }

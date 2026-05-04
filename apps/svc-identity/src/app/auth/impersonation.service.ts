@@ -10,11 +10,13 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ImpersonationSession, User, AuditLog } from '@hubblewave/instance-db';
 import { AuthEventsService } from './auth-events.service';
+import { PermissionResolverService } from '../roles/permission-resolver.service';
 
 const DEFAULT_IMPERSONATION_DURATION_MINUTES = 60;
 const MAX_IMPERSONATION_DURATION_MINUTES = 480; // 8 hours
@@ -41,6 +43,7 @@ export class ImpersonationService {
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
     private readonly authEventsService: AuthEventsService,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   /**
@@ -69,8 +72,19 @@ export class ImpersonationService {
       throw new NotFoundException('Impersonator not found');
     }
 
-    // Verify impersonator has permission (should be checked by guard, but double-check)
-    // In production, check for 'users.impersonate' permission
+    // Defense in depth: the controller already gates with
+    // @RequirePermission('users.impersonate'), but impersonation has high blast
+    // radius so we verify the permission again at the service layer. Any future
+    // caller (scheduled job, internal RPC, AVA execution path) that reaches
+    // this method must hold the same permission.
+    const impersonatorPerms = await this.permissionResolver.getUserPermissions(impersonatorId);
+    if (!impersonatorPerms.permissions.has('users.impersonate')) {
+      this.logger.warn('Impersonation rejected: missing users.impersonate permission', {
+        impersonatorId,
+        targetUserId,
+      });
+      throw new ForbiddenException('Missing required permission: users.impersonate');
+    }
 
     // Get target user
     const targetUser = await this.userRepo.findOne({

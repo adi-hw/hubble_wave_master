@@ -1,27 +1,17 @@
-/**
- * View Engine Service
- * HubbleWave Platform - Phase 2
- *
- * Service responsible for view definitions, data transformation,
- * and view-specific query optimization.
- */
-
+import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   assertSecureConfig();
+  assertJwtConfig();
 
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production');
+  process.env.JWT_SECRET = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
+  if (!process.env.JWT_SECRET) {
+    throw new Error('REQUIRED env var JWT_SECRET (or IDENTITY_JWT_SECRET) not set');
   }
-
-  process.env.JWT_SECRET =
-    process.env.JWT_SECRET ||
-    process.env.IDENTITY_JWT_SECRET ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-only-insecure-secret' : undefined);
 
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';
@@ -40,6 +30,9 @@ async function bootstrap() {
 
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   app.enableCors({
@@ -71,7 +64,7 @@ async function bootstrap() {
       'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/view-engine';
   app.setGlobalPrefix(globalPrefix);
 
   const port =

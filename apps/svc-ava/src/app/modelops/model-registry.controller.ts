@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, InstanceRequest, extractContext, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 import { ModelArtifactRegister, ModelArtifactRequest, ModelArtifactUpdate } from './model-registry.types';
 
-@Controller('api/ava/models')
-@UseGuards(JwtAuthGuard)
+@Controller('ava/models')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ModelRegistryController {
   constructor(private readonly registry: ModelRegistryService) {}
 
@@ -19,12 +19,14 @@ export class ModelRegistryController {
   }
 
   @Post()
+  @Roles('admin')
   async create(@Body() body: ModelArtifactRequest, @Req() req?: InstanceRequest) {
     const context = extractContext(req || {});
     return this.registry.createArtifact(body, context.userId || undefined);
   }
 
   @Put(':id')
+  @Roles('admin')
   async update(
     @Param('id') id: string,
     @Body() body: ModelArtifactUpdate,
@@ -35,6 +37,7 @@ export class ModelRegistryController {
   }
 
   @Post(':id/register')
+  @Roles('admin')
   async register(
     @Param('id') id: string,
     @Body() body: ModelArtifactRegister,

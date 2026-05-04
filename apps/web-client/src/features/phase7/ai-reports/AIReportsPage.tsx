@@ -54,8 +54,8 @@ export const AIReportsPage: React.FC = () => {
     try {
       const response = await aiReportsApi.listReports();
       setReports(response.reports);
-    } catch (error) {
-      console.error('Failed to load reports:', error);
+    } catch {
+      // Reports load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -65,8 +65,8 @@ export const AIReportsPage: React.FC = () => {
     try {
       const response = await aiReportsApi.listTemplates(true);
       setTemplates(response.templates);
-    } catch (error) {
-      console.error('Failed to load templates:', error);
+    } catch {
+      // Templates load failed - list remains empty
     }
   };
 
@@ -79,8 +79,8 @@ export const AIReportsPage: React.FC = () => {
       setGenerateModalOpen(false);
       setPrompt('');
       loadReports();
-    } catch (error) {
-      console.error('Failed to generate report:', error);
+    } catch {
+      // Generation failed - modal remains open
     } finally {
       setGenerating(false);
     }
@@ -93,8 +93,8 @@ export const AIReportsPage: React.FC = () => {
       if (selectedReport?.id === id) {
         setSelectedReport(null);
       }
-    } catch (error) {
-      console.error('Failed to delete report:', error);
+    } catch {
+      // Delete failed - report remains in list
     }
   };
 
@@ -107,8 +107,8 @@ export const AIReportsPage: React.FC = () => {
       a.download = `report-${id}.${exportFormat}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export report:', error);
+    } catch {
+      // Export failed - no download triggered
     }
   };
 
@@ -116,8 +116,8 @@ export const AIReportsPage: React.FC = () => {
     try {
       await aiReportsApi.generateFromTemplate(templateId);
       loadReports();
-    } catch (error) {
-      console.error('Failed to generate from template:', error);
+    } catch {
+      // Generation from template failed
     }
   };
 
@@ -346,7 +346,22 @@ export const AIReportsPage: React.FC = () => {
                 ) : selectedReport.content ? (
                   <div
                     className="prose max-w-none text-foreground dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedReport.content) }}
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(selectedReport.content, {
+                        // Strict allow-list mirrors the sanitizer used by
+                        // svc-ava when generating report HTML, so this
+                        // viewer cannot render anything richer than the
+                        // backend approves.
+                        ALLOWED_TAGS: [
+                          'p', 'span', 'strong', 'em',
+                          'ul', 'ol', 'li',
+                          'h1', 'h2', 'h3',
+                          'table', 'tr', 'td', 'th',
+                          'br',
+                        ],
+                        ALLOWED_ATTR: ['class'],
+                      }),
+                    }}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">

@@ -98,46 +98,45 @@ export class LocalizationRequestService {
     if (existing) {
       if (!existing.isActive) {
         existing.isActive = true;
-        existing.updatedBy = actorId || null;
+        existing.updatedBy = actorId;
         return this.workflowRepo.save(existing);
       }
       return existing;
     }
 
-    const definition = this.workflowRepo.create({
-      code: TRANSLATION_WORKFLOW_CODE,
-      name: 'Translation Request',
-      description: 'Review and approve translation requests',
-      triggerType: 'manual',
-      runAs: 'system',
-      isActive: true,
-      timeoutMinutes: 1440,
-      maxRetries: 0,
-      version: 1,
-      canvas: {
-        nodes: [
-          { id: 'start', type: 'start', position: { x: 120, y: 120 }, name: 'Start', config: {} },
-          {
-            id: 'review',
-            type: 'approval',
-            position: { x: 360, y: 120 },
-            name: 'Review Translation',
-            config: {
-              approvers: '{{input.reviewers}}',
-              approvalType: 'sequential',
-              timeoutMinutes: 10080,
-            },
+    const definition = new ProcessFlowDefinition();
+    definition.code = TRANSLATION_WORKFLOW_CODE;
+    definition.name = 'Translation Request';
+    definition.description = 'Review and approve translation requests';
+    definition.triggerType = 'manual';
+    definition.runAs = 'system';
+    definition.isActive = true;
+    definition.timeoutMinutes = 1440;
+    definition.maxRetries = 0;
+    definition.version = 1;
+    definition.canvas = {
+      nodes: [
+        { id: 'start', type: 'start', position: { x: 120, y: 120 }, name: 'Start', config: {} },
+        {
+          id: 'review',
+          type: 'approval',
+          position: { x: 360, y: 120 },
+          name: 'Review Translation',
+          config: {
+            approvers: '{{input.reviewers}}',
+            approvalType: 'sequential',
+            timeoutMinutes: 10080,
           },
-          { id: 'end', type: 'end', position: { x: 620, y: 120 }, name: 'Complete', config: {} },
-        ],
-        connections: [
-          { id: 'start-review', fromNode: 'start', toNode: 'review' },
-          { id: 'review-end', fromNode: 'review', toNode: 'end' },
-        ],
-      },
-      createdBy: actorId || null,
-      updatedBy: actorId || null,
-    });
+        },
+        { id: 'end', type: 'end', position: { x: 620, y: 120 }, name: 'Complete', config: {} },
+      ],
+      connections: [
+        { id: 'start-review', fromNode: 'start', toNode: 'review' },
+        { id: 'review-end', fromNode: 'review', toNode: 'end' },
+      ],
+    };
+    definition.createdBy = actorId;
+    definition.updatedBy = actorId;
 
     return this.workflowRepo.save(definition);
   }

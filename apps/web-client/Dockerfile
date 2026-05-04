@@ -60,14 +60,20 @@ RUN printf '%s\n' \
     '' \
     '    add_header X-Frame-Options "SAMEORIGIN" always;' \
     '    add_header X-Content-Type-Options "nosniff" always;' \
+    '    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' \
     '' \
     '    location / {' \
     '        try_files $uri $uri/ /index.html;' \
+    '        add_header Cache-Control "no-cache, no-store, must-revalidate";' \
     '    }' \
     '' \
     '    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {' \
     '        expires 1y;' \
     '        add_header Cache-Control "public, immutable";' \
+    '    }' \
+    '' \
+    '    location /sw.js {' \
+    '        add_header Cache-Control "no-cache, no-store, must-revalidate";' \
     '    }' \
     '' \
     '    location /health {' \

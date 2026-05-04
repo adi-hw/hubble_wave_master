@@ -25,6 +25,7 @@ import {
   PhoneRule,
   CustomRule,
 } from './validation.types';
+import { ValidatorRegistry } from './validator.registry';
 
 /**
  * ValidationService - Validates record data against property validation rules
@@ -107,7 +108,7 @@ export class ValidationService {
   private readonly logger = new Logger(ValidationService.name);
   private readonly safeParser: Parser;
 
-  constructor() {
+  constructor(private readonly validatorRegistry: ValidatorRegistry) {
     // Initialize safe expression parser
     this.safeParser = new Parser({
       operators: {
@@ -120,23 +121,112 @@ export class ValidationService {
     for (const [name, fn] of Object.entries(SAFE_VALIDATION_FUNCTIONS)) {
       this.safeParser.functions[name] = fn;
     }
+
+    this.registerBuiltInValidators();
   }
 
   /**
-   * Validate script content for security
+   * Plan §6.2 — register every built-in validator with the runtime
+   * registry. Each entry binds the canonical rule type to its
+   * existing private handler. Authors can extend by calling
+   * `validatorRegistry.register(type, handler)` from another module
+   * at startup; new types fall through to the registry without
+   * touching this service.
    */
-  private validateScriptSecurity(script: string): void {
+  private registerBuiltInValidators(): void {
+    const r = this.validatorRegistry;
+    r.register('required', (v, rule, label) =>
+      this.validateRequired(v, label, (rule as { message?: string }).message),
+    );
+    r.register('regex', (v, rule, label) =>
+      this.validateRegex(v, rule as RegexRule, label),
+    );
+    r.register('min', (v, rule, label) => this.validateMin(v, rule as MinRule, label));
+    r.register('max', (v, rule, label) => this.validateMax(v, rule as MaxRule, label));
+    r.register('min_length', (v, rule, label) =>
+      this.validateMinLength(v, rule as MinLengthRule, label),
+    );
+    r.register('max_length', (v, rule, label) =>
+      this.validateMaxLength(v, rule as MaxLengthRule, label),
+    );
+    // §6.2 alias: `length` accepts {min, max} and dispatches to the
+    // pair of length validators. Authors can use either shape.
+    r.register('length', (v, rule, label) => {
+      const flat = rule as Record<string, unknown>;
+      const min = (flat.min ?? flat.minLength) as number | undefined;
+      const max = (flat.max ?? flat.maxLength) as number | undefined;
+      const message = flat.message as string | undefined;
+      if (min !== undefined) {
+        const minResult = this.validateMinLength(
+          v,
+          { type: 'min_length', minLength: min, message } as unknown as MinLengthRule,
+          label,
+        );
+        if (!minResult.passed) return minResult;
+      }
+      if (max !== undefined) {
+        return this.validateMaxLength(
+          v,
+          { type: 'max_length', maxLength: max, message } as unknown as MaxLengthRule,
+          label,
+        );
+      }
+      return { rule: 'length', passed: true };
+    });
+    r.register('range', (v, rule, label) =>
+      this.validateRange(v, rule as RangeRule, label),
+    );
+    r.register('email', (v, rule, label) =>
+      this.validateEmail(v, label, (rule as { message?: string }).message),
+    );
+    r.register('url', (v, rule, label) => this.validateUrl(v, rule as UrlRule, label));
+    r.register('uuid', (v, rule, label) =>
+      this.validateUuid(v, label, (rule as { message?: string }).message),
+    );
+    r.register('phone', (v, rule, label) =>
+      this.validatePhone(v, rule as PhoneRule, label),
+    );
+    r.register('custom', (v, rule, label, ctx) =>
+      this.validateCustom(v, rule as CustomRule, label, ctx),
+    );
+    // §6.2 canonical name from the spec.
+    r.register('customExpression', (v, rule, label, ctx) =>
+      this.validateCustom(v, rule as CustomRule, label, ctx),
+    );
+  }
+
+  /**
+   * Validate script content for security. Apply NFKC normalization
+   * before the regex denylist so Unicode homoglyph bypasses
+   * (e.g., full-width `ｅｖａｌ` masking `eval`) collapse to their
+   * canonical form before pattern matching.
+   *
+   * Returns the normalized script for downstream evaluation so the
+   * parser sees the same input the security check approved.
+   *
+   * Note: this is an in-process hardening pass; the platform's
+   * canonical sandbox lives at apps/svc-automation runtime
+   * (Wave 2 — NFKC + AST depth + timeout). Promoting that sandbox
+   * to a shared lib so this validator can delegate is tracked as
+   * cross-cutting follow-up; until then, we apply the same NFKC
+   * normalization defensively here.
+   */
+  private validateScriptSecurity(script: string): string {
+    const normalized = script.normalize('NFKC');
+
+    if (normalized.length > 2000) {
+      throw new BadRequestException('Validation script exceeds maximum length');
+    }
+
     for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(script)) {
+      if (pattern.test(normalized)) {
         throw new BadRequestException(
           `Validation script contains blocked pattern. Only safe expressions are allowed.`
         );
       }
     }
 
-    if (script.length > 2000) {
-      throw new BadRequestException('Validation script exceeds maximum length');
-    }
+    return normalized;
   }
 
   /**
@@ -267,7 +357,7 @@ export class ValidationService {
 
   private validateDataType(
     value: unknown,
-    fieldLabel: string,
+    propertyLabel: string,
     property: PropertyDefinition
   ): ValidationRuleResult | null {
     if (this.isEmpty(value)) {
@@ -291,7 +381,7 @@ export class ValidationService {
       case 'rich-text':
         return typeof value === 'string'
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be text` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be text` };
 
       case 'number':
       case 'currency':
@@ -302,48 +392,48 @@ export class ValidationService {
         if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
           return null;
         }
-        return { rule: 'type', passed: false, message: `${fieldLabel} must be a number` };
+        return { rule: 'type', passed: false, message: `${propertyLabel} must be a number` };
 
       case 'boolean':
         return typeof value === 'boolean'
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be true or false` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be true or false` };
 
       case 'date':
       case 'datetime':
         return this.isValidDate(value)
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be a valid date` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be a valid date` };
 
       case 'choice':
-        return this.validateChoiceValue(value, fieldLabel, property, false);
+        return this.validateChoiceValue(value, propertyLabel, property, false);
 
       case 'multi-choice':
-        return this.validateChoiceValue(value, fieldLabel, property, true);
+        return this.validateChoiceValue(value, propertyLabel, property, true);
 
       case 'reference':
       case 'user':
         return this.isValidUuid(value)
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be a valid reference` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be a valid reference` };
 
       case 'multi-reference':
       case 'multi-user':
         return Array.isArray(value) && value.every((entry) => this.isValidUuid(entry))
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be a list of references` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be a list of references` };
 
       case 'json':
       case 'hierarchical':
         return typeof value === 'object' && value !== null
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be structured data` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be structured data` };
 
       case 'attachment':
       case 'geolocation':
         return typeof value === 'object' && value !== null
           ? null
-          : { rule: 'type', passed: false, message: `${fieldLabel} must be a structured value` };
+          : { rule: 'type', passed: false, message: `${propertyLabel} must be a structured value` };
 
       default:
         return null;
@@ -384,7 +474,7 @@ export class ValidationService {
 
   private validateChoiceValue(
     value: unknown,
-    fieldLabel: string,
+    propertyLabel: string,
     property: PropertyDefinition,
     multi: boolean
   ): ValidationRuleResult | null {
@@ -398,13 +488,13 @@ export class ValidationService {
 
     if (multi) {
       if (!Array.isArray(value)) {
-        return { rule: 'type', passed: false, message: `${fieldLabel} must be a list of choices` };
+        return { rule: 'type', passed: false, message: `${propertyLabel} must be a list of choices` };
       }
 
       if (validValues) {
         const invalid = value.find((entry) => !validValues.has(String(entry)));
         if (invalid !== undefined) {
-          return { rule: 'type', passed: false, message: `${fieldLabel} has an invalid choice` };
+          return { rule: 'type', passed: false, message: `${propertyLabel} has an invalid choice` };
         }
       }
 
@@ -412,81 +502,47 @@ export class ValidationService {
     }
 
     if (typeof value !== 'string' && typeof value !== 'number') {
-      return { rule: 'type', passed: false, message: `${fieldLabel} must be a valid choice` };
+      return { rule: 'type', passed: false, message: `${propertyLabel} must be a valid choice` };
     }
 
     if (validValues && !validValues.has(String(value))) {
-      return { rule: 'type', passed: false, message: `${fieldLabel} has an invalid choice` };
+      return { rule: 'type', passed: false, message: `${propertyLabel} has an invalid choice` };
     }
 
     return null;
   }
 
   /**
-   * Validate a single rule
+   * Validate a single rule via the ValidatorRegistry. Per §6.2, the
+   * registry is the single dispatch point — adding a validator no
+   * longer requires editing this method, only registering with the
+   * registry.
    */
   private async validateRule(
     value: unknown,
     rule: AnyValidationRule,
-    fieldLabel: string,
+    propertyLabel: string,
     context: ValidationContext
   ): Promise<ValidationRuleResult> {
-    switch (rule.type) {
-      case 'required':
-        return this.validateRequired(value, fieldLabel, rule.message);
-
-      case 'regex':
-        return this.validateRegex(value, rule as RegexRule, fieldLabel);
-
-      case 'min':
-        return this.validateMin(value, rule as MinRule, fieldLabel);
-
-      case 'max':
-        return this.validateMax(value, rule as MaxRule, fieldLabel);
-
-      case 'min_length':
-        return this.validateMinLength(value, rule as MinLengthRule, fieldLabel);
-
-      case 'max_length':
-        return this.validateMaxLength(value, rule as MaxLengthRule, fieldLabel);
-
-      case 'range':
-        return this.validateRange(value, rule as RangeRule, fieldLabel);
-
-      case 'email':
-        return this.validateEmail(value, fieldLabel, rule.message);
-
-      case 'url':
-        return this.validateUrl(value, rule as UrlRule, fieldLabel);
-
-      case 'phone':
-        return this.validatePhone(value, rule as PhoneRule, fieldLabel);
-
-      case 'custom':
-        return this.validateCustom(value, rule as CustomRule, fieldLabel, context);
-
-      default:
-        this.logger.warn(`Unknown validation rule type: ${(rule as AnyValidationRule).type}`);
-        return { rule: (rule as AnyValidationRule).type, passed: true };
-    }
+    return this.validatorRegistry.run(rule.type, value, rule, propertyLabel, context);
   }
 
   /**
    * Required validation
    */
-  private validateRequired(value: unknown, fieldLabel: string, customMessage?: string): ValidationRuleResult {
+  private validateRequired(value: unknown, propertyLabel: string, customMessage?: string): ValidationRuleResult {
     const passed = !this.isEmpty(value);
     return {
       rule: 'required',
       passed,
-      message: passed ? undefined : customMessage || `${fieldLabel} is required`,
+      message: passed ? undefined : customMessage || `${propertyLabel} is required`,
     };
   }
 
   /**
    * Regex pattern validation
    */
-  private validateRegex(value: unknown, rule: RegexRule, fieldLabel: string): ValidationRuleResult {
+  private validateRegex(value: unknown, rule: RegexRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'regex', passed: true };
     }
@@ -497,7 +553,7 @@ export class ValidationService {
       return {
         rule: 'regex',
         passed,
-        message: passed ? undefined : rule.message || `${fieldLabel} does not match the required format`,
+        message: passed ? undefined : rule.message || `${propertyLabel} does not match the required format`,
       };
     } catch (error) {
       this.logger.error(`Invalid regex pattern: ${rule.pattern}`, error);
@@ -512,7 +568,7 @@ export class ValidationService {
   /**
    * Minimum value validation
    */
-  private validateMin(value: unknown, rule: MinRule, fieldLabel: string): ValidationRuleResult {
+  private validateMin(value: unknown, rule: MinRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'min', passed: true };
     }
@@ -522,7 +578,7 @@ export class ValidationService {
       return {
         rule: 'min',
         passed: false,
-        message: `${fieldLabel} must be a number`,
+        message: `${propertyLabel} must be a number`,
       };
     }
 
@@ -534,14 +590,14 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be ${inclusive ? 'at least' : 'greater than'} ${rule.value}`,
+        : rule.message || `${propertyLabel} must be ${inclusive ? 'at least' : 'greater than'} ${rule.value}`,
     };
   }
 
   /**
    * Maximum value validation
    */
-  private validateMax(value: unknown, rule: MaxRule, fieldLabel: string): ValidationRuleResult {
+  private validateMax(value: unknown, rule: MaxRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'max', passed: true };
     }
@@ -551,7 +607,7 @@ export class ValidationService {
       return {
         rule: 'max',
         passed: false,
-        message: `${fieldLabel} must be a number`,
+        message: `${propertyLabel} must be a number`,
       };
     }
 
@@ -563,14 +619,14 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be ${inclusive ? 'at most' : 'less than'} ${rule.value}`,
+        : rule.message || `${propertyLabel} must be ${inclusive ? 'at most' : 'less than'} ${rule.value}`,
     };
   }
 
   /**
    * Minimum length validation
    */
-  private validateMinLength(value: unknown, rule: MinLengthRule, fieldLabel: string): ValidationRuleResult {
+  private validateMinLength(value: unknown, rule: MinLengthRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'min_length', passed: true };
     }
@@ -583,14 +639,14 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be at least ${rule.length} characters`,
+        : rule.message || `${propertyLabel} must be at least ${rule.length} characters`,
     };
   }
 
   /**
    * Maximum length validation
    */
-  private validateMaxLength(value: unknown, rule: MaxLengthRule, fieldLabel: string): ValidationRuleResult {
+  private validateMaxLength(value: unknown, rule: MaxLengthRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'max_length', passed: true };
     }
@@ -603,14 +659,14 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be at most ${rule.length} characters`,
+        : rule.message || `${propertyLabel} must be at most ${rule.length} characters`,
     };
   }
 
   /**
    * Range validation (for numbers or dates)
    */
-  private validateRange(value: unknown, rule: RangeRule, fieldLabel: string): ValidationRuleResult {
+  private validateRange(value: unknown, rule: RangeRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'range', passed: true };
     }
@@ -620,22 +676,22 @@ export class ValidationService {
       typeof rule.min === 'string' || typeof rule.max === 'string';
 
     if (isDateRange) {
-      return this.validateDateRange(value, rule, fieldLabel);
+      return this.validateDateRange(value, rule, propertyLabel);
     }
 
-    return this.validateNumericRange(value, rule, fieldLabel);
+    return this.validateNumericRange(value, rule, propertyLabel);
   }
 
   /**
    * Numeric range validation
    */
-  private validateNumericRange(value: unknown, rule: RangeRule, fieldLabel: string): ValidationRuleResult {
+  private validateNumericRange(value: unknown, rule: RangeRule, propertyLabel: string): ValidationRuleResult {
     const numValue = Number(value);
     if (isNaN(numValue)) {
       return {
         rule: 'range',
         passed: false,
-        message: `${fieldLabel} must be a number`,
+        message: `${propertyLabel} must be a number`,
       };
     }
 
@@ -659,20 +715,20 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be between ${rule.min ?? '(unbounded)'} and ${rule.max ?? '(unbounded)'}`,
+        : rule.message || `${propertyLabel} must be between ${rule.min ?? '(unbounded)'} and ${rule.max ?? '(unbounded)'}`,
     };
   }
 
   /**
    * Date range validation
    */
-  private validateDateRange(value: unknown, rule: RangeRule, fieldLabel: string): ValidationRuleResult {
+  private validateDateRange(value: unknown, rule: RangeRule, propertyLabel: string): ValidationRuleResult {
     const dateValue = new Date(value as string | number | Date);
     if (isNaN(dateValue.getTime())) {
       return {
         rule: 'range',
         passed: false,
-        message: `${fieldLabel} must be a valid date`,
+        message: `${propertyLabel} must be a valid date`,
       };
     }
 
@@ -696,14 +752,14 @@ export class ValidationService {
       passed,
       message: passed
         ? undefined
-        : rule.message || `${fieldLabel} must be between ${rule.min ?? '(any)'} and ${rule.max ?? '(any)'}`,
+        : rule.message || `${propertyLabel} must be between ${rule.min ?? '(any)'} and ${rule.max ?? '(any)'}`,
     };
   }
 
   /**
    * Email format validation
    */
-  private validateEmail(value: unknown, fieldLabel: string, customMessage?: string): ValidationRuleResult {
+  private validateEmail(value: unknown, propertyLabel: string, customMessage?: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'email', passed: true };
     }
@@ -715,14 +771,36 @@ export class ValidationService {
     return {
       rule: 'email',
       passed,
-      message: passed ? undefined : customMessage || `${fieldLabel} must be a valid email address`,
+      message: passed ? undefined : customMessage || `${propertyLabel} must be a valid email address`,
+    };
+  }
+
+  /**
+   * UUID format validation (RFC 4122). Accepts versions 1–5; the
+   * canonical 8-4-4-4-12 hex form. Rejects empty strings — use the
+   * `required` rule for that.
+   */
+  private validateUuid(
+    value: unknown,
+    propertyLabel: string,
+    customMessage?: string,
+  ): ValidationRuleResult {
+    if (this.isEmpty(value)) {
+      return { rule: 'uuid', passed: true };
+    }
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const passed = uuidRegex.test(String(value));
+    return {
+      rule: 'uuid',
+      passed,
+      message: passed ? undefined : customMessage || `${propertyLabel} must be a valid UUID`,
     };
   }
 
   /**
    * URL format validation
    */
-  private validateUrl(value: unknown, rule: UrlRule, fieldLabel: string): ValidationRuleResult {
+  private validateUrl(value: unknown, rule: UrlRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'url', passed: true };
     }
@@ -738,13 +816,13 @@ export class ValidationService {
         passed,
         message: passed
           ? undefined
-          : rule.message || `${fieldLabel} must be a valid URL with protocol: ${allowedProtocols.join(', ')}`,
+          : rule.message || `${propertyLabel} must be a valid URL with protocol: ${allowedProtocols.join(', ')}`,
       };
     } catch {
       return {
         rule: 'url',
         passed: false,
-        message: rule.message || `${fieldLabel} must be a valid URL`,
+        message: rule.message || `${propertyLabel} must be a valid URL`,
       };
     }
   }
@@ -752,7 +830,7 @@ export class ValidationService {
   /**
    * Phone number format validation
    */
-  private validatePhone(value: unknown, rule: PhoneRule, fieldLabel: string): ValidationRuleResult {
+  private validatePhone(value: unknown, rule: PhoneRule, propertyLabel: string): ValidationRuleResult {
     if (this.isEmpty(value)) {
       return { rule: 'phone', passed: true };
     }
@@ -781,7 +859,7 @@ export class ValidationService {
     return {
       rule: 'phone',
       passed,
-      message: passed ? undefined : rule.message || `${fieldLabel} must be a valid phone number`,
+      message: passed ? undefined : rule.message || `${propertyLabel} must be a valid phone number`,
     };
   }
 
@@ -800,7 +878,7 @@ export class ValidationService {
   private async validateCustom(
     value: unknown,
     rule: CustomRule,
-    fieldLabel: string,
+    propertyLabel: string,
     context: ValidationContext
   ): Promise<ValidationRuleResult> {
     if (this.isEmpty(value) && rule.script.includes('value')) {
@@ -808,11 +886,14 @@ export class ValidationService {
     }
 
     try {
-      // SECURITY: Validate script content before execution
-      this.validateScriptSecurity(rule.script);
+      // SECURITY: Validate script content before execution. The
+      // returned script has been NFKC-normalized so the parser sees
+      // the same form the denylist approved (defeats homoglyph
+      // bypass).
+      const safeScript = this.validateScriptSecurity(rule.script);
 
       // Parse the expression using safe parser
-      const expression = this.safeParser.parse(rule.script);
+      const expression = this.safeParser.parse(safeScript);
 
       // Build safe variable context
       const variables: Record<string, unknown> = {
@@ -841,7 +922,7 @@ export class ValidationService {
       return {
         rule: 'custom',
         passed,
-        message: passed ? undefined : rule.message || `${fieldLabel} failed custom validation`,
+        message: passed ? undefined : rule.message || `${propertyLabel} failed custom validation`,
       };
     } catch (error) {
       this.logger.error(`Custom validation script error: ${(error as Error).message}`);

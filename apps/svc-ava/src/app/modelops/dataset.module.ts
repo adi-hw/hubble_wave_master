@@ -23,7 +23,7 @@ import { StorageModule } from '@hubblewave/storage';
       AuditLog,
       AnalyticsEvent,
     ]),
-    StorageModule,
+    StorageModule.forRoot(),
   ],
   controllers: [DatasetController],
   providers: [DatasetService, DatasetSnapshotProcessorService],

@@ -56,8 +56,8 @@ export const GeoPointField: React.FC<FieldComponentProps<string | { lat: number;
         updateValue(newLat, newLng);
         setShowMap(true);
       },
-      (error) => {
-        console.error('Error getting location:', error);
+      () => {
+        // Geolocation failed - notify user
         alert('Unable to retrieve your location');
       }
     );

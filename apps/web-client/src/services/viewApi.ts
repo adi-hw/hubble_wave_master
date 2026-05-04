@@ -1,6 +1,6 @@
 import { createApiClient } from './api';
 
-const metadataApi = createApiClient('/api');
+const metadataApi = createApiClient('/api/metadata');
 const viewEngineApi = createApiClient('/api/view-engine');
 
 export type ViewKind = 'form' | 'list' | 'page';
@@ -69,6 +69,22 @@ export interface PublishViewRequest {
   revisionId?: string;
 }
 
+/**
+ * Published Display Rule projection returned alongside a resolved
+ * view. Drafts are excluded by the backend. Frontend feeds these
+ * into `composeDisplay()` from `@hubblewave/shared-types` to derive
+ * show/hide, mandatory/readonly, and setValue effects per record
+ * state.
+ */
+export interface ResolvedDisplayRule {
+  id: string;
+  name: string;
+  priority: number;
+  isActive: boolean;
+  condition: Record<string, unknown>;
+  actions: { propertyCode: string; action: string; value?: unknown }[];
+}
+
 export interface ResolvedView {
   definitionId: string;
   viewCode: string;
@@ -85,6 +101,8 @@ export interface ResolvedView {
   fieldPermissions?: Record<string, { canRead: boolean; canWrite: boolean; maskingStrategy: 'NONE' | 'PARTIAL' | 'FULL' }>;
   widgetBindings: Record<string, unknown>;
   actions: Record<string, unknown>;
+  /** Published Display Rules scoped to the view's targetCollection. */
+  displayRules?: ResolvedDisplayRule[];
   publishedAt?: string | null;
   resolvedAt: string;
 }
@@ -127,11 +145,29 @@ export const viewApi = {
     return response.data;
   },
 
-  resolve: async (params: { route?: string; kind: ViewKind; collection?: string }) => {
+  resolve: async (params: {
+    route?: string;
+    kind: ViewKind;
+    collection?: string;
+    /** Pin to a specific named view (e.g. workspace formCode). */
+    code?: string;
+    /**
+     * Plan §7.2 — Form Builder "Preview as role X" override. CSV of
+     * role codes; the view-engine resolves variant matching against
+     * these roles instead of the caller's. Server-side gate
+     * (`metadata.forms.edit` or admin) prevents privilege simulation
+     * by non-admins.
+     */
+    previewAsRole?: string[];
+  }) => {
     const qs = new URLSearchParams();
     if (params.route) qs.set('route', params.route);
     if (params.kind) qs.set('kind', params.kind);
     if (params.collection) qs.set('collection', params.collection);
+    if (params.code) qs.set('code', params.code);
+    if (params.previewAsRole && params.previewAsRole.length > 0) {
+      qs.set('previewAsRole', params.previewAsRole.join(','));
+    }
     const response = await viewEngineApi.get<ResolvedView>(`/views/resolve?${qs.toString()}`);
     return response.data;
   },

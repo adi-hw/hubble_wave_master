@@ -7,9 +7,10 @@
 
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { DataSource, Repository, In } from 'typeorm';
 import {
   AutomationRule,
+  AutomationRuleRevision,
   TriggerTiming,
   TriggerOperation,
   AutomationAction,
@@ -38,6 +39,10 @@ export interface Automation {
   consecutiveErrors: number;
   lastExecutedAt?: Date;
   metadata: Record<string, unknown>;
+  // ADR-5 lifecycle — included on the API surface so the Studio
+  // panel can render the publish badge and gate the Activate button.
+  status: 'draft' | 'published' | 'deprecated';
+  publishedAt?: Date | null;
 }
 
 export interface CreateAutomationDto {
@@ -59,7 +64,7 @@ export interface CreateAutomationDto {
   metadata?: Record<string, unknown>;
 }
 
-export interface UpdateAutomationDto extends Partial<Omit<CreateAutomationDto, 'collectionId'>> {}
+export type UpdateAutomationDto = Partial<Omit<CreateAutomationDto, 'collectionId'>>;
 
 @Injectable()
 export class AutomationService {
@@ -68,6 +73,9 @@ export class AutomationService {
   constructor(
     @InjectRepository(AutomationRule)
     private readonly automationRepo: Repository<AutomationRule>,
+    @InjectRepository(AutomationRuleRevision)
+    private readonly revisionRepo: Repository<AutomationRuleRevision>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -78,11 +86,18 @@ export class AutomationService {
     timing: TriggerTiming,
     operation: TriggerOperation,
   ): Promise<Automation[]> {
+    // Runtime requires BOTH the operational `is_active` switch AND the
+    // ADR-5 lifecycle gate `status='published'`. `is_active` alone is
+    // insufficient — a stale `is_active=true` from a seed, import, or
+    // direct data correction must not let an unreviewed draft or a
+    // retired deprecated rule fire on the next data event. Mirrors the
+    // Phase 3.4 fix for ProcessFlowDefinition.
     const automations = await this.automationRepo
       .createQueryBuilder('rule')
       .where('rule.collection_id = :collectionId', { collectionId })
       .andWhere('rule.trigger_timing = :timing', { timing })
       .andWhere('rule.is_active = :isActive', { isActive: true })
+      .andWhere('rule.status = :status', { status: 'published' })
       .andWhere('rule.consecutive_errors < :maxErrors', { maxErrors: 5 })
       .orderBy('rule.execution_order', 'ASC')
       .getMany();
@@ -164,11 +179,13 @@ export class AutomationService {
     }
 
     const maxOrder = await this.getMaxExecutionOrder(dto.collectionId);
+    const applicationId = await this.getCollectionApplicationId(dto.collectionId);
 
     const automation = this.automationRepo.create({
       name: dto.name,
       description: dto.description,
       collectionId: dto.collectionId,
+      applicationId,
       triggerTiming: dto.triggerTiming,
       triggerOperations: dto.triggerOperations,
       watchProperties: dto.watchProperties,
@@ -180,14 +197,35 @@ export class AutomationService {
       script: dto.script,
       abortOnError: dto.abortOnError ?? false,
       executionOrder: dto.executionOrder ?? maxOrder + 10,
-      isActive: dto.isActive ?? true,
+      // New rules start operationally OFF (`isActive=false`) and at
+      // status='draft'. The author must publish + explicitly activate
+      // before the runtime fires them — matches the Phase 3.4
+      // ProcessFlow lifecycle. The runtime gate
+      // (status='published' + isActive=true) is the safety net; this
+      // is the deliberate-by-default UX surface.
+      isActive: false,
       isSystem: false,
       consecutiveErrors: 0,
       metadata: dto.metadata ?? {},
+      status: 'draft',
       createdBy: userId,
     });
 
     const saved = await this.automationRepo.save(automation);
+
+    // Seed revision 1 (draft) so currentRevisionId is non-null from creation.
+    const savedRevision = await this.revisionRepo.save(
+      this.revisionRepo.create({
+        automationRuleId: saved.id,
+        revision: 1,
+        status: 'draft',
+        payload: this.snapshot(saved),
+        createdBy: userId ?? null,
+      }),
+    );
+    saved.currentRevisionId = savedRevision.id;
+    await this.automationRepo.save(saved);
+
     this.logger.log(`Created automation '${dto.name}' for collection ${dto.collectionId}`);
     return this.toAutomation(saved);
   }
@@ -232,10 +270,100 @@ export class AutomationService {
     updateData.updatedBy = userId;
 
     if (Object.keys(updateData).length > 1) {
+      // Per ADR-5 every edit returns the parent to draft and appends a
+      // new draft revision. Publishing flips both back to published.
+      updateData.status = 'draft';
+      // Runtime lookup is `code + isActive + status='published'`. Even
+      // with the published gate, force isActive=false so re-publishing
+      // requires both a publish AND a deliberate re-activation —
+      // matches the Phase 3.4 ProcessFlow lifecycle pattern.
+      updateData.isActive = false;
       await this.automationRepo.update(automationId, updateData);
+
+      const refreshed = await this.automationRepo.findOne({ where: { id: automationId } });
+      if (refreshed) {
+        const nextRev = await this.nextRevisionNumber(automationId);
+        const savedRevision = await this.revisionRepo.save(
+          this.revisionRepo.create({
+            automationRuleId: automationId,
+            revision: nextRev,
+            status: 'draft',
+            payload: this.snapshot(refreshed),
+            createdBy: userId ?? null,
+          }),
+        );
+        await this.automationRepo.update(automationId, {
+          currentRevisionId: savedRevision.id,
+        });
+      }
     }
 
     return this.getAutomation(automationId);
+  }
+
+  /**
+   * Publish the current draft revision of an automation rule. Mirrors
+   * WorkflowDefinitionService.publish: flips the revision to published,
+   * stamps publishedBy/publishedAt, and bumps the parent rule to
+   * `published`. Lifecycle status (`status`) is orthogonal to
+   * operational on/off (`isActive`).
+   */
+  async publishAutomation(automationId: string, userId?: string): Promise<Automation> {
+    const automation = await this.automationRepo.findOne({ where: { id: automationId } });
+    if (!automation) {
+      throw new NotFoundException(`Automation with ID '${automationId}' not found`);
+    }
+    if (!automation.currentRevisionId) {
+      throw new NotFoundException(
+        `Automation ${automationId} has no current revision to publish`,
+      );
+    }
+    const revision = await this.revisionRepo.findOne({
+      where: { id: automation.currentRevisionId },
+    });
+    if (!revision) {
+      throw new NotFoundException(
+        `Current revision ${automation.currentRevisionId} missing`,
+      );
+    }
+    if (revision.status !== 'published') {
+      revision.status = 'published';
+      revision.publishedBy = userId ?? null;
+      revision.publishedAt = new Date();
+      await this.revisionRepo.save(revision);
+    }
+    if (automation.status !== 'published') {
+      await this.automationRepo.update(automationId, {
+        status: 'published',
+        publishedAt: new Date(),
+        updatedBy: userId,
+      });
+    }
+    return this.getAutomation(automationId);
+  }
+
+  /** Soft-deprecate an automation rule. */
+  async deprecateAutomation(automationId: string, userId?: string): Promise<Automation> {
+    const automation = await this.automationRepo.findOne({ where: { id: automationId } });
+    if (!automation) {
+      throw new NotFoundException(`Automation with ID '${automationId}' not found`);
+    }
+    await this.automationRepo.update(automationId, {
+      status: 'deprecated',
+      // Deprecation is end-of-life — runtime must stop matching this
+      // rule even if a prior toggle left isActive=true.
+      isActive: false,
+      updatedBy: userId,
+    });
+    return this.getAutomation(automationId);
+  }
+
+  /** List revisions for an automation rule, newest first. */
+  listRevisions(automationId: string): Promise<AutomationRuleRevision[]> {
+    return this.revisionRepo.find({
+      where: { automationRuleId: automationId },
+      order: { revision: 'DESC' },
+    });
   }
 
   /**
@@ -271,8 +399,19 @@ export class AutomationService {
       throw new NotFoundException(`Automation with ID '${automationId}' not found`);
     }
 
+    const nextActive = !existing.isActive;
+    // Only published rules may activate. The runtime gates by
+    // status='published' too (getAutomationsForTrigger), so even an
+    // accidental toggle wouldn't fire — but rejecting here gives the
+    // operator an immediate, named error instead of silent inactivity.
+    if (nextActive && existing.status !== 'published') {
+      throw new ConflictException(
+        `Automation rule "${existing.name}" is in status "${existing.status}". Publish before activating.`,
+      );
+    }
+
     await this.automationRepo.update(automationId, {
-      isActive: !existing.isActive,
+      isActive: nextActive,
       updatedBy: userId,
     });
 
@@ -346,6 +485,58 @@ export class AutomationService {
   }
 
   /**
+   * Look up the parent collection's applicationId. Required since
+   * automation_rules.application_id is NOT NULL post-Slice-C3.
+   */
+  private async getCollectionApplicationId(collectionId: string): Promise<string> {
+    const result: Array<{ application_id: string | null }> = await this.dataSource.query(
+      `SELECT application_id FROM collection_definitions WHERE id = $1 LIMIT 1`,
+      [collectionId],
+    );
+    const fromCollection = result[0]?.application_id;
+    if (!fromCollection) {
+      throw new NotFoundException(
+        `Collection ${collectionId} not found or not bound to an Application`,
+      );
+    }
+    return fromCollection;
+  }
+
+  /** Authoring snapshot persisted on every AutomationRuleRevision row. */
+  private snapshot(rule: AutomationRule): Record<string, unknown> {
+    return {
+      name: rule.name,
+      description: rule.description,
+      collectionId: rule.collectionId,
+      applicationId: rule.applicationId,
+      triggerTiming: rule.triggerTiming,
+      triggerOperations: rule.triggerOperations,
+      watchProperties: rule.watchProperties,
+      conditionType: rule.conditionType,
+      condition: rule.condition,
+      conditionScript: rule.conditionScript,
+      actionType: rule.actionType,
+      actions: rule.actions,
+      script: rule.script,
+      abortOnError: rule.abortOnError,
+      executionOrder: rule.executionOrder,
+      isActive: rule.isActive,
+      isSystem: rule.isSystem,
+      metadata: rule.metadata,
+    };
+  }
+
+  private async nextRevisionNumber(automationRuleId: string): Promise<number> {
+    const result: Array<{ max: number | string | null }> = await this.revisionRepo
+      .createQueryBuilder('rev')
+      .select('MAX(rev.revision)', 'max')
+      .where('rev.automation_rule_id = :automationRuleId', { automationRuleId })
+      .getRawMany();
+    const current = Number(result[0]?.max ?? 0);
+    return Number.isFinite(current) ? current + 1 : 1;
+  }
+
+  /**
    * Convert entity to interface
    */
   private toAutomation(entity: AutomationRule): Automation {
@@ -370,6 +561,8 @@ export class AutomationService {
       consecutiveErrors: entity.consecutiveErrors,
       lastExecutedAt: entity.lastExecutedAt,
       metadata: entity.metadata,
+      status: entity.status,
+      publishedAt: entity.publishedAt ?? null,
     };
   }
 }

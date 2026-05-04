@@ -1,0 +1,23 @@
+{{- $root := . -}}
+{{- $defaults := .Values.defaults -}}
+{{- range $svc := .Values.services }}
+{{- $serviceCfg := default $defaults.service $svc.service -}}
+{{- $servicePort := default 80 $svc.servicePort -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  labels:
+    {{- include "instance-services.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $svc.name }}
+spec:
+  type: {{ $serviceCfg.type }}
+  ports:
+    - name: http
+      port: {{ $servicePort }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP
+  selector:
+    {{- include "instance-services.serviceSelector" (dict "root" $root "service" $svc) | nindent 4 }}
+{{- end }}

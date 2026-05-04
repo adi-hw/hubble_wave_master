@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { accessApi, CollectionAccessRule, CreateRuleDto } from '../../../services/accessApi';
 import { ConditionBuilder } from '../../../components/access/ConditionBuilder';
+import { useStudioCollectionId } from '../../../app/app-studio/table-builder';
 
 export const AccessRulesPage: React.FC = () => {
-  const { id: collectionId } = useParams<{ id: string }>();
+  const collectionId = useStudioCollectionId();
   const navigate = useNavigate();
   const [rules, setRules] = useState<CollectionAccessRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,8 +31,8 @@ export const AccessRulesPage: React.FC = () => {
       // Handle both array response and object with data property
       const rulesArray = Array.isArray(data) ? data : (data as any)?.data || [];
       setRules(rulesArray);
-    } catch (err) {
-      console.error('Failed to load rules', err);
+    } catch {
+      // Rules fetch failed - show empty list
       setRules([]);
     } finally {
       setLoading(false);
@@ -43,8 +44,8 @@ export const AccessRulesPage: React.FC = () => {
       try {
         await accessApi.deleteCollectionRule(ruleId);
         await loadRules();
-      } catch (err) {
-        console.error('Failed to delete rule', err);
+      } catch {
+        // Rule deletion failed - list unchanged
       }
     }
   };
@@ -61,8 +62,8 @@ export const AccessRulesPage: React.FC = () => {
         priority: 100
       });
       await loadRules();
-    } catch (err) {
-      console.error('Failed to save rule', err);
+    } catch {
+      // Rule save failed - editor remains open
     }
   };
 

@@ -1,12 +1,14 @@
+import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
-import { assertSecureConfig } from '@hubblewave/shared-types';
+import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
 
 async function bootstrap() {
   // SECURITY: Validate configuration before starting
   // This will throw in production if insecure defaults are detected
   assertSecureConfig();
+  assertJwtConfig();
 
   // Ensure JWT secret is set from either JWT_SECRET or IDENTITY_JWT_SECRET
   const jwtSecret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
@@ -39,6 +41,9 @@ async function bootstrap() {
   // Support *.localhost patterns for instance subdomains in development
   if (!isProd) {
     originPatterns.push(/^http:\/\/[a-z0-9-]+\.localhost:\d+$/);
+    originPatterns.push(/^http:\/\/localhost:\d+$/);
+    originPatterns.push(/^http:\/\/127\.0\.0\.1:\d+$/);
+    originPatterns.push(/^http:\/\/\[::1\]:\d+$/);
   }
 
   // Enable CORS
@@ -71,7 +76,7 @@ async function bootstrap() {
       'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Instance-Slug',
   });
 
-  const globalPrefix = 'api';
+  const globalPrefix = 'api/data';
   app.setGlobalPrefix(globalPrefix);
   const port =
     process.env.PORT ||

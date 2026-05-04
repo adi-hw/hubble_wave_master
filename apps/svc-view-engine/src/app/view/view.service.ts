@@ -5,13 +5,20 @@ import { AuthorizationService, PropertyMeta } from '@hubblewave/authorization';
 import type { RequestContext } from '@hubblewave/auth-guard';
 import {
   CollectionDefinition,
+  DisplayRule,
   PropertyDefinition,
   ViewDefinition,
   ViewDefinitionRevision,
   ViewScope,
   ViewVariant,
 } from '@hubblewave/instance-db';
-import type { FieldPermission, ViewContext, ViewResolveInput, ResolvedView } from './view.types';
+import type {
+  FieldPermission,
+  ResolvedDisplayRule,
+  ResolvedView,
+  ViewContext,
+  ViewResolveInput,
+} from './view.types';
 
 type ViewCandidate = {
   definition: ViewDefinition;
@@ -31,6 +38,8 @@ export class ViewService {
     private readonly collectionRepo: Repository<CollectionDefinition>,
     @InjectRepository(PropertyDefinition)
     private readonly propertyRepo: Repository<PropertyDefinition>,
+    @InjectRepository(DisplayRule)
+    private readonly displayRuleRepo: Repository<DisplayRule>,
     private readonly authz: AuthorizationService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -65,6 +74,9 @@ export class ViewService {
       fieldPermissions,
       input.kind
     );
+    const displayRules = await this.loadPublishedDisplayRules(
+      selected.definition.targetCollectionCode ?? null,
+    );
 
     return {
       definitionId: selected.definition.id,
@@ -82,9 +94,43 @@ export class ViewService {
       fieldPermissions,
       widgetBindings: revision.widgetBindings,
       actions: revision.actions,
+      displayRules,
       publishedAt: revision.publishedAt,
       resolvedAt: new Date(),
     };
+  }
+
+  /**
+   * Load published, active Display Rules scoped to the collection
+   * this view targets. Drafts are excluded by design — runtime never
+   * sees an unpublished rule. Frontend evaluates the rules via
+   * `composeDisplay()` from `@hubblewave/shared-types`.
+   */
+  private async loadPublishedDisplayRules(
+    targetCollectionCode: string | null,
+  ): Promise<ResolvedDisplayRule[]> {
+    if (!targetCollectionCode) return [];
+    const collection = await this.collectionRepo.findOne({
+      where: { code: targetCollectionCode },
+      select: ['id'],
+    });
+    if (!collection) return [];
+    const rules = await this.displayRuleRepo
+      .createQueryBuilder('r')
+      .where('r.collection_id = :collectionId', { collectionId: collection.id })
+      .andWhere('r.is_active = true')
+      .andWhere(`r.status = 'published'`)
+      .orderBy('r.priority', 'ASC')
+      .addOrderBy('r.created_at', 'ASC')
+      .getMany();
+    return rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      priority: r.priority,
+      isActive: r.isActive,
+      condition: r.condition,
+      actions: r.actions,
+    }));
   }
 
   private async findDefinitions(input: ViewResolveInput): Promise<ViewDefinition[]> {
@@ -98,7 +144,13 @@ export class ViewService {
       });
     }
 
-    if (input.route) {
+    // `code` filters to a specific named view (Workspace
+    // RecordDetailPanel passes its formCode through here). `route`
+    // is the legacy route-based filter. Both are accepted; if both
+    // are sent the result must satisfy both.
+    if (input.code) {
+      qb.andWhere('view.code = :code', { code: input.code });
+    } else if (input.route) {
       qb.andWhere('view.code = :code', { code: this.normalizeRoute(input.route) });
     }
 
@@ -266,7 +318,7 @@ export class ViewService {
       isSystem: prop.isSystem,
     }));
 
-    const authorized = await this.authz.getAuthorizedFields(ctx, collection.tableName, metas);
+    const authorized = await this.authz.getAuthorizedFieldsForCollection(ctx, collection.id, metas);
     return authorized.reduce<Record<string, FieldPermission>>((acc, field) => {
       acc[field.code] = {
         canRead: field.canRead,

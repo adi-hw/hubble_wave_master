@@ -23,6 +23,7 @@ import { RequirePermission } from './decorators/permission.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionGuard } from './guards/permission.guard';
+import { SkipAbac } from '../abac/abac.guard';
 
 interface UserContext {
   id: string;
@@ -60,6 +61,7 @@ interface UpdatePermissionDto {
  */
 @Controller('admin/permissions')
 @UseGuards(JwtAuthGuard)
+@SkipAbac()
 export class PermissionsController {
   private readonly logger = new Logger(PermissionsController.name);
 

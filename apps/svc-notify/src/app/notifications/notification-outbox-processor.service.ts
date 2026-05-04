@@ -1,10 +1,20 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { NotificationService } from './notification.service';
 
 const EVENT_TYPES = ['automation.notification.requested', 'workflow.notification.requested'];
+
+interface ValidNotificationPayload {
+  templateCode?: string;
+  templateId?: string;
+  recipients: string[];
+  channels?: string[];
+  data: Record<string, unknown>;
+  triggeredBy?: string;
+  correlationId?: string;
+}
 
 @Injectable()
 export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestroy {
@@ -19,6 +29,7 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly notifications: NotificationService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('NOTIFY_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('NOTIFY_OUTBOX_POLL_MS', '2000'), 10);
@@ -47,11 +58,41 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
       if (!entries.length) return;
 
       for (const entry of entries) {
+        const validation = this.validatePayload(entry.payload as Record<string, unknown>);
+        if (!validation.ok) {
+          // Surface the alert through error-level logging so monitoring picks
+          // it up; silently dropping invalid payloads would mask producer bugs.
+          this.logger.error(
+            `Notify outbox payload invalid for entry ${entry.id}: ${validation.error}`,
+          );
+          await this.markFailed(entry.id, `invalid payload: ${validation.error}`);
+          continue;
+        }
+
         try {
-          await this.handleEntry(entry.payload as Record<string, unknown>);
+          await this.dispatch(validation.value);
           await this.markProcessed(entry.id);
         } catch (error) {
           await this.markFailed(entry.id, (error as Error).message);
+          // Notification outbox entries marked failed here are terminal —
+          // there is no automatic retry once status flips to 'failed'.
+          // Record an anomaly so the dropped notification is queryable.
+          this.logger.error(
+            `Notification outbox entry ${entry.id} (${entry.eventType}) marked failed: ${(error as Error).message}`,
+          );
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_terminal_drop',
+            serviceCode: 'svc-notify',
+            message: `Notification outbox entry ${entry.id} (${entry.eventType}) terminally failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {
@@ -61,30 +102,88 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
     }
   }
 
-  private async handleEntry(payload: Record<string, unknown>) {
-    const notificationPayload = (payload.notification as Record<string, unknown>) || payload;
-    const templateCode = notificationPayload.templateCode as string | undefined;
-    const templateId = notificationPayload.templateId as string | undefined;
-    const template = notificationPayload.template as string | undefined;
-    const recipients = Array.isArray(notificationPayload.recipients)
-      ? notificationPayload.recipients.map(String)
-      : [];
-    const channels = Array.isArray(notificationPayload.channels)
-      ? (notificationPayload.channels as string[])
-      : undefined;
-    const data = (notificationPayload.data as Record<string, unknown>) || {};
-
-    if ((!templateCode && !templateId && !template) || recipients.length === 0) {
-      throw new Error('Notification payload requires template reference and recipients');
+  private validatePayload(
+    payload: Record<string, unknown>,
+  ): { ok: true; value: ValidNotificationPayload } | { ok: false; error: string } {
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, error: 'payload must be an object' };
+    }
+    const notificationPayload =
+      (payload.notification as Record<string, unknown>) || payload;
+    if (!notificationPayload || typeof notificationPayload !== 'object') {
+      return { ok: false, error: 'notification block missing or not an object' };
     }
 
+    const templateCode = typeof notificationPayload.templateCode === 'string'
+      ? notificationPayload.templateCode.trim() || undefined
+      : undefined;
+    const templateId = typeof notificationPayload.templateId === 'string'
+      ? notificationPayload.templateId.trim() || undefined
+      : undefined;
+    const templateAlias = typeof notificationPayload.template === 'string'
+      ? notificationPayload.template.trim() || undefined
+      : undefined;
+
+    if (!templateCode && !templateId && !templateAlias) {
+      return { ok: false, error: 'templateCode, templateId, or template is required' };
+    }
+
+    if (!Array.isArray(notificationPayload.recipients)) {
+      return { ok: false, error: 'recipients must be an array' };
+    }
+    const recipients = notificationPayload.recipients
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim());
+    if (recipients.length === 0) {
+      return { ok: false, error: 'recipients must contain at least one non-empty string' };
+    }
+
+    let channels: string[] | undefined;
+    if (notificationPayload.channels !== undefined) {
+      if (!Array.isArray(notificationPayload.channels)) {
+        return { ok: false, error: 'channels must be an array when provided' };
+      }
+      channels = notificationPayload.channels.filter(
+        (value): value is string => typeof value === 'string',
+      );
+    }
+
+    const data =
+      notificationPayload.data && typeof notificationPayload.data === 'object'
+        ? (notificationPayload.data as Record<string, unknown>)
+        : {};
+
+    const triggeredBy = typeof payload.triggeredBy === 'string'
+      ? payload.triggeredBy
+      : undefined;
+
+    const correlationId = typeof payload.correlationId === 'string'
+      ? payload.correlationId
+      : undefined;
+
+    return {
+      ok: true,
+      value: {
+        templateCode: templateCode || templateAlias,
+        templateId,
+        recipients,
+        channels,
+        data,
+        triggeredBy,
+        correlationId,
+      },
+    };
+  }
+
+  private async dispatch(payload: ValidNotificationPayload): Promise<void> {
     await this.notifications.send({
-      templateCode: templateCode || template,
-      templateId,
-      recipients,
-      data,
-      channels: channels as any,
-      actorId: payload.triggeredBy as string | undefined,
+      templateCode: payload.templateCode,
+      templateId: payload.templateId,
+      recipients: payload.recipients,
+      data: payload.data,
+      channels: payload.channels as any,
+      actorId: payload.triggeredBy,
+      correlationId: payload.correlationId,
     });
   }
 

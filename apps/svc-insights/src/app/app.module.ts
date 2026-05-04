@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { AnalyticsModule } from '@hubblewave/analytics';
 import { AuthorizationModule } from '@hubblewave/authorization';
@@ -16,6 +16,7 @@ import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AuthGuardModule,
+    GlobalGuardsModule,
     InstanceDbModule,
     AnalyticsModule,
     AuthorizationModule.forInstance(),

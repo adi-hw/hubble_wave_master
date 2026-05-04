@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -95,19 +95,32 @@ export class WorkflowInstanceService {
       return instance;
     }
 
-    const previous = { state: instance.state };
-    instance.state = 'cancelled';
-    instance.completedAt = new Date();
-    await this.instanceRepo.save(instance);
+    const previousState = instance.state;
+    // Optimistic concurrency: the UPDATE only matches if the state is still
+    // what we just read. A concurrent cancel/complete will have moved it,
+    // and the affected-row count will be zero — surface that as a 409 so the
+    // caller can refetch and retry.
+    const result = await this.instanceRepo
+      .createQueryBuilder()
+      .update(ProcessFlowInstance)
+      .set({ state: 'cancelled', completedAt: new Date() })
+      .where('id = :id AND state = :state', { id: instance.id, state: previousState })
+      .execute();
+
+    if (!result.affected) {
+      throw new ConflictException('Concurrent modification: workflow instance state changed');
+    }
+
+    const refreshed = await this.getById(instanceId);
 
     await this.auditService.record({
       actorId,
       action: 'workflow.cancel',
-      recordId: instance.id,
-      oldValues: previous,
-      newValues: { state: instance.state },
+      recordId: refreshed.id,
+      oldValues: { state: previousState },
+      newValues: { state: refreshed.state },
     });
 
-    return instance;
+    return refreshed;
   }
 }

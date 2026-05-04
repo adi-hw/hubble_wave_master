@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nest
 import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
 import { AvaToolsService, CreateAvaToolRequest, UpdateAvaToolRequest } from './ava-tools.service';
 
-@Controller('api/ava/tools')
+@Controller('ava/tools')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class AvaToolsController {

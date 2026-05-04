@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -11,6 +11,7 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
   InstanceDbModule,
+  RuntimeAnomalyModule,
 } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
 import { DataController } from './data.controller';
@@ -34,12 +35,15 @@ import { ValidationModule } from './validation/validation.module';
 import { DefaultsModule } from './defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
 import { FormulaModule } from './formula/formula.module';
+import { ComputedModule } from './computed/computed.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     InstanceDbModule,
+    RuntimeAnomalyModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,
@@ -53,6 +57,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     DefaultsModule,
     GridModule,
     FormulaModule,
+    ComputedModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [

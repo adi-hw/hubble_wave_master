@@ -42,7 +42,7 @@ interface MigrationRequestDto {
 
 @ApiTags('AVA - Schema Assistance')
 @ApiBearerAuth()
-@Controller('api/ava/schema')
+@Controller('ava/schema')
 @UseGuards(JwtAuthGuard)
 export class AVASchemaController {
   constructor(private readonly avaSchemaService: AVASchemaService) {}

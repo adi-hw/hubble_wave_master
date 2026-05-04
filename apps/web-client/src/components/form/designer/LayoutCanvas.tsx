@@ -328,7 +328,7 @@ const SectionComponent: React.FC<{
               {section.label || 'Untitled Section'}
             </h3>
             <span className="text-xs text-muted-foreground/70">
-              {section.items.length} field{section.items.length !== 1 ? 's' : ''}
+              {section.items.length} {section.items.length === 1 ? 'Property' : 'Properties'}
             </span>
           </div>
 
@@ -398,11 +398,11 @@ const SectionComponent: React.FC<{
                   : 'border-border'}
               `}
               role="list"
-              aria-label="Empty field list"
+              aria-label="Empty Property list"
             >
               <Layers className="h-8 w-8 mx-auto mb-2 text-border" />
               <p className="text-sm text-muted-foreground">
-                {mode === 'edit' ? 'Drag fields here' : 'No fields in this section'}
+                {mode === 'edit' ? 'Drag Properties here' : 'No Properties in this section'}
               </p>
             </div>
           ) : (
@@ -413,7 +413,7 @@ const SectionComponent: React.FC<{
               <div
                 className={`grid gap-3 ${getColumnsClass()}`}
                 role="list"
-                aria-label={`${section.label || 'Section'} fields`}
+                aria-label={`${section.label || 'Section'} Properties`}
               >
                 {section.items.map((item) => (
                   <SortablePropertyItem
@@ -454,7 +454,7 @@ export const LayoutCanvas: React.FC<LayoutCanvasProps> = ({
           </h2>
           {tab.sections.length > 0 && (
             <p className="text-sm mt-1 text-muted-foreground">
-              {tab.sections.reduce((acc, s) => acc + s.items.length, 0)} fields
+              {tab.sections.reduce((acc, s) => acc + s.items.length, 0)} Properties
             </p>
           )}
         </div>

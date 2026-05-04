@@ -86,8 +86,8 @@ export const UserInvitePage: React.FC = () => {
         const groupsData = groupsRes.data;
         setRoles(Array.isArray(rolesData) ? rolesData : (rolesData as { data?: Role[] }).data || []);
         setGroups(Array.isArray(groupsData) ? groupsData : (groupsData as { data?: Group[] }).data || []);
-      } catch (err) {
-        console.error('Failed to fetch roles/groups:', err);
+      } catch {
+        // Roles/groups fetch failed - lists remain empty
       }
     };
     fetchRolesAndGroups();

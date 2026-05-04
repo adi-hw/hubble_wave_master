@@ -29,12 +29,13 @@ export const FormulaField: React.FC<FieldComponentProps<unknown>> = ({
     }
 
     switch (returnType) {
-      case 'number':
+      case 'number': {
         const numVal = typeof value === 'number' ? value : parseFloat(String(value));
         if (isNaN(numVal)) return String(value);
         return numVal.toLocaleString(undefined, { maximumFractionDigits: 4 });
+      }
 
-      case 'boolean':
+      case 'boolean': {
         const boolVal = value === true || value === 'true' || value === 1;
         return (
           <span
@@ -45,20 +46,23 @@ export const FormulaField: React.FC<FieldComponentProps<unknown>> = ({
             {boolVal ? 'True' : 'False'}
           </span>
         );
+      }
 
-      case 'date':
+      case 'date': {
         if (value instanceof Date) {
           return value.toLocaleDateString();
         }
         const dateVal = new Date(String(value));
         return isNaN(dateVal.getTime()) ? String(value) : dateVal.toLocaleDateString();
+      }
 
-      case 'datetime':
+      case 'datetime': {
         if (value instanceof Date) {
           return value.toLocaleString();
         }
         const datetimeVal = new Date(String(value));
         return isNaN(datetimeVal.getTime()) ? String(value) : datetimeVal.toLocaleString();
+      }
 
       default:
         return String(value);

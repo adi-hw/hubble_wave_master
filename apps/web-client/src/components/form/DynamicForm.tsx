@@ -180,8 +180,8 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
 
       const filename = recordLabel || collectionLabel || collectionCode;
       pdf.save(`${filename}-${new Date().toISOString().split('T')[0]}.pdf`);
-    } catch (err) {
-      console.error('Failed to export PDF:', err);
+    } catch {
+      // PDF export failed - notify user
       alert('Failed to export PDF. Please try again.');
     } finally {
       setExporting(false);
@@ -308,8 +308,8 @@ export const DynamicForm: React.FC<DynamicFormProps> = ({
             if (!regex.test(strValue)) {
               errorMsg = validators.customError || `${field.label} format is invalid`;
             }
-          } catch (e) {
-            console.error('Invalid regex pattern:', validators.pattern);
+          } catch {
+            // Invalid regex pattern in validator config - skip validation
           }
         }
       }

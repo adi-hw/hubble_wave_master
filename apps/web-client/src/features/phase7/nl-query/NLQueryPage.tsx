@@ -44,8 +44,8 @@ export const NLQueryPage: React.FC = () => {
     try {
       const response = await nlQueryApi.getHistory(20);
       setHistory(response.history);
-    } catch (error) {
-      console.error('Failed to load history:', error);
+    } catch {
+      // History load failed - UI shows empty state
     }
   };
 
@@ -53,8 +53,8 @@ export const NLQueryPage: React.FC = () => {
     try {
       const response = await nlQueryApi.getSavedQueries(true);
       setSavedQueries(response.queries);
-    } catch (error) {
-      console.error('Failed to load saved queries:', error);
+    } catch {
+      // Saved queries load failed - UI shows empty state
     }
   };
 
@@ -62,8 +62,8 @@ export const NLQueryPage: React.FC = () => {
     try {
       const response = await nlQueryApi.getExamples();
       setExamples(response.examples);
-    } catch (error) {
-      console.error('Failed to load examples:', error);
+    } catch {
+      // Examples load failed - UI shows empty state
     }
   };
 
@@ -71,8 +71,8 @@ export const NLQueryPage: React.FC = () => {
     try {
       const response = await nlQueryApi.suggestQueries();
       setSuggestions(response.suggestions);
-    } catch (error) {
-      console.error('Failed to load suggestions:', error);
+    } catch {
+      // Suggestions load failed - non-critical
     }
   };
 
@@ -87,8 +87,8 @@ export const NLQueryPage: React.FC = () => {
       setResult(response);
       setActiveTab('results');
       loadHistory();
-    } catch (error) {
-      console.error('Failed to execute query:', error);
+    } catch {
+      // Query execution failed - user sees empty results
     } finally {
       setLoading(false);
     }
@@ -103,8 +103,8 @@ export const NLQueryPage: React.FC = () => {
       setSaveName('');
       setSaveDescription('');
       loadSavedQueries();
-    } catch (error) {
-      console.error('Failed to save query:', error);
+    } catch {
+      // Save failed - modal remains open
     }
   };
 
@@ -112,8 +112,8 @@ export const NLQueryPage: React.FC = () => {
     try {
       await nlQueryApi.deleteSavedQuery(id);
       loadSavedQueries();
-    } catch (error) {
-      console.error('Failed to delete query:', error);
+    } catch {
+      // Delete failed - query remains in list
     }
   };
 

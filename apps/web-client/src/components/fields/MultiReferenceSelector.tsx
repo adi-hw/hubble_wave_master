@@ -47,8 +47,8 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
         }));
         
         setSelectedRecords(prev => [...prev, ...newRecords.filter(Boolean)]);
-      } catch (err) {
-        console.error('Failed to fetch initial records', err);
+      } catch {
+        // Initial records fetch failed - selection info may be incomplete
       } finally {
         setInitialLoading(false);
       }
@@ -101,8 +101,8 @@ export const MultiReferenceSelector: React.FC<MultiReferenceSelectorProps> = ({
         const data = await response.json();
         setRecords(Array.isArray(data) ? data : data.items || []);
       }
-    } catch (err) {
-      console.error('Failed to search records', err);
+    } catch {
+      // Record search failed - results remain empty
     } finally {
       setLoading(false);
     }

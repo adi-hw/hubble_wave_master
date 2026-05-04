@@ -93,8 +93,8 @@ export const AutomationLogsPage: React.FC = () => {
     try {
       const data = await automationApi.getLogs(collectionId);
       setLogs(data);
-    } catch (error) {
-      console.error('Failed to load logs', error);
+    } catch {
+      // Logs fetch failed - list remains empty
     } finally {
       setLoading(false);
     }

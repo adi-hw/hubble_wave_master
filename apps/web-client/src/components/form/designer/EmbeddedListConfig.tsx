@@ -137,8 +137,8 @@ export const EmbeddedListConfig: React.FC<EmbeddedListConfigProps> = ({
           }));
         setColumns(defaultColumns);
       }
-    } catch (error) {
-      console.error('Failed to load collection properties:', error);
+    } catch {
+      // Properties load failed - columns will be unavailable
     } finally {
       setLoadingProperties(false);
     }

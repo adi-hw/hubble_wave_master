@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { validateInternalUrl } from '../../lib/safe-navigate';
 
 interface UserAction {
   action: string;
@@ -55,13 +56,36 @@ export function usePredictiveUI(options: UsePredictiveUIOptions): UsePredictiveU
   useEffect(() => {
     if (!enabled) return;
 
+    // Validate the stored behavior log is an array of plain UserAction
+    // objects before adopting it. localStorage is a tampering surface (browser
+    // extensions, devtools, or a prior version of this code), so we treat
+    // anything that doesn't match the expected shape as missing data and
+    // start with a clean slate.
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}_${userId}`);
       if (stored) {
-        actionsRef.current = JSON.parse(stored);
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          actionsRef.current = parsed.filter(
+            (entry): entry is UserAction =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              !Array.isArray(entry) &&
+              typeof (entry as UserAction).action === 'string' &&
+              typeof (entry as UserAction).route === 'string' &&
+              typeof (entry as UserAction).timestamp === 'number'
+          );
+        } else {
+          localStorage.removeItem(`${STORAGE_KEY}_${userId}`);
+        }
       }
     } catch {
-      console.error('Failed to load behavior data');
+      // Behavior data load failed - start fresh and discard the corrupt blob.
+      try {
+        localStorage.removeItem(`${STORAGE_KEY}_${userId}`);
+      } catch {
+        // Ignore secondary storage errors.
+      }
     }
 
     // Start tracking route changes
@@ -175,7 +199,13 @@ export function usePredictiveUI(options: UsePredictiveUIOptions): UsePredictiveU
       if (suggestion.action) {
         suggestion.action();
       } else if (suggestion.route) {
-        window.location.href = suggestion.route;
+        // Predictive routes can come from suggestion logic that includes a
+        // user-supplied search query (encodeURIComponent'd) or a context
+        // route. Validate same-origin internal-path before navigating.
+        const safeTarget = validateInternalUrl(suggestion.route);
+        if (safeTarget !== null) {
+          window.location.href = safeTarget;
+        }
       }
 
       setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));

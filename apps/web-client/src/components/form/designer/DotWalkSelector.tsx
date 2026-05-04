@@ -139,8 +139,8 @@ export const DotWalkSelector: React.FC<DotWalkSelectorProps> = ({
         }
         return updated;
       });
-    } catch (error) {
-      console.error('Failed to fetch collection properties:', error);
+    } catch {
+      // Collection properties fetch failed - stop loading
       setPath((prev) => {
         const updated = [...prev];
         const lastNode = updated[updated.length - 1];

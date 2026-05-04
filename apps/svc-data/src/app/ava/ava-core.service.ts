@@ -91,11 +91,17 @@ export class AVACoreService {
   async chat(request: ChatRequest, userContext: UserContext): Promise<ChatResponse> {
     const startTime = Date.now();
 
-    // Get or create conversation
+    // Get or create conversation. The (id, userId, organizationId) triple is
+    // the only valid lookup tuple: a conversation must belong to the calling
+    // user AND the calling org for cross-tenant requests to fail closed.
     let conversation: AVAConversation;
     if (request.conversationId) {
       const existing = await this.conversationRepo.findOne({
-        where: { id: request.conversationId, userId: userContext.id },
+        where: {
+          id: request.conversationId,
+          userId: userContext.id,
+          organizationId: userContext.organizationId,
+        },
       });
       if (existing) {
         conversation = existing;
@@ -189,9 +195,10 @@ export class AVACoreService {
 
   async getConversations(
     userId: string,
+    organizationId: string,
     params: { status?: ConversationStatus; limit?: number; offset?: number } = {},
   ): Promise<{ items: AVAConversation[]; total: number }> {
-    const where: Record<string, unknown> = { userId };
+    const where: Record<string, unknown> = { userId, organizationId };
     if (params.status) where.status = params.status;
 
     const [items, total] = await this.conversationRepo.findAndCount({
@@ -204,10 +211,30 @@ export class AVACoreService {
     return { items, total };
   }
 
-  async getConversation(conversationId: string, userId: string): Promise<AVAConversation | null> {
+  async getConversation(
+    conversationId: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<AVAConversation | null> {
     return this.conversationRepo.findOne({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, organizationId },
     });
+  }
+
+  async getMessagesForConversation(
+    conversationId: string,
+    userId: string,
+    organizationId: string,
+    params: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: AVAMessage[]; total: number }> {
+    const conversation = await this.conversationRepo.findOne({
+      where: { id: conversationId, userId, organizationId },
+      select: ['id'],
+    });
+    if (!conversation) {
+      return { items: [], total: 0 };
+    }
+    return this.getMessages(conversationId, params);
   }
 
   async getMessages(
@@ -224,9 +251,13 @@ export class AVACoreService {
     return { items, total };
   }
 
-  async endConversation(conversationId: string, userId: string): Promise<void> {
+  async endConversation(
+    conversationId: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
     await this.conversationRepo.update(
-      { id: conversationId, userId },
+      { id: conversationId, userId, organizationId },
       { status: 'completed' as ConversationStatus },
     );
   }
@@ -342,6 +373,7 @@ export class AVACoreService {
   private async createConversation(userContext: UserContext): Promise<AVAConversation> {
     const conversation = this.conversationRepo.create({
       userId: userContext.id,
+      organizationId: userContext.organizationId,
       status: 'active' as ConversationStatus,
       messageCount: 0,
       lastActivityAt: new Date(),

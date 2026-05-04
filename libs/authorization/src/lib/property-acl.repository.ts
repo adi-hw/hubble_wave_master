@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PropertyAccessRule, PropertyDefinition } from '@hubblewave/instance-db';
@@ -6,8 +6,119 @@ import {
   PropertyAccessRuleData,
   PropertyAccessRuleRepository,
   AccessConditionData,
+  AccessOperator,
   MaskingStrategy,
 } from './types';
+
+const VALID_ACCESS_OPERATORS: ReadonlySet<AccessOperator> = new Set<AccessOperator>([
+  'equals',
+  'not_equals',
+  'greater_than',
+  'greater_than_or_equals',
+  'less_than',
+  'less_than_or_equals',
+  'contains',
+  'not_contains',
+  'starts_with',
+  'ends_with',
+  'in',
+  'not_in',
+  'is_null',
+  'is_not_null',
+]);
+
+const SAFE_PROPERTY_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const FORBIDDEN_VALUE_MARKERS = /(;|--|\/\*|\*\/)/;
+
+/**
+ * Validate an AccessConditionData tree before persisting. We refuse:
+ *  - prototype-pollution-shaped keys
+ *  - function values
+ *  - raw SQL identifiers in `property`
+ *  - operators outside the whitelist
+ * The result is a structurally identical, freshly-allocated AccessConditionData
+ * (no shared references with the input), suitable for direct serialization.
+ */
+function validateAccessCondition(
+  raw: unknown,
+  depth = 0,
+): AccessConditionData | null {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+  if (depth > 8) {
+    throw new BadRequestException('Access condition is too deeply nested');
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new BadRequestException('Access condition must be an object');
+  }
+  const input = raw as Record<string, unknown>;
+  const out: AccessConditionData = {};
+
+  for (const key of Object.keys(input)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      throw new BadRequestException(`Disallowed key in access condition: ${key}`);
+    }
+  }
+
+  if (input.property !== undefined) {
+    if (typeof input.property !== 'string' || !SAFE_PROPERTY_NAME.test(input.property)) {
+      throw new BadRequestException(`Invalid property name in access condition: ${String(input.property)}`);
+    }
+    out.property = input.property;
+  }
+
+  if (input.operator !== undefined) {
+    if (typeof input.operator !== 'string' || !VALID_ACCESS_OPERATORS.has(input.operator as AccessOperator)) {
+      throw new BadRequestException(`Invalid operator in access condition: ${String(input.operator)}`);
+    }
+    out.operator = input.operator as AccessOperator;
+  }
+
+  if (input.value !== undefined) {
+    out.value = sanitizeConditionValue(input.value);
+  }
+
+  if (input.and !== undefined) {
+    if (!Array.isArray(input.and)) {
+      throw new BadRequestException('and must be an array');
+    }
+    out.and = input.and
+      .map((item) => validateAccessCondition(item, depth + 1))
+      .filter((c): c is AccessConditionData => c !== null);
+  }
+
+  if (input.or !== undefined) {
+    if (!Array.isArray(input.or)) {
+      throw new BadRequestException('or must be an array');
+    }
+    out.or = input.or
+      .map((item) => validateAccessCondition(item, depth + 1))
+      .filter((c): c is AccessConditionData => c !== null);
+  }
+
+  return out;
+}
+
+function sanitizeConditionValue(value: unknown): unknown {
+  if (value === null) return null;
+  if (typeof value === 'function') {
+    throw new BadRequestException('Function values are not allowed in access conditions');
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => sanitizeConditionValue(v));
+  }
+  if (typeof value === 'object') {
+    throw new BadRequestException('Object values are not allowed in access conditions');
+  }
+  // Reject obvious raw-SQL injection markers. Values are bound as parameters
+  // today; this defense-in-depth check prevents regressions if a future code
+  // path ever interpolates a policy directly.
+  if (typeof value === 'string' && FORBIDDEN_VALUE_MARKERS.test(value)) {
+    throw new BadRequestException('Access condition value contains forbidden characters');
+  }
+  return value;
+}
 
 /**
  * PropertyAclRepository
@@ -165,6 +276,9 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
    * Create a new access rule
    */
   async create(data: Omit<PropertyAccessRuleData, 'id'>): Promise<PropertyAccessRuleData> {
+    const validatedConditions = data.conditions
+      ? validateAccessCondition(data.conditions)
+      : null;
     const rule = this.ruleRepo.create({
       propertyId: data.propertyId,
       roleId: data.roleId ?? null,
@@ -172,7 +286,7 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
       userId: data.userId ?? null,
       canRead: data.canRead,
       canWrite: data.canWrite,
-      conditions: data.conditions as Record<string, unknown> | null,
+      conditions: validatedConditions as Record<string, unknown> | null,
       priority: data.priority,
       isActive: data.isActive,
     });
@@ -188,10 +302,18 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
     id: string,
     data: Partial<Omit<PropertyAccessRuleData, 'id'>>
   ): Promise<PropertyAccessRuleData | null> {
-    await this.ruleRepo.update(id, {
-      ...data,
-      conditions: data.conditions as any,
-    });
+    // Pull `conditions` out of the patch so we can run it through the
+    // validator. The remaining fields are passed through unchanged but cast
+    // to a TypeORM-friendly partial; we intentionally do not let callers
+    // reach the relation columns on the entity.
+    const { conditions, ...rest } = data;
+    const updatePayload: Record<string, unknown> = { ...rest };
+    if (conditions !== undefined) {
+      updatePayload['conditions'] = conditions
+        ? (validateAccessCondition(conditions) as Record<string, unknown> | null)
+        : null;
+    }
+    await this.ruleRepo.update(id, updatePayload as Parameters<typeof this.ruleRepo.update>[1]);
 
     const updated = await this.ruleRepo.findOne({ where: { id } });
     return updated ? this.mapToData(updated) : null;

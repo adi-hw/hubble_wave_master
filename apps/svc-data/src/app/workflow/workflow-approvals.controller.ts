@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
 import { WorkflowApprovalsService } from './workflow-approvals.service';
 
@@ -13,16 +13,39 @@ export class WorkflowApprovalsController {
   }
 
   @Get('by-instance')
-  async getByInstance(@Query('processFlowInstanceId') processFlowInstanceId?: string) {
+  async getByInstance(
+    @CurrentUser() user: RequestUser,
+    @Query('processFlowInstanceId') processFlowInstanceId?: string,
+  ) {
     if (!processFlowInstanceId) {
       return [];
     }
-    return this.approvals.findByInstance(processFlowInstanceId);
+    const approvals = await this.approvals.findByInstance(processFlowInstanceId);
+    // Ownership check: only show approvals where the caller is approver, delegate,
+    // or responder. Admins see all.
+    if (user.roles?.includes('admin')) {
+      return approvals;
+    }
+    return approvals.filter(
+      (a) =>
+        a.approverId === user.id ||
+        a.delegatedTo === user.id ||
+        a.respondedBy === user.id,
+    );
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    return this.approvals.findById(id);
+  async getById(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const approval = await this.approvals.findById(id);
+    // Ownership check: only the assigned approver, delegate, or responder may read.
+    const isOwner =
+      approval.approverId === user.id ||
+      approval.delegatedTo === user.id ||
+      approval.respondedBy === user.id;
+    if (!isOwner && !user.roles?.includes('admin')) {
+      throw new ForbiddenException('Not the owner');
+    }
+    return approval;
   }
 
   @Post(':id/approve')

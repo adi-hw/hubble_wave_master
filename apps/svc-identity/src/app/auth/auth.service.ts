@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Injectable, UnauthorizedException, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,26 @@ import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
 import { PasswordValidationService } from './password-validation.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
+import { RedisService } from '@hubblewave/redis';
+
+/**
+ * Per-user MFA verification rate limit: 5 attempts per 5 minutes.
+ * Counter is keyed by user id (not by IP) so an attacker cannot bypass it
+ * by rotating IPs after passing the password phase.
+ */
+const MFA_RATE_LIMIT_MAX_ATTEMPTS = 5;
+const MFA_RATE_LIMIT_WINDOW_SECONDS = 300;
+const MFA_RATE_LIMIT_KEY_PREFIX = 'mfa:fail:';
+
+/**
+ * 429 Too Many Requests exception. NestJS does not export this by default,
+ * so we build it on top of HttpException.
+ */
+class TooManyRequestsException extends HttpException {
+  constructor(message: string) {
+    super(message, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
 
 /**
  * Type-safe user update payload for login-related fields.
@@ -53,7 +74,44 @@ export class AuthService {
     private readonly authEventsService: AuthEventsService,
     private readonly passwordValidationService: PasswordValidationService,
     private readonly permissionResolver: PermissionResolverService,
+    private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * Build JWT sign options with audience + issuer claims so issued tokens match
+   * what JwtStrategy verifies. Reads JWT_AUDIENCE / JWT_ISSUER from config with
+   * platform-canonical defaults.
+   */
+  private buildJwtSignOptions(): JwtSignOptions {
+    return {
+      audience: this.configService.get<string>('JWT_AUDIENCE') || 'hubblewave-instance',
+      issuer: this.configService.get<string>('JWT_ISSUER') || 'hubblewave-identity',
+    };
+  }
+
+  /**
+   * Per-user MFA brute-force guard. Increments a Redis counter on every failed
+   * TOTP / recovery code verification and rejects further attempts once the
+   * threshold is exceeded. Counter resets on successful verification.
+   */
+  private async assertMfaRateLimit(userId: string): Promise<void> {
+    const key = `${MFA_RATE_LIMIT_KEY_PREFIX}${userId}`;
+    const value = await this.redisService.get(key);
+    const count = value ? parseInt(value, 10) : 0;
+    if (Number.isFinite(count) && count >= MFA_RATE_LIMIT_MAX_ATTEMPTS) {
+      throw new TooManyRequestsException('MFA verification rate limit exceeded');
+    }
+  }
+
+  private async recordMfaFailure(userId: string): Promise<void> {
+    const key = `${MFA_RATE_LIMIT_KEY_PREFIX}${userId}`;
+    await this.redisService.incrWithExpiry(key, MFA_RATE_LIMIT_WINDOW_SECONDS);
+  }
+
+  private async clearMfaFailures(userId: string): Promise<void> {
+    await this.redisService.del(`${MFA_RATE_LIMIT_KEY_PREFIX}${userId}`);
+  }
 
   private async validatePasswordHistory(
     userId: string,
@@ -228,6 +286,7 @@ export class AuthService {
 
       if (mfaEnabled) {
         if (dto.mfaToken) {
+          await this.assertMfaRateLimit(user.id);
           const isValid = await this.mfaService.verifyTotp(
             user.id,
             dto.mfaToken
@@ -238,9 +297,11 @@ export class AuthService {
               dto.mfaToken
             );
             if (!isRecoveryValid) {
+              await this.recordMfaFailure(user.id);
               throw new UnauthorizedException('Invalid MFA code');
             }
           }
+          await this.clearMfaFailures(user.id);
         } else {
           return {
             mfaRequired: true,
@@ -277,7 +338,7 @@ export class AuthService {
         is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
       };
       
-      const accessToken = this.jwtService.sign(payload);
+      const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
 
       const { token: refreshToken } =
         await this.refreshTokenService.createRefreshToken(user.id, ipAddress, userAgent);
@@ -336,6 +397,13 @@ export class AuthService {
    * This bypasses password validation since the user is already authenticated by the IdP
    */
   async generateTokensForUser(user: User, req?: { ip?: string; headers?: { 'user-agent'?: string; 'x-forwarded-for'?: string } }) {
+    // Defense in depth: SSO / federated callers reach this method post-IdP, but we still
+    // gate on the local user record's lifecycle status. A user that has been suspended
+    // or deleted in HubbleWave must not receive new tokens regardless of upstream auth.
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('User account is not active');
+    }
+
     const ipAddress = req?.ip || req?.headers?.['x-forwarded-for'] || undefined;
     const userAgent = req?.headers?.['user-agent'];
 
@@ -351,7 +419,7 @@ export class AuthService {
       is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
 
     const { token: refreshToken } = await this.refreshTokenService.createRefreshToken(
       user.id,
@@ -431,11 +499,14 @@ export class AuthService {
     // 4. Resolve Roles
     const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
     
-    // 5. Rotate Token
+    // 5. Rotate Token (pass the verified user id so the rotation path
+    //    cross-checks the token owner against the caller this handler has
+    //    already resolved, in addition to the cookie-side validation above).
     const rotated = await this.refreshTokenService.rotateRefreshToken(
       refreshToken,
       ipAddress,
       userAgent,
+      user.id,
     );
 
     if (!rotated) {
@@ -450,7 +521,7 @@ export class AuthService {
         permissions: Array.from(permissions),
         is_admin: roleNames.includes('admin'),
       };
-      const accessToken = this.jwtService.sign(payload);
+      const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
 
       await this.authEventsService.record({
         eventType: 'REFRESH_SUCCESS',

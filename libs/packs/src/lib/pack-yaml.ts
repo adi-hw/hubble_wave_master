@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+
 
 type YamlNode = Record<string, unknown> | unknown[];
 
@@ -27,14 +27,14 @@ function parseYamlValue(raw: string): unknown {
 
 function ensureObject(target: YamlNode, context: string): Record<string, unknown> {
   if (Array.isArray(target)) {
-    throw new BadRequestException(`YAML parse error: ${context} expects an object`);
+    throw new Error(`YAML parse error: ${context} expects an object`);
   }
   return target;
 }
 
 function ensureArray(target: YamlNode, context: string): unknown[] {
   if (!Array.isArray(target)) {
-    throw new BadRequestException(`YAML parse error: ${context} expects an array`);
+    throw new Error(`YAML parse error: ${context} expects an array`);
   }
   return target;
 }
@@ -100,7 +100,7 @@ export function parseYaml(yaml: string): Record<string, unknown> {
 
     const separatorIndex = line.indexOf(':');
     if (separatorIndex === -1) {
-      throw new BadRequestException(`YAML parse error: missing ":" on line ${index + 1}`);
+      throw new Error(`YAML parse error: missing ":" on line ${index + 1}`);
     }
 
     const key = line.slice(0, separatorIndex).trim();

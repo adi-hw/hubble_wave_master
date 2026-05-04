@@ -61,8 +61,8 @@ export const AgileDevPage: React.FC = () => {
       if (response.sprints.length > 0 && !selectedSprint) {
         setSelectedSprint(response.sprints[0]);
       }
-    } catch (error) {
-      console.error('Failed to load sprints:', error);
+    } catch {
+      // Sprints load failed - list remains empty
     } finally {
       setLoading(false);
     }
@@ -72,8 +72,8 @@ export const AgileDevPage: React.FC = () => {
     try {
       const response = await agileDevApi.getStories(sprintId);
       setStories(response.stories);
-    } catch (error) {
-      console.error('Failed to load stories:', error);
+    } catch {
+      // Stories load failed - list remains empty
     }
   };
 
@@ -83,8 +83,8 @@ export const AgileDevPage: React.FC = () => {
     try {
       await agileDevApi.generateStories(selectedSprint.id, 'Generate user stories based on sprint goals');
       loadStories(selectedSprint.id);
-    } catch (error) {
-      console.error('Failed to generate stories:', error);
+    } catch {
+      // Generation failed
     } finally {
       setGenerating(false);
     }
@@ -96,8 +96,8 @@ export const AgileDevPage: React.FC = () => {
       if (selectedSprint) {
         loadStories(selectedSprint.id);
       }
-    } catch (error) {
-      console.error('Failed to update story:', error);
+    } catch {
+      // Update failed - story status unchanged
     }
   };
 

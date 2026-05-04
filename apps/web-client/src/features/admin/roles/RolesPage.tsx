@@ -117,8 +117,8 @@ export const RolesPage: React.FC = () => {
     try {
       const response = await apiGet<{ data: Role[] }>('/admin/roles');
       setRoles(response.data || []);
-    } catch (err) {
-      console.error('Failed to refresh roles:', err);
+    } catch {
+      // Background refresh failed - non-critical
     }
   }, []);
 
@@ -131,7 +131,6 @@ export const RolesPage: React.FC = () => {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to load permissions';
       setPermissionsError(errMsg);
-      console.error('Failed to load permissions:', err);
     }
   }, []);
 
@@ -616,8 +615,8 @@ const RoleDetailPanel: React.FC<{
         `/admin/roles/${role.id}/permissions`
       );
       setRolePermissions(response.data);
-    } catch (err) {
-      console.error('Failed to load permissions:', err);
+    } catch {
+      // Role permissions load failed - non-critical, UI shows empty state
     }
   };
 
@@ -654,7 +653,6 @@ const RoleDetailPanel: React.FC<{
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to update permission';
       setPermissionError(errMsg);
-      console.error('Failed to update permission:', err);
     }
   };
 
@@ -847,7 +845,6 @@ const RoleUsersTab: React.FC<{ roleId: string }> = ({ roleId }) => {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to load users';
       setError(errMsg);
-      console.error('Failed to load users:', err);
     } finally {
       setLoading(false);
     }
@@ -865,7 +862,6 @@ const RoleUsersTab: React.FC<{ roleId: string }> = ({ roleId }) => {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to remove user';
       setRemoveError(errMsg);
-      console.error('Failed to remove user:', err);
     }
   };
 
@@ -968,8 +964,8 @@ const RoleSettingsTab: React.FC<{
         isDefault,
       });
       onUpdate();
-    } catch (err) {
-      console.error('Failed to save:', err);
+    } catch {
+      // Save failed - settings remain unchanged
     } finally {
       setSaving(false);
     }

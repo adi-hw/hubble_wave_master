@@ -7,6 +7,8 @@ import {
   NotificationHistory,
   NotificationQueue,
   NotificationTemplate,
+  RuntimeAnomalyModule,
+  User,
   UserNotificationPreferences,
 } from '@hubblewave/instance-db';
 import { NotificationService } from './notification.service';
@@ -16,6 +18,7 @@ import { NotificationOutboxProcessor } from './notification-outbox-processor.ser
 import { NotificationTemplatesController } from './notification-templates.controller';
 import { NotificationsController } from './notifications.controller';
 import { InAppNotificationsController } from './in-app-notifications.controller';
+import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers';
 
 @Module({
   imports: [
@@ -27,7 +30,9 @@ import { InAppNotificationsController } from './in-app-notifications.controller'
       UserNotificationPreferences,
       InstanceEventOutbox,
       AuditLog,
+      User,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     NotificationTemplatesController,
@@ -39,6 +44,8 @@ import { InAppNotificationsController } from './in-app-notifications.controller'
     InAppNotificationService,
     TemplateEngineService,
     NotificationOutboxProcessor,
+    SmtpEmailProvider,
+    ChannelProviderRegistry,
   ],
 })
 export class NotificationsModule {}
