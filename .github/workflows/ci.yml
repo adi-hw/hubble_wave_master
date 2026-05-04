@@ -1,13 +1,20 @@
 # HubbleWave Platform CI Pipeline
-# Runs on all PRs and pushes to main/develop branches
+# Runs on all PRs and pushes to master/main/develop branches.
+#
+# Architectural-gate jobs enforce canon §21 ("Builds fail if violations
+# exist"). The `scanners` job runs the six scripts that exit non-zero on
+# canon violations: authz, audit, security, compliance, service-boundary,
+# and approved-deps. New scanners added in future remediation waves MUST
+# be appended to that job. See docs/ci.md for the full list of required
+# status checks and how to extend them.
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [master, main, develop]
 
 permissions:
   contents: read
@@ -48,11 +55,45 @@ jobs:
       - name: Check formatting
         run: npx nx format:check
 
-      - name: Authorization bypass check
+  # Architectural CI gates — canon §21 enforcement.
+  #
+  # Each step is a script that exits non-zero on violation. They are
+  # grouped into one job (rather than separate jobs) because they share
+  # the same `npm ci` install and run quickly; failing fast on the first
+  # violation is preferable to paying six install costs in parallel.
+  # If a future scanner becomes long-running, split it into its own job.
+  scanners:
+    name: Architectural CI gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authorization bypass check (canon §9 / W1.2)
         run: npm run authz:check
 
-      - name: Canon compliance check
+      - name: Audit-in-transaction check (canon §10 / W1.6)
+        run: npm run audit:check
+
+      - name: Security bypass check
+        run: npm run security:check
+
+      - name: Canon terminology compliance check
         run: npm run compliance:check:strict
+
+      - name: Service boundary check (canon §3 / W5.D)
+        run: npm run service-boundary:check
+
+      - name: Approved-dependencies check (W6.D)
+        run: npm run deps:check
 
   # Type checking
   typecheck:
@@ -251,7 +292,7 @@ jobs:
   build:
     name: Build All
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, scanners]
     steps:
       - uses: actions/checkout@v4
         with:
