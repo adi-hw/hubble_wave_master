@@ -1,5 +1,8 @@
-// CommonJS shim for the ESM-only `uuid` package, used only in jest unit tests.
-// Real UUID generation is not required for the rollback contract specs.
+/**
+ * CommonJS shim for the ESM-only `uuid` package so unit tests don't need
+ * real UUID generation. Jest's transform pipeline cannot natively load
+ * `uuid`'s ESM bundle.
+ */
 let counter = 0;
 function fakeId() {
   counter += 1;
@@ -8,16 +11,16 @@ function fakeId() {
 }
 
 module.exports = {
-  v4: fakeId,
   v1: fakeId,
   v3: fakeId,
+  v4: fakeId,
   v5: fakeId,
   v6: fakeId,
   v7: fakeId,
   validate: () => true,
   stringify: () => fakeId(),
   parse: () => Buffer.alloc(16),
+  version: () => 4,
   NIL: '00000000-0000-0000-0000-000000000000',
   MAX: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-  version: () => 4,
 };

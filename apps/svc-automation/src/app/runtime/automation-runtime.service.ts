@@ -6,6 +6,7 @@ import {
   PropertyDefinition,
   withAudit,
   AuditRecorder,
+  RuntimeAnomalyService,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
@@ -41,12 +42,21 @@ export class AutomationRuntimeService {
     private readonly recordMutation: RecordMutationService,
     private readonly outboxPublisher: OutboxPublisherService,
     private readonly authz: AuthorizationService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {}
 
   async processRecordEvent(payload: RecordEventPayload): Promise<void> {
     const collection = await this.getCollection(payload.collectionCode);
     if (!collection) {
       this.logger.warn(`Automation skipped: collection ${payload.collectionCode} not found`);
+      await this.runtimeAnomaly.record({
+        kind: 'record_lookup_missing',
+        serviceCode: 'svc-automation',
+        message: `Automation skipped: collection ${payload.collectionCode} not found`,
+        collectionCode: payload.collectionCode,
+        recordId: payload.recordId,
+        context: { eventType: payload.eventType, missing: 'collection' },
+      });
       return;
     }
 
@@ -63,12 +73,28 @@ export class AutomationRuntimeService {
       );
       if (!fetched) {
         this.logger.warn(`Automation skipped: record ${payload.recordId} not found`);
+        await this.runtimeAnomaly.record({
+          kind: 'record_lookup_missing',
+          serviceCode: 'svc-automation',
+          message: `Automation skipped: record ${payload.recordId} not found in ${payload.collectionCode}`,
+          collectionCode: payload.collectionCode,
+          recordId: payload.recordId,
+          context: { eventType: payload.eventType, missing: 'record' },
+        });
         return;
       }
       record = fetched;
     }
     if (!record) {
       this.logger.warn(`Automation skipped: record ${payload.recordId} not found`);
+      await this.runtimeAnomaly.record({
+        kind: 'record_lookup_missing',
+        serviceCode: 'svc-automation',
+        message: `Automation skipped: record ${payload.recordId} not found in ${payload.collectionCode}`,
+        collectionCode: payload.collectionCode,
+        recordId: payload.recordId,
+        context: { eventType: payload.eventType, missing: 'record' },
+      });
       return;
     }
 
@@ -213,6 +239,25 @@ export class AutomationRuntimeService {
         this.logger.error(
           `Automation ${automation.id} failed: ${(error as Error).message}`,
         );
+        // Loud, queryable record of the swallowed after-automation failure.
+        // The original logger output is preserved above; the anomaly is
+        // additive observability so operators can alert on spikes rather
+        // than relying on log scraping.
+        await this.runtimeAnomaly.record({
+          kind: 'after_automation_swallowed',
+          serviceCode: 'svc-automation',
+          message: `Automation ${automation.id} (${automation.name}) failed during ${operation} of ${collection.code}/${payload.recordId}: ${(error as Error).message}`,
+          collectionCode: collection.code,
+          recordId: payload.recordId,
+          context: {
+            automationId: automation.id,
+            automationName: automation.name,
+            operation,
+            executionDepth: baseContext.depth,
+            triggerTiming: automation.triggerTiming,
+          },
+          error: error as Error,
+        });
       }
     }
   }

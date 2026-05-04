@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox, ProcessFlowDefinition } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, ProcessFlowDefinition, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { ProcessFlowEngineService } from '@hubblewave/automation';
 
 @Injectable()
@@ -18,6 +18,7 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly engine: ProcessFlowEngineService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('WORKFLOW_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('WORKFLOW_OUTBOX_POLL_MS', '2000'), 10);
@@ -54,6 +55,22 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
           await this.markProcessed(entry.id);
         } catch (error) {
           await this.handleEntryFailure(entry, (error as Error).message);
+          // Record a runtime anomaly so dropped/failed workflow starts are
+          // queryable from the runtime_anomaly table even if the entry is
+          // retried — operators can correlate by outboxId.
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_failure',
+            serviceCode: 'svc-workflow',
+            message: `Workflow outbox entry ${entry.id} (${entry.eventType}) failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {

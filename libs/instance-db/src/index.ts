@@ -12,3 +12,6 @@ export {
   IdentityCacheInvalidationSubscriber,
   IdentityCacheEventPublisher,
 } from './lib/subscribers/identity-cache-invalidation.subscriber';
+export { RuntimeAnomalyService } from './lib/runtime-anomaly/runtime-anomaly.service';
+export type { RuntimeAnomalyEvent } from './lib/runtime-anomaly/runtime-anomaly.service';
+export { RuntimeAnomalyModule } from './lib/runtime-anomaly/runtime-anomaly.module';

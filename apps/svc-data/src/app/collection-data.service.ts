@@ -9,6 +9,7 @@ import {
   AuditLog,
   CollectionDefinition,
   PropertyDefinition,
+  RuntimeAnomalyService,
   ViewDefinition as ViewEntity,
   ViewDefinitionRevision,
   withAudit,
@@ -171,6 +172,7 @@ export class CollectionDataService {
     private readonly outboxService: EventOutboxService,
     private readonly automationExecutor: AutomationExecutorService,
     private readonly computedDispatcher: ComputedPropertyDispatcher,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {}
 
   /**
@@ -1842,6 +1844,19 @@ export class CollectionDataService {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`bulkUpdate: record ${id} skipped — ${msg}`);
         failureSkippedIds.push(id);
+        // Loud, queryable record of the per-row skip so operators can
+        // alert on bulk-partial failures rather than scraping logs. The
+        // record is still consistent (the row's own update transaction
+        // rolled back); we just want visibility into the skip rate.
+        await this.runtimeAnomaly.record({
+          kind: 'bulk_partial_failure',
+          serviceCode: 'svc-data',
+          message: `Skipped row during bulk update for ${collection.code}/${id}: ${msg}`,
+          collectionCode: collection.code,
+          recordId: id,
+          context: { operation: 'bulk_update', userId: context.userId },
+          error: err as Error,
+        });
       }
     }
 
@@ -1943,16 +1958,35 @@ export class CollectionDataService {
     // Runs post-commit so a transient rollup-write failure cannot
     // undo the deletes that have already landed.
     for (const record of deletedRecords) {
-      await this.computedDispatcher.applyOnDelete({
-        ctx: {
-          userId: ctx.userId ?? 'system',
-          username: ctx.username,
-          permissions: ctx.permissions,
-          roles: ctx.roles,
-        },
-        collectionCode: collection.code,
-        deletedRecord: record,
-      });
+      const recordId = record.id as string;
+      try {
+        await this.computedDispatcher.applyOnDelete({
+          ctx: {
+            userId: ctx.userId ?? 'system',
+            username: ctx.username,
+            permissions: ctx.permissions,
+            roles: ctx.roles,
+          },
+          collectionCode: collection.code,
+          deletedRecord: record,
+        });
+      } catch (err) {
+        // Tolerate per-row rollup recompute failure so the rest of the
+        // bulk delete still proceeds, but record an anomaly so the gap is
+        // queryable. The DB delete itself has already committed.
+        this.logger.warn(
+          `bulkDelete skipped rollup recompute for ${collection.code}/${recordId}: ${(err as Error).message}`,
+        );
+        await this.runtimeAnomaly.record({
+          kind: 'bulk_partial_failure',
+          serviceCode: 'svc-data',
+          message: `Skipped rollup recompute during bulk delete for ${collection.code}/${recordId}: ${(err as Error).message}`,
+          collectionCode: collection.code,
+          recordId,
+          context: { operation: 'bulk_delete', userId: context.userId },
+          error: err as Error,
+        });
+      }
     }
 
     return {

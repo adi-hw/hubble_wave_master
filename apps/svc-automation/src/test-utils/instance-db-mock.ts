@@ -55,3 +55,22 @@ export async function withAudit<T>(
     return result;
   });
 }
+
+// Stub for the runtime-anomaly service. The real service writes structured
+// anomaly events to a dedicated table; the stub no-ops so unit tests can
+// assert call shape via jest mocks without dragging in TypeORM.
+export interface RuntimeAnomalyEvent {
+  kind: string;
+  serviceCode: string;
+  message: string;
+  collectionCode?: string;
+  recordId?: string;
+  context?: Record<string, unknown>;
+  error?: Error;
+}
+
+export class RuntimeAnomalyService {
+  async record(_event: RuntimeAnomalyEvent): Promise<void> {
+    // no-op stub
+  }
+}

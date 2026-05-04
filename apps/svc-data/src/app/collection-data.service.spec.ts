@@ -128,6 +128,18 @@ describe('CollectionDataService — transactional audit', () => {
     const outbox = {
       enqueueRecordEvent: jest.fn(async () => undefined),
     } as unknown as EventOutboxService;
+    const automationExecutor: any = {
+      executeBefore: jest.fn(async (_ctx: any, _c: any, _r: any, data: any) => data),
+      executeAfter: jest.fn(async () => undefined),
+    };
+    const computedDispatcher: any = {
+      applyOnInsert: jest.fn(async () => ({})),
+      applyOnUpdate: jest.fn(async () => ({})),
+      applyOnDelete: jest.fn(async () => undefined),
+    };
+    const runtimeAnomaly: any = {
+      record: jest.fn(async () => undefined),
+    };
 
     return new CollectionDataService(
       dataSource,
@@ -135,6 +147,9 @@ describe('CollectionDataService — transactional audit', () => {
       validation as ValidationService,
       defaultValue as DefaultValueService,
       outbox,
+      automationExecutor,
+      computedDispatcher,
+      runtimeAnomaly,
     );
   }
 
@@ -220,5 +235,188 @@ describe('CollectionDataService — transactional audit', () => {
 
     expect(committed.filter((w) => w.kind === 'record-update')).toHaveLength(0);
     expect(committed.filter((w) => w.kind === 'audit')).toHaveLength(0);
+  });
+});
+
+/**
+ * W2.D — Verifies the partial-failure paths in bulkUpdate/bulkDelete record
+ * a runtime anomaly when individual rows fail, while still draining the rest
+ * of the batch. After W1.6, bulkUpdate routes each row through the
+ * single-record `update()` pipeline (so the per-row anomaly hook lives in
+ * the catch around `this.update`), and bulkDelete emits outbox events
+ * inside the withAudit transaction with the rollup recompute happening
+ * post-commit (so the per-row anomaly hook lives around `applyOnDelete`).
+ */
+describe('CollectionDataService — bulk partial-failure anomaly recording (W2.D)', () => {
+  const collection = {
+    id: 'col-1',
+    code: 'work_orders',
+    tableName: 'work_orders',
+  } as any;
+
+  function buildBulkService(opts: {
+    updateFailures?: Set<string>;
+    rollupFailures?: Set<string>;
+  } = {}) {
+    const dataSource: any = {
+      getRepository: jest.fn(() => ({
+        create: jest.fn((e: any) => e),
+        save: jest.fn(async () => undefined),
+        findOne: jest.fn(async () => null),
+        find: jest.fn(async () => []),
+      })),
+      // bulkDelete uses withAudit (transaction) and bulkUpdate uses
+      // dataSource.createQueryBuilder for nothing meaningful here because
+      // we stub `this.update` and `fetchRecordsByIdsWithManager` directly.
+      transaction: jest.fn(async <T,>(fn: (m: EntityManager) => Promise<T>): Promise<T> => {
+        const mgr = {
+          getRepository: jest.fn(() => ({
+            create: (e: any) => e,
+            save: jest.fn(async () => undefined),
+          })),
+          createQueryBuilder: jest.fn(() => ({
+            delete: () => ({
+              from: () => ({
+                whereInIds: () => ({ execute: jest.fn(async () => ({ affected: 3 })) }),
+              }),
+            }),
+          })),
+          query: jest.fn(async () => []),
+        } as unknown as EntityManager;
+        return fn(mgr);
+      }),
+      createQueryBuilder: jest.fn(() => ({
+        update: jest.fn().mockReturnThis(),
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        whereInIds: jest.fn().mockReturnThis(),
+        execute: jest.fn(async () => ({ affected: 3 })),
+      })),
+      query: jest.fn(),
+    };
+
+    const authz: any = {
+      ensureCollectionAccess: jest.fn(async () => undefined),
+      ensureTableAccess: jest.fn(async () => undefined),
+      getAuthorizedFields: jest.fn(async () => [
+        { code: 'status', canRead: true, canWrite: true },
+      ]),
+      filterWritableFieldsForCollection: jest.fn(async (_ctx: any, _c: any, p: any) => p),
+    };
+
+    const validationService: any = {};
+    const defaultValueService: any = {};
+    const outboxService: any = {
+      enqueueRecordEvent: jest.fn(async () => undefined),
+    };
+    const automationExecutor: any = {
+      executeBefore: jest.fn(async (_ctx: any, _c: any, _r: any, data: any) => data),
+      executeAfter: jest.fn(async () => undefined),
+    };
+    const computedDispatcher: any = {
+      applyOnInsert: jest.fn(async () => ({})),
+      applyOnUpdate: jest.fn(async () => ({})),
+      applyOnDelete: jest.fn(async ({ deletedRecord }: any) => {
+        const id = deletedRecord.id as string;
+        if (opts.rollupFailures?.has(id)) {
+          throw new Error(`rollup recompute failed for ${id}`);
+        }
+      }),
+    };
+
+    const recorded: any[] = [];
+    const runtimeAnomaly: any = {
+      record: jest.fn(async (event: any) => {
+        recorded.push(event);
+      }),
+    };
+
+    const service = new CollectionDataService(
+      dataSource,
+      authz,
+      validationService,
+      defaultValueService,
+      outboxService,
+      automationExecutor,
+      computedDispatcher,
+      runtimeAnomaly,
+    );
+
+    // Stubs for the private/public methods that bulkUpdate / bulkDelete
+    // touch. bulkUpdate routes each row through `this.update`, so we stub
+    // that to fail for rows in updateFailures.
+    (service as any).getCollection = jest.fn(async () => collection);
+    (service as any).getProperties = jest.fn(async () => [
+      { code: 'status', columnName: 'status', name: 'Status' },
+    ]);
+    (service as any).filterIdsByRowLevel = jest.fn(async (_c: any, _t: any, ids: string[]) => ids);
+    (service as any).fetchRecordsByIdsWithManager = jest.fn(async (_m: any, _t: any, ids: string[]) =>
+      ids.map((id) => ({ id, status: 'open' })),
+    );
+    (service as any).ensureSafeIdentifier = jest.fn((s: string) => s);
+
+    if (opts.updateFailures) {
+      (service as any).update = jest.fn(async (_ctx: any, _c: any, id: string) => {
+        if (opts.updateFailures!.has(id)) {
+          throw new Error(`row ${id} update failed`);
+        }
+        return { id, status: 'closed' };
+      });
+    } else {
+      (service as any).update = jest.fn(async (_ctx: any, _c: any, id: string) => ({ id, status: 'closed' }));
+    }
+
+    return { service, recorded, runtimeAnomaly, computedDispatcher, outboxService };
+  }
+
+  it('bulk update with one failing row records a runtime_anomaly and continues', async () => {
+    const { service, recorded, runtimeAnomaly } = buildBulkService({
+      updateFailures: new Set(['rec-2']),
+    });
+
+    const result = await service.bulkUpdate(
+      { userId: 'user-9', roles: [], permissions: [], isAdmin: false } as any,
+      'work_orders',
+      ['rec-1', 'rec-2', 'rec-3'],
+      { status: 'closed' },
+    );
+
+    // 2 successful updates, 1 skipped → success=false (failureSkippedIds.length > 0)
+    expect(result.updatedCount).toBe(2);
+    expect(result.skippedCount).toBe(1);
+    expect(result.skippedIds).toContain('rec-2');
+
+    // Exactly one anomaly should have been recorded for rec-2.
+    expect(runtimeAnomaly.record).toHaveBeenCalledTimes(1);
+    expect(recorded[0].kind).toBe('bulk_partial_failure');
+    expect(recorded[0].serviceCode).toBe('svc-data');
+    expect(recorded[0].recordId).toBe('rec-2');
+    expect(recorded[0].collectionCode).toBe('work_orders');
+    expect(recorded[0].context).toEqual({ operation: 'bulk_update', userId: 'user-9' });
+    expect(recorded[0].error).toBeInstanceOf(Error);
+    expect((recorded[0].error as Error).message).toBe('row rec-2 update failed');
+  });
+
+  it('bulk delete with one failing rollup records a runtime_anomaly and continues', async () => {
+    const { service, recorded, runtimeAnomaly } = buildBulkService({
+      rollupFailures: new Set(['rec-2']),
+    });
+
+    const result = await service.bulkDelete(
+      { userId: 'user-9', roles: [], permissions: [], isAdmin: false } as any,
+      'work_orders',
+      ['rec-1', 'rec-2', 'rec-3'],
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.deletedCount).toBe(3);
+
+    // Exactly one anomaly should have been recorded for rec-2's rollup recompute.
+    expect(runtimeAnomaly.record).toHaveBeenCalledTimes(1);
+    expect(recorded[0].kind).toBe('bulk_partial_failure');
+    expect(recorded[0].serviceCode).toBe('svc-data');
+    expect(recorded[0].recordId).toBe('rec-2');
+    expect(recorded[0].context).toEqual({ operation: 'bulk_delete', userId: 'user-9' });
   });
 });

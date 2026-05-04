@@ -7,6 +7,7 @@ import {
   NotificationHistory,
   NotificationQueue,
   NotificationTemplate,
+  RuntimeAnomalyModule,
   User,
   UserNotificationPreferences,
 } from '@hubblewave/instance-db';
@@ -31,6 +32,7 @@ import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers'
       AuditLog,
       User,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     NotificationTemplatesController,

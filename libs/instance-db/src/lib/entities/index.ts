@@ -264,6 +264,11 @@ export type {
 } from './change-package.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Runtime Anomaly Observability (W2.D)
+// ─────────────────────────────────────────────────────────────────
+export { RuntimeAnomaly } from './runtime-anomaly.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // AVA (AI Virtual Assistant) - Phase 6 Enhanced
 // ─────────────────────────────────────────────────────────────────
 export {
@@ -668,6 +673,7 @@ import {
   WorkspaceVariant,
 } from './workspace.entity';
 import { ChangePackage } from './change-package.entity';
+import { RuntimeAnomaly } from './runtime-anomaly.entity';
 import {
   AVAAuditTrail,
   AVAPermissionConfig,
@@ -935,6 +941,9 @@ export const instanceEntities = [
 
   // Phase 6 Change Packages (§11.1)
   ChangePackage,
+
+  // Runtime Anomaly Observability (W2.D)
+  RuntimeAnomaly,
 
   // AVA (AI Virtual Assistant) - Phase 6 Enhanced
   AVAAuditTrail,

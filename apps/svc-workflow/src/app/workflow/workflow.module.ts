@@ -11,6 +11,7 @@ import {
   DecisionRow,
   DecisionTable,
   InstanceEventOutbox,
+  RuntimeAnomalyModule,
   TranslationRequest,
   ModelDeployment,
   AnalyticsEvent,
@@ -56,6 +57,7 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
       PropertyDefinition,
       User,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     WorkflowDefinitionsController,
