@@ -6,6 +6,7 @@ import {
   ProcessFlowExecutionHistory,
   Approval,
   InstanceEventOutbox,
+  RuntimeAnomalyModule,
   TranslationRequest,
   ModelDeployment,
   AnalyticsEvent,
@@ -43,6 +44,7 @@ import { WorkflowModelDeploymentService } from './workflow-model-deployment.serv
       CollectionDefinition,
       PropertyDefinition,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     WorkflowDefinitionsController,

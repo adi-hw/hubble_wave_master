@@ -175,6 +175,11 @@ export { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.en
 export { InstanceEventOutbox, OutboxStatus } from './event-outbox.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Runtime Anomaly Observability (W2.D)
+// ─────────────────────────────────────────────────────────────────
+export { RuntimeAnomaly } from './runtime-anomaly.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // AVA (AI Virtual Assistant) - Phase 6 Enhanced
 // ─────────────────────────────────────────────────────────────────
 export {
@@ -544,6 +549,7 @@ import {
 } from './modelops.entity';
 import { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.entity';
 import { InstanceEventOutbox } from './event-outbox.entity';
+import { RuntimeAnomaly } from './runtime-anomaly.entity';
 import {
   AVAAuditTrail,
   AVAPermissionConfig,
@@ -773,6 +779,9 @@ export const instanceEntities = [
 
   // Event Stream
   InstanceEventOutbox,
+
+  // Runtime Anomaly Observability (W2.D)
+  RuntimeAnomaly,
 
   // AVA (AI Virtual Assistant) - Phase 6 Enhanced
   AVAAuditTrail,

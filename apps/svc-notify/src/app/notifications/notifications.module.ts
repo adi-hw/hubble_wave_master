@@ -7,6 +7,7 @@ import {
   NotificationHistory,
   NotificationQueue,
   NotificationTemplate,
+  RuntimeAnomalyModule,
   UserNotificationPreferences,
 } from '@hubblewave/instance-db';
 import { NotificationService } from './notification.service';
@@ -28,6 +29,7 @@ import { InAppNotificationsController } from './in-app-notifications.controller'
       InstanceEventOutbox,
       AuditLog,
     ]),
+    RuntimeAnomalyModule,
   ],
   controllers: [
     NotificationTemplatesController,

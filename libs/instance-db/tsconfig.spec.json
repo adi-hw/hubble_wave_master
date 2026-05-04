@@ -3,17 +3,17 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "module": "commonjs",
-    "types": ["node"],
+    "types": ["jest", "node"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "target": "es2021",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "esModuleInterop": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": [
-    "src/app/flows.disabled/**/*",
-    "src/**/*.spec.ts",
+  "include": [
+    "jest.config.ts",
     "src/**/*.test.ts",
-    "src/test-utils/**/*"
+    "src/**/*.spec.ts",
+    "src/**/*.d.ts"
   ]
 }

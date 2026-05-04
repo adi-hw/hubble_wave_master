@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { NotificationService } from './notification.service';
 
 const EVENT_TYPES = ['automation.notification.requested', 'workflow.notification.requested'];
@@ -19,6 +19,7 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly notifications: NotificationService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('NOTIFY_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('NOTIFY_OUTBOX_POLL_MS', '2000'), 10);
@@ -52,6 +53,25 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
           await this.markProcessed(entry.id);
         } catch (error) {
           await this.markFailed(entry.id, (error as Error).message);
+          // Notification outbox entries marked failed here are terminal —
+          // there is no automatic retry once status flips to 'failed'.
+          // Record an anomaly so the dropped notification is queryable.
+          this.logger.error(
+            `Notification outbox entry ${entry.id} (${entry.eventType}) marked failed: ${(error as Error).message}`,
+          );
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_terminal_drop',
+            serviceCode: 'svc-notify',
+            message: `Notification outbox entry ${entry.id} (${entry.eventType}) terminally failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {

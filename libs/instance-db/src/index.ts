@@ -6,3 +6,6 @@ export * from './lib/utils';
 export * from './lib/audit-log-hash';
 export { InstanceDbModule } from './lib/instance-db.module';
 export { InstanceDbService, TenantDbService } from './lib/instance-db.service';
+export { RuntimeAnomalyService } from './lib/runtime-anomaly/runtime-anomaly.service';
+export type { RuntimeAnomalyEvent } from './lib/runtime-anomaly/runtime-anomaly.service';
+export { RuntimeAnomalyModule } from './lib/runtime-anomaly/runtime-anomaly.module';

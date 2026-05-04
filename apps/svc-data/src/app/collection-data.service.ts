@@ -9,6 +9,7 @@ import {
   AuditLog,
   CollectionDefinition,
   PropertyDefinition,
+  RuntimeAnomalyService,
   ViewDefinition as ViewEntity,
   ViewDefinitionRevision,
 } from '@hubblewave/instance-db';
@@ -164,7 +165,8 @@ export class CollectionDataService {
 
     private readonly validationService: ValidationService,
     private readonly defaultValueService: DefaultValueService,
-    private readonly outboxService: EventOutboxService
+    private readonly outboxService: EventOutboxService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {}
 
   private readonly instanceId = process.env.INSTANCE_ID || 'default-instance';
@@ -1166,15 +1168,33 @@ export class CollectionDataService {
     for (const record of afterRecords) {
       const recordId = record.id as string;
       const previousRecord = beforeMap.get(recordId) || null;
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.updated',
-        collectionCode: collection.code,
-        recordId,
-        record,
-        previousRecord,
-        changedProperties: this.calculateChangedProperties(previousRecord || {}, record),
-        userId: context.userId,
-      });
+      try {
+        await this.outboxService.enqueueRecordEvent({
+          eventType: 'record.updated',
+          collectionCode: collection.code,
+          recordId,
+          record,
+          previousRecord,
+          changedProperties: this.calculateChangedProperties(previousRecord || {}, record),
+          userId: context.userId,
+        });
+      } catch (err) {
+        // Tolerate per-row event publish failure so the rest of the bulk
+        // update still publishes, but record an anomaly so the gap is
+        // queryable. The DB mutation itself already succeeded.
+        this.logger.warn(
+          `bulkUpdate skipped event publish for ${collection.code}/${recordId}: ${(err as Error).message}`,
+        );
+        await this.runtimeAnomaly.record({
+          kind: 'bulk_partial_failure',
+          serviceCode: 'svc-data',
+          message: `Skipped event publish during bulk update for ${collection.code}/${recordId}: ${(err as Error).message}`,
+          collectionCode: collection.code,
+          recordId,
+          context: { operation: 'bulk_update', userId: context.userId },
+          error: err as Error,
+        });
+      }
     }
 
     return { success: true, updatedCount: result.affected || 0 };
@@ -1206,15 +1226,33 @@ export class CollectionDataService {
 
     for (const record of deletedRecords) {
       const recordId = record.id as string;
-      await this.outboxService.enqueueRecordEvent({
-        eventType: 'record.deleted',
-        collectionCode: collection.code,
-        recordId,
-        record,
-        previousRecord: record,
-        changedProperties: Object.keys(record || {}),
-        userId: context.userId,
-      });
+      try {
+        await this.outboxService.enqueueRecordEvent({
+          eventType: 'record.deleted',
+          collectionCode: collection.code,
+          recordId,
+          record,
+          previousRecord: record,
+          changedProperties: Object.keys(record || {}),
+          userId: context.userId,
+        });
+      } catch (err) {
+        // Tolerate per-row event publish failure so the rest of the bulk
+        // delete still publishes, but record an anomaly so the gap is
+        // queryable. The DB delete itself already succeeded.
+        this.logger.warn(
+          `bulkDelete skipped event publish for ${collection.code}/${recordId}: ${(err as Error).message}`,
+        );
+        await this.runtimeAnomaly.record({
+          kind: 'bulk_partial_failure',
+          serviceCode: 'svc-data',
+          message: `Skipped event publish during bulk delete for ${collection.code}/${recordId}: ${(err as Error).message}`,
+          collectionCode: collection.code,
+          recordId,
+          context: { operation: 'bulk_delete', userId: context.userId },
+          error: err as Error,
+        });
+      }
     }
 
     return { success: true, deletedCount: result.affected || 0 };

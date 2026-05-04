@@ -11,6 +11,7 @@ import {
   CollectionAccessRule,
   PropertyAccessRule,
   InstanceDbModule,
+  RuntimeAnomalyModule,
 } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
 import { DataController } from './data.controller';
@@ -39,6 +40,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [
     InstanceDbModule,
+    RuntimeAnomalyModule,
     AuthGuardModule,
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({

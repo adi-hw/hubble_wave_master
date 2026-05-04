@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { InstanceEventOutbox, ProcessFlowDefinition } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, ProcessFlowDefinition, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { ProcessFlowEngineService } from '@hubblewave/automation';
 
 @Injectable()
@@ -17,6 +17,7 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly engine: ProcessFlowEngineService,
+    private readonly runtimeAnomaly: RuntimeAnomalyService,
   ) {
     this.batchSize = parseInt(this.configService.get('WORKFLOW_OUTBOX_BATCH_SIZE', '20'), 10);
     this.pollIntervalMs = parseInt(this.configService.get('WORKFLOW_OUTBOX_POLL_MS', '2000'), 10);
@@ -52,6 +53,25 @@ export class WorkflowOutboxProcessor implements OnModuleInit, OnModuleDestroy {
           await this.markProcessed(entry.id);
         } catch (error) {
           await this.markFailed(entry.id, (error as Error).message);
+          // Workflow start outbox entries marked failed here are terminal —
+          // no automatic retry once status is 'failed'. Record an anomaly
+          // so the dropped workflow start is queryable.
+          this.logger.error(
+            `Workflow outbox entry ${entry.id} (${entry.eventType}) marked failed: ${(error as Error).message}`,
+          );
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_terminal_drop',
+            serviceCode: 'svc-workflow',
+            message: `Workflow outbox entry ${entry.id} (${entry.eventType}) terminally failed: ${(error as Error).message}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              attempts: entry.attempts,
+            },
+            error: error as Error,
+          });
         }
       }
     } catch (error) {
