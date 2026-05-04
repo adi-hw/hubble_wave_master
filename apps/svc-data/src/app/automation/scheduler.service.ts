@@ -14,10 +14,18 @@ import { ActionHandlerService } from './action-handler.service';
 import { ScriptSandboxService } from './script-sandbox.service';
 import { ExecutionLogService } from './execution-log.service';
 import { ScheduledJob } from '@hubblewave/instance-db';
+import { AutomationRateLimiterService } from './automation-rate-limiter.service';
 
 interface ScheduledJobPayload {
   jobId: string;
   jobName: string;
+  /**
+   * Stable identifier used by the per-automation rate limiter (W7.C / Plan
+   * Fix 14). For scheduled jobs the natural grouping key is the job's own id,
+   * so a single misconfigured schedule cannot starve sibling schedules sharing
+   * the worker pool.
+   */
+  automationId: string;
   collectionId?: string;
   actionType: string;
   actions?: Array<{ id: string; type: string; config: Record<string, unknown> }>;
@@ -58,6 +66,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly scriptSandbox: ScriptSandboxService,
     private readonly executionLogService: ExecutionLogService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly rateLimiter: AutomationRateLimiterService,
     @Optional() @Inject('REDIS_HOST') private redisHost?: string,
     @Optional() @Inject('REDIS_PORT') private redisPort?: number,
   ) {}
@@ -209,6 +218,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     const payload: ScheduledJobPayload = {
       jobId: job.id,
       jobName: job.name,
+      automationId: job.id,
       collectionId: job.collectionId ?? undefined,
       actionType: job.actionType,
       actions: job.actions as ScheduledJobPayload['actions'],
@@ -257,7 +267,21 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
   private async processJob(job: Job<ScheduledJobPayload>): Promise<void> {
     const startTime = Date.now();
-    const { jobId, jobName, collectionId, actionType, actions, script } = job.data;
+    const { jobId, jobName, automationId, collectionId, actionType, actions, script } = job.data;
+
+    // Per-automation rate limiting (W7.C / Plan Fix 14). A runaway automation
+    // is parked in the delayed set rather than holding a worker slot, so other
+    // automations keep flowing through the shared concurrency pool.
+    const rateLimitKey = automationId ?? jobId;
+    const decision = await this.rateLimiter.tryAcquire(rateLimitKey);
+    if (!decision.allowed) {
+      const delayMs = decision.retryAfterMs ?? 1_000;
+      this.logger.warn(
+        `Rate limit (${decision.reason}) for automation ${rateLimitKey}; deferring job ${job.id} for ${delayMs}ms`,
+      );
+      await job.moveToDelayed(Date.now() + delayMs, job.token);
+      return;
+    }
 
     this.logger.log(`Processing scheduled job: ${jobName}`);
 
@@ -307,6 +331,8 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.error(`Scheduled job ${jobName} failed: ${err.message}`);
       throw error;
+    } finally {
+      await this.rateLimiter.release(rateLimitKey);
     }
   }
 
