@@ -36,6 +36,24 @@ All code must be written **as if it is deploying to production today**.
 
 If something is not production-ready, it does not belong in the codebase.
 
+**Implementation status (W6.A):** The "no TODO/FIXME/dead code" rule is
+enforced for NEW code via lint + the compliance scanner. Pre-existing
+violations are tracked explicitly:
+- `tools/audit-bypass-check.ts` KNOWN_DEFERRED_OFFENDERS list (currently
+  empty after W2.E)
+- `tools/service-boundary-check.ts` KNOWN_VIOLATIONS list (currently
+  empty after W5.D)
+- The `apps/svc-data/src/app/automation/` directory is DEPRECATED pending
+  Plan Fix 1 (automation consolidation); its file contents are duplicate
+  with `apps/svc-automation/src/app/runtime/` and slated for deletion
+- `libs/instance-db/src/lib/entities/index.ts` is acknowledged as a
+  "god-package" pending Plan Fix 24 (per-service entity sets)
+
+The rule applies to GREENFIELD code; legacy cleanup is tracked in the
+remediation backlog rather than allowed to bypass the rule via TODO
+comments. Engineers MUST NOT introduce new TODOs/FIXMEs; every
+exception must be an explicit allowlist entry in a CI scanner.
+
 ---
 
 ## 2. Code Is a Product Surface
@@ -150,6 +168,24 @@ RBAC + ABAC + row-level + field-level rules.
 There are no shortcuts.
 Ever.
 
+**Implementation status (post-W1.2 + W1.5 + W5.D):**
+- Global guard wiring (W1.2): EVERY NestJS service runs JwtAuthGuard +
+  RolesGuard + PermissionsGuard via APP_GUARD providers. `@Roles()` /
+  `@Permissions()` decorators are no longer inert.
+- Centralized authz (W1.5): all callers use the `*Collection` API on
+  AuthorizationService keyed by stable `collectionId` UUID. The
+  deprecated `*Table` API throws NotFoundException on resolution failure
+  — never returns empty rules (no fail-open).
+- CI scanners enforce: `authz:check` (call-site verification, W1.2
+  upgrade), `service-boundary:check` (W5.D, currently 0 violations).
+
+The rule's spirit holds: shortcuts are forbidden. Past gaps where
+decorators were inert (e.g. theme.controller.ts pre-W1.2) are closed.
+But "Ever." in the literal sense requires every change to keep these
+gates green — no allowlist additions to `authz-bypass-check.ts`'s
+deferred list, and no `@Public()` additions without explicit operator
+review.
+
 ---
 
 ## 10. Auditability Is Mandatory
@@ -205,6 +241,24 @@ the platform does not yet enforce this with a state machine.
 Customizations must survive upgrades.
 
 If a change breaks customer configuration, it does not ship.
+
+**Implementation status (W6.A):** This rule is currently CONVENTION-BASED.
+There is no automated upgrade-compatibility scanner that compares a
+proposed schema/metadata change against a representative customer
+configuration set and blocks the change if it breaks any. The
+remediation backlog tracks this as a future addition (no plan-fix
+number yet; flagged here for human prioritization).
+
+In the meantime, engineers MUST manually verify that schema changes,
+property renames/deletes, and view changes do not break:
+1. Existing customer pack configurations (test-deploy a representative
+   pack before merging)
+2. Active automation rules (the W2.A reference scanner now blocks
+   property deletes if any automation references them)
+3. Active formulas, views, forms (same scanner)
+
+The W2.A reference scanner is the closest existing safeguard and
+catches the most common upgrade-breaks at metadata-change time.
 
 ---
 
@@ -365,6 +419,21 @@ The codebase must enforce:
 
 Builds fail if violations exist.
 
+**Implementation status (W6.A):** The scanners exist and exit non-zero
+on violations:
+- `npm run authz:check` (W1.2)
+- `npm run audit:check` (W1.6, KNOWN_DEFERRED_OFFENDERS empty after W2.E)
+- `npm run security:check` (existing)
+- `npm run compliance:check` (existing terminology scanner)
+- `npm run service-boundary:check` (W5.D, currently 0 violations)
+
+Whether `.github/workflows/` actually FAILS PRs on these checks is
+a separate config concern. Engineers SHOULD verify CI gate status
+before merging architectural changes. If a PR passes lint locally
+but CI doesn't run the scanner, the rule is aspirational for that
+PR. Tracked for human follow-up: ensure all five scanners are required
+status checks on the merge protection rule.
+
 ---
 
 ### 3. CI/CD Gates (System Enforcement)
@@ -423,6 +492,11 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05 (W6.A): §1 absolutes clarified (greenfield rule + tracked
+  legacy backlog); §9 "no shortcuts" tied to specific W1.2 + W1.5 +
+  W5.D enforcement; §13 upgrade safety acknowledged convention-based
+  pending automated scanner; §21 lint coverage list expanded with
+  status. Refs Plan Fix 13 follow-up.
 - 2026-05: §5 scope clarification (control-plane multi-tenancy
   acknowledged); §10 audit-in-transaction requirement (W1.6 + W2.D +
   W3.C); §14 reference-checking on delete (W2.A); §12 AVA gate-
