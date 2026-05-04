@@ -26,6 +26,15 @@
       "@emotion/styled": {
         "reason": "Styled-components API required by @mui/material"
       },
+      "@monaco-editor/react": {
+        "reason": "Code editor for formula/script authoring in admin UI"
+      },
+      "@xyflow/react": {
+        "reason": "Flow chart library for workflow + process-flow editors"
+      },
+      "react-grid-layout": {
+        "reason": "Drag/resize layout for workspace builder UI"
+      },
       "@mui/icons-material": {
         "reason": "Canonical icon set paired with @mui/material"
       },
