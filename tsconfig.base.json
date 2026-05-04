@@ -66,6 +66,9 @@
       "@hubblewave/redis": [
         "libs/redis/src/index.ts"
       ],
+      "@hubblewave/event-bus": [
+        "libs/event-bus/src/index.ts"
+      ],
       "@hubblewave/ui": [
         "libs/ui/src/index.ts"
       ],

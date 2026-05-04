@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { instanceEntities } from './entities/index';
 import { AuditLogSubscriber } from './subscribers/audit-log.subscriber';
+import { IdentityCacheInvalidationSubscriber } from './subscribers/identity-cache-invalidation.subscriber';
 import { InstanceDbService } from './instance-db.service';
 
 /**
@@ -78,7 +79,10 @@ import { InstanceDbService } from './instance-db.service';
           // with pg_advisory_lock; app pods boot read-only by default.
           migrationsRun: configService.get('RUN_MIGRATIONS', 'false') === 'true',
           migrations: ['dist/migrations/instance/*.js'],
-          subscribers: [AuditLogSubscriber],
+          // W1.7: IdentityCacheInvalidationSubscriber publishes identity.*
+          // events on UserRole/RolePermission/GroupRole/GroupMember changes
+          // so permission caches invalidate immediately (~1s end-to-end).
+          subscribers: [AuditLogSubscriber, IdentityCacheInvalidationSubscriber],
           logging: configService.get('DB_LOGGING', 'false') === 'true',
           ssl,
           // Connection pool settings
