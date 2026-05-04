@@ -1,7 +1,11 @@
-import { Injectable, NotFoundException, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { CollectionDefinition, PropertyDefinition } from '@hubblewave/instance-db';
 import { DataSource } from 'typeorm';
-import NodeCache from 'node-cache';
+
+/** Cache TTL for collection and property metadata, in milliseconds. */
+const MODEL_REGISTRY_CACHE_TTL_MS = 30_000;
 
 /** Return type for getCollection method */
 export interface CollectionInfo {
@@ -56,15 +60,17 @@ export interface PropertyInfo {
  * Cache Strategy:
  * - Default TTL: 30 seconds for automatic expiration
  * - Manual invalidation: Call invalidateCache() when schema or UI config changes
+ * - Backed by the platform-canonical cache-manager abstraction so invalidation
+ *   semantics match every other service.
  */
 @Injectable()
-export class ModelRegistryService implements OnModuleDestroy {
+export class ModelRegistryService {
   private readonly logger = new Logger(ModelRegistryService.name);
-  private cache: NodeCache;
 
-  constructor(private readonly dataSource: DataSource) {
-    this.cache = new NodeCache({ stdTTL: 30, checkperiod: 60 });
-  }
+  constructor(
+    private readonly dataSource: DataSource,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
+  ) {}
 
   /**
    * Invalidate cache for a specific collection, or all collections.
@@ -75,14 +81,14 @@ export class ModelRegistryService implements OnModuleDestroy {
    *
    * @param collectionCode - Optional specific collection to invalidate. If not provided, invalidates all collections.
    */
-  invalidateCache(collectionCode?: string): void {
+  async invalidateCache(collectionCode?: string): Promise<void> {
     if (collectionCode) {
       const collectionKey = `collection:${collectionCode}`;
       const propertiesKey = `properties:${collectionCode}`;
-      this.cache.del([collectionKey, propertiesKey]);
+      await this.cache.mdel([collectionKey, propertiesKey]);
       this.logger.debug(`Invalidated cache for collection ${collectionCode}`);
     } else {
-      this.clearAllCache();
+      await this.clearAllCache();
       this.logger.debug(`Invalidated all cache entries`);
     }
   }
@@ -99,7 +105,7 @@ export class ModelRegistryService implements OnModuleDestroy {
     collectionCode: string,
     roles?: string[]
   ): Promise<{ collection: CollectionInfo; properties: PropertyInfo[] }> {
-    this.invalidateCache(collectionCode);
+    await this.invalidateCache(collectionCode);
     const collection = await this.getCollection(collectionCode);
     const properties = await this.getProperties(collectionCode, roles);
     return { collection, properties };
@@ -110,7 +116,7 @@ export class ModelRegistryService implements OnModuleDestroy {
    */
   async getCollection(collectionCode: string): Promise<CollectionInfo> {
     const cacheKey = `collection:${collectionCode}`;
-    const cached = this.cache.get<CollectionInfo>(cacheKey);
+    const cached = await this.cache.get<CollectionInfo>(cacheKey);
     if (cached) return cached;
 
     const ds = this.dataSource;
@@ -149,7 +155,7 @@ export class ModelRegistryService implements OnModuleDestroy {
       isSystem: collection.isSystem ?? false,
     };
 
-    this.cache.set(cacheKey, collectionInfo);
+    await this.cache.set(cacheKey, collectionInfo, MODEL_REGISTRY_CACHE_TTL_MS);
     return collectionInfo;
   }
 
@@ -204,7 +210,7 @@ export class ModelRegistryService implements OnModuleDestroy {
    */
   async getProperties(collectionCode: string, roles?: string[]): Promise<PropertyInfo[]> {
     const cacheKey = `properties:${collectionCode}`;
-    const cached = this.cache.get<PropertyInfo[]>(cacheKey);
+    const cached = await this.cache.get<PropertyInfo[]>(cacheKey);
     if (cached) return cached;
 
     // First ensure collection exists
@@ -294,7 +300,7 @@ export class ModelRegistryService implements OnModuleDestroy {
       .filter((f) => showHidden || !f.isInternal)
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
-    this.cache.set(cacheKey, propertyInfoList);
+    await this.cache.set(cacheKey, propertyInfoList, MODEL_REGISTRY_CACHE_TTL_MS);
     return propertyInfoList;
   }
 
@@ -379,12 +385,7 @@ export class ModelRegistryService implements OnModuleDestroy {
     return null;
   }
 
-  clearAllCache() {
-    this.cache.flushAll();
-  }
-
-  onModuleDestroy() {
-    this.cache.close();
+  async clearAllCache(): Promise<void> {
+    await this.cache.clear();
   }
 }
-

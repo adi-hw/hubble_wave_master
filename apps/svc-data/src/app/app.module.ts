@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -48,6 +49,10 @@ import { ScheduleModule } from '@nestjs/schedule';
     RuntimeAnomalyModule,
     AuthGuardModule,
     GlobalGuardsModule,
+    CacheModule.register({
+      ttl: 30_000,
+      max: 1000,
+    }),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({
       enableCaching: true,
