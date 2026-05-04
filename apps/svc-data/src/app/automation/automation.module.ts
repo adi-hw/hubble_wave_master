@@ -17,6 +17,7 @@ import {
 import { AutomationController } from './automation.controller';
 import { ActionHandlerService } from './action-handler.service';
 import { AutomationExecutorService } from './automation-executor.service';
+import { AutomationRateLimiterService } from './automation-rate-limiter.service';
 import { AutomationService } from './automation.service';
 import { ConditionEvaluatorService } from './condition-evaluator.service';
 import { ExecutionLogService } from './execution-log.service';
@@ -41,6 +42,7 @@ import { ConditionValidatorService } from './condition-validator.service';
   providers: [
     ActionHandlerService,
     AutomationExecutorService,
+    AutomationRateLimiterService,
     AutomationService,
     AvaAutomationService,
     ConditionEvaluatorService,
@@ -53,6 +55,7 @@ import { ConditionValidatorService } from './condition-validator.service';
   ],
   exports: [
     AutomationExecutorService,
+    AutomationRateLimiterService,
     AutomationService,
     AvaAutomationService,
     ConditionEvaluatorService,
