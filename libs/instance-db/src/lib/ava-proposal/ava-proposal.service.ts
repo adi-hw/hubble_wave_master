@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AvaProposal, AvaProposalState } from '../entities/ava-proposal.entity';
-import { AuditLog } from '../entities/settings.entity';
+import { AuditRecorder, withAudit } from '../audit/with-audit';
 import { BadStateTransitionException } from './bad-state-transition.exception';
 
 /**
@@ -34,6 +34,12 @@ const TERMINAL_STATES: ReadonlySet<AvaProposalState> = new Set([
  * every transition writes an AuditLog entry so the lifecycle is fully
  * reconstructible.
  *
+ * Canon §10: state mutation and audit row commit-or-rollback together.
+ * Each transition wraps both the proposal save and the audit emission
+ * in a single `withAudit(dataSource, …)` transaction so a process kill
+ * or DB failure between them cannot leave a state change without an
+ * audit row (or vice versa).
+ *
  * AVA itself never executes a mutation directly. It calls {@link suggest}
  * to record an intent. Operators invoke {@link preview}, {@link approve},
  * {@link reject}; downstream executors call {@link markExecuted} or
@@ -41,8 +47,6 @@ const TERMINAL_STATES: ReadonlySet<AvaProposalState> = new Set([
  */
 @Injectable()
 export class AvaProposalService {
-  private readonly logger = new Logger(AvaProposalService.name);
-
   constructor(private readonly dataSource: DataSource) {}
 
   /**
@@ -54,19 +58,21 @@ export class AvaProposalService {
     payload: Record<string, unknown>,
     rationale?: string,
   ): Promise<AvaProposal> {
-    const repo = this.repo();
-    const proposal = repo.create({
-      kind,
-      payload,
-      rationale: rationale ?? null,
-      state: 'suggested',
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = repo.create({
+        kind,
+        payload,
+        rationale: rationale ?? null,
+        state: 'suggested',
+      });
+      const saved = await repo.save(proposal);
+      this.recordTransitionAudit(recordAudit, saved, null, 'suggested', null, {
+        kind,
+        hasRationale: Boolean(rationale),
+      });
+      return saved;
     });
-    const saved = await repo.save(proposal);
-    await this.recordAudit(saved, null, 'suggested', null, {
-      kind,
-      hasRationale: Boolean(rationale),
-    });
-    return saved;
   }
 
   /**
@@ -78,19 +84,22 @@ export class AvaProposalService {
     actorId: string,
     previewResult: Record<string, unknown>,
   ): Promise<AvaProposal> {
-    const proposal = await this.requireProposal(id);
-    this.assertTransition(proposal, 'previewed');
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = await this.requireProposal(repo, id);
+      this.assertTransition(proposal, 'previewed');
 
-    const previousState = proposal.state;
-    proposal.state = 'previewed';
-    proposal.actorId = actorId;
-    proposal.previewResult = previewResult;
-    const saved = await this.repo().save(proposal);
+      const previousState = proposal.state;
+      proposal.state = 'previewed';
+      proposal.actorId = actorId;
+      proposal.previewResult = previewResult;
+      const saved = await repo.save(proposal);
 
-    await this.recordAudit(saved, actorId, 'previewed', previousState, {
-      previewResultKeys: Object.keys(previewResult),
+      this.recordTransitionAudit(recordAudit, saved, actorId, 'previewed', previousState, {
+        previewResultKeys: Object.keys(previewResult),
+      });
+      return saved;
     });
-    return saved;
   }
 
   /**
@@ -98,35 +107,43 @@ export class AvaProposalService {
    * Default policy: every approval requires an explicit operator action.
    */
   async approve(id: string, actorId: string): Promise<AvaProposal> {
-    const proposal = await this.requireProposal(id);
-    this.assertTransition(proposal, 'approved');
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = await this.requireProposal(repo, id);
+      this.assertTransition(proposal, 'approved');
 
-    const previousState = proposal.state;
-    proposal.state = 'approved';
-    proposal.actorId = actorId;
-    const saved = await this.repo().save(proposal);
+      const previousState = proposal.state;
+      proposal.state = 'approved';
+      proposal.actorId = actorId;
+      const saved = await repo.save(proposal);
 
-    await this.recordAudit(saved, actorId, 'approved', previousState, null);
-    return saved;
+      this.recordTransitionAudit(recordAudit, saved, actorId, 'approved', previousState, null);
+      return saved;
+    });
   }
 
   /**
    * Transition: any non-terminal state → rejected.
    */
   async reject(id: string, actorId: string, reason: string): Promise<AvaProposal> {
-    const proposal = await this.requireProposal(id);
-    if (TERMINAL_STATES.has(proposal.state)) {
-      throw new BadStateTransitionException(proposal.id, proposal.state, 'rejected');
-    }
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = await this.requireProposal(repo, id);
+      if (TERMINAL_STATES.has(proposal.state)) {
+        throw new BadStateTransitionException(proposal.id, proposal.state, 'rejected');
+      }
 
-    const previousState = proposal.state;
-    proposal.state = 'rejected';
-    proposal.actorId = actorId;
-    proposal.rejectionReason = reason;
-    const saved = await this.repo().save(proposal);
+      const previousState = proposal.state;
+      proposal.state = 'rejected';
+      proposal.actorId = actorId;
+      proposal.rejectionReason = reason;
+      const saved = await repo.save(proposal);
 
-    await this.recordAudit(saved, actorId, 'rejected', previousState, { reason });
-    return saved;
+      this.recordTransitionAudit(recordAudit, saved, actorId, 'rejected', previousState, {
+        reason,
+      });
+      return saved;
+    });
   }
 
   /**
@@ -137,18 +154,26 @@ export class AvaProposalService {
     id: string,
     executionResult: Record<string, unknown>,
   ): Promise<AvaProposal> {
-    const proposal = await this.requireProposal(id);
-    this.assertTransition(proposal, 'executed');
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = await this.requireProposal(repo, id);
+      this.assertTransition(proposal, 'executed');
 
-    const previousState = proposal.state;
-    proposal.state = 'executed';
-    proposal.executionResult = executionResult;
-    const saved = await this.repo().save(proposal);
+      const previousState = proposal.state;
+      proposal.state = 'executed';
+      proposal.executionResult = executionResult;
+      const saved = await repo.save(proposal);
 
-    await this.recordAudit(saved, proposal.actorId ?? null, 'executed', previousState, {
-      executionResultKeys: Object.keys(executionResult),
+      this.recordTransitionAudit(
+        recordAudit,
+        saved,
+        proposal.actorId ?? null,
+        'executed',
+        previousState,
+        { executionResultKeys: Object.keys(executionResult) },
+      );
+      return saved;
     });
-    return saved;
   }
 
   /**
@@ -156,34 +181,46 @@ export class AvaProposalService {
    * Called by the downstream executor when the action throws.
    */
   async markFailed(id: string, error: string): Promise<AvaProposal> {
-    const proposal = await this.requireProposal(id);
-    this.assertTransition(proposal, 'failed');
+    return withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const repo = this.txRepo(mgr);
+      const proposal = await this.requireProposal(repo, id);
+      this.assertTransition(proposal, 'failed');
 
-    const previousState = proposal.state;
-    proposal.state = 'failed';
-    proposal.executionResult = { error };
-    const saved = await this.repo().save(proposal);
+      const previousState = proposal.state;
+      proposal.state = 'failed';
+      proposal.executionResult = { error };
+      const saved = await repo.save(proposal);
 
-    await this.recordAudit(saved, proposal.actorId ?? null, 'failed', previousState, {
-      error,
+      this.recordTransitionAudit(
+        recordAudit,
+        saved,
+        proposal.actorId ?? null,
+        'failed',
+        previousState,
+        { error },
+      );
+      return saved;
     });
-    return saved;
   }
 
   /**
    * Lookup helper — used by the RequireApprovedProposalGuard and the
-   * proposal lifecycle controller. Returns null when the proposal is not found.
+   * proposal lifecycle controller. Returns null when the proposal is not
+   * found. Read path stays outside the transaction wrapper.
    */
   async findById(id: string): Promise<AvaProposal | null> {
-    return this.repo().findOne({ where: { id } });
+    return this.dataSource.getRepository(AvaProposal).findOne({ where: { id } });
   }
 
-  private repo(): Repository<AvaProposal> {
-    return this.dataSource.getRepository(AvaProposal);
+  private txRepo(mgr: EntityManager): Repository<AvaProposal> {
+    return mgr.getRepository(AvaProposal);
   }
 
-  private async requireProposal(id: string): Promise<AvaProposal> {
-    const proposal = await this.findById(id);
+  private async requireProposal(
+    repo: Repository<AvaProposal>,
+    id: string,
+  ): Promise<AvaProposal> {
+    const proposal = await repo.findOne({ where: { id } });
     if (!proposal) {
       throw new NotFoundException(`AvaProposal ${id} not found`);
     }
@@ -197,32 +234,25 @@ export class AvaProposalService {
     }
   }
 
-  private async recordAudit(
+  private recordTransitionAudit(
+    recordAudit: AuditRecorder,
     proposal: AvaProposal,
     actorId: string | null,
     newState: AvaProposalState,
     previousState: AvaProposalState | null,
     metadata: Record<string, unknown> | null,
-  ): Promise<void> {
-    try {
-      const repo = this.dataSource.getRepository(AuditLog);
-      const entry = repo.create({
-        userId: actorId ?? null,
-        collectionCode: 'ava_proposal',
-        recordId: proposal.id,
-        action: `ava_proposal.${newState}`,
-        oldValues: previousState ? { state: previousState } : null,
-        newValues: {
-          state: newState,
-          kind: proposal.kind,
-          ...(metadata ?? {}),
-        },
-      });
-      await repo.save(entry);
-    } catch (err) {
-      this.logger.warn(
-        `Failed to write audit log for AvaProposal ${proposal.id} → ${newState}: ${(err as Error).message}`,
-      );
-    }
+  ): void {
+    recordAudit({
+      userId: actorId,
+      collectionCode: 'ava_proposal',
+      recordId: proposal.id,
+      action: `ava_proposal.${newState}`,
+      oldValues: previousState ? { state: previousState } : null,
+      newValues: {
+        state: newState,
+        kind: proposal.kind,
+        ...(metadata ?? {}),
+      },
+    });
   }
 }

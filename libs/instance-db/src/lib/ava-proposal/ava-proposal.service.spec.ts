@@ -1,14 +1,19 @@
 import { NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AvaProposal, AvaProposalState } from '../entities/ava-proposal.entity';
 import { AuditLog } from '../entities/settings.entity';
 import { AvaProposalService } from './ava-proposal.service';
 import { BadStateTransitionException } from './bad-state-transition.exception';
 
 /**
- * In-memory fakes for the two repositories the service touches.
- * Keeps the spec free of any real database while still exercising the
- * full state-machine logic.
+ * In-memory fake for the AvaProposal repository. Backs both the read path
+ * (`findById`, called outside the transaction) and the write path (called
+ * via `mgr.getRepository(AvaProposal)` inside `withAudit`).
+ *
+ * Mirrors the W1.6 svc-data spec pattern: tests provide a DataSource whose
+ * `transaction(fn)` invokes `fn` synchronously with a fake EntityManager.
+ * On thrown errors we drop the in-memory writes to mimic real TypeORM
+ * rollback semantics, which lets us assert the canon §10 contract.
  */
 class FakeProposalRepository {
   private store = new Map<string, AvaProposal>();
@@ -34,7 +39,6 @@ class FakeProposalRepository {
     return value ? { ...value } : null;
   }
 
-  // Test helper
   size(): number {
     return this.store.size;
   }
@@ -42,21 +46,48 @@ class FakeProposalRepository {
   set(proposal: AvaProposal): void {
     this.store.set(proposal.id, { ...proposal });
   }
+
+  snapshot(): Map<string, AvaProposal> {
+    return new Map(
+      Array.from(this.store.entries()).map(([id, value]) => [id, { ...value }]),
+    );
+  }
+
+  restore(snapshot: Map<string, AvaProposal>): void {
+    this.store = new Map(
+      Array.from(snapshot.entries()).map(([id, value]) => [id, { ...value }]),
+    );
+  }
 }
 
 class FakeAuditRepository {
   public entries: AuditLog[] = [];
+  public throwOnSave: Error | null = null;
 
   create(partial: Partial<AuditLog>): AuditLog {
     return partial as AuditLog;
   }
 
-  async save(entity: AuditLog): Promise<AuditLog> {
-    if (!entity.id) {
-      entity.id = `audit-${this.entries.length + 1}`;
+  async save(entries: AuditLog[] | AuditLog): Promise<AuditLog[] | AuditLog> {
+    if (this.throwOnSave) {
+      throw this.throwOnSave;
     }
-    this.entries.push({ ...entity });
-    return { ...entity };
+    const list = Array.isArray(entries) ? entries : [entries];
+    for (const entry of list) {
+      if (!entry.id) {
+        entry.id = `audit-${this.entries.length + 1}`;
+      }
+      this.entries.push({ ...entry });
+    }
+    return entries;
+  }
+
+  snapshot(): AuditLog[] {
+    return this.entries.map((e) => ({ ...e }));
+  }
+
+  restore(snapshot: AuditLog[]): void {
+    this.entries = snapshot.map((e) => ({ ...e }));
   }
 }
 
@@ -64,9 +95,29 @@ function buildService(): {
   service: AvaProposalService;
   proposalRepo: FakeProposalRepository;
   auditRepo: FakeAuditRepository;
+  dataSource: DataSource;
 } {
   const proposalRepo = new FakeProposalRepository();
   const auditRepo = new FakeAuditRepository();
+
+  // The shared EntityManager exposes both fakes by entity class so the
+  // production code in AvaProposalService and withAudit can reach them
+  // through `mgr.getRepository(...)`.
+  const mgr = {
+    getRepository(entity: unknown): Repository<AvaProposal | AuditLog> {
+      if (entity === AvaProposal) {
+        return proposalRepo as unknown as Repository<AvaProposal>;
+      }
+      if (entity === AuditLog) {
+        return auditRepo as unknown as Repository<AuditLog>;
+      }
+      throw new Error(`Unexpected entity in test: ${String(entity)}`);
+    },
+  } as unknown as EntityManager;
+
+  // The fake DataSource's `transaction(fn)` mirrors TypeORM's contract:
+  // run fn(mgr); on success the in-memory writes stay; on error roll back
+  // by restoring the snapshots taken before fn ran.
   const dataSource = {
     getRepository(entity: unknown): Repository<AvaProposal | AuditLog> {
       if (entity === AvaProposal) {
@@ -77,9 +128,21 @@ function buildService(): {
       }
       throw new Error(`Unexpected entity in test: ${String(entity)}`);
     },
+    async transaction<T>(fn: (m: EntityManager) => Promise<T>): Promise<T> {
+      const proposalSnap = proposalRepo.snapshot();
+      const auditSnap = auditRepo.snapshot();
+      try {
+        return await fn(mgr);
+      } catch (err) {
+        proposalRepo.restore(proposalSnap);
+        auditRepo.restore(auditSnap);
+        throw err;
+      }
+    },
   } as unknown as DataSource;
+
   const service = new AvaProposalService(dataSource);
-  return { service, proposalRepo, auditRepo };
+  return { service, proposalRepo, auditRepo, dataSource };
 }
 
 async function seed(
@@ -308,6 +371,45 @@ describe('AvaProposalService', () => {
         auditRepo.entries.every((e) => e.collectionCode === 'ava_proposal'),
       ).toBe(true);
       expect(auditRepo.entries.every((e) => e.recordId === created.id)).toBe(true);
+    });
+  });
+
+  /**
+   * Canon §10 chaos contract: state mutation and audit row commit-or-
+   * rollback together. If the audit save throws after the proposal save
+   * succeeds, the entire transaction must roll back so the proposal's
+   * persisted state stays at its prior value and no audit row is written.
+   *
+   * W6.C originally wrote audit rows OUTSIDE the proposal-mutation
+   * transaction; W7.A wraps both in `withAudit`. This test fails if a
+   * future refactor pulls them apart again.
+   */
+  describe('chaos: audit-rollback contract (W7.A / canon §10)', () => {
+    it('rolls back the state transition when the audit save fails', async () => {
+      const { service, proposalRepo, auditRepo } = buildService();
+      const seeded = await seed(service, 'previewed', proposalRepo);
+      const auditCountBefore = auditRepo.entries.length;
+
+      auditRepo.throwOnSave = new Error('audit write failed');
+
+      await expect(service.approve(seeded.id, 'user-2')).rejects.toThrow(
+        'audit write failed',
+      );
+
+      // Drop the chaos hook so the post-condition reads run cleanly.
+      auditRepo.throwOnSave = null;
+
+      // The proposal's persisted state must remain at 'previewed' — the
+      // approve transition was rolled back along with the audit failure.
+      const after = await service.findById(seeded.id);
+      expect(after?.state).toBe('previewed');
+      expect(after?.actorId).toBe('user-1');
+
+      // No audit row was written for the failed approval.
+      expect(auditRepo.entries.length).toBe(auditCountBefore);
+      expect(auditRepo.entries.every((e) => e.action !== 'ava_proposal.approved')).toBe(
+        true,
+      );
     });
   });
 });
