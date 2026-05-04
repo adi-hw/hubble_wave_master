@@ -49,6 +49,11 @@ export class RecordMutationService {
     collectionCode: string;
     values: Record<string, unknown>;
     actorId?: string | null;
+    // Cross-invocation cycle/depth state forwarded onto the outbox event the
+    // mutation emits, so the next runtime invocation can detect cycles and
+    // enforce MAX_DEPTH across automation chains.
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
     return withAudit(this.dataSource, (mgr, recordAudit) =>
       this.createRecordInTransaction(params, mgr, recordAudit),
@@ -60,6 +65,8 @@ export class RecordMutationService {
       collectionCode: string;
       values: Record<string, unknown>;
       actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
     },
     mgr: EntityManager,
     recordAudit: AuditRecorder,
@@ -130,6 +137,8 @@ export class RecordMutationService {
         previousRecord: null,
         changedProperties: Object.keys(record || {}),
         userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
       },
       mgr,
     );
@@ -142,6 +151,11 @@ export class RecordMutationService {
     recordId: string;
     changes: Record<string, unknown>;
     actorId?: string | null;
+    // Cross-invocation cycle/depth state forwarded onto the outbox event the
+    // mutation emits, so the next runtime invocation can detect cycles and
+    // enforce MAX_DEPTH across automation chains.
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
     return withAudit(this.dataSource, (mgr, recordAudit) =>
       this.updateRecordInTransaction(params, mgr, recordAudit),
@@ -154,6 +168,8 @@ export class RecordMutationService {
       recordId: string;
       changes: Record<string, unknown>;
       actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
     },
     mgr: EntityManager,
     recordAudit: AuditRecorder,
@@ -227,6 +243,8 @@ export class RecordMutationService {
         previousRecord,
         changedProperties: this.calculateChangedProperties(previousRecord, updatedRecord),
         userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
       },
       mgr,
     );
@@ -238,6 +256,8 @@ export class RecordMutationService {
     collectionCode: string;
     recordId: string;
     actorId?: string | null;
+    executionChain?: string[];
+    executionDepth?: number;
   }): Promise<Record<string, unknown>> {
     return withAudit(this.dataSource, (mgr, recordAudit) =>
       this.deleteRecordInTransaction(params, mgr, recordAudit),
@@ -249,6 +269,8 @@ export class RecordMutationService {
       collectionCode: string;
       recordId: string;
       actorId?: string | null;
+      executionChain?: string[];
+      executionDepth?: number;
     },
     mgr: EntityManager,
     recordAudit: AuditRecorder,
@@ -294,6 +316,8 @@ export class RecordMutationService {
         previousRecord: record,
         changedProperties: Object.keys(record || {}),
         userId: params.actorId ?? null,
+        executionChain: params.executionChain,
+        executionDepth: params.executionDepth,
       },
       mgr,
     );

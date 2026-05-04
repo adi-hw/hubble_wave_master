@@ -99,13 +99,34 @@ describe('AutomationRuntimeService', () => {
       save: jest.fn().mockResolvedValue(undefined),
     };
 
+    // The runtime wraps audit + execution-log writes in `withAudit`, which
+    // calls `dataSource.transaction(fn)` and passes the inner EntityManager
+    // back to the callback. The fake transaction here just runs the callback
+    // with the same getRepository surface so the inner writes hit our jest
+    // mocks. Real transactional semantics (rollback) are exercised by the
+    // dedicated `transactional audit` describe block at the bottom of this
+    // file.
+    const repoFor = (entity: unknown) => {
+      if (entity === CollectionDefinition) return collectionRepo;
+      if (entity === PropertyDefinition) return propertyRepo;
+      if (entity === AutomationRule) return automationRepo;
+      if (entity === AuditLog) return auditLogRepo;
+      // AutomationExecutionLog and other entities resolved by withAudit's
+      // inner save: the runtime always invokes ExecutionLogService.log
+      // (which is mocked at the provider level), so this fallback only
+      // needs to satisfy the audit save() that withAudit performs.
+      return {
+        create: (e: unknown) => e,
+        save: jest.fn().mockResolvedValue(undefined),
+        findOne: jest.fn(),
+        find: jest.fn(),
+      };
+    };
     const dataSource = {
-      getRepository: jest.fn((entity: unknown) => {
-        if (entity === CollectionDefinition) return collectionRepo;
-        if (entity === PropertyDefinition) return propertyRepo;
-        if (entity === AutomationRule) return automationRepo;
-        if (entity === AuditLog) return auditLogRepo;
-        return { findOne: jest.fn(), find: jest.fn() };
+      getRepository: jest.fn(repoFor),
+      transaction: jest.fn(async <T>(fn: (m: unknown) => Promise<T>): Promise<T> => {
+        const mgr = { getRepository: jest.fn(repoFor) };
+        return fn(mgr);
       }),
     } as unknown as DataSource;
 
@@ -226,14 +247,37 @@ describe('AutomationRuntimeService', () => {
       expect(successLogs.length).toBe(2);
     });
 
-    // The plan calls out A->B->A on the same record as currently broken
-    // because executionChain resets per processRecordEvent invocation.
-    // Outbox events from one automation invoke the runtime fresh, so the
-    // chain cannot detect the cycle. Skip until Fix 7 lands.
-    it.skip('A->B->A on the same record is detected (Plan Fix 7)', async () => {
-      // TODO: implement once cycle key changes from automationId to
-      // `${automationId}:${recordId}` and the chain is propagated across
-      // outbox-driven re-invocations. See Plan Part 2 Fix 7.
+    // W2.B / Plan Fix 7: an inbound outbox event whose executionChain
+    // already contains `${automationId}:${recordId}` for the candidate
+    // automation must skip with 'Circular automation reference detected'.
+    // The chain is reconstructed from the event payload, so a chain from
+    // an earlier generation (A: rec-1, B: rec-1) survives into this
+    // invocation and prevents A from re-firing on rec-1.
+    it('A->B->A on the same record is detected (W2.B / Plan Fix 7)', async () => {
+      // Automation A is in the rules list. Simulate that the inbound
+      // event was emitted by an earlier chain step where A and B already
+      // ran on rec-1. A re-firing on rec-1 must be skipped.
+      automationsForCollection = [automation({ id: 'auto-A' })];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-1',
+          executionChain: ['auto-A:rec-1', 'auto-B:rec-1'],
+          executionDepth: 3,
+        }),
+      );
+
+      const skippedLogs = executionLog.log.mock.calls.filter(
+        (call) => call[0].skippedReason === 'Circular automation reference detected',
+      );
+      expect(skippedLogs.length).toBe(1);
+      expect(skippedLogs[0][0]).toEqual(
+        expect.objectContaining({
+          automationId: 'auto-A',
+          recordId: 'rec-1',
+          status: 'skipped',
+        }),
+      );
     });
 
     it('A->B->A on different records is allowed (cross-record fan-out is legitimate)', async () => {
@@ -252,6 +296,27 @@ describe('AutomationRuntimeService', () => {
       );
       expect(successLogs.length).toBe(2);
     });
+
+    it('same automation on a different record within the same chain runs (cross-record fan-out)', async () => {
+      // The inbound chain contains `auto-A:rec-1` (already ran). Auto A
+      // firing on rec-2 within that chain must be allowed because the
+      // cycle key is per-(automation, record).
+      automationsForCollection = [automation({ id: 'auto-A' })];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-2',
+          record: { id: 'rec-2' },
+          executionChain: ['auto-A:rec-1'],
+          executionDepth: 2,
+        }),
+      );
+
+      const successLogs = executionLog.log.mock.calls.filter(
+        (call) => call[0].status === 'success',
+      );
+      expect(successLogs.length).toBe(1);
+    });
   });
 
   describe('max depth', () => {
@@ -266,15 +331,54 @@ describe('AutomationRuntimeService', () => {
 
       expect(executionLog.log).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'success', executionDepth: 1 }),
+        expect.anything(),
       );
     });
 
-    // Plan Fix 7 + W1.9 calls out that depth should be propagated through
-    // outbox re-invocations so a chain of automations 6 deep is skipped.
-    // The current runtime has no such propagation.
-    it.skip('chain 6 deep: 6th invocation is skipped with warn log (Plan Fix 7 / W1.9)', async () => {
-      // TODO: implement once depth/chain are propagated through outbox
-      // metadata into subsequent processRecordEvent calls.
+    // W2.B / Plan Fix 7: when an outbox event arrives with
+    // executionDepth > MAX_DEPTH (5), the runtime drops the chain with a
+    // structured 'skipped' execution log entry rather than running another
+    // generation. The depth value flows through the outbox payload from
+    // the prior generation's record mutation.
+    it('chain 6 deep: 6th invocation is skipped with warn log (W2.B / Plan Fix 7)', async () => {
+      automationsForCollection = [automation({ id: 'auto-A' })];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-1',
+          // Depth 6 exceeds MAX_DEPTH=5 — the chain must be dropped before
+          // any automation fires.
+          executionDepth: 6,
+          executionChain: [
+            'auto-1:rec-1',
+            'auto-2:rec-1',
+            'auto-3:rec-1',
+            'auto-4:rec-1',
+            'auto-5:rec-1',
+          ],
+        }),
+      );
+
+      // No automation should have run (no 'success' log).
+      const successLogs = executionLog.log.mock.calls.filter(
+        (call) => call[0].status === 'success',
+      );
+      expect(successLogs.length).toBe(0);
+
+      // A structured 'skipped' execution log entry is recorded so operators
+      // can alert on truncated chains.
+      const dropLogs = executionLog.log.mock.calls.filter(
+        (call) =>
+          call[0].status === 'skipped' &&
+          typeof call[0].skippedReason === 'string' &&
+          call[0].skippedReason.includes('MAX_DEPTH'),
+      );
+      expect(dropLogs.length).toBe(1);
+
+      // Operator-visible warn log carries the chain context.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('MAX_DEPTH'),
+      );
     });
 
     it('respects MAX_AUTOMATIONS_PER_EVENT (50) cap', async () => {
@@ -293,6 +397,110 @@ describe('AutomationRuntimeService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Automation limit reached'),
       );
+    });
+  });
+
+  // W2.B / Plan Fix 7: every chain hop must serialize the executionChain +
+  // executionDepth onto the outbox event so the next runtime invocation
+  // can reconstruct the cycle/depth state. Without this, A->B->A on the
+  // same record cannot be detected and deep chains escape MAX_DEPTH.
+  describe('chain propagation through outbox', () => {
+    it('forwards executionChain + executionDepth onto modify_record outbox events', async () => {
+      // Automation A modifies the record. The runtime calls
+      // recordMutation.updateRecordInTransaction (which emits the outbox
+      // event). Verify both fields are present on the call payload so the
+      // downstream invocation has the chain.
+      const updateInTx = jest.fn().mockResolvedValue({ id: 'rec-1', name: 'Modified' });
+      recordMutation.updateRecord = updateInTx as unknown as jest.Mock;
+      // Patch the in-transaction method that the runtime actually calls:
+      (recordMutation as unknown as { updateRecordInTransaction: jest.Mock }).updateRecordInTransaction = updateInTx;
+
+      actionHandler.execute.mockResolvedValue({
+        type: 'modify_record',
+        changes: { name: 'Modified' },
+      });
+
+      automationsForCollection = [
+        automation({
+          id: 'auto-A',
+          actions: [{ id: 'act-1', type: 'set_value', config: { property: 'name', value: 'Modified' } }],
+        }),
+      ];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-1',
+          executionChain: ['auto-prev:rec-0'],
+          executionDepth: 2,
+        }),
+      );
+
+      // The mutation receives both the chain (with auto-A added) and the
+      // incremented depth.
+      expect(updateInTx).toHaveBeenCalled();
+      const params = updateInTx.mock.calls[0][0];
+      expect(params.executionChain).toEqual(
+        expect.arrayContaining(['auto-prev:rec-0', 'auto-A:rec-1']),
+      );
+      // Inbound depth was 2 → mutation publishes at depth=3 so the next
+      // runtime invocation knows it's the 3rd generation.
+      expect(params.executionDepth).toBe(3);
+    });
+
+    it('forwards executionChain + executionDepth onto create_record outbox events', async () => {
+      actionHandler.execute.mockResolvedValue({
+        type: 'create_record',
+        output: { collection: 'tasks', values: { name: 'New' } },
+      });
+
+      automationsForCollection = [
+        automation({
+          id: 'auto-A',
+          actions: [
+            {
+              id: 'act-1',
+              type: 'create_record',
+              config: { collectionCode: 'tasks', values: { name: 'New' } },
+            },
+          ],
+        }),
+      ];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-1',
+          executionChain: ['auto-prev:rec-0'],
+          executionDepth: 2,
+        }),
+      );
+
+      expect(recordMutation.createRecord).toHaveBeenCalled();
+      const params = recordMutation.createRecord.mock.calls[0][0];
+      expect(params.executionChain).toEqual(
+        expect.arrayContaining(['auto-prev:rec-0', 'auto-A:rec-1']),
+      );
+      expect(params.executionDepth).toBe(3);
+    });
+
+    it('reconstructs chain Set from inbound payload (Set.has lookup, not Array.includes)', async () => {
+      // The runtime should treat the inbound array as a Set; verify by
+      // having the same automation id appear in the chain string and
+      // confirming the lookup catches it.
+      automationsForCollection = [automation({ id: 'auto-cycle' })];
+
+      await service.processRecordEvent(
+        event({
+          recordId: 'rec-X',
+          executionChain: ['auto-cycle:rec-X', 'auto-other:rec-Y'],
+          executionDepth: 3,
+        }),
+      );
+
+      // auto-cycle on rec-X is in the chain, so it must be skipped.
+      const skipped = executionLog.log.mock.calls.filter(
+        (call) => call[0].skippedReason === 'Circular automation reference detected',
+      );
+      expect(skipped.length).toBe(1);
     });
   });
 
@@ -382,8 +590,12 @@ describe('AutomationRuntimeService', () => {
 
       await service.processRecordEvent(event());
 
+      // ExecutionLog.log is called with (options, mgr) inside withAudit; the
+      // second arg is the transactional EntityManager handed in by the
+      // mocked dataSource.transaction.
       expect(executionLog.log).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'success' }),
+        expect.anything(),
       );
     });
 
@@ -394,6 +606,7 @@ describe('AutomationRuntimeService', () => {
 
       expect(executionLog.log).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'success' }),
+        expect.anything(),
       );
     });
 
@@ -426,6 +639,7 @@ describe('AutomationRuntimeService', () => {
 
       expect(executionLog.log).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'success' }),
+        expect.anything(),
       );
     });
 
@@ -461,6 +675,7 @@ describe('AutomationRuntimeService', () => {
           status: 'skipped',
           skippedReason: 'Condition not met',
         }),
+        expect.anything(),
       );
     });
   });
@@ -643,8 +858,9 @@ describe('AutomationRuntimeService — transactional audit', () => {
     const executionLog = new ExecutionLogService(dataSource);
     const outboxPublisher = new OutboxPublisherService(dataSource);
     const authz = {
-      ensureTableAccess: jest.fn(),
-      filterWritableFields: jest.fn(async (_ctx: any, _t: any, p: any) => p),
+      ensureCollectionAccess: jest.fn(),
+      filterWritableFieldsForCollection: jest.fn(async (_ctx: any, _c: any, p: any) => p),
+      getAuthorizedFields: jest.fn(async () => []),
     } as any;
     const recordMutation = new RecordMutationService(dataSource, authz, outboxPublisher);
 
@@ -656,6 +872,7 @@ describe('AutomationRuntimeService — transactional audit', () => {
       executionLog,
       recordMutation,
       outboxPublisher,
+      authz,
     );
 
     return { service, executionLog, recordMutation };

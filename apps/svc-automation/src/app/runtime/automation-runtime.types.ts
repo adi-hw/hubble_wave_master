@@ -41,7 +41,13 @@ export interface ExecutionContext {
   };
   depth: number;
   maxDepth: number;
-  executionChain: string[];
+  // Set of `${automationId}:${recordId}` keys representing every
+  // (automation, record) pair already executed in this chain. Includes the
+  // triggering record id so legitimate cross-record fan-out (same automation
+  // firing on different records) is allowed while the same (automation,
+  // record) re-entry is detected as a cycle. Set provides O(1) lookup
+  // versus the prior array.includes() linear scan.
+  executionChain: Set<string>;
   outputs: Record<string, unknown>;
   errors: Array<{ property: string; message: string }>;
   warnings: Array<{ property: string; message: string }>;
@@ -205,4 +211,13 @@ export interface RecordEventPayload {
   userId?: string | null;
   metadata?: Record<string, unknown>;
   occurredAt: string;
+  // Cross-invocation cycle / depth state. Populated when an outbox event was
+  // emitted by an automation chain so the next runtime invocation can:
+  //  - detect (automation, record) re-entry (executionChain), and
+  //  - enforce MAX_DEPTH across outbox-driven re-invocations (executionDepth).
+  // Absent on user-originated events (depth defaults to 1, chain to empty).
+  // Wire format is a string array because outbox payloads are persisted as
+  // JSON; the runtime reconstructs a Set on entry.
+  executionChain?: string[];
+  executionDepth?: number;
 }
