@@ -7,9 +7,18 @@ describe('ComputedPropertyDispatcher — Phase 1 §6.5 wire-through', () => {
     };
     const lookupService = { resolveAllLookups: jest.fn().mockResolvedValue({}) };
     const hierarchicalService = { reparent: jest.fn().mockResolvedValue(undefined) };
+    // Chainable QueryBuilder mock — the SUT's enqueueRollupRecompute uses
+    // createQueryBuilder().where().andWhere().andWhere().getCount() to skip
+    // duplicate pending recomputes. Returning 0 lets the save proceed.
+    const queryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
     const outboxRepo = {
       create: jest.fn().mockImplementation((p) => p),
       save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
     const dataSource = {
       query: jest.fn().mockResolvedValue([]),

@@ -33,6 +33,21 @@ const BANNED_PATTERNS: Array<{
   {
     pattern: /\beval\s*\(/,
     description: 'eval() is not allowed',
+    allowlist: new Set([
+      // Sandbox bypass tests — eval is the test subject. The script-sandbox
+      // service rejects eval inside user-supplied scripts; the spec exercises
+      // that rejection path with literal eval() snippets passed AS DATA into
+      // evaluateCondition / execute. JavaScript eval is never invoked by the
+      // spec; the strings are parsed by expr-eval and rejected by the
+      // deny-list. Refs Plan §S5 W1.9 / Fix 6.
+      'apps/svc-automation/src/app/runtime/script-sandbox.service.spec.ts',
+      // Redis client EVAL command for atomic Lua scripts. The Lua source is a
+      // hardcoded constant (release-the-lock-if-we-still-own-it pattern). No
+      // user input flows into the script and Redis Lua is server-side
+      // sandboxed. This is `client.eval(lua, ...)`, NOT JavaScript eval.
+      'apps/svc-ava/src/app/embedding.controller.ts',
+      'apps/svc-insights/src/app/backup/backup.service.ts',
+    ]),
   },
   {
     pattern: /\bnew\s+Function\s*\(/,
