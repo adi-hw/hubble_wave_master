@@ -40,7 +40,8 @@
     "authz:check": "npx ts-node tools/authz-bypass-check.ts",
     "audit:check": "npx ts-node tools/audit-bypass-check.ts",
     "load:envelope": "npx ts-node tools/load-envelope.ts",
-    "security:check": "npx ts-node tools/security-bypass-check.ts"
+    "security:check": "npx ts-node tools/security-bypass-check.ts",
+    "service-boundary:check": "npx ts-node tools/service-boundary-check.ts"
   },
   "private": true,
   "dependencies": {
