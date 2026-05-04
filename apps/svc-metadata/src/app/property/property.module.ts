@@ -13,6 +13,7 @@ import { PropertyService } from './property.service';
 import { PropertyStorageService } from './property-storage.service';
 import { PropertyAvaService } from './property-ava.service';
 import { BehavioralAttributesService } from './behavioral-attributes.service';
+import { PropertyReferenceScanner } from './reference-scanner.service';
 
 @Module({
   imports: [
@@ -31,8 +32,9 @@ import { BehavioralAttributesService } from './behavioral-attributes.service';
     PropertyStorageService,
     PropertyAvaService,
     BehavioralAttributesService,
+    PropertyReferenceScanner,
   ],
-  exports: [PropertyService, PropertyStorageService, BehavioralAttributesService],
+  exports: [PropertyService, PropertyStorageService, BehavioralAttributesService, PropertyReferenceScanner],
 })
 export class PropertyModule {}
 

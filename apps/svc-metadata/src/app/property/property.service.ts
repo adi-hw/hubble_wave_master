@@ -10,6 +10,7 @@ import {
   PropertyType,
   type PropertyBehavioralAttributes,
 } from '@hubblewave/instance-db';
+import { PropertyReferenceScanner, PropertyReferenceReport } from './reference-scanner.service';
 
 export interface CreatePropertyDto {
   code: string;
@@ -80,12 +81,19 @@ export class PropertyService {
     private readonly collectionRepo: Repository<CollectionDefinition>,
     @InjectRepository(PropertyType)
     private readonly propertyTypeRepo: Repository<PropertyType>,
+    private readonly referenceScanner: PropertyReferenceScanner,
   ) {}
 
   /**
-   * Verify a referenced collection exists in this instance. Reference
-   * collections must be present before a property can point at them.
+   * Surface every reference to a property across the dictionary.
+   * Backs the GET /properties/:id/references endpoint and also runs as a
+   * pre-check in deleteProperty().
    */
+  async findReferences(id: string): Promise<PropertyReferenceReport> {
+    const property = await this.getProperty(id);
+    return this.referenceScanner.findReferences(property);
+  }
+
   /**
    * Resolve the property type to use. Caller may pass either
    * propertyTypeId (canonical FK) or propertyTypeCode (stable
@@ -115,6 +123,10 @@ export class PropertyService {
     return type.id;
   }
 
+  /**
+   * Verify a referenced collection exists in this instance. Reference
+   * collections must be present before a property can point at them.
+   */
   private async assertReferenceCollectionExists(referenceCollectionId: string): Promise<void> {
     const exists = await this.collectionRepo.findOne({
       where: { id: referenceCollectionId },
@@ -253,6 +265,10 @@ export class PropertyService {
 
     const propertyTypeId = await this.resolvePropertyTypeId(dto);
     const applicationId = await this.getCollectionApplicationId(collectionId);
+
+    const columnName = dto.columnName || this.generateColumnName(dto.code);
+    await this.assertColumnNameAvailable(collectionId, columnName);
+
     const maxPosition = await this.getMaxPosition(collectionId);
 
     const property = this.propertyRepo.create({
@@ -262,7 +278,7 @@ export class PropertyService {
       name: dto.name || dto.code,
       description: dto.description,
       propertyTypeId,
-      columnName: dto.columnName || this.generateColumnName(dto.code),
+      columnName,
       config: dto.config || {},
       isRequired: dto.isRequired ?? false,
       isUnique: dto.isUnique ?? false,
@@ -390,6 +406,12 @@ export class PropertyService {
     }
 
     const applicationId = await this.getCollectionApplicationId(collectionId);
+
+    // Per-request dedupe of computed column names — complementary to the
+    // dictionary-wide check below; catches collisions inside a single payload
+    // before they hit the database.
+    const requestColumnNames = new Map<string, string>();
+
     let maxPosition = await this.getMaxPosition(collectionId);
 
     for (let i = 0; i < properties.length; i++) {
@@ -405,6 +427,19 @@ export class PropertyService {
       }
 
       try {
+        const columnName = dto.columnName || this.generateColumnName(dto.code);
+
+        const collidingCodeInRequest = requestColumnNames.get(columnName);
+        if (collidingCodeInRequest) {
+          throw new ConflictException(
+            `Column name "${columnName}" collides with property "${collidingCodeInRequest}" in the same request after truncation. Use a shorter or more distinctive code.`,
+          );
+        }
+        await this.assertColumnNameAvailable(collectionId, columnName);
+        requestColumnNames.set(columnName, dto.code);
+
+        const propertyTypeId = await this.resolvePropertyTypeId(dto);
+
         maxPosition++;
         const property = this.propertyRepo.create({
           collectionId,
@@ -412,8 +447,8 @@ export class PropertyService {
           code: dto.code,
           name: dto.name || dto.code,
           description: dto.description,
-          propertyTypeId: dto.propertyTypeId,
-          columnName: dto.columnName || this.generateColumnName(dto.code),
+          propertyTypeId,
+          columnName,
           config: dto.config || {},
           isRequired: dto.isRequired ?? false,
           isUnique: dto.isUnique ?? false,
@@ -561,7 +596,14 @@ export class PropertyService {
     if (dto.metadata !== undefined) {
       updateData.metadata = this.mergeMetadata(dto.metadata, 'draft', existing.metadata);
     }
-    if (dto.columnName !== undefined) updateData.columnName = dto.columnName;
+    if (dto.columnName !== undefined && dto.columnName !== existing.columnName) {
+      await this.assertColumnNameAvailable(
+        existing.collectionId,
+        dto.columnName,
+        existing.id,
+      );
+      updateData.columnName = dto.columnName;
+    }
 
     if (Object.keys(updateData).length > 0) {
       updateData.status = 'draft';
@@ -677,7 +719,12 @@ export class PropertyService {
   }
 
   /**
-   * Delete a property
+   * Delete a property.
+   *
+   * Surfaces dependents (formulas, views, automations, forms, validation
+   * rules, display rules) before performing the soft-delete. Operators must
+   * explicitly pass force=true to bypass — that path is also used to remove
+   * system-flagged properties.
    */
   async deleteProperty(
     id: string,
@@ -689,6 +736,18 @@ export class PropertyService {
 
     if (property.isSystem && !force) {
       throw new BadRequestException('Cannot delete system property without force flag');
+    }
+
+    if (!force) {
+      const refs = await this.referenceScanner.findReferences(property);
+      if (refs.total > 0) {
+        throw new ConflictException({
+          kind: 'in-use',
+          message: `Property '${property.code}' has ${refs.total} reference(s) and cannot be deleted. Use force=true to override.`,
+          property: { id: property.id, code: property.code, collectionId: property.collectionId },
+          refs,
+        });
+      }
     }
 
     if (force) {
@@ -739,7 +798,10 @@ export class PropertyService {
   }
 
   /**
-   * Generate a database column name from a property code
+   * Generate a database column name from a property code.
+   * Postgres caps identifiers at 63 bytes — two long codes that share a prefix
+   * collapse to the same physical column name. assertColumnNameAvailable()
+   * guards against silent overwrite.
    */
   private generateColumnName(code: string): string {
     return code
@@ -747,6 +809,34 @@ export class PropertyService {
       .replace(/[^a-z0-9_]/g, '_')
       .replace(/^_+|_+$/g, '')
       .substring(0, 63);
+  }
+
+  /**
+   * Reject a column name that would collide with an existing active property
+   * in the same collection. Catches the silent-corruption case where two long
+   * property codes truncate to the same 63-byte physical column name.
+   */
+  private async assertColumnNameAvailable(
+    collectionId: string,
+    columnName: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const query = this.propertyRepo
+      .createQueryBuilder('property')
+      .where('property.collection_id = :collectionId', { collectionId })
+      .andWhere('property.column_name = :columnName', { columnName })
+      .andWhere('property.is_active = :isActive', { isActive: true });
+
+    if (excludeId) {
+      query.andWhere('property.id != :excludeId', { excludeId });
+    }
+
+    const colliding = await query.getOne();
+    if (colliding) {
+      throw new ConflictException(
+        `Column name "${columnName}" collides with property "${colliding.code}" after truncation. Use a shorter or more distinctive code.`,
+      );
+    }
   }
 
   private mergeMetadata(
