@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import {
   AuthorizationModule,
   COLLECTION_ACL_REPOSITORY,
@@ -49,6 +49,7 @@ import { ChangePackageModule } from './change-packages/change-package.module';
   imports: [
     InstanceDbModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
     AuthorizationModule.forRoot({

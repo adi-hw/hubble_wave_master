@@ -1,4 +1,5 @@
 export * from './lib/auth-guard.module';
+export * from './lib/global-guards.module';
 export * from './lib/jwt.guard';
 export * from './lib/current-user.decorator';
 export * from './lib/request-context.interface';

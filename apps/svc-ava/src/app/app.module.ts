@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AIModule } from '@hubblewave/ai';
 import { InstanceDbModule } from '@hubblewave/instance-db';
-import { AuthGuardModule } from '@hubblewave/auth-guard';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import { AuthorizationModule } from '@hubblewave/authorization';
 import { RedisModule } from '@hubblewave/redis';
 import { ChatController } from './chat.controller';
@@ -43,6 +43,7 @@ import {
     InstanceDbModule,
     AIModule,
     AuthGuardModule,
+    GlobalGuardsModule,
     AuthorizationModule.forInstance(),
     RedisModule.forRoot(),
     SearchModule,
