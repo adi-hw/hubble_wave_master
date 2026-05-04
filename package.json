@@ -38,7 +38,8 @@
     "compliance:check:json": "npx ts-node tools/design-compliance/terminology-scanner.ts --json",
     "authz:check": "npx ts-node tools/authz-bypass-check.ts",
     "load:envelope": "npx ts-node tools/load-envelope.ts",
-    "security:check": "npx ts-node tools/security-bypass-check.ts"
+    "security:check": "npx ts-node tools/security-bypass-check.ts",
+    "deps:check": "npx ts-node tools/approved-deps-check.ts"
   },
   "private": true,
   "dependencies": {
