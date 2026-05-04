@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { SessionService, SessionInfo } from './session.service';
+import { SessionService } from './session.service';
 import { RefreshToken } from '@hubblewave/instance-db';
 
 const mockRefreshTokenRepository = {
