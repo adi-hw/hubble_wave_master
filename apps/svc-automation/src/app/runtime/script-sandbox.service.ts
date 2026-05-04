@@ -9,6 +9,16 @@ interface ScriptResult {
   durationMs: number;
 }
 
+interface ExprToken {
+  type: string;
+  value: unknown;
+}
+
+interface ParsedExpression {
+  tokens: ExprToken[];
+  evaluate: (values: Record<string, unknown>) => unknown;
+}
+
 const SAFE_FUNCTIONS = {
   length: (s: unknown) => String(s ?? '').length,
   upper: (s: unknown) => String(s ?? '').toUpperCase(),
@@ -103,12 +113,117 @@ export class ScriptSandboxService {
       operators: {
         in: false,
         assignment: false,
+        // Disable expr-eval's built-in unary forms for names that overlap with
+        // SAFE_FUNCTIONS / common record fields. With these enabled, `length`
+        // would parse as a prefix operator, making `length == 5` a parse
+        // error and shadowing any record field of the same name. We re-expose
+        // the same behavior through the SAFE_FUNCTIONS registration below, so
+        // `length(value)` continues to work as a normal function call.
+        length: false,
+        abs: false,
+        ceil: false,
+        floor: false,
+        round: false,
       },
     });
 
     for (const [name, fn] of Object.entries(SAFE_FUNCTIONS)) {
       this.parser.functions[name] = fn;
     }
+  }
+
+  /**
+   * Make scope variables shadow registered SAFE_FUNCTIONS for bare-identifier
+   * lookups. expr-eval's IVAR resolver checks `parser.functions` before the
+   * values scope, so a record field named `count` would resolve to the
+   * `count(arr)` helper rather than the field value. Function-call syntax
+   * (e.g. `count(items)`) still routes to SAFE_FUNCTIONS — only standalone
+   * identifier reads are rewritten to point at scope sentinels.
+   */
+  private resolveScopePrecedence(
+    expression: ParsedExpression,
+    values: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const tokens = expression.tokens;
+    const collisionNames = new Set<string>();
+    for (const key of Object.keys(values)) {
+      if (key in this.parser.functions) {
+        collisionNames.add(key);
+      }
+    }
+    if (collisionNames.size === 0) {
+      return values;
+    }
+
+    // Stack simulation: each entry holds the source-token index that produced
+    // the value currently on the stack. When IFUNCALL pops its function slot,
+    // the producing IVAR is a function-call site and must remain unmodified.
+    const stack: number[] = [];
+    const functionCallSites = new Set<number>();
+    const PUSH_ONLY = new Set(['INUMBER', 'IVARNAME', 'IVAR', 'IEXPR', 'IEXPREVAL']);
+    const POP1_PUSH1 = new Set(['IOP1', 'IMEMBER']);
+    const POP2_PUSH1 = new Set(['IOP2']);
+    const POP3_PUSH1 = new Set(['IOP3']);
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const type = token.type;
+      if (PUSH_ONLY.has(type)) {
+        stack.push(i);
+      } else if (POP1_PUSH1.has(type)) {
+        stack.pop();
+        stack.push(i);
+      } else if (POP2_PUSH1.has(type)) {
+        stack.pop();
+        stack.pop();
+        stack.push(i);
+      } else if (POP3_PUSH1.has(type)) {
+        stack.pop();
+        stack.pop();
+        stack.pop();
+        stack.push(i);
+      } else if (type === 'IFUNCALL') {
+        const argCount = token.value as number;
+        for (let a = 0; a < argCount; a++) stack.pop();
+        const fnIndex = stack.pop();
+        if (fnIndex !== undefined) {
+          functionCallSites.add(fnIndex);
+        }
+        stack.push(i);
+      } else if (type === 'IFUNDEF') {
+        const argCount = token.value as number;
+        stack.pop(); // body expression
+        for (let a = 0; a < argCount; a++) stack.pop();
+        stack.pop(); // name
+        stack.push(i);
+      } else if (type === 'IARRAY') {
+        const argCount = token.value as number;
+        for (let a = 0; a < argCount; a++) stack.pop();
+        stack.push(i);
+      } else if (type === 'IENDSTATEMENT') {
+        stack.pop();
+      } else {
+        // Unknown token type — leave stack alone to avoid false rewrites.
+      }
+    }
+
+    // Rewrite each value-site IVAR token whose name collides with a function.
+    let scope: Record<string, unknown> | null = null;
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (token.type !== 'IVAR') continue;
+      const name = token.value as string;
+      if (!collisionNames.has(name)) continue;
+      if (functionCallSites.has(i)) continue;
+      // Sentinel keys are unique per call site to avoid clobbering.
+      const sentinel = `__hw_scope_${name}_${i}`;
+      token.value = sentinel;
+      if (scope === null) {
+        scope = { ...values };
+      }
+      scope[sentinel] = values[name];
+    }
+    return scope ?? values;
   }
 
   private validateScript(script: string): void {
@@ -157,8 +272,12 @@ export class ScriptSandboxService {
         variables[key] = value;
       }
 
+      const scope = this.resolveScopePrecedence(
+        expression as unknown as ParsedExpression,
+        variables,
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = expression.evaluate(variables as any);
+      const result = expression.evaluate(scope as any);
 
       let changes: Record<string, unknown> | undefined;
       if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -211,8 +330,12 @@ export class ScriptSandboxService {
         variables[key] = value;
       }
 
+      const scope = this.resolveScopePrecedence(
+        expression as unknown as ParsedExpression,
+        variables,
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return Boolean(expression.evaluate(variables as any));
+      return Boolean(expression.evaluate(scope as any));
     } catch (error) {
       this.logger.error(`Condition evaluation failed: ${(error as Error).message}`);
       return false;
