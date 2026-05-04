@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, ForbiddenException, NotFoundException 
 import { DataSource } from 'typeorm';
 import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
+import { withAudit } from '@hubblewave/instance-db';
 import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
 import { ModelRegistryService } from './model-registry.service';
 import { HierarchicalService } from './formula/hierarchical.service';
@@ -262,13 +263,31 @@ export class DataService {
 
     const physicalTable = this.buildPhysicalTableRaw(model);
     const sql = `INSERT INTO ${physicalTable} (${columns.join(', ')}) VALUES (${values.join(', ')}) RETURNING id`;
-    const ds = this.dataSource;
-    const result = await ds.query(sql, params);
-    const newId = result[0].id;
+
+    // Insert + audit run in one transaction. Canon §10: the create
+    // mutation and its audit row commit or roll back as a unit, so a
+    // process kill mid-write cannot leave a record without a trail.
+    const newId = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const result = await mgr.query(sql, params);
+      const insertedId = result[0].id;
+
+      recordAudit({
+        userId: ctx.userId,
+        collectionCode,
+        recordId: insertedId,
+        action: 'create',
+        newValues: payload,
+      });
+
+      return insertedId;
+    });
 
     // Hierarchical executor — populate the materialized path column
     // for new records. Cycle detection is unnecessary on insert
-    // because no descendants exist yet.
+    // because no descendants exist yet. Runs post-commit because
+    // hierarchicalService maintains its own transaction; nesting is
+    // out of scope for this fix and the path column is recoverable by
+    // a backfill if it transiently disagrees with the parent column.
     const hierarchical = this.findHierarchicalProperty(allProperties, payload);
     if (hierarchical) {
       const tableName = this.ensureSafeIdentifier(model.storageTable, 'table');
@@ -277,7 +296,7 @@ export class DataService {
         newId,
         hierarchical.incomingParentId,
       );
-      await ds.query(
+      await this.dataSource.query(
         `UPDATE ${physicalTable} SET "${hierarchical.pathColumn}" = $1 WHERE id = $2`,
         [path, newId],
       );
@@ -294,13 +313,6 @@ export class DataService {
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
     const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
-
-    const ds = this.dataSource;
-
-    // SECURITY: Use TypeORM query builder for safe parameterized updates
-    const qb = ds.createQueryBuilder()
-      .update(this.buildPhysicalTableForQb(model))
-      .where('id = :id', { id });
 
     const updateValues: Record<string, any> = {};
     const jsonUpdates: Record<string, any> = {};
@@ -330,7 +342,9 @@ export class DataService {
     // assert the new parent doesn't introduce a cycle, then update the
     // path column for self plus all descendants. Done before the main
     // UPDATE so that any cycle aborts the request with a clean error
-    // rather than half-applying the change.
+    // rather than half-applying the change. Runs in its own transaction
+    // (HierarchicalService.reparent owns it); audit covers the main
+    // UPDATE only.
     const hierarchical = this.findHierarchicalProperty(allProperties, payload);
     if (hierarchical) {
       const tableName = this.ensureSafeIdentifier(model.storageTable, 'table');
@@ -350,15 +364,44 @@ export class DataService {
       }
     }
 
-    qb.set(updateValues);
+    // Capture pre-state for the audit oldValues. Read happens outside
+    // the transaction; the read is consistent because the row id is
+    // immutable and concurrent updates are serialized at the row level
+    // by Postgres when the UPDATE below runs.
+    const before = await this.getOne(ctx, collectionCode, id).catch(() => null);
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'update', this.buildPhysicalTableForQb(model));
-    rlsClauses.forEach((clause) => qb.andWhere(clause));
-    qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
+      ctx,
+      model.collectionId,
+      'update',
+      this.buildPhysicalTableForQb(model),
+    );
 
-    const result = await qb.execute();
-    if (result.affected === 0) throw new NotFoundException();
+    // Update + audit run in one transaction. Canon §10: a successful
+    // record update with no audit row (or vice versa) is forbidden;
+    // wrapping both writes here makes it impossible.
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const qb = mgr.createQueryBuilder()
+        .update(this.buildPhysicalTableForQb(model))
+        .set(updateValues)
+        .where('id = :id', { id });
+      rlsClauses.forEach((clause) => qb.andWhere(clause));
+      qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+
+      const result = await qb.execute();
+      if (result.affected === 0) throw new NotFoundException();
+
+      recordAudit({
+        userId: ctx.userId,
+        collectionCode,
+        recordId: id,
+        action: 'update',
+        oldValues: before?.record ?? null,
+        newValues: payload,
+      });
+    });
+
     return this.getOne(ctx, collectionCode, id);
   }
 
@@ -367,21 +410,41 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'delete');
 
-    const ds = this.dataSource;
-
-    // SECURITY: Use TypeORM query builder for safe parameterized deletes
-    const qb = ds.createQueryBuilder()
-      .delete()
-      .from(this.buildPhysicalTableForQb(model))
-      .where('id = :id', { id });
+    // Capture pre-state for the audit oldValues. If the record is
+    // already gone, before is null and the DELETE below will fail with
+    // NotFoundException — both branches preserve the original API.
+    const before = await this.getOne(ctx, collectionCode, id).catch(() => null);
 
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'delete', this.buildPhysicalTableForQb(model));
-    rlsClauses.forEach((clause) => qb.andWhere(clause));
-    qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
+      ctx,
+      model.collectionId,
+      'delete',
+      this.buildPhysicalTableForQb(model),
+    );
 
-    const result = await qb.execute();
-    if (result.affected === 0) throw new NotFoundException();
+    // Delete + audit run in one transaction. Canon §10: a record gone
+    // from the DB without an audit row is forbidden.
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const qb = mgr.createQueryBuilder()
+        .delete()
+        .from(this.buildPhysicalTableForQb(model))
+        .where('id = :id', { id });
+      rlsClauses.forEach((clause) => qb.andWhere(clause));
+      qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+
+      const result = await qb.execute();
+      if (result.affected === 0) throw new NotFoundException();
+
+      recordAudit({
+        userId: ctx.userId,
+        collectionCode,
+        recordId: id,
+        action: 'delete',
+        oldValues: before?.record ?? null,
+      });
+    });
+
     return { success: true };
   }
 
@@ -407,13 +470,6 @@ export class DataService {
     const allProperties = await this.modelRegistry.getProperties(collectionCode, ctx.roles);
     const writableProperties = await this.authz.filterWritableFieldsForCollection(ctx, model.collectionId, allProperties);
     const allowedPropertyCodes = new Set(writableProperties.map((p) => p.code));
-
-    const ds = this.dataSource;
-
-    // SECURITY: Use TypeORM query builder for safe parameterized bulk updates
-    const qb = ds.createQueryBuilder()
-      .update(this.buildPhysicalTableForQb(model))
-      .whereInIds(ids);
 
     const updateValues: Record<string, any> = {};
     const jsonUpdates: Record<string, any> = {};
@@ -443,18 +499,41 @@ export class DataService {
     // Add updated_at timestamp
     updateValues['updated_at'] = () => 'NOW()';
 
-    qb.set(updateValues);
-
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'update', this.buildPhysicalTableForQb(model));
-    rlsClauses.forEach((clause) => qb.andWhere(clause));
-    qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
+      ctx,
+      model.collectionId,
+      'update',
+      this.buildPhysicalTableForQb(model),
+    );
 
-    const result = await qb.execute();
+    // Bulk update + audit run in one transaction. Canon §10: a single
+    // bulk_update audit row covers the entire batch; partial commits
+    // are forbidden because they would orphan the rows that landed.
+    const updatedCount = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const qb = mgr.createQueryBuilder()
+        .update(this.buildPhysicalTableForQb(model))
+        .set(updateValues)
+        .whereInIds(ids);
+      rlsClauses.forEach((clause) => qb.andWhere(clause));
+      qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+
+      const result = await qb.execute();
+      const affected = result.affected || 0;
+
+      recordAudit({
+        userId: ctx.userId,
+        collectionCode,
+        action: 'bulk_update',
+        newValues: { ids, payload, affected },
+      });
+
+      return affected;
+    });
 
     return {
       success: true,
-      updatedCount: result.affected || 0,
+      updatedCount,
       requestedCount: ids.length,
     };
   }
@@ -473,24 +552,41 @@ export class DataService {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'delete');
 
-    const ds = this.dataSource;
-
-    // SECURITY: Use TypeORM query builder for safe parameterized bulk deletes
-    const qb = ds.createQueryBuilder()
-      .delete()
-      .from(this.buildPhysicalTableForQb(model))
-      .whereInIds(ids);
-
     // SECURITY: Apply safe parameterized row-level security predicates
-    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(ctx, model.collectionId, 'delete', this.buildPhysicalTableForQb(model));
-    rlsClauses.forEach((clause) => qb.andWhere(clause));
-    qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+    const { clauses: rlsClauses, params: rlsParams } = await this.authz.buildCollectionRowLevelClause(
+      ctx,
+      model.collectionId,
+      'delete',
+      this.buildPhysicalTableForQb(model),
+    );
 
-    const result = await qb.execute();
+    // Bulk delete + audit run in one transaction. Canon §10: rows
+    // erased without an audit row are forbidden; the audit captures
+    // the requested ids and the actually-affected count for reconciliation.
+    const deletedCount = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const qb = mgr.createQueryBuilder()
+        .delete()
+        .from(this.buildPhysicalTableForQb(model))
+        .whereInIds(ids);
+      rlsClauses.forEach((clause) => qb.andWhere(clause));
+      qb.setParameters({ ...this.buildAbacParams(ctx), ...rlsParams });
+
+      const result = await qb.execute();
+      const affected = result.affected || 0;
+
+      recordAudit({
+        userId: ctx.userId,
+        collectionCode,
+        action: 'bulk_delete',
+        oldValues: { ids, affected },
+      });
+
+      return affected;
+    });
 
     return {
       success: true,
-      deletedCount: result.affected || 0,
+      deletedCount,
       requestedCount: ids.length,
     };
   }
