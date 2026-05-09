@@ -49,7 +49,8 @@
     "cicd:check": "npx ts-node tools/ci-cd-wiring-check.ts",
     "selftest:framework": "npx ts-node tools/scanner-self-test.ts",
     "selftest:security": "npx ts-node tools/security-bypass-check-selftest.ts",
-    "selftest:scanners": "npm run selftest:framework && npm run selftest:security",
+    "selftest:authz": "npx ts-node tools/authz-bypass-check-selftest.ts",
+    "selftest:scanners": "npm run selftest:framework && npm run selftest:security && npm run selftest:authz",
     "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx ts-node tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json"
   },
   "private": true,
