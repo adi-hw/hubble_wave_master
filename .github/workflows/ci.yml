@@ -98,6 +98,30 @@ jobs:
       - name: CI/CD wiring check (F106 / W0 task 7)
         run: npm run cicd:check
 
+  # Secret-scanning gate (F111 / F119 / W0 task 8).
+  #
+  # Runs gitleaks against the diff for PRs and against the full history
+  # for push events. Fails CI on any finding outside the allowlist
+  # configured in .gitleaks.toml.
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_ENABLE_SUMMARY: true
+
   # Type checking
   typecheck:
     name: TypeScript Check
