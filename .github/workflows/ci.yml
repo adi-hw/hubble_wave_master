@@ -95,6 +95,9 @@ jobs:
       - name: Approved-dependencies check (W6.D)
         run: npm run deps:check
 
+      - name: CI/CD wiring check (F106 / W0 task 7)
+        run: npm run cicd:check
+
   # Type checking
   typecheck:
     name: TypeScript Check
