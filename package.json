@@ -50,7 +50,8 @@
     "selftest:framework": "npx ts-node tools/scanner-self-test.ts",
     "selftest:security": "npx ts-node tools/security-bypass-check-selftest.ts",
     "selftest:authz": "npx ts-node tools/authz-bypass-check-selftest.ts",
-    "selftest:scanners": "npm run selftest:framework && npm run selftest:security && npm run selftest:authz",
+    "selftest:service-boundary": "npx ts-node tools/service-boundary-check-selftest.ts",
+    "selftest:scanners": "npm run selftest:framework && npm run selftest:security && npm run selftest:authz && npm run selftest:service-boundary",
     "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx ts-node tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json"
   },
   "private": true,
