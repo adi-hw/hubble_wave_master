@@ -46,7 +46,8 @@
     "security:check": "npx ts-node tools/security-bypass-check.ts",
     "service-boundary:check": "npx ts-node tools/service-boundary-check.ts",
     "deps:check": "npx ts-node tools/approved-deps-check.ts",
-    "cicd:check": "npx ts-node tools/ci-cd-wiring-check.ts"
+    "cicd:check": "npx ts-node tools/ci-cd-wiring-check.ts",
+    "selftest:scanners": "npx ts-node tools/scanner-self-test.ts"
   },
   "private": true,
   "dependencies": {

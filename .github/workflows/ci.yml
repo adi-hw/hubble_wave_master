@@ -98,6 +98,13 @@ jobs:
       - name: CI/CD wiring check (F106 / W0 task 7)
         run: npm run cicd:check
 
+      - name: Scanner self-tests (W0 task 2)
+        # Each scanner ships with a self-test that proves it catches the
+        # patterns it claims to. Without this gate, future scanner edits
+        # could silently regress detection (cf. F151 — broken
+        # compliance:check went unnoticed for some unknown duration).
+        run: npm run selftest:scanners
+
   # Secret-scanning gate (F111 / F119 / W0 task 8).
   #
   # Runs gitleaks against the diff for PRs and against the full history
