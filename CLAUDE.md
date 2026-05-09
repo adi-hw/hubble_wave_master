@@ -471,20 +471,62 @@ The codebase must enforce:
 
 Builds fail if violations exist.
 
-**Enforcement scanners (CI gates) (canon §21 TRIM, 2026-05-09):**
+**Implementation status (W0, 2026-05-09):** Every canon-claimed
+scanner or lint rule below is enforced by code AND is wired into
+.github/workflows/ci.yml as a CI job. Each scanner ships with a
+self-test that proves it catches its claimed patterns (44 assertions
+across 5 suites + 21 ESLint rule assertions = 65 verifications on
+every CI run).
 
-The following scanners run in CI and block merges on violations:
+Static-analysis scanners (8 total; all required CI jobs):
+- `npm run authz:check` (W1.2; W0 task 4 extended scope to all 11
+  instance services; svc-control-plane intentionally excluded per
+  canon §18). 1 entry tracked in KNOWN_BYPASSES → W2/F146.
+- `npm run audit:check` (W1.6; KNOWN_DEFERRED_OFFENDERS empty).
+- `npm run security:check` (W0 task 3 reconciled PUBLIC_ALLOWLIST
+  to 27 entries in 5 categories; fixed cross-platform path bug;
+  tightened detection to ignore comment references).
+- `npm run compliance:check` (W0 task 1.5 fixed broken `glob` import
+  via native fs walk; F152 strict-mode-exit bug tracked → W4).
+- `npm run service-boundary:check` (W0 task 5 added entity-write
+  bypass detection: string-getRepository + raw SQL UPDATE/INSERT/
+  DELETE; word-boundary defense). 4 ownership rules + 4 write-bypass
+  rules + 7 allowlisted reads. In the modular monolith the scanner's
+  role shifts from import-topology enforcement to entity-write
+  ownership enforcement; both modes coexist.
+- `npm run deps:check` (existing; 1 legacy carve-out → W4/bcrypt).
+- `npm run cicd:check` (W0 task 7; asserts CD ↔ CI workflow_run
+  trigger + no `if: always()` bypass outside the notify job).
+- `npm run dead-code:check` (W0 task 10; trash-pattern + phantom-dep
+  + orphan-lib detection; 12-entry allowlist all owedTo: W4).
 
-- `npm run authz:check` — call-site verification (W1.2 enforcement)
-- `npm run audit:check` — save-then-audit pattern detection (W1.6 enforcement)
-- `npm run security:check` — security pattern checks
-- `npm run deps:check` — approved-deps registry (W6.D)
-- `npm run compliance:check` — terminology scanner (running as a lint rule in W4+)
+ESLint enforcement (W0 task 6):
+- `no-warning-comments: error` (TODO/FIXME/XXX/HACK at comment start).
+- `@typescript-eslint/no-unused-vars: error` (with `^_` ignore).
+- `hw/no-versioned-identifier: error` (custom rule at
+  tools/eslint-rules/no-versioned-identifier.cjs; bans
+  *V<digits>$, Deprecated*, Temp*; legacy* and old* deliberately
+  not matched per the rule's header docs).
+- DEFERRED: react-hooks/rules-of-hooks (W1 owns F088 fix and the
+  plugin install). naming-convention (surface area too large for
+  W0; W4 cleanup pass).
+- ENFORCEMENT MODEL: `nx affected --target=lint` runs the new rules
+  on changed files. Pre-existing 89 violations in unchanged files
+  do not fail CI today; they get cleaned as files are touched in
+  later waves (the "delete ruthlessly" ratchet).
 
-**Removed scanners** (no longer relevant in modular monolith):
-- ~~`npm run service-boundary:check`~~ — irrelevant when there's only one process; the monolith's TypeScript module system enforces what the scanner used to enforce. Removed in W1 final cleanup.
+Supply-chain & secret gates (W0 tasks 8 + 9; required CI jobs):
+- `gitleaks` (per-PR + push history scan; rules at .gitleaks.toml).
+- anchore/syft + grype SBOM + CVE scan (fail-build on high severity).
+- license-checker + tools/validate-licenses.ts (allowed/blocked/
+  exception structure with reason+addedBy+addedAt).
 
-Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §3 (tech stack changes) + §9.
+Whether each gate is configured as a REQUIRED status check on the
+master branch protection rule is a GitHub repo-settings operation
+documented in `docs/plan-fixes/W00-required-status-checks.md`.
+Until that runbook is applied by the repo admin, the gates exist
+in CI but admin-merge could bypass them. Track via the W0 PR's
+follow-up issue.
 
 ---
 
@@ -544,7 +586,18 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
-- 2026-05-09 (Architecture v3 spec): Major architectural shift from 14-service distributed system to 3-process modular monolith + Day-1 mobile + AI Code Assistant + full UI Builder. Amendments: §5 SOFTEN (single-tenant default + pooled mode), §7 SOFTEN (drop 5-tier view hierarchy), §8 INVERT (merge automation + workflow), §11 SOFTEN (AI as feature surface incl. AI Code Assistant), §12 PER-FEATURE (trust progression per AI feature), §17 UPDATE (monolith topology), §19 UPDATE (single Nest process per instance), §21 TRIM (drop service-boundary scanner). New: §17.5 (customization contract, the moat), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder). Vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc; preserved as forward inventory in spec Appendix D. Solo founder timeline: ~10–12 months critical path for platform-only scope. Refs spec `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
+- 2026-05-09 (Architecture v3 spec): Major architectural shift from 14-service distributed system to 3-process modular monolith + Day-1 mobile + AI Code Assistant + full UI Builder. Amendments: §5 SOFTEN (single-tenant default + pooled mode), §7 SOFTEN (drop 5-tier view hierarchy), §8 INVERT (merge automation + workflow), §11 SOFTEN (AI as feature surface incl. AI Code Assistant), §12 PER-FEATURE (trust progression per AI feature), §17 UPDATE (monolith topology), §19 UPDATE (single Nest process per instance), §21 UPDATE (W0 expanded service-boundary:check to entity-write enforcement; import-topology TRIM no longer applies). New: §17.5 (customization contract, the moat), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder). Vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc; preserved as forward inventory in spec Appendix D. Solo founder timeline: ~10–12 months critical path for platform-only scope. Refs spec `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
+- 2026-05-09 (W0 — Foundation): §21 implementation status replaced
+  with current reality. 8 architectural scanners + ESLint rules +
+  gitleaks + SBOM + license-checker now CI-gated. Each new scanner
+  ships with a self-test (44 + 21 = 65 assertions on every CI).
+  CD ↔ CI workflow_run gating closes F106. PUBLIC_ALLOWLIST
+  reconciled (F105). Plan Fix 1 amendment from 2026-05 is partly
+  superseded: the service-boundary scanner now enforces entity-write
+  bypass (string-getRepository + raw SQL) in addition to the existing
+  import-topology rule (W0 task 5 / F056). Cf. master roadmap at
+  docs/plan-fixes/00-master-remediation-roadmap.md and W0 acceptance
+  at docs/plan-fixes/W00-acceptance.md.
 - 2026-05 (Plan Fix 1): §1 deferred-offender list pruned — the
   `apps/svc-data/src/app/automation/` deprecation entry is removed
   because the duplicate runtime is gone. svc-automation now owns the
