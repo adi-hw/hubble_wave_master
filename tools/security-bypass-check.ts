@@ -11,19 +11,79 @@ const APP_ROOT = join(ROOT, 'apps');
 const LIB_ROOT = join(ROOT, 'libs');
 const IGNORE_DIRS = new Set(['node_modules', 'dist', 'tmp', '.nx', '.git']);
 
+/**
+ * Allowlist of source paths that legitimately use @Public() to opt out
+ * of the global JwtAuthGuard chain.
+ *
+ * Each entry MUST fall into one of these categories:
+ *   1. Health endpoints (k8s liveness/readiness; no caller identity).
+ *   2. Authentication entry points (login, refresh, register, MFA enroll,
+ *      magic-link, password-reset, email-verification, SSO callbacks).
+ *   3. Public catalogs intentionally readable without auth (theme reads
+ *      that render on the login page; pack catalog browse).
+ *   4. OAuth / OIDC integration callbacks (the IdP, not a HW user, calls).
+ *   5. Pack install endpoints whose authorization is enforced by a
+ *      dedicated guard (PackInstallGuard) that supports BOTH
+ *      control-plane install tokens and user JWTs — @Public() opts out
+ *      of the global chain so the dedicated guard can be authoritative.
+ *
+ * Drift detection (W0 task 3): every @Public() site under apps/<svc>/src/
+ * MUST be in this allowlist. The scanner self-test asserts both that
+ * the allowlist matches reality AND that a planted unallowlisted
+ * @Public() fails the scanner.
+ *
+ * Reconciled with reality on 2026-05-09 (W0 task 3 / F105) — was 11
+ * entries, now 27, every entry in a category. Cross-platform path
+ * normalization fixed the same commit (Windows local previously hid
+ * the drift because the filter used forward-slash on backslash paths).
+ */
 const PUBLIC_ALLOWLIST = new Set([
-  'apps/svc-control-plane/src/app/auth/auth.controller.ts',
-  'apps/svc-control-plane/src/app/packs/packs.catalog.controller.ts',
-  'apps/svc-data/src/app/integration/oauth2.controller.ts',
+  // -------------------------------------------------------------------
+  // Category 1: Health endpoints (k8s probes).
+  // -------------------------------------------------------------------
+  'apps/svc-automation/src/app/health.controller.ts',
+  'apps/svc-ava/src/app/health.controller.ts',
+  'apps/svc-control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
+  'apps/svc-data/src/app/health.controller.ts',
   'apps/svc-identity/src/app/health.controller.ts',
+  'apps/svc-insights/src/app/health.controller.ts',
+  'apps/svc-instance-api/src/app/health.controller.ts',
+  'apps/svc-metadata/src/app/health.controller.ts',
+  'apps/svc-notify/src/app/health.controller.ts',
+  'apps/svc-view-engine/src/app/health.controller.ts',
+  'apps/svc-workflow/src/app/health.controller.ts',
+  // -------------------------------------------------------------------
+  // Category 2: Authentication entry points.
+  // -------------------------------------------------------------------
+  'apps/svc-control-plane/src/app/auth/auth.controller.ts',
   'apps/svc-identity/src/app/auth/auth.controller.ts',
+  'apps/svc-identity/src/app/auth/email-verification.controller.ts',
   'apps/svc-identity/src/app/auth/magic-link.controller.ts',
   'apps/svc-identity/src/app/auth/password-reset.controller.ts',
-  'apps/svc-identity/src/app/auth/email-verification.controller.ts',
-  'apps/svc-identity/src/app/auth/sso/sso.controller.ts',
   'apps/svc-identity/src/app/auth/sso/sso-config.controller.ts',
+  'apps/svc-identity/src/app/auth/sso/sso.controller.ts',
   'apps/svc-identity/src/app/oidc/oidc.controller.ts',
+  'apps/svc-instance-api/src/app/identity/auth/auth.controller.ts',
+  'apps/svc-instance-api/src/app/identity/auth/sso-config.controller.ts',
+  // -------------------------------------------------------------------
+  // Category 3: Public catalogs / unauthenticated render surfaces.
+  // -------------------------------------------------------------------
+  'apps/svc-control-plane/src/app/packs/packs.catalog.controller.ts',
+  // theme read endpoints render on the unauthenticated login page; the
+  // controller has @Public on individual GET routes only — POST/PUT/
+  // DELETE remain auth-required (verified at theme.controller.ts).
+  'apps/svc-metadata/src/app/theme/theme.controller.ts',
+  // -------------------------------------------------------------------
+  // Category 4: OAuth / OIDC integration callbacks (IdP-initiated).
+  // -------------------------------------------------------------------
+  'apps/svc-data/src/app/integration/oauth2.controller.ts',
+  // -------------------------------------------------------------------
+  // Category 5: Auth handled by a dedicated guard (PackInstallGuard).
+  // -------------------------------------------------------------------
+  'apps/svc-metadata/src/app/packs/packs.controller.ts',
 ]);
+
+export { PUBLIC_ALLOWLIST };
 
 const BANNED_PATTERNS: Array<{
   pattern: RegExp;
@@ -89,11 +149,47 @@ function toRelative(filePath: string): string {
   return relative(ROOT, filePath).replace(/\\/g, '/');
 }
 
+/**
+ * Detects whether a file actually uses `@Public()` as a decorator,
+ * vs. referencing the symbol in comments / metadata reads.
+ *
+ * Files like `apps/svc-identity/src/app/abac/abac.guard.ts` reference
+ * `@Public()` in JSDoc/explanatory comments without applying the
+ * decorator. The naive `content.includes('@Public()')` check
+ * false-positives those files.
+ *
+ * Strategy:
+ *   - Strip block comments first.
+ *   - Walk each line; trim line comments off the end.
+ *   - Match `@Public()` only when it is the first non-whitespace
+ *     token on the line (decorator-on-its-own-line) OR when it is
+ *     immediately followed by another `@` (decorator chain like
+ *     `@Public() @Get()`).
+ */
+function fileUsesPublicDecorator(content: string): boolean {
+  const noBlockComments = content.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const rawLine of noBlockComments.split('\n')) {
+    const beforeComment = rawLine.replace(/\/\/.*$/, '');
+    const trimmed = beforeComment.trim();
+    if (/^@Public\(\)\s*(?:@|$)/.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function checkPublicEndpoints(violations: Violation[]) {
-  const files = walk(APP_ROOT).filter((file) => file.includes('/src/app/'));
+  // Use the normalized relative path for the path-substring filter; the
+  // raw `file` is OS-native (backslashes on Windows, forward slashes on
+  // Linux). Without normalization, Windows local runs would silently
+  // pass with zero matches while CI on Linux would catch real drift —
+  // this was the F105 backstop bug surfaced during W0 task 3.
+  const files = walk(APP_ROOT).filter((file) =>
+    toRelative(file).includes('/src/app/'),
+  );
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
-    if (!content.includes('@Public()')) {
+    if (!fileUsesPublicDecorator(content)) {
       continue;
     }
     const rel = toRelative(file);
