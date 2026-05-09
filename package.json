@@ -47,7 +47,8 @@
     "service-boundary:check": "npx ts-node tools/service-boundary-check.ts",
     "deps:check": "npx ts-node tools/approved-deps-check.ts",
     "cicd:check": "npx ts-node tools/ci-cd-wiring-check.ts",
-    "selftest:scanners": "npx ts-node tools/scanner-self-test.ts"
+    "selftest:scanners": "npx ts-node tools/scanner-self-test.ts",
+    "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx ts-node tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json"
   },
   "private": true,
   "dependencies": {

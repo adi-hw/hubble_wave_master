@@ -105,6 +105,58 @@ jobs:
         # compliance:check went unnoticed for some unknown duration).
         run: npm run selftest:scanners
 
+  # SBOM generation and vulnerability scan (F119 / W0 task 9).
+  #
+  # Uploads a SPDX-format SBOM as a workflow artifact (consumed by
+  # release packaging and the security review process) and fails CI if
+  # grype finds any high-severity CVE in the dependency tree.
+  sbom:
+    name: SBOM and CVE scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM (syft)
+        uses: anchore/sbom-action@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
+        with:
+          path: '.'
+          format: 'spdx-json'
+          artifact-name: hubblewave-sbom.spdx.json
+          output-file: hubblewave-sbom.spdx.json
+
+      - name: Vulnerability scan (grype)
+        uses: anchore/scan-action@2c901ab7378897c01b8efaa2d0c9bf519cc64b9e # v6.0.0
+        with:
+          sbom: hubblewave-sbom.spdx.json
+          fail-build: true
+          severity-cutoff: high
+
+  # License audit gate (F119 / W0 task 9).
+  #
+  # Runs license-checker against production deps and validates each
+  # package's license against tools/license-allowlist.json. Fails CI on
+  # blocked licenses (GPL family by default) or unknown licenses
+  # without an explicit exception.
+  license-audit:
+    name: License audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate licenses
+        run: |
+          mkdir -p tmp
+          npm run license:check
+
   # Secret-scanning gate (F111 / F119 / W0 task 8).
   #
   # Runs gitleaks against the diff for PRs and against the full history

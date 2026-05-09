@@ -1,0 +1,50 @@
+{
+  "_comment": "License allowlist for tools/validate-licenses.ts (W0 task 9 / F119). Production deps must resolve to a license string that contains at least one of `allowed`. Anything matching `blocked` fails CI immediately. Unknown licenses (neither allowed nor blocked) require an explicit entry in `exceptions` with reason+addedBy+addedAt. The 90-day staleness convention from dead-code-allowlist.json applies here too: exceptions unchanged for 90 days surface as 'stale; re-justify'.",
+  "allowed": [
+    "MIT",
+    "Apache-2.0",
+    "Apache 2.0",
+    "Apache License",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSD",
+    "ISC",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "CC-BY-3.0",
+    "CC-BY-4.0",
+    "Python-2.0",
+    "BlueOak-1.0.0",
+    "WTFPL",
+    "Zlib",
+    "Artistic-2.0",
+    "MPL-2.0"
+  ],
+  "blocked": [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "AGPL-1.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "SSPL-1.0",
+    "Commons-Clause"
+  ],
+  "exceptions": [
+    {
+      "package": "jszip",
+      "license": "MIT OR GPL-3.0-or-later",
+      "reason": "Dual-licensed MIT/GPL-3.0-or-later. We use under MIT. Upstream package.json declares both; license-checker picks the GPL side. Confirmed MIT acceptance in https://github.com/Stuk/jszip/blob/main/LICENSE.markdown.",
+      "addedBy": "W0 task 9",
+      "addedAt": "2026-05-09"
+    },
+    {
+      "package": "buffers",
+      "license": "Custom: http://github.com/substack/node-bufferlist",
+      "reason": "Transitive dep (substack/node-bufferlist). Upstream README + repo declare MIT; package.json predates SPDX standardization and has a non-standard license field. Treated as MIT.",
+      "addedBy": "W0 task 9",
+      "addedAt": "2026-05-09"
+    }
+  ]
+}
