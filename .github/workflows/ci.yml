@@ -98,11 +98,20 @@ jobs:
       - name: CI/CD wiring check (F106 / W0 task 7)
         run: npm run cicd:check
 
-      - name: Scanner self-tests (W0 task 2)
+      - name: Dead-code anti-resurrection check (W0 task 10 / Deletion Catalog §D.6)
+        run: npm run dead-code:check
+
+      - name: Scanner self-tests (W0 task 2 + per-scanner suites)
         # Each scanner ships with a self-test that proves it catches the
         # patterns it claims to. Without this gate, future scanner edits
         # could silently regress detection (cf. F151 — broken
         # compliance:check went unnoticed for some unknown duration).
+        # Currently 44 assertions across 5 suites:
+        #   - framework (7)
+        #   - security-bypass (7)
+        #   - authz-bypass (7)
+        #   - service-boundary (12)
+        #   - dead-code (11)
         run: npm run selftest:scanners
 
   # SBOM generation and vulnerability scan (F119 / W0 task 9).
