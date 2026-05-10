@@ -7,7 +7,7 @@ import { Repository, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { firstValueFrom, timeout, catchError } from 'rxjs';
 import { ControlPlaneUser, Instance, InstanceHealth } from '@hubblewave/control-plane-db';
-import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Minimum actor shape required to scope health queries.

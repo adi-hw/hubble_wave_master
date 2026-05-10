@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ControlPlaneUser, Instance } from '@hubblewave/control-plane-db';
 import { HealthAggregatorService } from './health-aggregator.service';
 import { HealthAggregatorController } from './health-aggregator.controller';
-import { AuditModule } from '../../../../control-plane/src/app/audit/audit.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [

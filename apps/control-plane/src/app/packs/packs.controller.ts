@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
-import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../auth/roles.decorator';
 import {
   PackDownloadUrlDto,
   PackInstallDto,

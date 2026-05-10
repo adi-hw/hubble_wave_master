@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Customer, Instance } from '@hubblewave/control-plane-db';
 import { MetricsController } from './metrics.controller';
 import { MetricsService } from './metrics.service';
-import { InstancesModule } from '../instances/instances.module';
+import { InstancesModule } from '../../../../control-plane/src/app/instances/instances.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer, Instance]), InstancesModule],

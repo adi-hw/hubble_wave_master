@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { LicensesModule } from './licenses/licenses.module';
+import { CustomersModule } from './customers/customers.module';
+import { HealthAggregatorModule } from './health-aggregator/health-aggregator.module';
+import { PacksModule } from './packs/packs.module';
+import { InstancesModule } from './instances/instances.module';
+import { TerraformModule } from './terraform/terraform.module';
 
 /**
  * ControlPlaneModule — canonical home for the platform's control plane
@@ -14,11 +20,11 @@ import { AuthModule } from './auth/auth.module';
  *   Foundation cyclic-core:
  *     [x] audit + auth (atomic bundle)
  *   Standard modules:
- *     [ ] licenses (depends on audit+auth)
- *     [ ] customers, health-aggregator, packs (single-dep on audit+auth)
+ *     [x] licenses (depends on audit+auth)
+ *     [x] customers, health-aggregator, packs (single-dep on audit+auth) — all three done
  *     [ ] recovery, settings, subscriptions (single-dep)
  *   Infrastructure cyclic-core:
- *     [ ] instances + terraform (atomic bundle)
+ *     [x] instances + terraform (atomic bundle)
  *   Final standard module:
  *     [ ] metrics (depends on instances)
  *   Final top-level (controller + service + app.module thin adapter):
@@ -27,9 +33,9 @@ import { AuthModule } from './auth/auth.module';
  *     [ ] svc-control-plane app.module thin adapter
  */
 @Module({
-  imports: [AuditModule, AuthModule],
+  imports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule],
   controllers: [],
   providers: [],
-  exports: [AuditModule, AuthModule],
+  exports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule],
 })
 export class ControlPlaneModule {}
