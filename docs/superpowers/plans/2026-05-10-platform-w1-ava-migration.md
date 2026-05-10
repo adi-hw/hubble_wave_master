@@ -382,7 +382,7 @@ to a thin adapter; legacy service stays runnable for parallel deployment.
 | nx build api / svc-identity / svc-metadata / svc-data / svc-automation / svc-ava | PASS (all 6) |
 | nx test api | PASS |
 
-**Tag:** `arc-w1-ava-complete` at HEAD `d5317ac`. 8 commits since `arc-w1-automation-complete`.
+**Tag:** `arc-w1-ava-complete`. The tag was re-pointed after the completion-note commit was added; resolve current target with `git rev-parse arc-w1-ava-complete`. 9 commits since `arc-w1-automation-complete`.
 
 ### Cumulative migration state
 
