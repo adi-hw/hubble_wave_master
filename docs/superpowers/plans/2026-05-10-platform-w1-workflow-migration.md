@@ -298,3 +298,58 @@ No issues found.
 ---
 
 **End of workflow migration plan.**
+
+---
+
+## Status: Complete (2026-05-10)
+
+ARC-W1 workflow migration complete. workflow/ folded into
+apps/api/src/app/automation/workflow/ as automation's 6th sub-area per
+canon §8 INVERT. svc-workflow reduced to thin adapter that imports
+AutomationModule (HealthController retained for k8s /health probe).
+
+### Tasks executed
+
+| Task | Commit | Note |
+|---|---|---|
+| 1. Migrate workflow/ → automation/workflow/ | `fbcd9bf` | 17 files moved; WorkflowModule registered in automation.module.ts |
+| 2. svc-workflow thin adapter | `ad3263f` | 18-line wrapper imports AutomationModule + HealthController |
+| 3. Verification + scanner allowlist + tag | (next commit) | KNOWN_VIOLATIONS entry added for the canonical §8-INVERT cross-service import (svc-workflow → svc-automation, rationale: canon §8 merger) |
+
+### Verification at tag
+
+| Check | Result |
+|---|---|
+| `authz:check` | PASS (1 deferred entry) |
+| `audit:check` | PASS |
+| `security:check` | PASS |
+| `service-boundary:check` | PASS (1 allowlisted: svc-workflow → svc-automation per canon §8) |
+| `deps:check` | PASS |
+| `dead-code:check` | PASS |
+| `selftest:scanners` | PASS (security 7, authz 7, service-boundary 12, dead-code 11, eslint-rules 14+7) |
+| nx build api / svc-identity / svc-metadata / svc-data / svc-automation / svc-ava / svc-workflow | PASS (all 7) |
+| nx test api | PASS |
+
+**Tag:** `arc-w1-workflow-complete`. Resolve with `git rev-parse arc-w1-workflow-complete`.
+
+### Cumulative migration state
+
+| Service | Status | LoC |
+|---|---|---|
+| svc-identity | ✓ | ~17,200 |
+| svc-metadata | ✓ | ~21,200 |
+| svc-data | ✓ | ~17,700 |
+| svc-automation | ✓ | ~9,865 |
+| svc-ava | ✓ | ~8,731 |
+| **svc-workflow** | **✓ folded into apps/api/automation/workflow** | **~3,592** |
+| **Total** | **6 services** | **~78,288** |
+
+### Next steps in W1
+
+- svc-control-plane (~6,000 LoC; multi-tenant by design; different shape than instance-plane migrations)
+- Fold-ins: svc-view-engine, svc-insights, svc-notify, svc-instance-api
+- W1 final cutover: delete legacy svc-* directories (including svc-workflow), delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api, tag arc-w1-complete
+
+### Note on the KNOWN_VIOLATIONS entry
+
+The service-boundary scanner flagged svc-workflow's thin-adapter import of `AutomationModule` from apps/api/automation as a cross-service violation (svc-workflow → svc-automation). The fix is NOT to refactor — the import is the canonical realization of canon §8 INVERT. Added to `KNOWN_VIOLATIONS` allowlist with rationale + follow-up. When W1 final cutover deletes apps/svc-workflow entirely, the allowlist entry can be removed.

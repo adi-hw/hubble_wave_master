@@ -45,7 +45,16 @@ const KNOWN_VIOLATIONS: Array<{
   importPath: string;
   rationale: string;
   followUp: string;
-}> = [];
+}> = [
+  {
+    file: 'apps/svc-workflow/src/app/app.module.ts',
+    importPath: '../../../api/src/app/automation/automation.module',
+    rationale:
+      'Canon §8 INVERT (commit 99487c4): automation and workflow merge into one engine. svc-workflow folded into apps/api/src/app/automation/workflow/ via arc-w1-workflow-complete. The thin adapter at svc-workflow imports AutomationModule (which includes the workflow sub-area) so svc-workflow continues serving workflow + automation endpoints during parallel deployment. The cross-service import here is the canonical realization of the §8 merger, not a violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-workflow entirely. The AutomationModule will serve workflow endpoints from apps/api alone.',
+  },
+];
 
 /**
  * Entity ownership map. Each entity is owned by exactly one service per the
