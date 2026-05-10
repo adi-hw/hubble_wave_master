@@ -16,7 +16,7 @@ import { PackCatalogService } from './pack-catalog.service';
 import { AccessIngestService } from '../access/services/access-ingest.service';
 import { SearchIngestService } from '../search/search-ingest.service';
 import { AvaIngestService } from '../ava/ava-ingest.service';
-import { InsightsIngestService } from '../insights/insights-ingest.service';
+import { InsightsIngestService } from '../../../../api/src/app/metadata/insights/insights-ingest.service';
 import { ConnectorsIngestService } from '../connectors/connectors-ingest.service';
 import { LocalizationIngestService } from '../localization/localization-ingest.service';
 

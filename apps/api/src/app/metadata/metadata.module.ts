@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScriptModule } from './script/script.module';
+import { InsightsIngestService } from './insights/insights-ingest.service';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -14,7 +15,7 @@ import { ScriptModule } from './script/script.module';
  *   [ ] decision-tables
  *   [ ] display-rules
  *   [ ] guided-processes
- *   [ ] insights
+ *   [x] insights
  *   [ ] localization
  *   [ ] metadata
  *   [ ] navigation
@@ -43,9 +44,12 @@ import { ScriptModule } from './script/script.module';
     ScriptModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    InsightsIngestService,
+  ],
   exports: [
     ScriptModule,
+    InsightsIngestService,
   ],
 })
 export class MetadataModule {}
