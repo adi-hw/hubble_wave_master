@@ -4,9 +4,9 @@ import { InstanceDbModule } from '@hubblewave/instance-db';
 import { User, UserInvitation, AuthEvent } from '@hubblewave/instance-db';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { EmailModule } from '../../../../api/src/app/identity/email/email.module';
-import { RolesModule } from '../../../../api/src/app/identity/roles/roles.module';
-import { GroupsModule } from '../../../../api/src/app/identity/groups/groups.module';
+import { EmailModule } from '../email/email.module';
+import { RolesModule } from '../roles/roles.module';
+import { GroupsModule } from '../groups/groups.module';
 
 @Module({
   imports: [

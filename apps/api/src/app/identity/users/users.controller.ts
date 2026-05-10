@@ -20,13 +20,13 @@ import {
   UpdateUserDto,
   InviteUserDto,
 } from './users.service';
-import { JwtAuthGuard } from '../../../../api/src/app/identity/auth/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../../../api/src/app/identity/roles/guards/permission.guard';
-import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
-import { CurrentUser } from '../../../../api/src/app/identity/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionGuard } from '../roles/guards/permission.guard';
+import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserStatus, AuthEvent } from '@hubblewave/instance-db';
-import { UserRoleService } from '../../../../api/src/app/identity/roles/user-role.service';
-import { MembershipService } from '../../../../api/src/app/identity/groups/membership.service';
+import { UserRoleService } from '../roles/user-role.service';
+import { MembershipService } from '../groups/membership.service';
 
 interface UserContext {
   userId: string;
