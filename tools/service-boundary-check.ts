@@ -71,6 +71,42 @@ const ENTITY_OWNERSHIP: Record<string, string> = {
   ScheduledJob: 'svc-automation',
 };
 
+/**
+ * Physical table name for each owned entity. Used by the
+ * detectEntityWriteBypass check (W0 task 5 / F056). The import-topology
+ * rule above blocks the typed pathway (Repository<EntityName>); this map
+ * powers the secondary check for the untyped string-based bypasses
+ * `.getRepository('automation_rules')` and raw SQL `UPDATE
+ * automation_rules SET ...`. Both routes can write to an owned entity
+ * without ever importing the symbol.
+ *
+ * MUST stay in lockstep with @Entity('table_name') declarations in
+ * libs/instance-db/src/lib/entities/. Verified manually 2026-05-09:
+ *   - automation_rules            → AutomationRule
+ *   - automation_rule_revisions   → AutomationRuleRevision
+ *   - automation_execution_logs   → AutomationExecutionLog
+ *   - scheduled_jobs              → ScheduledJob
+ */
+const ENTITY_TABLES: Record<string, string> = {
+  AutomationRule: 'automation_rules',
+  AutomationRuleRevision: 'automation_rule_revisions',
+  AutomationExecutionLog: 'automation_execution_logs',
+  ScheduledJob: 'scheduled_jobs',
+};
+
+/**
+ * Allowlist for write-bypass false positives — e.g. a string `'automation_rules'`
+ * appearing as a table-name CONSTANT in a non-write context (a migration
+ * helper, a column-name registry, a shared metadata config). Each entry
+ * MUST cite a structural reason. New entries require architect approval
+ * (same bar as KNOWN_ENTITY_VIOLATIONS).
+ */
+const KNOWN_WRITE_BYPASS_ALLOWLIST: ReadonlyArray<{
+  file: string;
+  table: string;
+  rationale: string;
+}> = [];
+
 type EntityViolation = {
   file: string;
   line: number;
@@ -101,37 +137,37 @@ const KNOWN_ENTITY_VIOLATIONS: Array<{
   rationale: string;
 }> = [
   {
-    file: 'apps/svc-metadata/src/app/publish-impact/analyzers/automation-rule-impact.analyzer.ts',
+    file: 'apps/api/src/app/metadata/publish-impact/analyzers/automation-rule-impact.analyzer.ts',
     entity: 'AutomationRule',
     rationale: 'Design-time impact analysis. Reads automation rules to compute downstream effects of metadata changes.',
   },
   {
-    file: 'apps/svc-metadata/src/app/publish-impact/publish-impact.module.ts',
+    file: 'apps/api/src/app/metadata/publish-impact/publish-impact.module.ts',
     entity: 'AutomationRule',
     rationale: 'Module wiring for the impact analyzer above.',
   },
   {
-    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.ts',
+    file: 'apps/api/src/app/metadata/property/reference-scanner.service.ts',
     entity: 'AutomationRule',
     rationale: 'W2.A reference scanner. Reads automation rules to find references to a property before delete (canon §14).',
   },
   {
-    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.spec.ts',
+    file: 'apps/api/src/app/metadata/property/reference-scanner.service.spec.ts',
     entity: 'AutomationRule',
     rationale: 'Test fixture for the reference scanner above.',
   },
   {
-    file: 'apps/svc-metadata/src/app/packs/packs.service.ts',
+    file: 'apps/api/src/app/metadata/packs/packs.service.ts',
     entity: 'AutomationRule',
     rationale: 'Pack install/export. Reads + writes automation rules as part of bundling and applying customer packs (zippy-creek Fix 8 — pack install is svc-metadata\'s design-time responsibility).',
   },
   {
-    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.ts',
+    file: 'apps/api/src/app/metadata/change-packages/change-package.service.ts',
     entity: 'AutomationRule',
     rationale: 'Change-package authoring. Reads automation rules to bundle them in a change package for export.',
   },
   {
-    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.spec.ts',
+    file: 'apps/api/src/app/metadata/change-packages/change-package.service.spec.ts',
     entity: 'AutomationRule',
     rationale: 'Test fixture for the change-package service above.',
   },
@@ -144,6 +180,25 @@ function isKnownEntityViolation(file: string, entity: string): boolean {
   );
 }
 
+/**
+ * SCANNER COVERAGE GAP (tracked for Phase 1):
+ *
+ * SERVICE_DIR_RE only matches `apps/svc-*` directories. After the ARC-W1
+ * identity, metadata, and data migrations, ~56,000 LoC of those services
+ * now live at `apps/api/src/app/{identity,metadata,data}/`. This scanner
+ * walks those svc-* directories which (post-migration) contain only thin
+ * adapter app.module.ts files — no entity-write surfaces to detect.
+ *
+ * The KNOWN_ENTITY_VIOLATIONS allowlist above was updated to reference the
+ * post-migration apps/api/src/app/metadata/* paths so the documentation
+ * matches reality, but those files are not actually scanned today because
+ * 'api' is not a SERVICE_DIR.
+ *
+ * Phase 1 of the master roadmap (next migration wave + final cutover) MUST
+ * extend this scanner to also walk apps/api/src/app/{identity,metadata,
+ * data,...}/ before the legacy svc-* deletion can land. Until then, treat
+ * "service-boundary:check ok" as a vacuous result for the migrated services.
+ */
 const SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/;
 
 function isServiceDir(name: string): boolean {
@@ -434,11 +489,156 @@ function detectEntityOwnershipViolations(): EntityViolation[] {
   return violations;
 }
 
+interface EntityWriteViolation {
+  file: string;
+  line: number;
+  table: string;
+  entity: string;
+  expectedOwner: string;
+  actualWriter: string;
+  pattern: 'string-getRepository' | 'raw-sql-insert' | 'raw-sql-update' | 'raw-sql-delete';
+}
+
+function isAllowlistedWriteBypass(relFile: string, table: string): boolean {
+  return KNOWN_WRITE_BYPASS_ALLOWLIST.some(
+    (entry) => relFile.endsWith(entry.file) && entry.table === table,
+  );
+}
+
+function lineNumberAt(content: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < content.length; i++) {
+    if (content[i] === '\n') line += 1;
+  }
+  return line;
+}
+
+/**
+ * detectEntityWriteBypass — secondary check that backstops the
+ * import-topology rule for two known bypass routes:
+ *
+ *   1. `.getRepository('automation_rules')` — TypeORM lets you fetch a
+ *      repository by string table name with no entity import. The
+ *      returned repository is typed as `Repository<ObjectLiteral>` so
+ *      `.save({})` works without ever referencing AutomationRule.
+ *
+ *   2. Raw SQL via dataSource.query / queryRunner — `UPDATE
+ *      automation_rules SET ...`, `INSERT INTO automation_rules ...`,
+ *      `DELETE FROM automation_rules`. Bypasses every TypeORM check.
+ *
+ * Both patterns are detected by simple text matching against the
+ * physical table name (`ENTITY_TABLES`). The allowlist
+ * (`KNOWN_WRITE_BYPASS_ALLOWLIST`) handles legitimate occurrences such
+ * as migration scripts that reference the table by name. New entries
+ * require structural rationale.
+ */
+function detectEntityWriteBypass(): EntityWriteViolation[] {
+  const violations: EntityWriteViolation[] = [];
+  const ownedEntries = Object.entries(ENTITY_TABLES);
+  if (ownedEntries.length === 0) return violations;
+
+  // Build per-table regex patterns once.
+  type PerTablePatterns = {
+    entity: string;
+    table: string;
+    owner: string;
+    getRepoRe: RegExp;
+    insertRe: RegExp;
+    updateRe: RegExp;
+    deleteRe: RegExp;
+  };
+  const tablePatterns: PerTablePatterns[] = ownedEntries.map(([entity, table]) => ({
+    entity,
+    table,
+    owner: ENTITY_OWNERSHIP[entity],
+    // Match `getRepository('table_name')` or `getRepository("table_name")`.
+    getRepoRe: new RegExp(`\\.getRepository\\s*\\(\\s*['"\`]${table}['"\`]`, 'g'),
+    // Match raw SQL writes referencing the table. Word boundary required so
+    // "automation_rules_extra" doesn't false-positive against "automation_rules".
+    insertRe: new RegExp(`\\bINSERT\\s+INTO\\s+["']?${table}["']?\\b`, 'gi'),
+    updateRe: new RegExp(`\\bUPDATE\\s+["']?${table}["']?\\b`, 'gi'),
+    deleteRe: new RegExp(`\\bDELETE\\s+FROM\\s+["']?${table}["']?\\b`, 'gi'),
+  }));
+
+  const serviceDirs = (() => {
+    try {
+      return readdirSync(APPS_DIR).filter((name) => {
+        if (!isServiceDir(name)) return false;
+        const srcDir = join(APPS_DIR, name, 'src');
+        try {
+          return statSync(srcDir).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return [];
+    }
+  })();
+
+  for (const service of serviceDirs) {
+    const srcDir = join(APPS_DIR, service, 'src');
+    const files = walk(srcDir);
+    for (const file of files) {
+      const fromService = serviceOf(file);
+      if (!fromService) continue;
+
+      let content: string;
+      try {
+        content = readFileSync(file, 'utf8');
+      } catch {
+        continue;
+      }
+      const relFile = toPosix(relative(ROOT, file));
+
+      for (const tp of tablePatterns) {
+        if (tp.owner === fromService) continue; // Owner can write freely.
+        if (isAllowlistedWriteBypass(relFile, tp.table)) continue;
+
+        // Reset regex lastIndex (g-flag patterns retain state).
+        tp.getRepoRe.lastIndex = 0;
+        tp.insertRe.lastIndex = 0;
+        tp.updateRe.lastIndex = 0;
+        tp.deleteRe.lastIndex = 0;
+
+        const checks: Array<{ re: RegExp; pattern: EntityWriteViolation['pattern'] }> = [
+          { re: tp.getRepoRe, pattern: 'string-getRepository' },
+          { re: tp.insertRe, pattern: 'raw-sql-insert' },
+          { re: tp.updateRe, pattern: 'raw-sql-update' },
+          { re: tp.deleteRe, pattern: 'raw-sql-delete' },
+        ];
+
+        for (const { re, pattern } of checks) {
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(content)) !== null) {
+            violations.push({
+              file: relFile,
+              line: lineNumberAt(content, m.index),
+              table: tp.table,
+              entity: tp.entity,
+              expectedOwner: tp.owner,
+              actualWriter: fromService,
+              pattern,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
 function main() {
   const violations = detectViolations();
   const entityViolations = detectEntityOwnershipViolations();
+  const writeBypassViolations = detectEntityWriteBypass();
 
-  if (violations.length === 0 && entityViolations.length === 0) {
+  if (
+    violations.length === 0 &&
+    entityViolations.length === 0 &&
+    writeBypassViolations.length === 0
+  ) {
     console.log('service boundary check: ok');
     if (KNOWN_VIOLATIONS.length > 0) {
       console.log(`  (${KNOWN_VIOLATIONS.length} allowlisted cross-service import(s) tracked):`);
@@ -453,10 +653,23 @@ function main() {
         console.log(`    - ${entity} owned by ${owner}`);
       }
     }
+    const writeRuleCount = Object.keys(ENTITY_TABLES).length;
+    if (writeRuleCount > 0) {
+      console.log(`  (${writeRuleCount} entity write-bypass rule(s) enforced via table-name):`);
+      for (const [entity, table] of Object.entries(ENTITY_TABLES)) {
+        console.log(`    - table ${table} writable only by ${ENTITY_OWNERSHIP[entity]} (${entity})`);
+      }
+    }
     if (KNOWN_ENTITY_VIOLATIONS.length > 0) {
       console.log(`  (${KNOWN_ENTITY_VIOLATIONS.length} allowlisted entity crossing(s) tracked):`);
       for (const entry of KNOWN_ENTITY_VIOLATIONS) {
         console.log(`    - ${entry.file} reads ${entry.entity}`);
+      }
+    }
+    if (KNOWN_WRITE_BYPASS_ALLOWLIST.length > 0) {
+      console.log(`  (${KNOWN_WRITE_BYPASS_ALLOWLIST.length} allowlisted write-bypass(es) tracked):`);
+      for (const entry of KNOWN_WRITE_BYPASS_ALLOWLIST) {
+        console.log(`    - ${entry.file} touches ${entry.table}`);
       }
     }
     return;
@@ -489,6 +702,25 @@ function main() {
     for (const v of entityViolations) {
       console.error(
         `  ${v.file}:${v.line} - ${v.actualImporter} imports ${v.entity} (owned by ${v.expectedOwner})`,
+      );
+    }
+  }
+
+  if (writeBypassViolations.length > 0) {
+    if (violations.length > 0 || entityViolations.length > 0) console.error('');
+    console.error(
+      `entity write-bypass check: FAILED (${writeBypassViolations.length} violation(s))`,
+    );
+    console.error('Owned entities can be written via two non-import routes:');
+    console.error('  - getRepository(\'<table>\') — string-based untyped access');
+    console.error('  - raw SQL UPDATE/INSERT/DELETE referencing the table');
+    console.error('Both bypass the import-topology rule. Either route the');
+    console.error("write through the owner service's HTTP API or move the");
+    console.error('writer into the owner. (W0 task 5 / F056.)');
+    console.error('');
+    for (const v of writeBypassViolations) {
+      console.error(
+        `  ${v.file}:${v.line} - ${v.actualWriter} writes ${v.entity} via ${v.pattern} on table '${v.table}' (owned by ${v.expectedOwner})`,
       );
     }
   }

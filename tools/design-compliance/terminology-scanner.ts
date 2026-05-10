@@ -17,7 +17,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as glob from 'glob';
 
 // =============================================================================
 // TERMINOLOGY RULES
@@ -146,24 +145,60 @@ const TERMINOLOGY_RULES: TerminologyRule[] = [
 // FILE PATTERNS
 // =============================================================================
 
-const SCAN_PATTERNS = [
-  'apps/**/*.{ts,tsx,js,jsx}',
-  'libs/**/*.{ts,tsx,js,jsx}',
-  'src/**/*.{ts,tsx,js,jsx}',
+const SCAN_ROOTS = ['apps', 'libs', 'src'];
+const SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
+
+const EXCLUDED_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'coverage',
+  'migrations',
+  '__mocks__',
+  '.nx',
+  '.git',
+  'tmp',
+]);
+
+const EXCLUDED_FILE_PATTERNS: RegExp[] = [
+  /\.spec\.(ts|tsx|js|jsx)$/,
+  /\.test\.(ts|tsx|js|jsx)$/,
+  /\.e2e-spec\.(ts|tsx|js|jsx)$/,
+  /^jest\.config\./,
+  /^vitest\.config\./,
 ];
 
-const EXCLUDE_PATTERNS = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/coverage/**',
-  '**/*.spec.ts',
-  '**/*.test.ts',
-  '**/*.e2e-spec.ts',
-  '**/migrations/**',
-  '**/__mocks__/**',
-  '**/jest.config.*',
-  '**/vitest.config.*',
-];
+function walkScanRoots(rootDir: string): string[] {
+  const out: string[] = [];
+
+  function walk(absDir: string): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const abs = path.join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        if (EXCLUDED_DIRS.has(entry.name)) continue;
+        walk(abs);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name);
+      if (!SCAN_EXTENSIONS.has(ext)) continue;
+      if (EXCLUDED_FILE_PATTERNS.some((re) => re.test(entry.name))) continue;
+      out.push(abs);
+    }
+  }
+
+  for (const root of SCAN_ROOTS) {
+    const abs = path.join(rootDir, root);
+    if (!fs.existsSync(abs)) continue;
+    walk(abs);
+  }
+  return out;
+}
 
 // =============================================================================
 // SCANNER IMPLEMENTATION
@@ -272,20 +307,7 @@ function formatViolation(v: Violation): string {
 
 async function scan(): Promise<ScanResult> {
   const rootDir = process.cwd();
-  const files: string[] = [];
-
-  // Collect all files to scan
-  for (const pattern of SCAN_PATTERNS) {
-    const matches = glob.sync(pattern, {
-      cwd: rootDir,
-      ignore: EXCLUDE_PATTERNS,
-      absolute: true,
-    });
-    files.push(...matches);
-  }
-
-  // Remove duplicates
-  const uniqueFiles = [...new Set(files)];
+  const uniqueFiles = walkScanRoots(rootDir);
 
   console.log(`\n🔍 Scanning ${uniqueFiles.length} files for terminology compliance...\n`);
 

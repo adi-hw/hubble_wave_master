@@ -14,8 +14,12 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
   children,
   fallback = null,
 }) => {
-  const hasPerm = permissions ? useHasPermission(permissions) : true;
-  const hasRole = roles ? useHasRole(roles) : true;
+  // F088 fix: always call hooks; branch on the boolean afterward.
+  // See ProtectedRoute.tsx for the full rationale.
+  const hasPermResult = useHasPermission(permissions ?? []);
+  const hasRoleResult = useHasRole(roles ?? []);
+  const hasPerm = permissions ? hasPermResult : true;
+  const hasRole = roles ? hasRoleResult : true;
 
   if (!hasPerm || !hasRole) {
     return <>{fallback}</>;

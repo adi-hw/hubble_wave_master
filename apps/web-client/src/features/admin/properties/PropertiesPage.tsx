@@ -59,6 +59,7 @@ export const PropertiesPage: React.FC = () => {
   };
 
   const handleDelete = async (_property: PropertyDefinition) => {
+    // eslint-disable-next-line no-warning-comments -- F153, owed to W7 (property delete API + W2.A reference scanner integration)
     // TODO: Implement property deletion via API
     setRefreshTrigger((prev) => prev + 1);
   };
@@ -68,6 +69,7 @@ export const PropertiesPage: React.FC = () => {
   };
 
   const handleSmartCreate = (_suggestion: { dataType: string; formatOptions?: Record<string, unknown> }) => {
+    // eslint-disable-next-line no-warning-comments -- F154, owed to W9 (smart-create flow per master roadmap §F092 visibility-condition runtime work)
     // TODO: Pre-populate PropertyEditor with suggested type and options
     setSelectedProperty(undefined);
     setEditorOpen(true);

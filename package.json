@@ -45,7 +45,17 @@
     "load:envelope": "npx ts-node tools/load-envelope.ts",
     "security:check": "npx ts-node tools/security-bypass-check.ts",
     "service-boundary:check": "npx ts-node tools/service-boundary-check.ts",
-    "deps:check": "npx ts-node tools/approved-deps-check.ts"
+    "deps:check": "npx ts-node tools/approved-deps-check.ts",
+    "cicd:check": "npx ts-node tools/ci-cd-wiring-check.ts",
+    "selftest:framework": "npx ts-node tools/scanner-self-test.ts",
+    "selftest:security": "npx ts-node tools/security-bypass-check-selftest.ts",
+    "selftest:authz": "npx ts-node tools/authz-bypass-check-selftest.ts",
+    "selftest:service-boundary": "npx ts-node tools/service-boundary-check-selftest.ts",
+    "selftest:dead-code": "npx ts-node tools/dead-code-check-selftest.ts",
+    "selftest:eslint-rules": "node tools/eslint-rules/no-versioned-identifier.spec.cjs",
+    "selftest:scanners": "npm run selftest:framework && npm run selftest:security && npm run selftest:authz && npm run selftest:service-boundary && npm run selftest:dead-code && npm run selftest:eslint-rules",
+    "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx ts-node tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json",
+    "dead-code:check": "npx ts-node tools/dead-code-check.ts"
   },
   "private": true,
   "dependencies": {
@@ -173,6 +183,7 @@
     "babel-jest": "^30.0.2",
     "eslint": "^9.8.0",
     "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "jest": "^30.0.2",
     "jest-environment-jsdom": "^30.0.2",
     "jest-environment-node": "^30.0.2",

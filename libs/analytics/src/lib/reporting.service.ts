@@ -204,10 +204,21 @@ export class ReportingService {
       if (report.grouping?.showGrandTotal) {
         totals = await this.calculateTotals(report);
       }
-    } else if (report.dataSource.type === 'query' && report.dataSource.customQuery) {
-      // Execute custom SQL (with parameter substitution)
-      const query = this.substituteParameters(report.dataSource.customQuery, parameters);
-      data = await this.dataSource.query(query);
+    } else if (report.dataSource.type === 'query') {
+      // F124 (W1 task 5): the previous implementation passed
+      // `report.dataSource.customQuery` through `substituteParameters`
+      // (string interpolation with single-quote-only escape) into
+      // `this.dataSource.query(query)`. That path was a SQL injection
+      // vector — number/object/array params landed as raw SQL, and
+      // string params with embedded `'` could escape the quoting. The
+      // entire branch is removed; raw-SQL report definitions are
+      // rejected at runtime. Customers with `type: 'query'` reports
+      // must migrate to `type: 'collection'` parameterized queries.
+      throw new Error(
+        `Report ${report.id} uses dataSource.type='query' (custom SQL), ` +
+          `which has been removed for security (F124). Migrate to ` +
+          `type='collection' with declarative filters.`,
+      );
     }
 
     return { columns, data, totals };
@@ -247,18 +258,11 @@ export class ReportingService {
     }
   }
 
-  /**
-   * Substitute parameters in SQL query
-   */
-  private substituteParameters(query: string, parameters: Record<string, unknown>): string {
-    let result = query;
-    for (const [key, value] of Object.entries(parameters)) {
-      const placeholder = `\${${key}}`;
-      const sanitizedValue = typeof value === 'string' ? `'${value.replace(/'/g, "''")}'` : String(value);
-      result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), sanitizedValue);
-    }
-    return result;
-  }
+  // F124 (W1 task 5): substituteParameters() is deleted along with the
+  // dataSource.type === 'query' branch that called it. The function was
+  // the SQL-injection mechanism — string-substituted `${key}` with
+  // single-quote-only escape and `String(value)` for non-strings. No
+  // remaining caller; do not reintroduce.
 
   /**
    * Calculate totals for aggregatable columns

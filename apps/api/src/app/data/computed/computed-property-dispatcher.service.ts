@@ -10,9 +10,9 @@ import { HierarchicalService } from '../formula/hierarchical.service';
  * Plan §6.5 — computed property dispatcher.
  *
  * The orchestration layer that wires the per-type computed-property
- * services (Formula / Rollup / Lookup / Hierarchical — already
- * implemented under `apps/svc-data/src/app/formula/`) into the
- * record save pipeline. Per-type semantics:
+ * services (Formula / Rollup / Lookup / Hierarchical — implemented
+ * under `apps/api/src/app/data/formula/`) into the record save
+ * pipeline. Per-type semantics:
  *
  * - **formula** — synchronous on save, sandbox-evaluated. Result is
  *   merged back onto the record before the SQL UPDATE that returns
@@ -84,7 +84,7 @@ export class ComputedPropertyDispatcher {
     operation: 'create' | 'update';
   }): Promise<Record<string, unknown>> {
     const computed = args.properties.filter((p) => this.isComputedProperty(p));
-    let merged: Record<string, unknown> = { ...args.record };
+    const merged: Record<string, unknown> = { ...args.record };
 
     // NOTE: even when this collection has zero computed properties,
     // we still need to run the parent-rollup discovery pass below —

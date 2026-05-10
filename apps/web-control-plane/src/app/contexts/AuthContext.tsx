@@ -2,7 +2,11 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authService, AuthRole, AuthUser } from '../services/auth';
 
-const TOKEN_STORAGE_KEY = 'control_plane_token';
+// F089 (W1 task 10): we no longer track the token in localStorage, so
+// the cross-tab signal can't be the token key. Use the user key as a
+// proxy for "auth state changed in another tab" — when the user object
+// is removed (logout, refresh failure), this tab logs out too.
+const USER_STORAGE_KEY = 'control_plane_user';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -21,30 +25,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // F089: on mount, the in-memory access token is always null (page
+  // reload wipes it). Attempt a silent refresh against the HttpOnly
+  // refresh cookie. If the cookie is still valid, we get a fresh
+  // access token without a re-login. If it isn't, we land on /login.
   useEffect(() => {
-    // Check if user is already logged in
     const storedUser = authService.getUser();
-    const token = authService.getToken();
-
-    if (token && storedUser) {
-      setUser(storedUser);
-      // Optionally verify token with backend
-      authService.getProfile()
-        .then(setUser)
-        .catch(() => {
-          // Token invalid, clear and redirect
-          authService.logout();
-        });
+    if (!storedUser) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+    // Optimistically render with the cached user, then validate.
+    setUser(storedUser);
+    authService
+      .refresh()
+      .then(() => authService.getProfile())
+      .then(setUser)
+      .catch(() => {
+        // Refresh failed — cookie expired or revoked. Bounce to login.
+        setUser(null);
+        authService.clearLocal();
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
-  // Multi-tab logout sync: when another tab clears the token, propagate the
-  // logout to this tab so we never render authenticated UI against a cleared
-  // localStorage.
+  // F089 cross-tab logout: when another tab clears the user (via
+  // logout or refresh failure), propagate logout here. The token
+  // itself is not in localStorage anymore so we can't watch the token
+  // key — but the user key tracks the same lifecycle.
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== TOKEN_STORAGE_KEY) return;
+      if (event.key !== USER_STORAGE_KEY) return;
       if (event.newValue === null) {
         setUser(null);
         if (window.location.pathname !== '/login') {

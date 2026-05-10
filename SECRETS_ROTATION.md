@@ -1,5 +1,34 @@
 # Secrets Rotation Manifest
 
+> 🚨 **OPEN INCIDENT — UNREDACTED MATERIAL IN GIT HISTORY (W1 task 1)**
+>
+> Until 2026-05-09, this file's HTML-comment block (former lines 155-168)
+> contained a live `PACK_SIGNING_PRIVATE_KEY` (Ed25519 PEM) and
+> `PACK_INSTALL_TOKEN` value. The block was redacted from HEAD in W1
+> task 1; the values remain in git history.
+>
+> **REQUIRED OPERATOR ACTIONS (cannot be automated):**
+> 1. **Revoke the leaked Ed25519 keypair.** Add the retired key id
+>    `hw-pack-signing-2026-04` (and any earlier id) to the verifier's
+>    `revoked_key_ids` list across every instance running svc-instance-api.
+> 2. **Generate a fresh keypair** via `npx ts-node scripts/generate-pack-signing-keypair.ts`
+>    in a secure-vault environment. Distribute via AWS Secrets Manager
+>    paths listed in §4 below.
+> 3. **Invalidate the leaked install token.** The literal value is in
+>    git history (recoverable via `git show <commit>:SECRETS_ROTATION.md`
+>    for any commit before this redaction). Any caller presenting that
+>    value must be rejected at every instance.
+> 4. **Force-rewrite git history** to purge the values from all clones:
+>    `git filter-repo --replace-text <(echo 'BBoeSa==>REDACTED')`
+>    (coordinate with all developers; everyone re-clones afterwards).
+> 5. **Audit pack-install logs** for any signature-verifying client that
+>    accepted a pack signed by the leaked key during the leakage window.
+>
+> Until step 4 lands, gitleaks (W0 task 8) flags the leaked-key historic
+> shape on every push as defensive coverage. Step 4 makes the history
+> clean; until then, the leaked values are forever recoverable from the
+> commit graph.
+
 This document tracks every credential that was leaked into the HubbleWave git
 history via `.env.backup` and `infrastructure/terraform/**/terraform.tfvars`.
 The plaintext files have been removed from the working tree, but they remain
@@ -153,18 +182,16 @@ Generation:
 - New `signing.public_key_id` (replaces retired `hw-pack-signing-primary`): `hw-pack-signing-2026-04`
 
 <!--
-PACK_SIGNING_PUBLIC_KEY (PEM, multi-line; consumed by svc-instance-api)
------BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAweF6SMWRjsI7FCyYiWaa82WOeSYAVPFEVyYnfaMRqSY=
------END PUBLIC KEY-----
+REDACTED 2026-05-09 (W1 task 1 / F111).
 
-PACK_SIGNING_PRIVATE_KEY (PEM, multi-line; consumed by scripts/build-pack.ts)
------BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIBBoeSa++mdr7N3Kkd2Jqe2hCj7wURT2rPahdoj6hrZ+
------END PRIVATE KEY-----
+This block previously contained a live PACK_SIGNING_PRIVATE_KEY (Ed25519
+PEM), the matching PACK_SIGNING_PUBLIC_KEY, and a PACK_INSTALL_TOKEN.
+All three values are still recoverable from git history; see the
+"OPEN INCIDENT" block at the top of this file for the required
+operator-side rotation + history-rewrite actions.
 
-PACK_INSTALL_TOKEN
-62309f11f63c0fbf1119522bfb9030395ac608ac86ec8c75ea61ca99fa4bcde7
+Until that work lands, treat the leaked values as compromised and
+ensure they are revoked in every running instance.
 -->
 
 Operator checklist:

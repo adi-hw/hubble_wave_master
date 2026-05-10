@@ -2,13 +2,13 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Parser } from 'expr-eval';
 import {
   ProcessFlowDefinition,
   ProcessFlowInstance,
   ProcessFlowExecutionHistory,
 } from '@hubblewave/instance-db';
 import { ProcessFlowQueueService } from './process-flow-queue.service';
+import { SafeExpressionEvaluator, SafeExpressionError } from './safe-expression-evaluator';
 
 export interface ProcessFlowStep {
   id: string;
@@ -86,7 +86,15 @@ export interface ProcessFlowContext {
 @Injectable()
 export class ProcessFlowEngineService {
   private readonly logger = new Logger(ProcessFlowEngineService.name);
-  private readonly expressionParser = new Parser();
+  // F027 (W1 task 8): the previous `new Parser()` had no validation,
+  // no AST cap, no timeout. A flow author could write
+  // `constructor.constructor('return process')()` and crash the
+  // worker. SafeExpressionEvaluator wraps expr-eval with the same
+  // five-layer defense pattern used in
+  // apps/svc-automation/src/app/runtime/script-sandbox.service.ts:
+  // length cap, NFKC normalization + defanged-copy pattern check,
+  // AST depth cap, wall-clock timeout.
+  private readonly expressionEvaluator = new SafeExpressionEvaluator();
 
   constructor(
     @InjectRepository(ProcessFlowDefinition)
@@ -517,10 +525,22 @@ export class ProcessFlowEngineService {
     };
 
     try {
-      const parsed = this.expressionParser.parse(expression);
-      return Boolean(parsed.evaluate(scope as unknown as any));
+      const result = this.expressionEvaluator.evaluateSync(
+        expression,
+        scope as unknown as Record<string, unknown>,
+      );
+      return Boolean(result);
     } catch (error) {
-      this.logger.warn(`Condition expression failed: ${(error as Error).message}`);
+      // SafeExpressionError carries a structured `reason` field; surface
+      // it in the log so the operator can distinguish "expression
+      // syntax error" (parse) from "expression rejected by deny list"
+      // (pattern) from "expression too deep / too long" (depth/length).
+      // All cases fail-closed: the condition returns false, which means
+      // the conditional branch does NOT take the truthy edge.
+      const reason = error instanceof SafeExpressionError ? error.reason : 'unknown';
+      this.logger.warn(
+        `Condition expression rejected (${reason}): ${(error as Error).message}`,
+      );
       return false;
     }
   }

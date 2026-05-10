@@ -1,11 +1,19 @@
 # HubbleWave Platform CD Pipeline
-# Deploys to staging on develop branch, production on main branch
+# Deploys to staging on develop branch, production on master/main branch.
+#
+# CD is gated on a successful CI run via `workflow_run`. This closes
+# F106: a direct push to master no longer bypasses every scanner and
+# unit test — CI runs first, and CD only fires if CI's conclusion was
+# 'success'. Manual `workflow_dispatch` is still available for break-
+# glass scenarios; document any use.
 
 name: CD
 
 on:
-  push:
-    branches: [main, develop]
+  workflow_run:
+    workflows: ['CI']
+    branches: [master, main, develop]
+    types: [completed]
   workflow_dispatch:
     inputs:
       environment:
@@ -29,25 +37,41 @@ jobs:
   setup:
     name: Setup Deployment
     runs-on: ubuntu-latest
+    # F106: only run when CI succeeded (or when manually dispatched).
+    # workflow_run.conclusion is the result of the upstream CI run.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
       should_deploy: ${{ steps.set-env.outputs.should_deploy }}
+      target_ref: ${{ steps.set-env.outputs.target_ref }}
     steps:
       - name: Determine environment
         id: set-env
+        # For workflow_run triggers, the source ref lives on
+        # github.event.workflow_run.head_branch / head_sha — we must use
+        # those instead of github.ref (which points at the workflow
+        # itself, not the upstream commit).
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
             echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "target_ref=${{ github.ref }}" >> $GITHUB_OUTPUT
           else
-            echo "environment=none" >> $GITHUB_OUTPUT
-            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            echo "target_ref=$SHA" >> $GITHUB_OUTPUT
+            if [ "$BRANCH" == "main" ] || [ "$BRANCH" == "master" ]; then
+              echo "environment=production" >> $GITHUB_OUTPUT
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+            elif [ "$BRANCH" == "develop" ]; then
+              echo "environment=staging" >> $GITHUB_OUTPUT
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+            else
+              echo "environment=none" >> $GITHUB_OUTPUT
+              echo "should_deploy=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
   # Build and push Docker images
@@ -71,6 +95,12 @@ jobs:
           - web-control-plane
     steps:
       - uses: actions/checkout@v4
+        with:
+          # F106: workflow_run events default-checkout the workflow's
+          # branch (typically master HEAD), NOT the commit that triggered
+          # the upstream CI run. Pin to the resolved upstream SHA so the
+          # build/migrate/deploy actually reflects the commit CI passed.
+          ref: ${{ needs.setup.outputs.target_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -130,6 +160,12 @@ jobs:
     environment: ${{ needs.setup.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # F106: workflow_run events default-checkout the workflow's
+          # branch (typically master HEAD), NOT the commit that triggered
+          # the upstream CI run. Pin to the resolved upstream SHA so the
+          # build/migrate/deploy actually reflects the commit CI passed.
+          ref: ${{ needs.setup.outputs.target_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -161,6 +197,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.target_ref }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4

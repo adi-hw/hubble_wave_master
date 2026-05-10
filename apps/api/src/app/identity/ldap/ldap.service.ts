@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client } from 'ldapts';
 import { LdapConfig } from '@hubblewave/instance-db';
+import { escapeLdapFilter } from './ldap-filter-escape';
 
 export interface LdapUser {
   username: string;
@@ -47,11 +48,18 @@ export class LdapService {
         await client.bind(config.bindDn, config.bindPassword);
       }
 
-      // 2. Search for user with username filter
-      // Replace {username} placeholder if present, otherwise assume it's just the filter string
-      let filter = config.userSearchFilter || `(uid=${username})`;
+      // 2. Search for user with username filter.
+      //
+      // F011 (W1 task 4): the username MUST be RFC 4515-escaped before
+      // interpolation. Without escaping, a username like `*)(uid=*`
+      // turns the filter into `(uid=*)(uid=*)` — a compound filter
+      // that matches every entry, bypassing the user lookup. After
+      // escape, the same input becomes `(uid=\2a\29\28uid=\2a)` —
+      // a single literal-string assertion that finds nothing.
+      const safeUsername = escapeLdapFilter(username);
+      let filter = config.userSearchFilter || `(uid=${safeUsername})`;
       if (filter.includes('{username}')) {
-        filter = filter.replace('{username}', username);
+        filter = filter.replace('{username}', safeUsername);
       }
 
       const { searchEntries } = await client.search(config.searchBase, {

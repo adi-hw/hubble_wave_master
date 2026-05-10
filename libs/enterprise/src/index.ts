@@ -5,6 +5,8 @@ export {
   OIDCTokens,
   SSOUserProfile,
   SSOLoginResult,
+  SAML_SIGNATURE_VERIFIED,
+  SignatureVerifiedSentinel,
 } from './lib/sso.service';
 export {
   AuditService,

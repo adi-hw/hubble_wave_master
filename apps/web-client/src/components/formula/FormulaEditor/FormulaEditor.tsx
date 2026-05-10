@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { sanitizeHtml } from '../../../lib/sanitize-html';
 import {
   Calculator,
   Check,
@@ -346,12 +347,32 @@ export const FormulaEditor: React.FC<FormulaEditorProps> = ({
       <div
         className={`relative min-h-[${minHeight}px] max-h-[${maxHeight}px]`}
       >
-        {/* Syntax highlighting layer */}
-        <div
-          ref={highlightRef}
-          className="absolute inset-0 overflow-auto pointer-events-none p-3 whitespace-pre-wrap break-words font-mono text-sm text-transparent"
-          dangerouslySetInnerHTML={{ __html: highlightedValue || placeholder }}
-        />
+        {/* Syntax highlighting layer.
+            F093 (W1 task 11): the highlightedValue useMemo above
+            HTML-escapes the user input first then injects
+            <span class="formula-*"> wrappers. sanitizeHtml() with the
+            'formula-highlight' profile is a defense-in-depth second
+            lock — if a future edit forgets the escape step, the
+            sanitiser still strips anything outside <span> + the
+            allowlisted formula-* classes. The placeholder branch
+            renders as TEXT (not via __html) so a caller-supplied
+            placeholder string can never be the XSS vector. */}
+        {highlightedValue ? (
+          <div
+            ref={highlightRef}
+            className="absolute inset-0 overflow-auto pointer-events-none p-3 whitespace-pre-wrap break-words font-mono text-sm text-transparent"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml(highlightedValue, 'formula-highlight'),
+            }}
+          />
+        ) : (
+          <div
+            ref={highlightRef}
+            className="absolute inset-0 overflow-auto pointer-events-none p-3 whitespace-pre-wrap break-words font-mono text-sm text-transparent"
+          >
+            {placeholder}
+          </div>
+        )}
 
         {/* Actual textarea */}
         <textarea

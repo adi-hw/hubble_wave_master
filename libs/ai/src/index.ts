@@ -27,6 +27,8 @@ export {
   DocumentChunk,
   SearchResult,
   VectorSearchOptions,
+  SYSTEM_VECTOR_SEARCH_CONTEXT,
+  VectorSearchPrincipal,
 } from './lib/vector-store.service';
 
 // Embedding Service

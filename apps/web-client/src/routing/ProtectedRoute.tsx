@@ -19,9 +19,18 @@ interface ProtectedRouteProps {
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ permissions, anyPermission, roles, children }) => {
   const { auth } = useAuth();
   const location = useLocation();
-  const hasPerm = permissions ? useHasPermission(permissions) : true;
-  const hasAny = anyPermission ? useHasAnyPermission(anyPermission) : true;
-  const hasRole = roles ? useHasRole(roles) : true;
+  // F088 fix: hooks MUST be called unconditionally on every render so
+  // React's hook-count contract holds. The previous form
+  //   const hasPerm = permissions ? useHasPermission(permissions) : true;
+  // changed the hook call count whenever the `permissions` prop toggled
+  // between truthy and undefined, which crashed the subtree in
+  // StrictMode. Always call; branch on the boolean afterward.
+  const hasPermResult = useHasPermission(permissions ?? []);
+  const hasAnyResult = useHasAnyPermission(anyPermission ?? []);
+  const hasRoleResult = useHasRole(roles ?? []);
+  const hasPerm = permissions ? hasPermResult : true;
+  const hasAny = anyPermission ? hasAnyResult : true;
+  const hasRole = roles ? hasRoleResult : true;
 
   if (auth.loading) {
     return (

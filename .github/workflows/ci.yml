@@ -95,6 +95,101 @@ jobs:
       - name: Approved-dependencies check (W6.D)
         run: npm run deps:check
 
+      - name: CI/CD wiring check (F106 / W0 task 7)
+        run: npm run cicd:check
+
+      - name: Dead-code anti-resurrection check (W0 task 10 / Deletion Catalog §D.6)
+        run: npm run dead-code:check
+
+      - name: Scanner self-tests (W0 task 2 + per-scanner suites)
+        # Each scanner ships with a self-test that proves it catches the
+        # patterns it claims to. Without this gate, future scanner edits
+        # could silently regress detection (cf. F151 — broken
+        # compliance:check went unnoticed for some unknown duration).
+        # Currently 44 assertions across 5 suites:
+        #   - framework (7)
+        #   - security-bypass (7)
+        #   - authz-bypass (7)
+        #   - service-boundary (12)
+        #   - dead-code (11)
+        run: npm run selftest:scanners
+
+  # SBOM generation and vulnerability scan (F119 / W0 task 9).
+  #
+  # Uploads a SPDX-format SBOM as a workflow artifact (consumed by
+  # release packaging and the security review process) and fails CI if
+  # grype finds any high-severity CVE in the dependency tree.
+  sbom:
+    name: SBOM and CVE scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM (syft)
+        uses: anchore/sbom-action@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
+        with:
+          path: '.'
+          format: 'spdx-json'
+          artifact-name: hubblewave-sbom.spdx.json
+          output-file: hubblewave-sbom.spdx.json
+
+      - name: Vulnerability scan (grype)
+        uses: anchore/scan-action@2c901ab7378897c01b8efaa2d0c9bf519cc64b9e # v6.0.0
+        with:
+          sbom: hubblewave-sbom.spdx.json
+          fail-build: true
+          severity-cutoff: high
+
+  # License audit gate (F119 / W0 task 9).
+  #
+  # Runs license-checker against production deps and validates each
+  # package's license against tools/license-allowlist.json. Fails CI on
+  # blocked licenses (GPL family by default) or unknown licenses
+  # without an explicit exception.
+  license-audit:
+    name: License audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate licenses
+        run: |
+          mkdir -p tmp
+          npm run license:check
+
+  # Secret-scanning gate (F111 / F119 / W0 task 8).
+  #
+  # Runs gitleaks against the diff for PRs and against the full history
+  # for push events. Fails CI on any finding outside the allowlist
+  # configured in .gitleaks.toml.
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_ENABLE_SUMMARY: true
+
   # Type checking
   typecheck:
     name: TypeScript Check

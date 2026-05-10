@@ -1,0 +1,98 @@
+[
+  {
+    "type": "phantom-dep",
+    "path": "bcrypt",
+    "reason": "Phantom dependency. argon2 is canonical for password hashing (W5.C dep registry). bcrypt remains in package.json as a legacy carve-out per tools/approved-deps.json but no source file imports it.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "apps/svc-control-plane/tmpclaude-a669-cwd",
+    "reason": "Empty directory left over from a terminated agent session. Surfaced during W0 task 10 implementation; the master roadmap's deletion catalog had three tmpclaude dirs documented; the scanner finds six (apps/, apps/svc-control-plane (×2), libs/control-plane-db/src/lib/entities, tools/, scripts/).",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "apps/svc-control-plane/tmpclaude-d23e-cwd",
+    "reason": "Empty directory left over from a terminated agent session.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "apps/tmpclaude-4824-cwd",
+    "reason": "Empty directory left over from a terminated agent session. Documented in master roadmap §D.1.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "libs/control-plane-db/src/lib/entities/tmpclaude-2d01-cwd",
+    "reason": "Empty directory left over from a terminated agent session, nested inside an entity folder. Surfaced during W0 task 10.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "tools/tmpclaude-0e02-cwd",
+    "reason": "Empty directory left over from a terminated agent session. Documented in master roadmap §D.1.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "scripts/tmpclaude-8c30-cwd",
+    "reason": "Empty directory left over from a terminated agent session. Documented in master roadmap §D.1.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "canon-cleanup-ralph-loop.md",
+    "reason": "AI-tooling artifact at repo root. Describes a Phase 0–7 ralph-loop scaffolding that conflicts with the actual W1–W7 wave structure. Documented in master roadmap §D.1; W4 moves to .claude/internal/ or external tooling repo.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "hubblewave-ralph-loop.md",
+    "reason": "AI-tooling artifact at repo root. Documented in master roadmap §D.1.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "trash-pattern",
+    "path": "ralph-loop.ps1",
+    "reason": "AI-tooling artifact at repo root. Documented in master roadmap §D.1.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "orphan-lib",
+    "path": "libs/enterprise",
+    "reason": "Junk-drawer lib carrying SSO + Audit + Compliance services with no shared concept. Audit finding F147. W4 splits SSO into libs/sso/ (or merges into svc-identity), Audit into libs/instance-db/audit (already exists), Compliance into libs/compliance/, then deletes the libs/enterprise/ shell.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  },
+  {
+    "type": "orphan-lib",
+    "path": "libs/ui-components",
+    "reason": "Library has zero importers — no `from '@hubblewave/ui-components'` and no relative imports of libs/ui-components/* anywhere in the repo. Surfaced during W0 task 10 (the audit's frontend reviewer did not catch this). Treat as a dead lib for W4: confirm contents are genuinely unused, then delete; if any web-* surface needs the components, migrate them out into libs/ui or web-client/components first.",
+    "addedBy": "W0 task 10",
+    "addedAt": "2026-05-09",
+    "owedTo": "W4"
+  }
+]

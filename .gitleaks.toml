@@ -1,0 +1,86 @@
+title = "HubbleWave gitleaks config"
+
+# This config powers two surfaces:
+#   1. Per-PR gitleaks-action (CI), with fetch-depth: 0, scanning history
+#      since the merge base.
+#   2. Local detect runs (docker-based; see W1 for the history-rewrite
+#      procedure documented in SECRETS_ROTATION.md).
+#
+# Per F119 (W0 task 8), gitleaks is a required CI status check.
+# Per F111 (W1), the live private key in SECRETS_ROTATION.md must be
+# revoked + rotated and the doc redacted before this scanner runs
+# clean on master HEAD.
+
+[allowlist]
+description = "Test fixtures, dev-only-known-strings, and example files"
+paths = [
+  '''.*\.spec\.ts$''',
+  '''.*\.test\.ts$''',
+  '''.*__fixtures?__/.*''',
+  '''^\.env\.example$''',
+  '''^docs/plan-fixes/.*''',
+  '''^tools/.*\.spec\.ts$''',
+]
+regexes = [
+  # Historic dev-only secret string — present in commit history, scrubbed
+  # at HEAD. Allowed during transition; remove this entry once W1's
+  # git-filter-repo has been applied + force-pushed everywhere.
+  '''dev-only-insecure-secret''',
+  # CI test JWT — used by the CI workflow itself (.github/workflows/ci.yml).
+  '''ci-test-jwt-secret''',
+  # Test passwords used by local docker-compose; the values are
+  # weak-by-design and never used in production.
+  '''hubblewave_ci_password''',
+  '''hubblewave_test''',
+]
+
+[[rules]]
+id = "private-key"
+description = "PEM-encoded private key (RSA / EC / Ed25519 / OpenSSH / DSA / PGP)"
+regex = '''-----BEGIN ((RSA |EC |OPENSSH |DSA |ENCRYPTED |PGP )?)PRIVATE KEY( BLOCK)?-----'''
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''(?i)\bAKIA[0-9A-Z]{16}\b'''
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key (40-char base64-ish)"
+# Heuristic; gitleaks's default rule is more sophisticated.
+regex = '''(?i)aws(.{0,20})?(secret|access)?(.{0,20})?key(.{0,20})?[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?'''
+
+[[rules]]
+id = "stripe-key"
+description = "Stripe Secret Key"
+regex = '''\bsk_(test|live)_[0-9a-zA-Z]{24,}\b'''
+
+[[rules]]
+id = "github-pat"
+description = "GitHub personal access token"
+regex = '''\bgh[pousr]_[A-Za-z0-9]{36,}\b'''
+
+[[rules]]
+id = "generic-jwt"
+description = "JWT-shaped token (eyJ...)"
+regex = '''\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\b'''
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack incoming-webhook URL"
+regex = '''https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+'''
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key (length-bounded)"
+# Loose pattern; the goal is to flag suspicious base64-ish strings near
+# the literal "api_key" / "apikey" / "api-key" / "token". Tighten as
+# allowlist false positives accumulate.
+regex = '''(?i)(api[_-]?key|api[_-]?token|access[_-]?token|secret[_-]?key|auth[_-]?token)\s*[:=]\s*['"][A-Za-z0-9_\-]{20,}['"]'''
+
+[[rules]]
+id = "ed25519-pack-signing-private-key"
+description = "Ed25519 PRIVATE KEY in HTML comment of SECRETS_ROTATION.md (F111). Specific match so we never accept this re-introduction."
+# Defensive rule: even if someone re-introduces the exact same shape of
+# leak, this catches it.
+regex = '''-----BEGIN PRIVATE KEY-----[\r\n][^-]+-----END PRIVATE KEY-----'''

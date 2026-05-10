@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import DOMPurify from 'dompurify';
+import { sanitizeHtml } from '../../../lib/sanitize-html';
 import {
   Book,
   Search,
@@ -254,7 +254,12 @@ export const LivingDocsPage: React.FC = () => {
               <div className="flex-1 overflow-auto p-6">
                 <div
                   className="prose prose-neutral dark:prose-invert max-w-none text-foreground"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedDoc.content) }}
+                  // F093 (W1 task 11): use the shared sanitizer with the
+                  // 'rich-text' profile (explicit allowlist) instead of
+                  // DOMPurify default config. Functionally equivalent
+                  // for current content but adds a documented contract
+                  // and a single source of truth for the allowlist.
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedDoc.content, 'rich-text') }}
                 />
               </div>
             </>

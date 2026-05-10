@@ -205,3 +205,93 @@ describe('PacksService maintenance-mode flag', () => {
     });
   });
 });
+
+/**
+ * F125 (W1 task 6) regression — the loadArtifact() pack-download path
+ * fetched caller-supplied URLs with no SSRF guard. Before this fix, an
+ * authenticated install request with `artifactUrl: 'http://169.254.169.254/...'`
+ * would hit cloud-metadata; with `'http://10.0.0.1/...'`, internal
+ * services. The fix wires validateOutboundUrl() before the fetch.
+ *
+ * This spec exercises the private loadArtifact() via prototype-stub
+ * (matching the W4.D pattern at the top of this file). The fetch is
+ * mocked at the global level so we can assert it is NEVER invoked when
+ * the URL fails validation.
+ */
+describe('PacksService.loadArtifact — F125 SSRF guard', () => {
+  function buildLoadArtifactService() {
+    const service: any = Object.create(PacksService.prototype);
+    service.logger = { warn: jest.fn(), error: jest.fn(), log: jest.fn() };
+    // getDownloadTimeoutMs is referenced after the validation check.
+    // Stub so the test doesn't depend on a real config.
+    service.getDownloadTimeoutMs = jest.fn().mockReturnValue(10_000);
+    return service;
+  }
+
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const SSRF_ATTACK_URLS: ReadonlyArray<{ url: string; label: string }> = [
+    { url: 'http://169.254.169.254/latest/meta-data', label: 'AWS metadata link-local' },
+    { url: 'https://169.254.169.254/latest/meta-data', label: 'AWS metadata over HTTPS (also blocked)' },
+    { url: 'http://127.0.0.1:8080/admin', label: 'IPv4 loopback' },
+    { url: 'http://10.0.0.1/internal', label: 'RFC1918 10.0.0.0/8' },
+    { url: 'http://172.16.0.1/internal', label: 'RFC1918 172.16.0.0/12' },
+    { url: 'http://192.168.1.1/internal', label: 'RFC1918 192.168.0.0/16' },
+    { url: 'http://[::1]/admin', label: 'IPv6 loopback' },
+    { url: 'http://[fc00::1]/admin', label: 'IPv6 ULA' },
+    { url: 'file:///etc/passwd', label: 'file:// scheme' },
+    { url: 'ftp://example.com/x', label: 'ftp:// scheme' },
+    { url: 'gopher://example.com/x', label: 'gopher:// scheme' },
+    { url: 'not a url', label: 'malformed input' },
+  ];
+
+  for (const { url, label } of SSRF_ATTACK_URLS) {
+    it(`rejects ${label} (${url})`, async () => {
+      const service = buildLoadArtifactService();
+
+      await expect(service.loadArtifact(url)).rejects.toThrow(/F125/);
+      // Critical: the underlying fetch MUST NOT be invoked. A
+      // regression that just wraps the existing error would still let
+      // the request out.
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  }
+
+  it('rejects empty / non-string artifactUrl', async () => {
+    const service = buildLoadArtifactService();
+    await expect(service.loadArtifact('')).rejects.toThrow(/required/);
+    await expect(service.loadArtifact(undefined as unknown as string)).rejects.toThrow(/required/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes a public HTTPS URL to fetch (control case)', async () => {
+    const service = buildLoadArtifactService();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    });
+    // We don't care about the return value here; the assertion is
+    // that validateOutboundUrl DID NOT throw, so fetch was reached.
+    await expect(
+      service.loadArtifact('https://packs.example.com/pack-1.0.zip'),
+    ).rejects.toThrow(/Failed to download/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const fetchArgs = fetchMock.mock.calls[0];
+    expect(fetchArgs[0]).toBe('https://packs.example.com/pack-1.0.zip');
+    // F125 hardening: redirect: 'error' so a 302 to a private IP can't
+    // sneak past the host validation.
+    expect(fetchArgs[1]).toMatchObject({ redirect: 'error' });
+  });
+});

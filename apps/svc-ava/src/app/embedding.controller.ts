@@ -149,9 +149,15 @@ export class EmbeddingController {
   @ApiResponse({ status: 200, description: 'Search results' })
   async search(
     @CurrentUser() _user: any,
-    @Body() dto: SearchDto
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: SearchDto,
   ) {
-    const results = await this.vectorStoreService.search(this.dataSource, dto.query, {
+    // F073 (W1 task 9): pass the request context as the principal so
+    // the vector-store can audit-log every search with attribution.
+    // authzCheck wiring is W2 work — until then, this path emits a
+    // structured warning into vector-store logs.
+    const ctx = extractContext(req);
+    const results = await this.vectorStoreService.search(this.dataSource, dto.query, ctx, {
       limit: dto.limit,
       threshold: dto.threshold,
       sourceTypes: dto.sourceTypes,

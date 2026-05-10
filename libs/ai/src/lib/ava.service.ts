@@ -1,10 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { RequestContext } from '@hubblewave/auth-guard';
 import { LLMChatMessage, LLMService } from './llm.service';
 import { RAGService } from './rag.service';
 import { InstanceContextService } from './instance-context.service';
 import { PlatformKnowledgeService } from './platform-knowledge.service';
 import { UpgradeAssistantService } from './upgrade-assistant.service';
+
+/**
+ * F073 (W1 task 9): convert AVAContext to a RequestContext for vector
+ * search attribution. AVAContext today carries a userId but no roles
+ * or permissions; this synthesises a minimal RequestContext so the
+ * vector store's audit log gets a real user attribution. W2 will
+ * widen AVAContext to carry the full RequestContext (or pass it in
+ * separately) and wire authzCheck — until then, the synthesised
+ * context audit-logs the user but doesn't filter results.
+ */
+function avaContextToRequestContext(ctx: { userId: string }): RequestContext {
+  return {
+    userId: ctx.userId,
+    roles: [],
+    permissions: [],
+    isAdmin: false,
+  };
+}
 
 /**
  * AVA - AI Virtual Assistant for HubbleWave
@@ -177,8 +196,8 @@ export class AVAService {
       });
     }
 
-    // Perform RAG query
-    const ragResponse = await this.ragService.query(dataSource, message, {
+    // Perform RAG query (F073 — pass synthesised RequestContext)
+    const ragResponse = await this.ragService.query(dataSource, message, avaContextToRequestContext(context), {
       maxDocuments: 5,
       similarityThreshold: 0.5,
       systemPrompt,
@@ -235,8 +254,8 @@ export class AVAService {
     // Accumulate response chunks to generate actions after streaming completes
     let fullResponse = '';
 
-    // Stream RAG response
-    for await (const event of this.ragService.queryStream(dataSource, message, {
+    // Stream RAG response (F073 — pass synthesised RequestContext)
+    for await (const event of this.ragService.queryStream(dataSource, message, avaContextToRequestContext(context), {
       maxDocuments: 5,
       similarityThreshold: 0.5,
       systemPrompt,
