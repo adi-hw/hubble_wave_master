@@ -16,17 +16,19 @@ This document proposes a course correction:
 
 1. **Collapse the 14-service distributed system into a 3-process modular monolith** (`api`, `worker`, `control-plane`) plus a Day-1 native mobile app, preserving every substantive capability that's been built.
 2. **Make customization upgrade-safety the marquee architectural feature.** This is the precise gap the first customer (a Nuvolo user) has — and an architectural problem ServiceNow can't solve retroactively.
-3. **Build the Clinical/Facilities Asset Management vertical pack on top of the same customization layer customers will use** — eat your own dog food, prove the platform claim by living on it.
-4. **Ship in one shot, no phased pitches.** Day-1 product includes:
+3. **Platform-first. Vertical packs are deferred to separate design docs.** This design covers the platform engine and its customization surface only. The Clinical/Facilities Asset Management pack is captured in Appendix D as a forward-looking inventory; it ships *after* the platform is in customer hands and is its own design effort. The first customer's pilot validates the platform itself by having them build their own clinical/facilities customizations on it.
+4. **Ship in one shot, no phased pitches.** Platform Day-1 product includes:
    - Custom tables, properties, workflows, integrations
    - Custom React UI plugins (web + mobile)
    - **Workspaces** — persona-tuned, customer-customizable UI compositions
-   - **UI Builder** — low-code page/route/layout authoring
+   - **UI Builder** — full low-code page authoring (compete directly with ServiceNow UI Builder)
    - **Mobile app** — native-feeling, offline-first, scanning, voice, biometric
    - **Platform Analytics** — both domain analytics and platform-usage analytics
    - **Rich AI feature surface** — conversational assistant, NL authoring, doc-AI, predictive maintenance, smart triage, image analysis
+   - **AI Code Assistant** — Cursor/Copilot-style help for customers building plugins, formulas, automations, integrations, workspaces, analytics queries
    - Upgrade-safety guarantee (the moat)
-5. **Realistic timeline**: 7–9 months with two engineers and aggressive parallelization; 12–18 months solo. Telling the first customer the optimistic number kills the trust the pitch is built on.
+   - Pooled-mode deployment (canon §5 SOFTEN) for trials, sandboxes, and lower-tier customers
+5. **Realistic timeline (solo founder, platform-only scope)**: ~10–12 months critical path. Telling the first customer the optimistic number kills the trust the pitch is built on.
 
 The architecture preserves the substantive engineering investment (`schema-engine`, `formula-parser`, `relationship-resolver`, `authorization`, `automation` runtime) by relocating it from independent services to typed Nest modules. The structural overhead (cross-service transactions, service-boundary scanners, duplicate runtimes, the 14-service operational tax) is dropped.
 
@@ -430,29 +432,37 @@ Persona-tuned UIs that compose platform primitives (views, dashboards, forms, pl
 
 Customers can use OOTB workspaces as-is, customize them, or build new ones via the UI Builder. Workspaces are stored as pack metadata — fully upgrade-safe.
 
-#### UI Builder (Day 1)
+#### UI Builder (Day 1) — full page authoring, ServiceNow UI Builder competitor
 
-Low-code UI composition tool. Customers compose pages, layouts, and entire workspaces from a palette of platform primitives + custom plugins, without writing code.
+Low-code UI composition tool. Customers compose pages, layouts, and entire workspaces from a palette of platform primitives + custom plugins, without writing code. **Full feature parity with ServiceNow UI Builder** — your current employer uses that feature extensively, and matching it is non-negotiable.
 
 **Capabilities**:
-- **Page composition**: drag-drop arrangement of forms, views, dashboards, plugins onto a page canvas
+- **Full page composition**: drag-drop arrangement of forms, views, dashboards, plugins, layout components onto a page canvas
 - **Route definition**: customer-defined URLs (e.g. `/acme/lab-asset-overview`)
-- **Layout authoring**: header, sidebar, content area arrangement
-- **Component palette**: reusable composed primitives (e.g. "asset card with PM countdown" once composed, available everywhere)
-- **Conditional logic**: show/hide components based on user role, record state, ABAC attributes
-- **Event wiring**: button clicks → automation trigger, navigation, modal open
+- **Layout authoring**: header, sidebar, content area, footer arrangement; nested layouts; responsive grid
+- **Templates**: reusable page templates (e.g. "two-column with detail header"); customer-saved templates appear in the new-page wizard
+- **Component palette**: reusable composed primitives (e.g. "asset card with PM countdown" once composed, available everywhere); customer can publish custom palette items
+- **Conditional logic**: show/hide components based on user role, record state, ABAC attributes, dataset state
+- **Event wiring**: button clicks → automation trigger, navigation, modal open, plugin invocation, AI action
+- **Multi-screen workflows**: explicit page-to-page navigation flows with state passing (e.g. wizard: page 1 → page 2 → confirm); flow visualization editor
 - **Theme awareness**: components inherit customer's theme pack
-- **Mobile-aware**: page authors target web, mobile, or both; mobile-specific layouts supported
+- **Mobile-aware (variants)**: page authors target web, mobile, or both; per-form-factor variants supported (e.g. "mobile shows X, web shows X+Y")
+- **Localization**: per-string locale support; translations stored in customer pack
+- **Branding**: per-app logo, colors, typography (each customer-built application can have its own brand surface within their pack)
+- **Page-level access control**: per-page permission gating combined with row/field-level data security
+- **Performance budgets**: page authors see a budget meter (bundle size, query count, expected load time); warnings if exceeded
 
 **Authoring environment**:
-- Visual canvas with live preview (web + mobile views)
+- Visual canvas with live preview across web/mobile/desktop variants simultaneously
 - Property panel for selected component
 - Data source binding panel
+- **AI Code Assistant integration** (see §AI Code Assistant): NL-to-page generation, page explanation, suggested optimizations
 - Validation: every binding checked against current schema (design-time validation, §5.6)
 - Versioning: each page has history; rollback per page
-- AI authoring assist: "Build a page that shows overdue inspections by department" → drafted page
+- Diff viewer between page versions
+- Concurrent editing detection (warns if two admins edit the same page)
 
-Pages, layouts, and workspaces become customer pack metadata. Subject to the upgrade-safety validator.
+**Output**: pages, layouts, templates, workspaces, multi-screen flows all become customer pack metadata. Subject to the upgrade-safety validator. Customers can export pages as portable JSON to share between instances or with other customers.
 
 #### Notification engine
 - Email (transactional + digest)
@@ -512,6 +522,52 @@ AVA is the platform's AI feature surface — a rich set of features wired into e
 - AI suggestions involving safety-critical assets (life-support equipment) gated behind explicit human approval
 - AI prompts and responses are auditable; PHI in prompts is logged for HIPAA "minimum necessary" reviews
 - Per-customer LLM provider choice means customer controls data flow (some hospitals require LLM never leave their cloud — Bedrock with VPC endpoints, customer-hosted Ollama)
+
+#### AI Code Assistant (Day 1) — Cursor/Copilot for the platform
+
+A first-class AI development companion for customers (and HubbleWave engineers) building customizations. Inspired by Cursor and GitHub Copilot, but specialized to the platform: it understands the customer's current schema, their existing customizations, the Plugin SDK API surface, and the platform's security rules. **Direct competitor to ServiceNow's "Now Assist for Creators".**
+
+**Where it appears**:
+
+- **Plugin authoring** (web IDE + CLI): inline code completion in TypeScript/React for plugin development. Suggestions are aware of:
+  - The customer's current schema (when typing `useRecord('Asset', ...)`, the AI knows what fields exist on `Asset`)
+  - The Plugin SDK API surface (typed, versioned)
+  - The customer's existing plugins (matches their style, suggests refactors)
+  - Security rules (won't suggest `eval`, won't suggest non-platform `fetch`)
+  - Performance best practices (warns on N+1 queries, large bundle imports)
+- **Formula editor**: NL-to-formula and formula-to-NL bidirectional translation
+  - *"asset's last PM is more than 6 months old AND it's classified as critical"* → `Asset.lastPM < TODAY() - 180 AND Asset.category = 'Critical'`
+  - Point at any existing formula → plain-English explanation
+  - One-click fix for formula errors
+- **Automation script editor** (sandboxed JS subset): AI suggests platform SDK calls; validates against sandbox restrictions; refactors for performance
+- **Integration adapter authoring**: AI helps configure typed integration adapters
+  - *"I want to sync work orders with our SAP system"* → suggests REST adapter config + field mappings
+- **Workspace builder**: AI generates workspace skeletons from natural language
+  - *"Workspace for Quality Officers focused on inspection compliance"* → tile layout, navigation, embedded views
+- **Analytics query builder**: AI generates SQL/analytics queries
+  - *"MTTR by department for the last quarter, broken down by asset category"* → query
+- **Code review at deployment** (gates plugin install): security scan, best-practices review, performance review, dependency vulnerability scan
+- **Code explanation**: point at any customization (formula, automation, plugin) → plain-English explanation. Critical for handoffs, audits, and onboarding new admins
+- **Error fixing**: customization fails at runtime → AI suggests fix with one-click apply
+
+**Architecture**:
+
+- Uses customer's chosen LLM (their BAA provider; same as conversational AVA)
+- LLM gets platform context via:
+  - **Schema introspection** — current schema as system-prompt context
+  - **Plugin SDK documentation** embedded as RAG content (typed, versioned per platform release)
+  - **Customer's existing customizations** as RAG context (their style, their patterns)
+  - **Security rules** as constraints (the LLM is instructed never to suggest unsafe patterns)
+- Tool/function calling for the LLM:
+  - `getCollections()`, `getProperties(collection)`, `getRelationships(collection)` — schema queries
+  - `getExistingPlugins()`, `getExistingAutomations()`, `getExistingViews()` — customization queries
+  - `validateFormula(expr)`, `validatePluginCode(code)`, `runSandboxedTest(code, fixture)` — validation calls
+- **Inline UI** in plugin authoring CLI/IDE, formula editor, automation script editor, integration config editor, workspace builder, analytics query builder
+- All AI Code Assistant interactions auditable; customer can audit which prompts went to LLM provider
+
+**Why this matters**:
+
+ServiceNow's Now Assist for Creators is one of their fastest-selling premium add-ons. The pitch: "your admins ship customizations 5–10x faster, with fewer security incidents, even when they're not professional engineers." For your customer (whose admins are facilities/biomedical staff, not full-time devs), this is the difference between "nice-to-have customization" and "actually used customization." It's also what makes the Day-1 platform claim *demonstrable*: in the pitch, you can sit with a non-developer and show them building a custom workflow with AI assistance in 5 minutes.
 
 #### Platform Analytics (Day 1)
 
@@ -590,80 +646,13 @@ Native-feeling mobile app for technicians, supervisors, and managers. Offline-fi
 
 **Why this matters competitively**: Field staff in healthcare facilities are explicit about wanting better mobile. A demo where the mobile app works offline in an MRI suite and syncs cleanly when the technician walks back to the corridor is a dealbreaker-level moment vs Nuvolo, where the same scenario fails.
 
-### 4.2 Clinical/Facilities Asset Management pack features
+### 4.2 Clinical/Facilities Asset Management pack features — *deferred to separate design*
 
-The OOTB vertical app — what your customer signs up for.
+The Clinical/Facilities Asset Management vertical pack is **out of scope for this design**. It will be designed as its own document once the platform is in customer hands. Building it on top of the platform (rather than alongside it) is the right discipline — you build the moat once, then ship verticals fast.
 
-#### Asset management
-- Asset inventory (medical devices, HVAC, MRI, infusion pumps, biomedical equipment, building systems)
-- Asset hierarchy (system → subsystem → component)
-- Asset categories with category-specific fields:
-  - Medical device class (FDA Class I/II/III)
-  - FDA UDI (Unique Device Identifier)
-  - Sterilization status / cycle counts
-  - Calibration intervals + last/next due
-  - IR / vibration / ultrasound meter readings
-  - Manufacturer recall status
-- Asset lifecycle (commissioned → in-service → maintenance → retired → decommissioned)
-- Photos, manuals, schematics, warranty docs (S3-backed)
-- Mobile asset lookup (QR/barcode scanning)
+A forward-looking inventory of expected vertical-pack features is preserved in [Appendix D — Deferred vertical pack inventory](#d-deferred-vertical-pack-inventory) for reference and customer discussions, but it does not constrain or scope this design.
 
-#### Work order management
-- Reactive work orders (corrective maintenance)
-- Preventive maintenance schedules (interval-based, condition-based, runtime-based)
-- Inspections (Joint Commission, fire safety, biomedical)
-- Calibrations (with traceable certificates)
-- Permit-to-work (lockout/tagout, hot work, confined space)
-- Multi-shop assignment + dispatch
-- Technician mobile UI (lookup, status update, parts request, photo capture)
-
-#### Space and location management
-- Hospital → building → floor → room → bed hierarchy
-- Space utilization tracking
-- CAD / floor plan integration (DWG, IFC)
-- Patient care area mapping (which assets serve which patient zones)
-- Room-equipment assignment
-
-#### Compliance & regulatory
-- Joint Commission audit trails (full history, exportable)
-- FDA recall management workflow
-- Equipment downtime impact tracking (patient-care criticality)
-- 21 CFR Part 11 e-signatures for FDA-regulated processes
-- HITECH HIPAA logging
-- AEM (Alternative Equipment Maintenance) program documentation
-- Regulatory readiness dashboard
-
-#### Vendor & contract management
-- Vendor records, contacts, certifications
-- Service contracts with SLA tracking
-- Warranty management with expiration alerts
-- Service history per asset per vendor
-- Vendor portal (self-service work order updates)
-
-#### Inventory & parts
-- Parts catalog
-- Inventory levels per warehouse/bin
-- Parts requisition workflow
-- Reorder point automation
-- Vendor cross-reference
-
-#### Reporting & dashboards
-- Equipment uptime / MTTR / MTBF
-- PM compliance %
-- Cost-center spend
-- Vendor performance scorecards
-- Regulatory readiness indicators
-- Asset utilization heatmaps
-
-#### Integrations
-- HL7 v2 / FHIR R4 for patient context (which equipment is in active use, in which OR/ICU)
-- BACnet / Modbus for building management systems
-- Legacy CMMS/EAM connectors (Maximo, Infor, Nuvolo) for migration
-- ERP (SAP, Oracle, Workday) for procurement and accounting
-- EHR (Epic, Cerner) for patient-care criticality tags
-- Active Directory / SCIM for identity
-- Email / SMS gateway providers
-- Mobile app (technician + manager)
+The first customer's pilot (Wave 8) validates the platform itself by having them build their own clinical/facilities customizations on it — which is a stronger demo of the platform claim than them seeing a pre-built CMMS.
 
 ### 4.3 Customization surface (what customers can extend)
 
@@ -1345,7 +1334,7 @@ This sequence reflects the post-feedback v2 of the design: mobile is Day 1, Work
 
 **Gate**: web + mobile both load with shared auth; plugin loader proven by loading stub plugins on both; mobile reads + writes one collection with offline support.
 
-### Wave 4 — Customization layer + Workspaces + UI Builder (8 weeks)
+### Wave 4 — Customization + Workspaces + UI Builder (full page authoring) (10 weeks)
 
 - Define pack manifest format (YAML or JSON; version 1.0)
 - Implement schema isolation (customer-namespaced tables, JSONB extensions, side tables)
@@ -1353,39 +1342,46 @@ This sequence reflects the post-feedback v2 of the design: mobile is Day 1, Work
 - Build customization design-time validation (referential integrity against current schema)
 - Define full plugin SDK contract (web + mobile)
 - Build plugin install + upload + bundle-scan + admin-approval flow
-- **NEW: Workspace engine** — composition layer for views/dashboards/forms/plugins; persona homepages; multi-tab work surface; embedded AVA chat
-- **NEW: UI Builder** — page composition canvas; route definition; conditional logic; event wiring; theme awareness; live preview (web + mobile); design-time validation; AI authoring assist
-- **NEW: Mobile workspace runtime** — same workspace concept, mobile-tuned layouts
+- **Workspace engine** — composition layer for views/dashboards/forms/plugins; persona homepages; multi-tab work surface; embedded AVA chat
+- **UI Builder (full page authoring, ServiceNow UI Builder competitor)** — page composition canvas; route definition; layout authoring (header/sidebar/content/footer + nested); **templates**; **multi-screen workflows with state passing**; **variants (web/mobile/desktop)**; **localization**; **branding**; conditional logic; event wiring; theme awareness; live preview across variants; design-time validation; performance budget meter
+- **Mobile workspace runtime** — same workspace concept, mobile-tuned layouts
 
-**Gate**: hello-world customer pack installs and runs end-to-end on web + mobile; admin builds a workspace via UI Builder and binds to live data; plugin uploaded, approved, loaded on web + mobile.
+**Gate**: hello-world customer pack installs and runs end-to-end on web + mobile; admin builds a multi-page workspace via UI Builder (with templates, variants, conditional logic, event wiring) and binds to live data; plugin uploaded, approved, loaded on web + mobile.
 
-### Wave 5 — Upgrade validator + Platform Analytics + AI features (6 weeks)
+### Wave 5 — Upgrade validator + Platform Analytics + AI features + AI Code Assistant (8 weeks)
 
 - Schema/API/plugin/workflow/integration diff calculators
 - Validator UI (green/yellow/red display + remediation guide)
 - Automated migration generator (yellow path, common patterns)
-- **NEW: Platform Analytics ingestion pipeline** — event collection from api + worker + web + mobile; materialized views in Postgres; per-customer scoping
-- **NEW: Domain analytics UI** — ad-hoc query authoring, pivots, scheduled report delivery, BI tool export
-- **NEW: Platform usage analytics UI** — adoption, performance, customization usage, error tracking, AI-suggested optimizations
-- **NEW: AVA conversational assistant** — chat panel (web + mobile); permission-aware retrieval; pluggable LLM provider per customer
-- **NEW: AI authoring assist** — drafted automation rules, views, workspaces from natural language
-- **NEW: AI search** — vector + keyword hybrid
+- **Platform Analytics ingestion pipeline** — event collection from api + worker + web + mobile; materialized views in Postgres; per-customer scoping
+- **Domain analytics UI** — ad-hoc query authoring, pivots, scheduled report delivery, BI tool export
+- **Platform usage analytics UI** — adoption, performance, customization usage, error tracking, AI-suggested optimizations
+- **AVA conversational assistant** — chat panel (web + mobile); permission-aware retrieval; pluggable LLM provider per customer
+- **AI authoring assist** — drafted automation rules, views, workspaces from natural language
+- **AI search** — vector + keyword hybrid
+- **AI Code Assistant** (Cursor/Copilot for the platform) — schema-aware completion in plugin authoring (web IDE + CLI); NL-to-formula and formula-to-NL; sandboxed-JS-aware automation script suggestions; integration adapter authoring assist; workspace-skeleton generation; analytics-query generation; deployment-time security/performance review; code-explanation; one-click error fix
+  - LLM context: schema introspection + Plugin SDK docs (RAG) + customer's existing customizations (RAG) + security rules
+  - Tool/function calling: `getCollections`, `getProperties`, `validateFormula`, `validatePluginCode`, `runSandboxedTest`
+  - Inline UI in: plugin web IDE, formula editor, automation script editor, integration config editor, workspace builder, analytics query builder
 
-**Gate**: validator classifies synthetic packs correctly; analytics dashboards show real adoption data; AVA chat answers a real query against real data; NL-authored automation rule drafts and saves.
+**Gate**: validator classifies synthetic packs correctly; analytics dashboards show real adoption data; AVA chat answers a real query against real data; NL-authored automation rule drafts and saves; AI Code Assistant in formula editor converts NL to formula and explains existing formulas; AI Code Assistant blocks a deliberately-unsafe plugin upload.
 
-### Wave 6 — Clinical/Facilities pack + Mobile vertical UI + Advanced AI (12–14 weeks; parallelizable with W4–W5)
+### Wave 6 — Platform demo build (6 weeks; parallelizable with W4–W5)
 
-- **Domain entities** (Asset, AssetCategory, WorkOrder, PreventiveMaintenance, Inspection, Calibration, Recall, Vendor, ServiceContract, Room, Floor, Building, Department, Patient-care-area)
-- **Asset category type system** with category-specific fields (FDA UDI, sterilization status, calibration intervals, IR readings)
-- **Vertical web UI** (asset list/detail, WO list/detail, PM scheduler, inspection runner, calibration tracking, recall management)
-- **Vertical OOTB workspaces** (Maintenance Technician, Facilities Manager, Biomedical Engineer, Compliance Officer, Department Manager) — both web and mobile
-- **Vertical mobile UI** (technician work-order processing, scanning, photo capture with annotations, voice input, offline workflows, floor-plan navigation)
-- **Compliance modules** (Joint Commission audit trail, FDA UDI lookup, AEM program docs, 21 CFR Part 11 e-sign, HIPAA logging)
-- **Integrations** (HL7/FHIR connector, BACnet adapter, Epic/Cerner connector, Maximo migration tool, AD/SCIM)
-- **Reports and dashboards** (uptime, MTTR, PM compliance %, regulatory readiness, asset utilization heatmaps)
-- **Vertical-specific AI features**: predictive maintenance ML model (training pipeline + inference), smart triage on incoming work orders, document AI for equipment manuals + recall notices, image analysis (asset identification + fault detection)
+The vertical pack is deferred (see §4.2 and Appendix D). Wave 6 builds a **lightweight demo set** that exercises every platform feature without committing to a full clinical/facilities domain model. The demo set IS the eat-our-own-dog-food validation that the platform's primitives are sufficient.
 
-**Gate**: full end-to-end demo: create asset → schedule PM → mobile push → tech opens mobile workspace → scans asset → does work offline → reconnects → syncs cleanly → AI suggests next PM → analytics shows adoption.
+**Demo set contents**:
+
+- **Generic demo collections** (built via metadata engine, not hand-modeled): an `Asset`-style collection, a `WorkOrder`-style collection, a `PreventiveMaintenance`-style collection — generic enough to be re-skinned per customer, rich enough to exercise every metadata feature
+- **Demo workspaces** (built via UI Builder): generic personas (Manager Dashboard, Field Worker, Compliance Officer) — proves the workspace + UI Builder claim without committing to clinical-specific personas
+- **Demo plugins** (built via Plugin SDK): one or two example plugins (a custom chart, a custom field renderer) — proves the plugin lifecycle end-to-end
+- **Demo integration adapters** (built via integration platform): a generic webhook receiver + a generic outbound webhook adapter — proves the integration platform
+- **Demo platform analytics scenarios**: dashboards over the demo data; usage analytics over admin behavior
+- **Demo AI scenarios**: AVA chat answering questions on demo data; AI Code Assistant authoring formulas/automations against demo schema; predictive-maintenance demo over synthetic time-series data
+- **Demo mobile experience**: technician-style workflows over the demo collections, fully offline-capable
+- **Sample data + onboarding flow**: a fresh-instance startup script that loads demo content; admins can browse, customize, learn
+
+**Gate**: end-to-end demo across web + mobile + AI: an admin builds a custom workspace via UI Builder + AI Code Assistant in 15 minutes; a field worker on mobile uses that workspace offline; the upgrade validator green-lights a synthetic platform upgrade; AVA answers a question that joins data across multiple demo collections.
 
 ### Wave 7 — Pre-launch hardening (4 weeks)
 
@@ -1400,50 +1396,58 @@ This sequence reflects the post-feedback v2 of the design: mobile is Day 1, Work
 
 **Gate**: pen-test report shows no critical/high findings unaddressed; HIPAA audit shows no compliance gaps for healthcare customers; DR drill restores within RTO.
 
-### Wave 8 — Pilot with first customer (4 weeks)
+### Wave 8 — Platform pilot with first customer (4 weeks)
 
-- Provision pilot instance for current employer
-- Customer-led customization workshop (build their first custom pack with them)
-- Build at least one customer-specific plugin together (proves the SDK story end-to-end with a real customer)
-- Test full upgrade path: deploy initial → ship a platform "upgrade" → run validator → apply
-- Iterate on feedback; gather requirements for general availability
+The pilot validates the *platform* by having the customer build their own clinical/facilities customizations on it — not by handing them a pre-built CMMS. This is a stronger demo of the platform claim and lower-risk for solo execution.
 
-**Gate**: first customer signs off; ready for paid GA.
+- Provision pilot instance for current employer (single-tenant, dedicated)
+- Customer-led discovery workshop: catalog the customizations their Nuvolo deployment has accumulated; identify the top 5–10 most painful "broke on upgrade" scenarios
+- **Customer builds their first custom pack with you co-piloting**:
+  - Custom collections (their actual asset categories, with their actual fields)
+  - Custom forms / views / workspaces (mirror their current Nuvolo workflows)
+  - Custom plugins (rebuild the 1–2 plugins that broke on their last Nuvolo upgrade)
+  - Custom integrations (1 critical integration; e.g. their AD or their EHR)
+- **Walk the upgrade-safety guarantee end-to-end**: deploy v1 → ship a synthetic v2 platform "upgrade" with deliberately-breaking changes → run validator → see green/yellow/red → apply auto-migrations → green
+- AI Code Assistant adoption metrics: how often did the customer's admin use it; what was generated; what was rejected
+- Iterate on feedback; gather requirements for second customer
 
-### Total timeline (revised for Day-1 mobile + Workspaces + UI Builder + Analytics + rich AI)
+**Gate**: customer signs off on the platform pilot; agrees in principle to a paid contract once vertical pack is delivered (Wave 9+, separate design); willing to be a reference customer.
 
-| Wave | Duration | Parallelizable? |
+### Total timeline (solo founder, platform-only scope)
+
+| Wave | Duration | Notes |
 |---|---|---|
-| W0 Lock decision | 1 wk | — |
-| W1 API consolidation | 4–6 wk | — |
-| W2 Lib consolidation | 2 wk | — |
-| W3 Frontend + SDK + Mobile foundation | 5 wk | — |
-| W4 Customization + Workspaces + UI Builder | 8 wk | — |
-| W5 Upgrade validator + Platform Analytics + AI features | 6 wk | — |
-| W6 Vertical pack (web + mobile + advanced AI) | 12–14 wk | with W4–W5 (frontend-pack work alongside backend platform work) |
-| W7 Hardening | 4 wk | — |
-| W8 Pilot | 4 wk | — |
+| W0 Lock decision | 1 wk | Canon amendment, scaffold setup |
+| W1 API consolidation | 5 wk | 14 services → 3 |
+| W2 Lib consolidation | 2 wk | 21 libs → ~10 |
+| W3 Frontend + SDK + Mobile foundation | 5 wk | Web + mobile + plugin SDK skeleton |
+| W4 Customization + Workspaces + UI Builder (full page authoring) | **10 wk** | +2 from v2 for full page authoring + templates + multi-screen flows + variants + localization |
+| W5 Validator + Analytics + AI features + AI Code Assistant | **8 wk** | +2 from v2 for AI Code Assistant |
+| W6 Platform demo build | **6 wk** | Down from 12–14 wk for full vertical pack; demo set only |
+| W7 Hardening | 4 wk | Pen test, HIPAA gap analysis, DR drill |
+| W8 Platform pilot | 4 wk | Customer builds their own pack on the platform |
+| **Solo sequential total** | **45 wk** | **~10–11 months** |
 
 **Critical path scenarios**:
 
 | Scenario | Critical path | Calendar time |
 |---|---|---|
-| **Sequential (1 engineer, no parallelism)** | W0+W1+W2+W3+W4+W5+W6+W7+W8 = 1+5+2+5+8+6+13+4+4 = **48 wk** | ~12 months |
-| **Aggressive parallelization (2 engineers, W6 alongside W4–W5)** | W0+W1+W2+W3+max(W4+W5, W6)+W7+W8 = 1+5+2+5+max(14,13)+4+4 = **35 wk** | ~8–9 months |
-| **Optimistic with 3 engineers + clean execution** | parallelism reduces W4–W5 work too | ~7 months |
+| **Solo founder, platform-only (this scope)** | 1+5+2+5+10+8+6+4+4 = **45 wk** | **~10–11 months** |
+| **Solo founder with realistic buffer for solo realities (illness, deeper-than-expected refactors, dependency surprises)** | +6–8 wk buffer | **~12 months** |
+| **+1 full-time engineer** | parallelism on W6 + parts of W4/W5 | **~7–8 months** |
 
-Honest framing for the founder:
-- **Solo founder + occasional help: 14–18 months** to GA-quality demo. Plan for it; pad your runway.
-- **Founder + 1 full-time engineer: 9–12 months**.
-- **Founder + 2 full-time engineers: 7–9 months**.
+Honest framing:
+- **Solo founder, platform-only**: ~12 months to platform-pilot-ready (this is YOUR scenario).
+- **Solo founder with rebuild of full Day-1 scope including vertical pack**: would be 18+ months — which is why we deferred the pack.
+- **Solo founder + 1 contractor for mobile + AI**: 9–10 months feasible if the contractor takes W3 mobile + W5 AI Code Assistant in parallel with founder doing W1/W2/W4.
 
-The first customer (your employer) needs to be told the realistic timeline, not the optimistic one. Under-promising and over-delivering builds the trust your pitch needs; the opposite kills it.
+Telling your employer the realistic ~12-month timeline (with a clear demo at month 8 of the platform features in a generic demo set) is the right pitch. Under-promise; over-deliver.
 
-### Wave gantt (aggressive-parallelization scenario)
+### Wave gantt (solo founder, platform-only)
 
 ```mermaid
 gantt
-  title Migration sequence (2-engineer scenario, parallelized)
+  title Migration sequence (solo, platform-only)
   dateFormat YYYY-MM-DD
   axisFormat %b
 
@@ -1454,15 +1458,13 @@ gantt
   W3 Frontend + SDK + Mobile         :w3, after w2, 35d
 
   section Platform features
-  W4 Customization + Workspaces + UIB:w4, after w3, 56d
-  W5 Validator + Analytics + AI      :w5, after w4, 42d
+  W4 Customization + Workspaces + UIB:w4, after w3, 70d
+  W5 Validator + Analytics + AI      :w5, after w4, 56d
 
-  section Vertical pack (parallel)
-  W6 Vertical pack (web + mobile)    :w6, after w3, 91d
-
-  section Launch readiness
+  section Demo + Launch
+  W6 Platform demo build             :w6, after w5, 42d
   W7 Hardening                       :w7, after w6, 28d
-  W8 Pilot                           :w8, after w7, 28d
+  W8 Platform pilot                  :w8, after w7, 28d
 ```
 
 ---
@@ -1477,13 +1479,13 @@ Disposition of every existing canon clause, plus new clauses introduced by this 
 | 2 | Code is a product surface | KEEP | Naming + clarity discipline still right |
 | 3 | Platform, not application | KEEP | Confirmed by user's positioning — Nuvolo competitor on configurability |
 | 4 | Metadata is the product | KEEP | Now load-bearing for the customization moat |
-| 5 | One instance per customer | **SOFTEN** | Default deployment model; pooled (RLS) mode allowed for trial/lower-tier; canon language updated to "single-tenant default with optional pooled" |
+| 5 | One instance per customer | **SOFTEN** | "Single-tenant per-customer instance" stays as the **default deployment** for paying customers (preserves the pitch). ALSO support **multi-tenant pooled mode** (shared Postgres with RLS keyed by `tenant_id`) for: free trials, sales demos, internal dev/staging, lower-tier customers, future ISV marketplace. Architectural cost: every query carries tenant context; RLS policies on every table; per-tenant cross-tenant-leak tests. Architectural benefit: trials + demos + low-tier economics that strict §5 forbids. Customer procurement still hears "your production instance is fully dedicated"; only trial/lower-tier sees pooled. |
 | 6 | Schema before data | KEEP | |
 | 7 | Views are first-class | **SOFTEN** | Drop the 5-tier view hierarchy (System → Tenant → Role → Group → Personal); customer-namespaced + role views are sufficient |
 | 8 | Automation ≠ Workflow | **INVERT** | Merge into ONE engine with two modes (sync-rule / durable-workflow); ServiceNow's split is a tax, not a feature; canon language amended |
 | 9 | Authorization is centralized | KEEP | W1.2 + W1.5 + W5.D enforcement preserved |
 | 10 | Auditability is mandatory | KEEP | W1.6 + W2.D + W3.C transactional-audit preserved |
-| 11 | AI is infrastructure | **SOFTEN** | AI is a richly-integrated feature surface (chat, NL authoring, doc-AI, predictive, vision, voice); AVA is a Nest module wired into every workspace; not "infrastructure framework" but more central than originally proposed |
+| 11 | AI is infrastructure | **SOFTEN** | AI is a richly-integrated feature surface: chat, NL authoring, doc-AI, predictive, vision, voice, AND **AI Code Assistant** (Cursor/Copilot for plugin/formula/automation/integration/workspace/analytics authoring) — direct competitor to ServiceNow's Now Assist for Creators. AVA is a Nest module wired into every authoring surface; not "infrastructure framework" but central to the product surface customers see. |
 | 12 | Trust earned incrementally | **PER-FEATURE** | Progression (Suggest → Preview → Approve → Execute → Audit) applies per AI feature when customer enables autonomous action; not platform-wide infrastructure |
 | 13 | Upgrade safety is required | **EXPAND** | Becomes the load-bearing differentiator; new mechanism in §5.4; Plan Fix added for "upgrade compatibility validator" |
 | 14 | Delete ruthlessly | KEEP | W2.A reference-checker on metadata delete preserved |
@@ -1520,14 +1522,16 @@ These are the load-bearing decisions; if any of these are wrong, the design has 
 2. **Schema isolation via customer-namespaced tables + JSONB extensions** — predicated on Postgres handling this gracefully at customer scale. Verify with synthetic load test in Wave 7.
 3. **Plugin SDK with module federation** — predicated on Vite module federation being production-stable. If it isn't, fall back to sandboxed iframes with PostMessage.
 4. **Automation + workflow merged** — predicated on customers not needing both engines side-by-side. Validate with first customer in Wave 8.
-5. **AVA as a richly-integrated feature surface** — not infrastructure framework, but central feature pillar. Predicated on AI features being scoring points, not platform foundation. The §11/§12 reinterpretation is what makes this scope shippable in v1.
-6. **Per-customer instance default** — predicated on customer instances being lightweight enough to provision economically. Pooled mode kept available for unprofitable customers (trials, dev).
+5. **AVA as a richly-integrated feature surface (incl. AI Code Assistant)** — not infrastructure framework, but central authoring-surface pillar. Predicated on AI features being scoring points and the AI Code Assistant being demo-critical for non-developer admins.
+6. **§5 SOFTEN — single-tenant default + pooled mode optional** — predicated on the trial/sandbox/marketplace/low-tier use cases being valuable enough to justify the architectural cost (tenant_id threading, RLS policies, dual-mode tests). Strict §5 would be simpler code but would forbid free trials and sandboxes. *Locked SOFTEN per founder direction 2026-05-09.*
 7. **Upgrade-safety guarantee** — predicated on the contract being complete (no side-channels for customizations). If anywhere a customization can enter the system unvalidated, the guarantee fails. Audit aggressively in Wave 4.
-8. **React Native (not Flutter, not native)** — predicated on TypeScript code reuse with web outweighing Flutter's performance edge. Validate with technician usability tests in Wave 6 — if mobile feel isn't competitive, consider migrating to Flutter or going native for performance-critical screens.
+8. **React Native + Expo (not Flutter, not native)** — predicated on TypeScript code reuse with web outweighing Flutter's performance edge. *Locked per founder direction 2026-05-09.* Validate with usability tests in W6 platform demo.
 9. **Single mobile codebase serves both technicians and managers** — predicated on the same platform primitives + role-tuned workspaces being sufficient. If managers need fundamentally different UX patterns, may split into two mobile apps eventually.
-10. **Workspaces + UI Builder ship Day 1** — predicated on these being demo-critical for the first customer pitch. If timeline pressure forces a cut, UI Builder is the candidate to scope down (deliver workspace customization but not arbitrary page authoring) — but Workspaces themselves are non-negotiable.
-11. **Pluggable LLM provider per customer** — predicated on hospitals wanting control over LLM data residency for HIPAA. Default to Ollama (local) for dev; production providers chosen per customer with their BAA. If a customer wants HubbleWave-managed LLM, that's a higher-tier offering.
-12. **Self-hosted analytics (no third-party)** — predicated on HIPAA concerns about data leaving customer instance. If third-party analytics (e.g. PostHog) get HIPAA-compliant offerings that customers accept, may revisit for cost reasons.
+10. **Workspaces + UI Builder full page authoring (ServiceNow UI Builder competitor) ship Day 1** — *locked per founder direction 2026-05-09.* Predicated on the customer's heavy use of ServiceNow UI Builder and inability to demo without it. Not negotiable.
+11. **Pluggable LLM provider per customer** — predicated on hospitals wanting control over LLM data residency for HIPAA. Default to Ollama (local) for dev; production providers chosen per customer with their BAA.
+12. **Self-hosted analytics (no third-party)** — predicated on HIPAA concerns about data leaving customer instance. If third-party analytics get HIPAA-compliant offerings, may revisit for cost.
+13. **Vertical pack (Clinical/Facilities Asset Management) deferred to separate design** — *locked per founder direction 2026-05-09.* Predicated on platform-first being the right discipline for solo execution and the customer's pilot being stronger when they build their own pack on the platform. The Wave 6 generic demo set proves the platform without committing to vertical-specific scope.
+14. **Solo founder timeline ~10–12 months, no parallelism assumed** — predicated on solo execution. If a contractor joins for mobile/AI work, timeline drops to 7–9 months. Plan for solo; treat any extra hands as upside.
 
 ### B. Out of scope for this document
 
@@ -1541,13 +1545,94 @@ These are the load-bearing decisions; if any of these are wrong, the design has 
 
 - **Pack** — a versioned bundle of customizations (schema, automation, views, plugins, integrations) with a manifest declaring its API contract.
 - **Customer pack** — pack authored by a customer for their own instance.
-- **Vertical pack** — pre-built application pack shipped by HubbleWave (e.g. Clinical/Facilities Asset Management).
+- **Vertical pack** — pre-built application pack shipped by HubbleWave (e.g. Clinical/Facilities Asset Management — *deferred, see Appendix D*).
 - **Plugin** — a customer-uploaded React component bundle that runs inside the platform's web client via the Plugin SDK.
 - **Plugin SDK** — `@hubblewave/plugin-sdk`; the typed, versioned contract plugins consume.
 - **Customization surface** — the set of platform extension points (schema, automation, views, forms, integrations, plugins) that customers can modify; this surface IS the contract for upgrade safety.
-- **Customer instance** — a per-customer deployment of the platform: one `api`, one `worker`, one Postgres, one Redis.
+- **Customer instance** — a per-customer deployment of the platform: one `api`, one `worker`, one Postgres, one Redis (single-tenant default per §5 SOFTEN).
+- **Pooled mode** — multi-tenant deployment where multiple customers share infrastructure with RLS isolation (§5 SOFTEN).
 - **Control plane** — multi-tenant HubbleWave-owned service that provisions, upgrades, monitors, and bills customer instances.
 - **Validator (upgrade)** — pre-upgrade compatibility checker; classifies upgrades as green/yellow/red.
+- **AI Code Assistant** — Cursor/Copilot-style AI for customers building plugins/formulas/automations/integrations/workspaces/analytics queries; competitor to ServiceNow's Now Assist for Creators.
+
+### D. Deferred vertical pack inventory
+
+The Clinical/Facilities Asset Management vertical pack is deferred to a separate design. The inventory below is preserved for forward reference only — it is **NOT** scope for this design and **NOT** part of the Wave 6 platform demo build. It will inform a follow-on design effort once the platform is in customer hands.
+
+This list is the result of v2 design exploration; treat it as a working catalog, not a commitment.
+
+#### Asset management (deferred)
+- Asset inventory (medical devices, HVAC, MRI, infusion pumps, biomedical equipment, building systems)
+- Asset hierarchy (system → subsystem → component)
+- Asset categories with category-specific fields:
+  - Medical device class (FDA Class I/II/III)
+  - FDA UDI (Unique Device Identifier)
+  - Sterilization status / cycle counts
+  - Calibration intervals + last/next due
+  - IR / vibration / ultrasound meter readings
+  - Manufacturer recall status
+- Asset lifecycle (commissioned → in-service → maintenance → retired → decommissioned)
+- Photos, manuals, schematics, warranty docs (S3-backed)
+- Mobile asset lookup (QR/barcode scanning)
+
+#### Work order management (deferred)
+- Reactive work orders (corrective maintenance)
+- Preventive maintenance schedules (interval-based, condition-based, runtime-based)
+- Inspections (Joint Commission, fire safety, biomedical)
+- Calibrations (with traceable certificates)
+- Permit-to-work (lockout/tagout, hot work, confined space)
+- Multi-shop assignment + dispatch
+- Technician mobile UI (lookup, status update, parts request, photo capture)
+
+#### Space and location management (deferred)
+- Hospital → building → floor → room → bed hierarchy
+- Space utilization tracking
+- CAD / floor plan integration (DWG, IFC)
+- Patient care area mapping
+- Room-equipment assignment
+
+#### Compliance & regulatory (deferred)
+- Joint Commission audit trails
+- FDA recall management workflow
+- Equipment downtime impact tracking (patient-care criticality)
+- 21 CFR Part 11 e-signatures
+- HITECH HIPAA logging
+- AEM (Alternative Equipment Maintenance) program documentation
+- Regulatory readiness dashboard
+
+#### Vendor & contract management (deferred)
+- Vendor records, contacts, certifications
+- Service contracts with SLA tracking
+- Warranty management with expiration alerts
+- Service history per asset per vendor
+- Vendor portal (self-service work order updates)
+
+#### Inventory & parts (deferred)
+- Parts catalog
+- Inventory levels per warehouse/bin
+- Parts requisition workflow
+- Reorder point automation
+- Vendor cross-reference
+
+#### Reporting & dashboards (deferred)
+- Equipment uptime / MTTR / MTBF
+- PM compliance %
+- Cost-center spend
+- Vendor performance scorecards
+- Regulatory readiness indicators
+- Asset utilization heatmaps
+
+#### Integrations (deferred)
+- HL7 v2 / FHIR R4 for patient context
+- BACnet / Modbus for building management systems
+- Legacy CMMS/EAM connectors (Maximo, Infor, Nuvolo) for migration
+- ERP (SAP, Oracle, Workday) for procurement and accounting
+- EHR (Epic, Cerner) for patient-care criticality tags
+- Active Directory / SCIM for identity
+- Email / SMS gateway providers
+- Mobile app (technician + manager)
+
+**Important**: every item above is implementable as a customer pack on the platform once it ships. The platform's customization surface (custom collections, properties, workflows, plugins, integrations) is sufficient to deliver this entire inventory. The deferred work is *building the pack*, not building platform capability — that's the whole point of platform-first.
 
 ---
 
@@ -1555,11 +1640,21 @@ These are the load-bearing decisions; if any of these are wrong, the design has 
 
 This design supersedes parts of `CLAUDE.md` (the master canon). Specifically, it asks the founder to:
 
-1. **Approve the architectural shift** from 14-service distributed system to 3-process modular monolith.
-2. **Approve the canon delta** in §9.
-3. **Approve the migration sequence** in §8 (~25 weeks critical path).
+1. **Approve the architectural shift** from 14-service distributed system to 3-process modular monolith + mobile app.
+2. **Approve the canon delta** in §9 — including new clauses §17.5 (upgrade safety), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder).
+3. **Approve the migration sequence** in §8 (~45 weeks / ~10–12 months solo critical path; platform-only scope).
 4. **Approve the customization moat** in §5 as the load-bearing differentiator vs Nuvolo/ServiceNow.
+5. **Approve the platform-first scope** — vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc, captured in Appendix D as forward inventory.
 
-Once approved, the next step is `superpowers:writing-plans` to produce the per-wave implementation plan (PR-level, file-level).
+### Founder direction locked (2026-05-09 conversation)
+
+- Mobile: React Native + Expo, Day 1 ✓
+- Solo founder lane: ~12 months realistic ✓
+- AI Code Assistant: Day 1 ✓
+- UI Builder: full page authoring (ServiceNow UI Builder competitor) ✓
+- §5: SOFTEN (single-tenant default + pooled mode for trial/sandbox/low-tier) ✓
+- Vertical pack: deferred to separate design ✓
+
+Once approved, the next step is `superpowers:writing-plans` to produce the per-wave implementation plan (PR-level, file-level) for the platform-only scope.
 
 Push back on any section before that step.
