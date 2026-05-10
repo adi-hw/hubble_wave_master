@@ -22,21 +22,21 @@ import { WorkspaceModule } from './workspaces/workspace.module';
  *   [x] application
  *   [x] ava
  *   [ ] change-packages
- *   [ ] connectors
- *   [ ] decision-tables
+ *   [x] connectors
+ *   [x] decision-tables
  *   [x] display-rules
  *   [x] guided-processes
  *   [x] insights
  *   [ ] localization
- *   [ ] metadata
- *   [ ] navigation
+ *   [x] metadata
+ *   [x] navigation
  *   [ ] preferences
  *   [ ] property
  *   [x] script
  *   [ ] search
  *   [x] theme
  *   [x] view
- *   [ ] workspaces
+ *   [x] workspaces
  *   [ ] access
  *   [ ] publish-impact
  *   [ ] collection
