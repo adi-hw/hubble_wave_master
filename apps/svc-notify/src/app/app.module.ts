@@ -7,7 +7,7 @@ import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
 import { AuthorizationModule } from '@hubblewave/authorization';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { HealthController } from './health.controller';
-import { NotificationsModule } from './notifications/notifications.module';
+import { NotificationsModule } from '../../../api/src/app/notifications/notifications.module';
 
 @Module({
   imports: [
