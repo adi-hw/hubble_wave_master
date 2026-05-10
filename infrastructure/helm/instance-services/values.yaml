@@ -92,69 +92,29 @@ defaults:
 
 # Services rendered by the chart. Each entry inherits `defaults` for any field
 # it does not override.
+#
+# Post-ARC-W1-cutover topology: a single `api` deployment for the instance
+# modular monolith (per canon §5/§17/§19 + spec §2), plus the web-client.
+# All instance-plane modules (identity, metadata, data, automation, ava,
+# views, notifications, instance-api, analytics) run inside the same Nest
+# process.
 services:
-  - name: svc-identity
-    image: svc-identity
-    port: 3001
-    servicePort: 80
-    autoscaling:
-      enabled: true
-      minReplicas: 2
-      maxReplicas: 8
-  - name: svc-metadata
-    image: svc-metadata
-    port: 3002
-    servicePort: 80
-  - name: svc-data
-    image: svc-data
-    port: 3004
+  - name: api
+    image: api
+    port: 3000
     servicePort: 80
     resources:
       requests:
-        cpu: 200m
-        memory: 384Mi
-      limits:
-        cpu: 1000m
+        cpu: 500m
         memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
     autoscaling:
       enabled: true
       minReplicas: 2
       maxReplicas: 10
-  - name: svc-ava
-    image: svc-ava
-    port: 3005
-    servicePort: 80
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: 1500m
-        memory: 1.5Gi
-  - name: svc-workflow
-    image: svc-workflow
-    port: 3006
-    servicePort: 80
-  - name: svc-automation
-    image: svc-automation
-    port: 3007
-    servicePort: 80
-  - name: svc-notify
-    image: svc-notify
-    port: 3008
-    servicePort: 80
-  - name: svc-insights
-    image: svc-insights
-    port: 3009
-    servicePort: 80
-  - name: svc-instance-api
-    image: svc-instance-api
-    port: 3010
-    servicePort: 80
-  - name: svc-view-engine
-    image: svc-view-engine
-    port: 3011
-    servicePort: 80
+      targetCPUUtilizationPercentage: 70
   - name: web-client
     image: web-client
     port: 80
@@ -177,12 +137,12 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   host: ""
   tlsSecret: ""
-  # Path-prefix routes that map onto the bundled services. The default routes
-  # everything under /api/ to svc-instance-api and / to the web-client.
+  # Path-prefix routes that map onto the bundled services. /api/ routes to
+  # the consolidated apps/api deployment; / routes to the web-client.
   routes:
     - path: /api
       pathType: Prefix
-      service: svc-instance-api
+      service: api
       port: 80
     - path: /
       pathType: Prefix

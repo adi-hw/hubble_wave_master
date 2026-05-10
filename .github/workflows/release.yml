@@ -112,11 +112,9 @@ jobs:
     strategy:
       matrix:
         service:
-          - svc-identity
-          - svc-data
-          - svc-metadata
-          - svc-ai
-          - svc-control-plane
+          - api
+          - control-plane
+          - svc-migrations
           - web-client
           - web-control-plane
     steps:
