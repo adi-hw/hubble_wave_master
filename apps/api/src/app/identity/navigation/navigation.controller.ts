@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { NavigationResolutionService } from './navigation-resolution.service';
 import { NavigationPreferenceService } from './navigation-preference.service';
-import { CurrentUser } from '../../../../api/src/app/identity/auth/decorators/current-user.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ResolvedNavigation, NavProfileSummary, SwitchProfileRequest, ToggleFavoriteRequest, RecordNavigationRequest } from './dto/navigation.dto';
-import { AuthenticatedOnly } from '../../../../api/src/app/identity/auth/decorators/public.decorator';
+import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 
 interface CurrentUserPayload {
   userId: string;
