@@ -1,67 +1,19 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ScheduleModule } from '@nestjs/schedule';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { InstanceDbModule, CollectionAccessRule, PropertyAccessRule } from '@hubblewave/instance-db';
-import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
-import {
-  AuthorizationModule,
-  COLLECTION_ACL_REPOSITORY,
-  PROPERTY_ACL_REPOSITORY,
-} from '@hubblewave/authorization';
-import { RedisModule } from '@hubblewave/redis';
-import { HealthController } from './health.controller';
-import { IdentityModule } from '../../../api/src/app/instance-api/identity/identity.module';
+import { Module } from '@nestjs/common';
+import { InstanceApiModule } from '../../../api/src/app/instance-api/instance-api.module';
 
+/**
+ * Thin adapter — ARC-W1 Task 3 (svc-instance-api fold-in).
+ *
+ * All instance-api logic (identity auth flows, pack install guards, health
+ * endpoints, global infrastructure) now lives in
+ * apps/api/src/app/instance-api/instance-api.module.ts.
+ *
+ * This adapter re-exports InstanceApiModule so svc-instance-api continues
+ * serving its endpoints during the parallel-deployment window. At W1 final
+ * cutover, apps/svc-instance-api is deleted entirely and apps/api serves
+ * all instance-api endpoints.
+ */
 @Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ([{
-        ttl: config.get<number>('RATE_LIMIT_TTL', 60000),
-        limit: config.get<number>('RATE_LIMIT_MAX', 100),
-      }]),
-    }),
-    InstanceDbModule,
-    AuthGuardModule,
-    GlobalGuardsModule,
-    TypeOrmModule.forFeature([CollectionAccessRule, PropertyAccessRule]),
-    AuthorizationModule.forRoot({
-      enableCaching: true,
-    }),
-    RedisModule.forRoot(),
-    ScheduleModule.forRoot(),
-    EventEmitterModule.forRoot(),
-    IdentityModule,
-  ],
-  controllers: [
-    HealthController,
-  ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-    {
-      provide: COLLECTION_ACL_REPOSITORY,
-      useFactory: (repo: Repository<CollectionAccessRule>) => repo,
-      inject: [getRepositoryToken(CollectionAccessRule)],
-    },
-    {
-      provide: PROPERTY_ACL_REPOSITORY,
-      useFactory: (repo: Repository<PropertyAccessRule>) => repo,
-      inject: [getRepositoryToken(PropertyAccessRule)],
-    },
-  ],
+  imports: [InstanceApiModule],
 })
-export class AppModule implements NestModule {
-  configure(_consumer: MiddlewareConsumer) {
-    // Middleware configuration can be added here
-  }
-}
+export class AppModule {}
