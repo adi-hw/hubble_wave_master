@@ -2,7 +2,9 @@
 
 > **Purpose:** Read this at the start of any fresh Claude Code session to pick up the HubbleWave platform architecture migration without re-deriving context. Update only when a new tag lands or a locked decision changes.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-metadata-complete`)
+> **Master roadmap:** `docs/superpowers/PLATFORM-ROADMAP.md` — single source of truth coordinating BOTH the architectural reshape (this branch) and the parallel security audit remediation (sibling branch `claude/condescending-shamir-92422b`). Read PLATFORM-ROADMAP.md FIRST for the bigger picture, then this file for the architecture-specific lessons + cheat sheet.
+>
+> **Last updated:** 2026-05-10 (after `arc-w1-metadata-complete` + PLATFORM-ROADMAP.md consolidation)
 
 ## Working directory
 
@@ -214,11 +216,13 @@ After all instance services migrate:
 
 Open a new Claude Code session in this worktree and say:
 
-> Read `docs/superpowers/RESUME-CONTEXT.md` and tell me what's done.
+> Read `docs/superpowers/PLATFORM-ROADMAP.md` and `docs/superpowers/RESUME-CONTEXT.md` and tell me what's done.
 >
-> Then I want to: [insert next request — e.g. "write the svc-data migration plan", "execute the svc-automation migration", "write the W1 final cutover plan", "review the canon delta and confirm it still matches our intent"].
+> Then I want to: [insert next request — e.g. "start Phase 0 branch reconciliation", "write the svc-data migration plan", "execute the svc-automation migration", "review the canon delta"].
 
 Auto mode for continuous execution if you want minimal interruption.
+
+**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 0 — branch reconciliation. The 27 W0+W1 security commits in `claude/condescending-shamir-92422b` need to be cherry-picked into this branch before further migration work, so security fixes don't accumulate as additional debt at new paths.
 
 ## Useful tags + commands cheat sheet
 

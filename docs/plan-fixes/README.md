@@ -1,5 +1,7 @@
 # Plan Fixes — Status Index
 
+> **⚠️ Superseded:** This index is historical (covers Plan Fixes 1, 8, 11–16, 24 from the pre-2026-05-09 remediation backlog). The current source of truth is `docs/superpowers/PLATFORM-ROADMAP.md`, which consolidates this work with the post-2026-05-09 architectural reshape and the parallel 150-finding audit. Read PLATFORM-ROADMAP.md first.
+
 Tracks architectural remediation efforts referenced in `CLAUDE.md`. Each fix has its own design doc when it has one.
 
 ## Status as of 2026-05-09 (Architecture v3 amendment)

@@ -1,0 +1,321 @@
+# HubbleWave Platform Master Roadmap
+
+> **This is the single source of truth.** It supersedes the parallel `docs/plan-fixes/00-master-remediation-roadmap.md` (which lives on a sibling branch and was a separate audit-driven effort) and integrates with our architectural work in `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
+>
+> **Read this file at the start of any session** to understand state, priorities, and what to do next. Update when a new tag lands or a major decision changes.
+>
+> **Last updated:** 2026-05-10 (after `arc-w1-metadata-complete`)
+
+---
+
+## State of play
+
+There are **two parallel efforts** that started 2026-05-08 from common base `96c92c2`. They've diverged:
+
+| Effort | Branch | Tags / Acceptance | Status |
+|---|---|---|---|
+| **A — Architectural reshape** (this worktree) | `claude/nervous-volhard-f9abc2` | `arc-w0-complete`, `arc-w1-foundation-partial`, `arc-w1-identity-complete`, `arc-w1-metadata-complete` | ~38,400 LoC reshaped from 14-service distributed system → modular monolith. Identity + metadata done; 9 instance services remain. |
+| **B — Security/correctness audit remediation** (sibling worktree at `condescending-shamir-92422b`) | `claude/condescending-shamir-92422b` | W00-acceptance, W01-acceptance | 150-finding audit; 27 commits ahead of `96c92c2`. W0 (foundation: scanners) + W1 (stop-the-bleeding: 14 critical security fixes) shipped. W2–W11 (~120 findings) not started. |
+
+**Integration status**: The 27 W0+W1 security commits exist in the shared git object database but are **not in this branch's history** (verified: `git merge-base --is-ancestor` returns false for all 19 spot-checked SHAs). A direct merge would conflict heavily because the architectural reshape moved files (e.g. `apps/svc-identity/src/app/auth/oidc.service.ts` → `apps/api/src/app/identity/auth/sso/oidc.service.ts`); the security branch fixed those files at their old paths.
+
+Resolution path: **cherry-pick W0+W1 fixes from sibling branch into this branch with paths updated to apps/api**. ~3–5 days of careful work.
+
+---
+
+## Anchor documents
+
+| Doc | Purpose |
+|---|---|
+| `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` | Approved canonical spec (architecture, customization moat, mobile, AI Code Assistant). Founder-locked decisions live here. |
+| `docs/superpowers/RESUME-CONTEXT.md` | Quick start for a fresh session — read first. |
+| `docs/superpowers/plans/2026-05-09-platform-w0-w1-foundation.md` | Foundation plan (executed) |
+| `docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md` | Identity migration plan (executed) |
+| `docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md` | Metadata migration plan (executed) |
+| **(this file)** | Master roadmap that sequences all remaining work across both efforts |
+| `CLAUDE.md` | The canon (amended through `arc-w0-complete`). Authoritative on rules. |
+| `apps/api/src/app/identity/identity.module.ts` | Migration progress checklist for identity (15 sub-modules ✓) |
+| `apps/api/src/app/metadata/metadata.module.ts` | Migration progress checklist for metadata (23 sub-modules ✓) |
+
+---
+
+## Locked decisions (do not re-litigate)
+
+From the spec + founder direction (2026-05-09):
+
+| Decision | Source |
+|---|---|
+| Modular monolith — apps/api + apps/worker + apps/control-plane + apps/web-client + apps/mobile | Spec §2 |
+| React Native + Expo for mobile, Day 1 | Founder lock 2026-05-09 |
+| §5 SOFTEN — single-tenant default + pooled (RLS) mode | Canon §5 amendment, founder lock 2026-05-09 |
+| AI Code Assistant Day 1 (Cursor/Copilot for plugin/formula/automation/integration/workspace/analytics authoring) | Founder lock 2026-05-09 |
+| UI Builder full page authoring (ServiceNow UI Builder competitor) | Founder lock 2026-05-09 |
+| Vertical pack (Clinical/Facilities Asset Management) deferred | Spec §4.2; Appendix D inventory only |
+| Solo founder, ~10–12 months critical path | Spec §8 |
+
+---
+
+## What's done
+
+### Effort A — architectural (4 git tags in this branch)
+
+| Tag | HEAD | What |
+|---|---|---|
+| `arc-w0-complete` | `d3dede3` | Canon amendments §5/§7/§8/§11/§12/§17/§19/§21 + new §17.5/§25/§26/§27 + apps/api & worker scaffolds |
+| `arc-w1-foundation-partial` | `bffef2f` | kernel + db + audit module wrappers in apps/api (re-exports from libs/instance-db) |
+| `arc-w1-identity-complete` | `8710e79` | All 15 svc-identity sub-modules + 3 top-level files → apps/api/identity (~17,200 LoC; cyclic-core bundle for auth+abac+ldap+roles) |
+| `arc-w1-metadata-complete` | `0b2f0d9` | All 23 svc-metadata sub-modules + 7 top-level files → apps/api/metadata (~21,200 LoC) |
+
+### Effort B — security/correctness (in sibling branch only)
+
+**W0 closed** (per `condescending-shamir-92422b/docs/plan-fixes/W00-acceptance.md`):
+- F018 — authz-bypass-check.ts scope extended to all 11 instance services
+- F056 — service-boundary-check.ts gained AutomationRule write rule
+- F104 — ESLint canon §21 enforcement (no-warning-comments, custom hw/no-versioned-identifier)
+- F105 — security-bypass PUBLIC_ALLOWLIST reconciled (27 entries, 5 categories)
+- F106 — CD wired to require CI completion (workflow_run trigger)
+- F119 — gitleaks + SBOM (anchore/syft + grype) + license-checker added to CI
+- D.6 — `tools/dead-code-check.ts` anti-resurrection scanner
+
+**W1 closed** (per `condescending-shamir-92422b/docs/plan-fixes/W01-acceptance.md`):
+- F011 — LDAP filter injection (RFC 4515 escape)
+- F027 — Unsandboxed `expr-eval` RCE-class fixed (`SafeExpressionEvaluator` 5-layer defense)
+- F053 — svc-migrations default-password fallback removed
+- F073 — Vector search authorization (principal required, post-filter authzCheck)
+- F088 — React Rules-of-Hooks fix in ProtectedRoute + PermissionGate
+- F089 — Control plane in-memory access token + HttpOnly refresh cookie
+- F093 — Shared `sanitizeHtml(content, profile)` helper
+- F111 — `SECRETS_ROTATION.md` private-key block redacted (rotation owed to ops)
+- F124 — SQL injection in custom report queries (raw-SQL branch deleted)
+- F125 — Pack download SSRF guard (`validateOutboundUrl()`)
+- F126 — Pack install controller `@Public()` reconciled (PackInstallGuard handles auth)
+- F127 — Notification template `{{{ raw }}}` triple-brace XSS fixed
+- F139 — SAML signature affirmation gate + `email_verified` defaulting fixed
+- F141 — SAML metadata XML escape (`escapeXmlAttribute()`)
+- F014 — JWT secret in `.env.backup` (gitleaks visibility, force-rewrite owed to ops)
+
+**Total W0+W1**: 27 commits, ~6,500 LoC additions / ~50 LoC deletions across 5 new scanners + custom ESLint rule + 7 new security primitive modules + 8 new spec files (148 W1-specific assertions) + CI/CD config.
+
+---
+
+## Remaining work (consolidated, sequenced by priority)
+
+### Phase 0: Branch reconciliation [CRITICAL — do FIRST in next session]
+
+**Objective**: Get the W0+W1 security work into our branch before any further migration work, so we don't accumulate more files that need security fixes in their new locations.
+
+**Tasks** (~3–5 days):
+
+1. **Survey conflicts**: For each of the 27 commits in `claude/condescending-shamir-92422b` since `96c92c2`, run `git diff --name-only` and identify which paths still exist in our branch versus which moved to apps/api during identity/metadata migrations.
+
+2. **Cherry-pick low-conflict commits first** (W0 scanners + custom ESLint rule + CI config — these touched `tools/`, `.github/`, `eslint.config.mjs`, `package.json`, NOT the migrated services). Likely cleanly applicable.
+
+3. **Cherry-pick W1 fixes with path translation**:
+   - F011 (LDAP filter injection): was in `apps/svc-identity/src/app/ldap/ldap.service.ts:54`, now needs to land in `apps/api/src/app/identity/ldap/ldap.service.ts:54`. Same fix, new path.
+   - F027 (expr-eval sandbox): in `libs/automation/...` — path unchanged.
+   - F053 (default password): in `apps/svc-migrations/src/main.ts` — unchanged.
+   - F073 (vector authz): in `libs/ai/...` — unchanged.
+   - F088 (Rules-of-Hooks): in `apps/web-client/...` — unchanged.
+   - F089 (control plane tokens): in `apps/svc-control-plane/...` and `apps/web-control-plane/...` — unchanged (svc-control-plane hasn't migrated yet).
+   - F093 (sanitizeHtml): in `apps/web-client/...` — unchanged.
+   - F111 (secrets-rotation redaction): doc-only — unchanged.
+   - F124 (report SQL injection): in `libs/analytics/...` — unchanged.
+   - F125, F126 (pack SSRF + public): was in `apps/svc-metadata/src/app/packs/...`, **migrated** — now `apps/api/src/app/metadata/packs/...`. Path translation needed.
+   - F127 (notification template XSS): in `apps/svc-notify/...` — unchanged (notify hasn't migrated).
+   - F139, F141 (SAML): in `libs/enterprise/...` — unchanged (W4 of Effort B will move it; until then, libs path is correct).
+
+4. **Verify** all spec assertions pass (148 W1 assertions) + all scanners green + both monolith builds clean.
+
+5. **Tag** `arc-reconciled-with-w1-security` after the cherry-pick lands.
+
+### Phase 1: Complete W1 architectural migration (next biggest unblocker)
+
+Per spec §8 + RESUME-CONTEXT.md "what's left in W1":
+
+| Service | LoC | Order | Notes |
+|---|---|---|---|
+| svc-data | ~15,000 | 1st | Biggest unblocker for W4 customization layer; survey first for cyclic deps |
+| svc-automation | ~6,000 | 2nd | Already partially consolidated in Plan Fix 1; should be fast |
+| svc-ava | ~8,000 | 3rd | AVA runtime; may have proposal state machine concerns (F072, F074) |
+| svc-workflow | ~3,000 | 4th | Per canon §8 INVERT, merges with automation engine — may not need a separate apps/api/workflow module |
+| svc-control-plane | ~6,000 | 5th | Different plane (multi-tenant by design); may be a different shape than instance-plane migrations |
+| svc-view-engine | ~2,000 | 6th | Folds into spec §2 `views` module concept |
+| svc-insights | ~2,000 | 7th | Folds into spec §2 `analytics` module concept |
+| svc-notify | ~1,000 | 8th | Folds into spec §2 `notifications` module concept |
+| svc-instance-api | ~1,000 | 9th | Aggregator/proxy; "fold into apps/api wholesale" per spec §2 |
+
+**Estimated**: 6–10 weeks solo for the 9 services + final cutover (delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api).
+
+After this: tag `arc-w1-complete`. apps/api is the sole instance-plane runtime.
+
+### Phase 2: Critical security findings that must land before pilot (W2–W5 from Effort B)
+
+These are correctness bugs in shared libs (paths unchanged by architectural migration). Must land before any customer pilot regardless of architecture wave.
+
+#### W2 — Authorization correctness (~3 weeks, ~11 findings)
+
+| ID | Finding | Path | Why critical |
+|---|---|---|---|
+| F003 | ACL predicates AND'd not OR'd → users see fewer records than they should | `libs/authorization/src/lib/authorization.service.ts:144-163` | First customer's procurement WILL ask "show me a user seeing the records they're entitled to"; today, they see fewer |
+| F004 | Field-level masking hardcoded NONE | `libs/authorization/src/lib/property-acl.repository.ts:514` | HIPAA: PHI must be maskable per role |
+| F005 | Field-level access defaults to ALLOW | `libs/authorization/src/lib/property-acl.repository.ts:343-446` | Should default-deny; currently defaults to allow |
+| F006 | No deny rules in ACL model | `libs/authorization/src/lib/types.ts:30-61` | Compliance customers explicitly require deny rules |
+| F021 | Admin role bypasses everything including masking + audit | `libs/auth-guard/.../permissions.guard.ts:97-101`, `authorization.service.ts:213-219, 302-305` | Admin bypass without audit row violates canon §10 "every action explainable" |
+| F023 | `getCollectionRules` fetches all rules then filters in JS | `authorization.service.ts:583-587` | Performance + correctness |
+| F024 | First-rule-wins on field permissions | `authorization.service.ts:246-257` | Same root cause as F003 |
+| F091 | Field-level permission gating absent in renderer | `apps/web-client/src/components/form/FieldRegistry.tsx`, `FormLayout.tsx` | Frontend doesn't enforce what backend does |
+| F102 | No 403 handling | `apps/web-client/src/api/services/api.ts:62-117` | UX: silent failures on permission denial |
+| F136 | Search authz post-filters after search (pagination + facet leak) | `apps/svc-ava/src/app/search/search-query.service.ts:399-479` | Path migrates with svc-ava (Phase 1 #3) |
+| F146 | Insights dashboards has no authorization on layout content | `apps/svc-insights/src/app/dashboards/dashboards.service.ts:122-142` | Path migrates with svc-insights (Phase 1 #7) |
+
+#### W3 — JWT, session, MFA, SSO hardening (~3 weeks, ~13 findings)
+
+| ID | Finding | Path | Why critical |
+|---|---|---|---|
+| F001 | Refresh token reuse undetected | `apps/api/src/app/identity/auth/refresh-token.service.ts:55-104` (post-migration) | OWASP A07:2021 |
+| F002 | No JWT revocation on instance plane | `libs/auth-guard/src/lib/jwt.guard.ts:47` | OWASP A07 |
+| F007 | OIDC missing PKCE | `apps/api/src/app/identity/auth/sso/oidc.service.ts:42-101` (post-migration) | OWASP authn standard |
+| F008 | OIDC missing nonce + id_token signature check | `oidc.service.ts:209-232, 247, 285-303` | OWASP authn standard |
+| F009 | OIDC state store in-memory (Map) | `oidc.service.ts:52` | Breaks under multi-pod HA |
+| F010 | OIDC trusts `email_verified ?? true` | `oidc.service.ts:294` | Account takeover vector |
+| F013 | Stale roles in JWT override fresh DB state | conflict between `libs/auth-guard/.../jwt.guard.ts` and `apps/api/.../jwt.strategy.ts` | Admin who lost privileges still has them in JWT |
+| F015 | No JWT key rotation infrastructure (no kid, no JWKS) | `apps/api/src/app/identity/auth/auth.module.ts:114-132` (post-migration) | Forced re-key requires app restart |
+| F016 | JwtAuthGuard doesn't validate audience or issuer | `libs/auth-guard/src/lib/jwt.guard.ts:47` | Token confusion attacks |
+| F019 | Recovery codes hashed with plain SHA-256 | `apps/api/src/app/identity/auth/mfa.service.ts:118-120` (post-migration) | Should be argon2 (per W6.B) |
+| F020 | TOTP window=1 + no replay-detection | `mfa.service.ts:21-23` | Same code can be reused within window |
+| F022 | No service-to-service auth | `apps/api/.../sync-trigger-client.service.ts` (post-migration) | Anyone with network access can call internal endpoints |
+| F025 | Permission cache TTL 5min, no invalidation hook | `authorization.service.ts:48` | Permission changes take 5min to propagate |
+
+#### W5 — Data plane survival (~4 weeks, ~13 findings)
+
+The big one for HIPAA-eligibility. Includes:
+
+| ID | Finding | Why critical |
+|---|---|---|
+| F031 | God-package entity barrel (130+ entities, every service loads all) | Boot time + memory; deferred since `arc-w0-complete` |
+| F042 | Audit hash chain unsafe under concurrency | `libs/instance-db/src/lib/subscribers/audit-log.subscriber.ts:11-32` — HIPAA auditability claim depends on integrity |
+| F043 | Identity cache invalidation publishes BEFORE commit, swallows failures | `identity-cache-invalidation.subscriber.ts:65-78` |
+| F044 | Audit log writes outside transactions in 30+ services | Canon §10 violated; W5.X scanner is stale |
+| F045–F050 | Performance: rollups, N+1 group resolution, no PgBouncer, no `CREATE INDEX CONCURRENTLY`, JSONB GIN coverage gaps | Customer load test fails today |
+| F052 | AVA `chat` chains 7 sequential writes with no transaction | Partial-failure leaves AVA conversation in invalid state |
+| F054 | Subscriber-based audit hash means migrations can't backfill | One-shot backfill migration owed |
+| F140 | Storage bucket layout: per-customer prefix asserted but never used | Per-customer isolation is paper-only |
+
+### Phase 3: Architectural moat (W2–W5 of Effort A spec)
+
+Per spec §8 — this is where customer-facing differentiation gets built:
+
+- **W2** (~2 weeks): Library consolidation
+- **W3** (~5 weeks): Frontend + Plugin SDK + Mobile foundation (React Native + Expo)
+- **W4** (~10 weeks): **Customization layer + Workspaces + UI Builder** — the moat
+- **W5** (~8 weeks): **Upgrade validator + Platform Analytics + AI features + AI Code Assistant** — the differentiator
+- **W6** (~6 weeks): Platform demo build (generic demo set, not Clinical/Facilities pack)
+- **W7** (~4 weeks): Pre-launch hardening (pen test, HIPAA gap, DR drill, OpenTelemetry)
+- **W8** (~4 weeks): Pilot with first customer (your employer builds their own pack on the platform)
+
+### Phase 4: Remaining audit findings (W6–W11 from Effort B; ~80–100 findings)
+
+Lower priority, can land between architectural waves OR after pilot:
+
+- **W6** (Effort B): Workflow & automation correctness (F057–F070, F131–F134, F150)
+- **W7** (Effort B): Schema engine truth (F029, F030, F032–F038, F040, F137, F144)
+- **W8** (Effort B): AVA lifecycle enforcement (F072–F087, F096) — overlaps with Phase 1 svc-ava migration
+- **W9** (Effort B): Frontend compliance (F090, F092, F094, F095, F097, F100, F101, F103) — overlaps with Phase 3 W3
+- **W10** (Effort B): Operational maturity (F076–F079, F108, F112–F118, F121, F128, F129, F135, F138, F142, F143, F145, F149) — overlaps with Phase 3 W7
+- **W11** (Effort B): Verification & sign-off — overlaps with Phase 3 W7
+
+Many of these find their natural home inside an architectural wave. Track per finding-ID; close as the relevant architectural work completes.
+
+### Out of scope for first pilot
+
+These can wait until post-pilot:
+
+- All deletions in Effort B's "Deletion Catalog §D.1–D.4" that aren't blocking a security finding
+- F140 sophistication (per-customer bucket isolation): basic prefix-per-customer is fine; per-bucket isolation is enterprise-tier
+- F144 (view tenant scope check): edge case for shared system views
+- F147–F149 (libs/enterprise junk drawer cleanup): cosmetic
+- All "TODO comment" findings (F121, F153, F154 etc.): drive to zero through scanner allowlist enforcement, not direct cleanup
+
+---
+
+## Pilot blocker checklist
+
+Before scheduling first customer pilot (current employer), confirm:
+
+- [ ] All architectural W1 services migrated (`arc-w1-complete` tag)
+- [ ] W0+W1 security work cherry-picked (Phase 0 complete)
+- [ ] Phase 2 W2 + W3 + W5 critical findings closed
+- [ ] Architectural W4 customization layer + Workspaces + UI Builder shipped
+- [ ] Architectural W5 upgrade validator + AI Code Assistant shipped
+- [ ] Architectural W6 platform demo build completes the demo set
+- [ ] Architectural W7 hardening: pen test passes, HIPAA gap-analysis green, DR drill restores within RTO
+- [ ] F111 keypair rotation completed by ops (revoke + reissue + git history rewrite)
+- [ ] F014 .env.backup history rewrite completed by ops
+
+Estimated calendar to all checkboxes done: **12–15 months solo** (per RESUME-CONTEXT.md realistic recalibration).
+
+---
+
+## What to do next session
+
+Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`.
+
+**Recommended next move**: Phase 0 — branch reconciliation. Get the W0+W1 security work into this branch before any further migration. Path-translate the W1 fixes that touched migrated files; cherry-pick the rest cleanly.
+
+Specifically:
+
+```text
+Read docs/superpowers/PLATFORM-ROADMAP.md and RESUME-CONTEXT.md.
+
+Then start Phase 0 (branch reconciliation):
+1. Survey all 27 commits in claude/condescending-shamir-92422b that aren't in our branch
+2. Categorize each by conflict risk (clean / path-translation / semantic-conflict)
+3. Cherry-pick the clean ones first
+4. For path-translation cases (F125, F126 in packs; F011 in identity/ldap), apply the same fix at the new apps/api path
+5. After all are in, tag `arc-reconciled-with-w1-security`
+6. Then resume migration plan: write svc-data migration plan as the next phase of W1
+```
+
+After Phase 0 lands, the priorities go:
+1. Continue W1 architectural migration (svc-data → svc-automation → svc-ava → svc-workflow → svc-control-plane → fold-in services → final cutover)
+2. Then Phase 2 critical security (W2 authz correctness, W3 JWT/SSO/MFA, W5 audit/data-plane)
+3. Then Phase 3 architectural moat (W2-W8 from spec § 8)
+
+---
+
+## Useful commands
+
+```bash
+# Where am I architecturally?
+git log --oneline -1
+git tag --list | grep arc
+
+# What's been migrated?
+ls apps/api/src/app/                          # has identity, metadata, kernel, db, audit
+ls apps/svc-identity/src/app/                  # only app.module.ts (thin adapter)
+ls apps/svc-metadata/src/app/                  # only app.module.ts (thin adapter)
+ls apps/svc-data apps/svc-automation apps/svc-ava ...  # still full services
+
+# What security work exists in sibling branch?
+git log --oneline 96c92c2..claude/condescending-shamir-92422b 2>/dev/null  # 27 commits
+
+# Which W0+W1 commits are in OUR branch?
+for sha in <list>; do
+  git merge-base --is-ancestor $sha HEAD 2>/dev/null && echo "$sha: in branch" || echo "$sha: NOT in branch"
+done
+
+# All scanners green?
+npm run authz:check && npm run audit:check && npm run security:check && npm run deps:check
+
+# All builds clean?
+npx nx build api && npx nx build worker && npx nx build svc-identity && npx nx build svc-metadata
+```
+
+---
+
+**End of master roadmap.** Update this file when:
+
+- A new tag lands (add to "What's done")
+- A locked decision changes (update "Locked decisions")
+- A finding is closed (move from remaining to done)
+- The phasing changes (update "Sequenced wave plan")
