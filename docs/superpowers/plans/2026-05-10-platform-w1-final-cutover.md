@@ -374,3 +374,51 @@ No issues found.
 ---
 
 **End of W1 final cutover plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Tagged `arc-w1-complete` at `dc44a3a`.
+
+### What landed
+
+- **Task 1 (`d0f910e`)** — all 11 thin-adapter `apps/svc-*` directories deleted: svc-identity, svc-metadata, svc-data, svc-automation, svc-ava, svc-workflow, svc-control-plane, svc-view-engine, svc-notify, svc-instance-api, svc-insights. `apps/svc-migrations` retained.
+
+- **Task 2 (`15359d4`)** — scanners retargeted:
+  - `service-boundary-check.ts`: thin-adapter KNOWN_VIOLATIONS cleared; `MIGRATED_AREAS` renamed `SERVICE_AREAS` with new doc framing
+  - `authz-bypass-check.ts`: `INSTANCE_SERVICES` collapsed to `['api']`; `MIGRATED_AREAS` removed; `getServiceContexts()` simplified
+  - `security-bypass-check.ts`: `PUBLIC_ALLOWLIST` trimmed to apps/api + apps/control-plane paths only; `AVA_URL_ALLOWLIST` repointed; `checkAvaExternalUrls` updated with `existsSync` guard
+  - `dead-code-allowlist.json`: dropped svc-control-plane tmpclaude entries; added orphan-lib entries for relationship-resolver, schema-engine, schema-validator (owedTo W2)
+  - `approved-deps.json`: nodemailer reason updated
+  - All 4 selftest fixtures retargeted at apps/api / apps/control-plane paths
+
+- **Task 3 (`91d0588`)** — CI/CD + helm + package.json + new Dockerfiles:
+  - `cd.yml` + `release.yml` build matrix: `api, control-plane, svc-migrations, web-client, web-control-plane`
+  - `cd.yml` rollout-status checks: `deployment/api` + `deployment/control-plane`
+  - Helm `instance-services/values.yaml`: collapsed to single `api` deployment + web-client; ingress /api route updated
+  - `package.json`: dropped `dev:identity/metadata/data/ava/view-engine`; added `dev:control-plane` and `dev:web-control-plane`; `dev:all` runs the consolidated set
+  - NEW `apps/api/Dockerfile`, `apps/control-plane/Dockerfile`, `apps/svc-migrations/Dockerfile`
+
+- **Task 4 (`dc44a3a`)** — `PLATFORM-ROADMAP.md` + `RESUME-CONTEXT.md` updated: Phase 1 marked COMPLETE; ARC tag table expanded to all 13 tags; Phase 2 priorities surfaced (W2 authz correctness fixes).
+
+### Verification gate
+
+- All 6 scanners pass: `authz:check`, `audit:check`, `security:check`, `service-boundary:check`, `dead-code:check`, `deps:check`
+- All 4 scanner selftests pass: authz (7/7), service-boundary (12/12), security (7/7), dead-code (11/11) — **37/37 assertions**
+- Production builds (webpack-prod) green for the new CI matrix: api, control-plane, worker, web-client, web-control-plane, svc-migrations — **6/6**
+- `nx test api` — 34 suites, **457 tests pass** (2 skipped, 0 failed)
+- `apps/` inventory: only api, api-e2e, control-plane, svc-migrations, web-client, web-control-plane, worker, worker-e2e (svc-* thin adapters gone)
+
+### Cumulative state after this PR
+
+- **Phase 1 COMPLETE.** ARC-W1 architectural reshape from 14-service distributed system to apps/api + apps/control-plane modular monolith is done.
+- 11 of 11 instance/control-plane services migrated + thin adapters deleted.
+- `apps/api` is the sole instance-plane runtime.
+- `apps/control-plane` is the multi-tenant control plane (canon §18).
+- `apps/svc-migrations` retained as a single-shot K8s Job.
+- 13 ARC tags landed across the project lifetime (`arc-w0-complete` through `arc-w1-complete`).
+
+### Next
+
+Phase 2 / W2 — authorization correctness fixes (F003, F004, F005, F006, F021, F136, F146). HIPAA-blocking correctness bugs in shared libs that must land before any customer pilot. See `PLATFORM-ROADMAP.md` Phase 2 section for the full sequenced backlog.
