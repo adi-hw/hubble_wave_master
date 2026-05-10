@@ -48,7 +48,7 @@ import { PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './pac
 import { MetadataIngestService } from '../metadata/metadata-ingest.service';
 import { AccessIngestService } from '../access/services/access-ingest.service';
 import { SearchIngestService } from '../search/search-ingest.service';
-import { AvaIngestService } from '../ava/ava-ingest.service';
+import { AvaIngestService } from '../../../../api/src/app/metadata/ava/ava-ingest.service';
 import { InsightsIngestService } from '../../../../api/src/app/metadata/insights/insights-ingest.service';
 import { ConnectorsIngestService } from '../connectors/connectors-ingest.service';
 import { LocalizationIngestService } from '../localization/localization-ingest.service';

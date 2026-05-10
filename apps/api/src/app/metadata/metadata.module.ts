@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScriptModule } from './script/script.module';
 import { ApplicationModule } from './application/application.module';
 import { InsightsIngestService } from './insights/insights-ingest.service';
+import { AvaIngestService } from './ava/ava-ingest.service';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -10,7 +11,7 @@ import { InsightsIngestService } from './insights/insights-ingest.service';
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md):
  *   [x] application
- *   [ ] ava
+ *   [x] ava
  *   [ ] change-packages
  *   [ ] connectors
  *   [ ] decision-tables
@@ -48,11 +49,13 @@ import { InsightsIngestService } from './insights/insights-ingest.service';
   controllers: [],
   providers: [
     InsightsIngestService,
+    AvaIngestService,
   ],
   exports: [
     ApplicationModule,
     ScriptModule,
     InsightsIngestService,
+    AvaIngestService,
   ],
 })
 export class MetadataModule {}
