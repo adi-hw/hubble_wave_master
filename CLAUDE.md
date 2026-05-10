@@ -544,6 +544,7 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-09 (Architecture v3 spec): Major architectural shift from 14-service distributed system to 3-process modular monolith + Day-1 mobile + AI Code Assistant + full UI Builder. Amendments: §5 SOFTEN (single-tenant default + pooled mode), §7 SOFTEN (drop 5-tier view hierarchy), §8 INVERT (merge automation + workflow), §11 SOFTEN (AI as feature surface incl. AI Code Assistant), §12 PER-FEATURE (trust progression per AI feature), §17 UPDATE (monolith topology), §19 UPDATE (single Nest process per instance), §21 TRIM (drop service-boundary scanner). New: §17.5 (customization contract, the moat), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder). Vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc; preserved as forward inventory in spec Appendix D. Solo founder timeline: ~10–12 months critical path for platform-only scope. Refs spec `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
 - 2026-05 (Plan Fix 1): §1 deferred-offender list pruned — the
   `apps/svc-data/src/app/automation/` deprecation entry is removed
   because the duplicate runtime is gone. svc-automation now owns the
