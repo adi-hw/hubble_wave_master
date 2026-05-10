@@ -230,29 +230,38 @@ violations. They MUST also write a `runtime_anomaly` row via
 
 ---
 
-## 11. AI Is Infrastructure
+## 11. AI is a Richly-Integrated Feature Surface (canon §11 SOFTEN, 2026-05-09)
 
-AVA is not a chatbot.
-AVA is a **reasoning layer over platform state**.
+AVA is not a chatbot. AVA is a feature surface wired into every workspace and authoring tool:
 
-If AVA cannot reason about a feature, the feature is incomplete.
+- **Conversational assistant** in every workspace (permission-aware retrieval)
+- **Natural language search** (vector + keyword hybrid)
+- **AI authoring assist** — drafted automation rules, views, workspaces, schema changes from natural language
+- **Document AI** — parse equipment manuals, recall notices, regulatory documents
+- **Voice work order completion** (mobile, on-device speech-to-text)
+- **Image analysis** (mobile + web; asset identification, fault detection, damage assessment)
+- **Predictive maintenance** (per-customer ML models)
+- **Smart triage** (incoming work order categorization)
+- **Anomaly detection** (equipment readings flagged proactively)
+- **AI Code Assistant** — Cursor/Copilot-style help for plugin authoring, formula editor, automation script editor, integration adapter authoring, workspace builder, analytics query builder. Direct competitor to ServiceNow's Now Assist for Creators.
+
+AVA is implemented as a Nest module (`ai`) inside `apps/api`, NOT as a separate service or runtime layer. Pluggable LLM provider per customer (Ollama for dev/local; production providers chosen per customer with their BAA).
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 AVA + AI Code Assistant.
 
 ---
 
-## 12. Trust Is Earned Incrementally
+## 12. Trust is Earned Per AI Feature (canon §12 PER-FEATURE, 2026-05-09)
 
-AVA progression:
-Suggest → Preview → Approve → Execute → Audit
+Each AI capability the customer enables for autonomous action progresses through:
 
-Skipping steps is forbidden.
+> Suggest → Preview → Approve → Execute → Audit
 
-**Implementation status (W5.B):** The progression is currently
-DOCUMENTED but not yet ENFORCED in code. Plan Fix 16 (AVA proposal
-state machine) is on the architecture remediation backlog. Until it
-lands, AVA execution gates are convention-based; the canon's
-"forbidden" stance is aspirational. Engineers writing AVA-adjacent
-code MUST NOT introduce paths that bypass the documented stages, but
-the platform does not yet enforce this with a state machine.
+The progression applies **per AI feature**, not platform-wide. A customer may enable "AVA can auto-triage low-urgency work orders" (configured for autonomous Execute) while keeping every other AI feature in Suggest-only mode.
+
+By default, all AI features ship in Suggest mode. Customer admin must explicitly configure each feature for higher trust levels. Every AI suggestion (and every autonomous action) is logged with prompt, model, version, response, applied/rejected status — the Audit stage is always-on.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 AVA + §9 canon delta.
 
 ---
 
