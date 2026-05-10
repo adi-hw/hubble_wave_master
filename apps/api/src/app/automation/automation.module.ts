@@ -1,4 +1,16 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import {
+  AuthGuardModule,
+  GlobalGuardsModule,
+  MaintenanceModeModule,
+} from '@hubblewave/auth-guard';
+import { AutomationModule as AutomationLibModule } from '@hubblewave/automation';
+import { AuthorizationModule } from '@hubblewave/authorization';
+import { RedisModule } from '@hubblewave/redis';
+
+import { AutomationHealthController } from './automation-health.controller';
+
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
@@ -6,9 +18,7 @@ import { AvaModule } from './ava/ava.module';
 import { RulesModule } from './rules/rules.module';
 
 /**
- * AutomationModule consolidates everything from apps/svc-automation into the
- * apps/api modular monolith. Sub-modules migrate one at a time via git mv;
- * each migration registers its module here.
+ * AutomationModule — canonical home for the automation plane (formerly apps/svc-automation).
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-automation-migration.md):
  *   Standard modules (clean-DAG order):
@@ -18,21 +28,42 @@ import { RulesModule } from './rules/rules.module';
  *   Cyclic-core bundle (atomic single-commit, ava ↔ rules):
  *     [x] ava + rules
  *   Final top-level (controller, app.module thin adapter):
- *     [ ] automation-health.controller (renamed from health.controller)
- *     [ ] automation.module final composition
- *     [ ] svc-automation app.module thin adapter
+ *     [x] automation-health.controller (renamed from health.controller; route 'automation/health')
+ *     [x] automation.module final composition
+ *     [x] svc-automation app.module thin adapter
  *
- * AutomationModule re-exports each migrated sub-module so that:
- * - apps/api consumers (data, ava, etc.) can inject automation services
- *   without explicit sub-module imports
- * - apps/svc-automation's thin adapter (post-migration) can import
- *   AutomationModule wholesale to keep the legacy service serving the same
- *   endpoints
+ * apps/svc-automation is reduced to a thin adapter that imports AutomationModule
+ * from apps/api so the legacy service serves the same endpoints during parallel
+ * deployment. Legacy service deletion is deferred to W1 final cutover.
+ *
+ * Note: AutomationModule from @hubblewave/automation lib is aliased here as
+ * AutomationLibModule to disambiguate from this file's exported AutomationModule.
  */
 @Module({
-  imports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule, AvaModule, RulesModule],
-  controllers: [],
+  imports: [
+    // Lib-level wiring (preserved from svc-automation's app.module.ts)
+    ConfigModule.forRoot({ isGlobal: true }),
+    AuthGuardModule,
+    GlobalGuardsModule,
+    RedisModule.forRoot(),
+    MaintenanceModeModule,
+    AutomationLibModule, // alias — was `AutomationModule` from @hubblewave/automation
+    AuthorizationModule.forInstance(),
+    // Sub-modules (post-migration, all at apps/api/src/app/automation/<sub>/)
+    AutomationRuntimeModule,
+    SchedulingModule,
+    SyncTriggerModule,
+    AvaModule,
+    RulesModule,
+  ],
+  controllers: [AutomationHealthController],
   providers: [],
-  exports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule, AvaModule, RulesModule],
+  exports: [
+    AutomationRuntimeModule,
+    SchedulingModule,
+    SyncTriggerModule,
+    AvaModule,
+    RulesModule,
+  ],
 })
 export class AutomationModule {}

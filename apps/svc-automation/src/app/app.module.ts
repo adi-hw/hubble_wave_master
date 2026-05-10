@@ -1,35 +1,16 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import {
-  AuthGuardModule,
-  GlobalGuardsModule,
-  MaintenanceModeModule,
-} from '@hubblewave/auth-guard';
-import { AutomationModule } from '@hubblewave/automation';
-import { AuthorizationModule } from '@hubblewave/authorization';
-import { RedisModule } from '@hubblewave/redis';
-import { HealthController } from './health.controller';
-import { AutomationRuntimeModule } from '../../../api/src/app/automation/runtime/automation-runtime.module';
-import { SyncTriggerModule } from '../../../api/src/app/automation/sync-trigger/sync-trigger.module';
-import { RulesModule } from '../../../api/src/app/automation/rules/rules.module';
-import { SchedulingModule } from '../../../api/src/app/automation/scheduling/scheduling.module';
-import { AvaModule } from '../../../api/src/app/automation/ava/ava.module';
+import { AutomationModule } from '../../../api/src/app/automation/automation.module';
 
+/**
+ * apps/svc-automation is kept alive in parallel during the ARC-W1 migration
+ * for parallel-deployment safety. The actual module logic now lives in
+ * apps/api/src/app/automation/AutomationModule. This thin adapter re-imports
+ * AutomationModule wholesale so the legacy service serves the same endpoints
+ * at its old port.
+ *
+ * Legacy service deletion is deferred to the W1 final-cutover plan.
+ */
 @Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    AuthGuardModule,
-    GlobalGuardsModule,
-    RedisModule.forRoot(),
-    MaintenanceModeModule,
-    AutomationModule,
-    AuthorizationModule.forInstance(),
-    AutomationRuntimeModule,
-    SyncTriggerModule,
-    RulesModule,
-    SchedulingModule,
-    AvaModule,
-  ],
-  controllers: [HealthController],
+  imports: [AutomationModule],
 })
 export class AppModule {}
