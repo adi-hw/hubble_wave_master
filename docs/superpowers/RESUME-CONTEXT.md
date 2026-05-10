@@ -2,15 +2,25 @@
 
 > **Purpose:** Read this at the start of any fresh Claude Code session to pick up the HubbleWave platform architecture migration without re-deriving context. Update only when a new tag lands or a locked decision changes.
 >
-> **Master roadmap:** `docs/superpowers/PLATFORM-ROADMAP.md` — single source of truth coordinating BOTH the architectural reshape (this branch) and the parallel security audit remediation (sibling branch `claude/condescending-shamir-92422b`). Read PLATFORM-ROADMAP.md FIRST for the bigger picture, then this file for the architecture-specific lessons + cheat sheet.
+> **Master roadmap:** `docs/superpowers/PLATFORM-ROADMAP.md` — single source of truth coordinating BOTH the architectural reshape and the parallel security audit remediation. Read PLATFORM-ROADMAP.md FIRST for the bigger picture, then this file for the architecture-specific lessons + cheat sheet.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-metadata-complete` + PLATFORM-ROADMAP.md consolidation)
+> **Last updated:** 2026-05-10 (after `arc-w1-data-complete` + `arc-reconciled-with-w1-security` consolidated into master via PR #4 + PR #5)
 
 ## Working directory
 
-This is a git worktree at `C:\Users\Hubble-Wave\OneDrive - Hubble Wave\Desktop\Project HW\.claude\HW Platform\nervous-volhard-f9abc2` on branch `claude/nervous-volhard-f9abc2`.
+Both prior architectural work branches (`claude/nervous-volhard-f9abc2` and its source `claude/amazing-yalow-0f9c37`) have been merged into `master` and the remote PR-head branches deleted. master is at `7b47d49` with the full W1 migration through data + Phase 0 reconciliation.
 
-Other working tree at `C:\Dev\HW-Platform\HW Platform` (master branch) is **OFF LIMITS** — that's the founder's main repo. All work happens in the worktree.
+Future Claude Code sessions should spawn a fresh worktree off master in the `OneDrive...HW Platform/` parent folder. The pattern observed in this project:
+
+```
+C:\Dev\HW-Platform\HW Platform\                                                    ← founder's main repo (master). OFF LIMITS for direct work.
+C:\Users\Hubble-Wave\OneDrive - Hubble Wave\Desktop\Project HW\.claude\HW Platform\
+  ├─ <session-codename>/                                                            ← spawned worktree per Claude session
+  ├─ condescending-shamir-92422b/                                                   ← security audit branch worktree (Effort B)
+  └─ ...
+```
+
+Pin the worktree path in every subagent prompt (see "Migration pattern" below). The founder's main repo at `C:\Dev\HW-Platform\HW Platform` is OFF LIMITS — never write there directly.
 
 ## Approved canonical spec
 
@@ -34,7 +44,7 @@ Founder-approved architectural decisions baked into the spec:
 | Vertical pack deferred | Platform-first discipline for solo execution; first customer's pilot is stronger when they build their own pack on the platform |
 | LLM provider per customer (BAA-controlled) | Hospitals require data-residency control |
 
-## Completed work (4 git tags)
+## Completed work (6 git tags, all on master)
 
 | Tag | Commit | What | Size |
 |---|---|---|---|
@@ -42,15 +52,17 @@ Founder-approved architectural decisions baked into the spec:
 | `arc-w1-foundation-partial` | `bffef2f` | kernel + db + audit module wrappers in apps/api (re-exports from `libs/instance-db`) | small wrappers |
 | `arc-w1-identity-complete` | `8710e79` | All 15 svc-identity sub-modules + 3 top-level files → apps/api/identity. Includes the **cyclic-core bundle** (auth+abac+ldap+roles, 71 files atomic). svc-identity reduced to a 27-line thin adapter. | ~17,200 LoC, 105 files |
 | `arc-w1-metadata-complete` | `0b2f0d9` | All 23 svc-metadata sub-modules + 7 top-level files → apps/api/metadata. svc-metadata reduced to a 16-line thin adapter. HealthController renamed to `MetadataHealthController` (route `/metadata/health`) to avoid collision with identity's. | ~21,200 LoC, 102 files |
+| `arc-w1-data-complete` | `d10f0d9` | All 12 svc-data sub-directories + 9 top-level files → apps/api/data. svc-data reduced to a thin adapter. HealthController renamed to `DataHealthController` (route `/data/health`). Mid-stream service-file move pattern: `collection-data.service` + `model-registry.service` migrated mid-stream so `work`/`offerings`/`grid` could resolve sibling-relative imports. | ~17,700 LoC, 66 files |
+| `arc-reconciled-with-w1-security` | `fbb640b` | 27 W0+W1 security commits cherry-picked from `claude/condescending-shamir-92422b` with path-translation for migrated services (LDAP F011 → apps/api/identity/ldap; packs SSRF F125+F126 → apps/api/metadata/packs; ESLint F104 lint fixes path-translated to apps/api/data). | ~6,500 additions / ~50 deletions across ~50 files |
 
-**Cumulative**: ~38,400 LoC migrated across 207 files via `git mv` (history preserved).
+**Cumulative**: ~56,100 LoC migrated across ~273 files via `git mv` (history preserved). All in master at HEAD `7b47d49`.
 
 To see the full migration narrative:
 
 ```bash
-git log --oneline arc-w0-complete..arc-w1-metadata-complete | wc -l   # ~50 commits
-git log --oneline arc-w1-foundation-partial..arc-w1-identity-complete  # 15 commits
-git log --oneline arc-w1-identity-complete..arc-w1-metadata-complete   # 27 commits
+git log --oneline arc-w0-complete..arc-reconciled-with-w1-security | wc -l   # ~80 commits
+git log --oneline arc-w1-metadata-complete..arc-w1-data-complete             # 17 commits (data migration)
+git log --oneline arc-w1-data-complete..arc-reconciled-with-w1-security      # 35 commits (Phase 0 reconciliation)
 ```
 
 ## Implementation plans (executed)
@@ -58,6 +70,8 @@ git log --oneline arc-w1-identity-complete..arc-w1-metadata-complete   # 27 comm
 - `docs/superpowers/plans/2026-05-09-platform-w0-w1-foundation.md` — W0 + W1 foundation slice
 - `docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md` — identity migration
 - `docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md` — metadata migration
+- `docs/superpowers/plans/2026-05-10-platform-w1-data-migration.md` — data migration
+- `docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md` — Phase 0 W0+W1 cherry-pick reconciliation
 
 ## Migration pattern (battle-tested across identity + metadata)
 
@@ -65,15 +79,15 @@ These lessons are baked into the working subagent prompt template. Future migrat
 
 ### Working-directory pinning (mandatory)
 
-Every subagent prompt MUST start with:
+Every subagent prompt MUST start with the actual worktree path of the spawning session, e.g.:
 
 ```bash
-cd "/c/Users/Hubble-Wave/OneDrive - Hubble Wave/Desktop/Project HW/.claude/HW Platform/nervous-volhard-f9abc2" && pwd && git rev-parse --abbrev-ref HEAD && git log --oneline -1
+cd "/c/Users/Hubble-Wave/OneDrive - Hubble Wave/Desktop/Project HW/.claude/HW Platform/<session-codename>" && pwd && git rev-parse --abbrev-ref HEAD && git log --oneline -1
 ```
 
-Verify branch is `claude/nervous-volhard-f9abc2` and HEAD matches the expected previous commit. STOP and report BLOCKED if either differs.
+Verify branch is the spawning session's branch (typically `claude/<session-codename>`) and HEAD matches the expected previous commit. STOP and report BLOCKED if either differs.
 
-For all subsequent Bash commands in the dispatch, prefix with `cd "/c/Users/Hubble-Wave/OneDrive - Hubble Wave/Desktop/Project HW/.claude/HW Platform/nervous-volhard-f9abc2" &&`.
+For all subsequent Bash commands in the dispatch, prefix with the same `cd "<worktree-path>" &&`.
 
 For Write/Edit, use absolute paths starting with the worktree root.
 
@@ -132,11 +146,14 @@ Then check for cycles. If cycles exist (like identity's auth↔abac↔ldap↔rol
 
 | Pattern | Example | Registration |
 |---|---|---|
-| Standard module (has `*.module.ts` with `@Module`) | UsersModule, ScriptModule | `imports: []` + `exports: []` |
-| Service-only (no Module wrapper) | InsightsIngestService, AvaIngestService | `providers: []` + `exports: []` |
+| Standard module (has `*.module.ts` with `@Module`) | UsersModule, ScriptModule, FormulaModule | `imports: []` + `exports: []` |
+| Service-only (no Module wrapper) | InsightsIngestService, AvaIngestService, EventOutboxService, SyncTriggerClientService | `providers: []` + `exports: []` |
 | Controller + services, no Module | schema (SchemaController + SchemaDeployService + SchemaDiffService) | `controllers: []` for controller; `providers: []` + `exports: []` for services |
-| Naming collision in destination | metadata's `HealthController` vs identity's | Rename file + class + route prefix in destination |
+| Service-only with controller | OfferingsController+OfferingsService (svc-data), WorkController+WorkService | `controllers: []` for controller + `providers: []`/`exports: []` for service |
+| Naming collision in destination | metadata's `HealthController` → `MetadataHealthController` (route `/metadata/health`); data's → `DataHealthController` (route `/data/health`) | Rename file + class + route prefix in destination |
 | Class name collision avoided in source | metadata's `NavigationMetadataModule` vs identity's `NavigationModule` | No alias needed — different class names |
+| Co-located types | svc-data's `automation.types.ts` only consumed by `automation/sync-trigger-client.service.ts` → moved into `apps/api/src/app/data/automation/automation.types.ts` | Update single import to sibling-relative; remove empty `src/types/` parent |
+| Sub-module → top-level service dep (data migration wrinkle) | `work`/`offerings` → `collection-data.service`; `grid` → `model-registry.service` | Mid-stream service-file move: relocate the top-level services BEFORE migrating dependent sub-modules so siblings resolve cleanly post-move |
 
 ### Model selection for subagents
 
@@ -164,7 +181,20 @@ This explicitly authorizes the destructive operation in a bounded way. A subagen
 
 Once the pattern is mechanical (verified by 2–3 successful single-sub-module migrations), combine 4–7 sub-modules per dispatch with the standard template applied multiple times. The subagent commits atomically per sub-module so any single failure remains recoverable.
 
-Identity ran the cyclic-core bundle (66 files) + per-sub-module dispatches. Metadata ran 4-of-23 individually then combined the remaining 19 into 4 dispatches. Same quality, much less dispatch overhead.
+Identity ran the cyclic-core bundle (66 files) + per-sub-module dispatches. Metadata ran 4-of-23 individually then combined the remaining 19 into 4 dispatches. Data ran Tasks 1, 2, 3, 4 individually (one of each pattern), then batched Tasks 5-8, 9-10, 13-15. Same quality, much less dispatch overhead.
+
+### Path-translation cherry-picks (Phase 0 pattern)
+
+When cherry-picking a security fix from a sibling branch into a branch where the target file has been migrated to a new path (e.g. `apps/svc-identity/src/app/ldap/` → `apps/api/src/app/identity/ldap/`), `git cherry-pick` fails because the source path doesn't exist. Use `git format-patch | sed | git apply` instead:
+
+```bash
+git format-patch -1 <SHA> --stdout | sed 's|apps/svc-<old>/src/app/<sub>/|apps/api/src/app/<area>/<sub>/|g' > /tmp/translated.patch
+git apply --check /tmp/translated.patch && git apply /tmp/translated.patch
+```
+
+For commits that touch BOTH unchanged paths and migrated paths (mixed), use `git apply --reject` to apply what fits and inspect `*.rej` for the rest. Manually port rejected hunks. Worked for bdbe876 (F104 ESLint enforcement) which touched 13 files, of which 3 needed translation and 10 applied cleanly.
+
+Phase 0 used this pattern across 27 W0+W1 commits: 21 plain cherry-picks, 3 path-translations, 2 CLAUDE.md additive merges, 1 mixed apply. See [docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md](plans/2026-05-10-phase0-branch-reconciliation.md).
 
 ### Self-review checklist (subagent appends to prompt)
 
@@ -176,17 +206,20 @@ Verify all newly-migrated sub-modules show `[x]` in the comment-block checklist.
 
 ## What's left in W1
 
+### Phase 1 prerequisite: scanner coverage extension
+
+`tools/service-boundary-check.ts` and `tools/authz-bypass-check.ts` use `SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/` which only matches `apps/svc-*`. After the identity/metadata/data migrations, ~56,100 LoC live at `apps/api/src/app/{identity,metadata,data}/` where the scanners don't reach. Extend the scanners (and update `KNOWN_ENTITY_VIOLATIONS` allowlist paths if needed) before further service migrations so "scanners green" is meaningful.
+
 ### Remaining instance-plane services to migrate
 
 Each needs its own focused plan + execution following the same template:
 
 | Service | LoC (approx) | Notes |
 |---|---|---|
-| svc-data | 15,000 | Likely depends on identity + metadata (already migrated); check for internal cycles |
-| svc-automation | 6,000 | Already partially consolidated in Plan Fix 1 |
-| svc-ava | 8,000 | AVA runtime; may have proposal state machine concerns |
-| svc-control-plane | 6,000 | Different plane (multi-tenant by design); lighter migration |
-| svc-workflow | 3,000 | Will likely merge with automation per canon §8 amendment |
+| svc-automation | 6,000 | Already partially consolidated in Plan Fix 1; should be fast |
+| svc-ava | 8,000 | AVA runtime; F072+F074 proposal state machine overlap with Plan Fix 16 (`ca16e40`) |
+| svc-control-plane | 6,000 | Different plane (multi-tenant by design); different shape |
+| svc-workflow | 3,000 | Will likely fold into apps/api/automation per canon §8 INVERT |
 | svc-view-engine | 2,000 | Small leaf |
 | svc-insights | 2,000 | Small leaf |
 | svc-notify | 1,000 | Small leaf |
@@ -214,41 +247,45 @@ After all instance services migrate:
 
 ## How to start a fresh session
 
-Open a new Claude Code session in this worktree and say:
+Spawn a new Claude Code worktree off `master` and say:
 
 > Read `docs/superpowers/PLATFORM-ROADMAP.md` and `docs/superpowers/RESUME-CONTEXT.md` and tell me what's done.
 >
-> Then I want to: [insert next request — e.g. "start Phase 0 branch reconciliation", "write the svc-data migration plan", "execute the svc-automation migration", "review the canon delta"].
+> Then I want to: [insert next request — e.g. "extend the scanners to scan apps/api before continuing migrations", "write the svc-automation migration plan", "execute the svc-ava migration", "tackle Phase 2 W2 authz correctness fixes"].
 
 Auto mode for continuous execution if you want minimal interruption.
 
-**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 0 — branch reconciliation. The 27 W0+W1 security commits in `claude/condescending-shamir-92422b` need to be cherry-picked into this branch before further migration work, so security fixes don't accumulate as additional debt at new paths.
+**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 1 prerequisite (extend scanners to apps/api), then continue W1 architectural migration with svc-automation.
 
 ## Useful tags + commands cheat sheet
 
 ```bash
 # Where am I?
 git log --oneline -1
+git tag --list | grep arc
 
 # What's the migration narrative?
-git log --oneline arc-w0-complete..arc-w1-metadata-complete
+git log --oneline arc-w0-complete..arc-reconciled-with-w1-security | wc -l   # ~80 commits across all migrations + reconciliation
 
 # Verify everything still builds
-npx nx build api && npx nx build svc-identity && npx nx build svc-metadata && npx nx build worker
+npx nx build api && npx nx build svc-identity && npx nx build svc-metadata && npx nx build svc-data && npx nx build worker
 
 # All scanners green?
-npm run authz:check && npm run audit:check && npm run security:check && npm run deps:check
+npm run authz:check && npm run audit:check && npm run security:check && npm run service-boundary:check && npm run deps:check && npm run dead-code:check
+npm run selftest:scanners
 
 # What's in apps/api now?
-ls apps/api/src/app/
+ls apps/api/src/app/   # has identity, metadata, data, kernel, db, audit
 
-# What's left in svc-identity / svc-metadata?
-ls apps/svc-identity/src/app/   # should show only app.module.ts
-ls apps/svc-metadata/src/app/   # should show only app.module.ts
+# What's left in svc-identity / svc-metadata / svc-data?
+ls apps/svc-identity/src/app/   # only app.module.ts (thin adapter)
+ls apps/svc-metadata/src/app/   # only app.module.ts (thin adapter)
+ls apps/svc-data/src/app/       # only app.module.ts (thin adapter)
 
 # Migration progress checklist (per-area)
 grep -E "^\s*\*\s+\[" apps/api/src/app/identity/identity.module.ts
 grep -E "^\s*\*\s+\[" apps/api/src/app/metadata/metadata.module.ts
+grep -E "^\s*\*\s+\[" apps/api/src/app/data/data.module.ts
 ```
 
 ---

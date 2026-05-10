@@ -181,25 +181,30 @@ function isKnownEntityViolation(file: string, entity: string): boolean {
 }
 
 /**
- * SCANNER COVERAGE GAP (tracked for Phase 1):
+ * Service-namespace recognition.
  *
- * SERVICE_DIR_RE only matches `apps/svc-*` directories. After the ARC-W1
- * identity, metadata, and data migrations, ~56,000 LoC of those services
- * now live at `apps/api/src/app/{identity,metadata,data}/`. This scanner
- * walks those svc-* directories which (post-migration) contain only thin
- * adapter app.module.ts files — no entity-write surfaces to detect.
+ * Two kinds of paths count as "a service":
+ *   1. `apps/svc-<name>/...` — legacy single-service apps (still used for
+ *      services that haven't migrated to the modular monolith yet).
+ *   2. `apps/api/src/app/<area>/...` — post-ARC-W1 home for migrated
+ *      services. After the identity / metadata / data migrations, those
+ *      services' source lives here; the legacy `apps/svc-X/src/app/` is
+ *      a thin adapter (app.module.ts only).
  *
- * The KNOWN_ENTITY_VIOLATIONS allowlist above was updated to reference the
- * post-migration apps/api/src/app/metadata/* paths so the documentation
- * matches reality, but those files are not actually scanned today because
- * 'api' is not a SERVICE_DIR.
+ * `MIGRATED_AREAS` lists the area names that have moved into apps/api.
+ * Update this set when a new service migrates (alongside removing its
+ * apps/svc-X directory entry in the W1 final cutover).
  *
- * Phase 1 of the master roadmap (next migration wave + final cutover) MUST
- * extend this scanner to also walk apps/api/src/app/{identity,metadata,
- * data,...}/ before the legacy svc-* deletion can land. Until then, treat
- * "service-boundary:check ok" as a vacuous result for the migrated services.
+ * Identity wrapping: a file at `apps/api/src/app/<area>/...` is recognized
+ * as service `svc-<area>` so the existing svc-* identity model and the
+ * ENTITY_OWNERSHIP map (`svc-automation` etc.) work unchanged.
  */
 const SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/;
+const MIGRATED_AREAS: ReadonlySet<string> = new Set([
+  'identity',
+  'metadata',
+  'data',
+]);
 
 function isServiceDir(name: string): boolean {
   return SERVICE_DIR_RE.test(name);
@@ -244,13 +249,40 @@ function toPosix(p: string): string {
 
 /**
  * Returns the service name (e.g. "svc-data") that owns this absolute file
- * path, or null if the file is not under an apps/svc-XYZ root.
+ * path, or null if the file is not under a recognized service root.
+ *
+ * Recognizes both:
+ *   - `apps/svc-<name>/...` (returns `svc-<name>`)
+ *   - `apps/api/src/app/<area>/...` for areas in MIGRATED_AREAS
+ *     (returns `svc-<area>` so ownership maps work unchanged)
+ *
+ * Top-level files under `apps/api/src/app/` that don't fall into a migrated
+ * area (e.g. apps/api/src/app/app.module.ts, kernel/, db/, audit/) return
+ * null — they're framework infrastructure, not service code.
  */
 function serviceOf(absolutePath: string): string | null {
   const rel = toPosix(relative(APPS_DIR, absolutePath));
   if (rel.startsWith('..')) return null;
-  const first = rel.split('/')[0];
-  return isServiceDir(first) ? first : null;
+  const segments = rel.split('/');
+  if (segments.length === 0) return null;
+
+  // Pattern 1: apps/svc-<name>/...
+  if (isServiceDir(segments[0])) {
+    return segments[0];
+  }
+
+  // Pattern 2: apps/api/src/app/<area>/<file>...
+  if (
+    segments[0] === 'api' &&
+    segments[1] === 'src' &&
+    segments[2] === 'app' &&
+    segments.length >= 5 &&
+    MIGRATED_AREAS.has(segments[3])
+  ) {
+    return `svc-${segments[3]}`;
+  }
+
+  return null;
 }
 
 /**
@@ -352,49 +384,74 @@ function isKnownViolation(file: string, importPath: string): boolean {
   );
 }
 
+/**
+ * Returns every TS/TSX source file under a recognized service root:
+ *   - apps/svc-<name>/src/...     (every directory matching SERVICE_DIR_RE)
+ *   - apps/api/src/app/<area>/... (every area in MIGRATED_AREAS)
+ *
+ * Top-level apps/api files (app.module.ts, kernel/, db/, audit/) are NOT
+ * included — they're framework infrastructure, not service code.
+ */
+function discoverScanFiles(): string[] {
+  const files: string[] = [];
+
+  // Legacy svc-* roots.
+  let appsEntries: string[] = [];
+  try {
+    appsEntries = readdirSync(APPS_DIR);
+  } catch {
+    appsEntries = [];
+  }
+  for (const name of appsEntries) {
+    if (!isServiceDir(name)) continue;
+    const srcDir = join(APPS_DIR, name, 'src');
+    try {
+      if (!statSync(srcDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    files.push(...walk(srcDir));
+  }
+
+  // Migrated apps/api/src/app/<area> roots.
+  const apiAppDir = join(APPS_DIR, 'api', 'src', 'app');
+  for (const area of MIGRATED_AREAS) {
+    const areaDir = join(apiAppDir, area);
+    try {
+      if (!statSync(areaDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    files.push(...walk(areaDir));
+  }
+
+  return files;
+}
+
 function detectViolations(): Violation[] {
   const violations: Violation[] = [];
-  const serviceDirs = (() => {
-    try {
-      return readdirSync(APPS_DIR).filter((name) => {
-        if (!isServiceDir(name)) return false;
-        const srcDir = join(APPS_DIR, name, 'src');
-        try {
-          return statSync(srcDir).isDirectory();
-        } catch {
-          return false;
-        }
-      });
-    } catch {
-      return [];
-    }
-  })();
 
-  for (const service of serviceDirs) {
-    const srcDir = join(APPS_DIR, service, 'src');
-    const files = walk(srcDir);
-    for (const file of files) {
-      const fromService = serviceOf(file);
-      if (!fromService) continue;
-      let content: string;
-      try {
-        content = readFileSync(file, 'utf8');
-      } catch {
-        continue;
-      }
-      const imports = extractImports(content);
-      for (const { spec, line } of imports) {
-        const toService = resolveCrossServiceTarget(file, spec, fromService);
-        if (!toService) continue;
-        if (isKnownViolation(file, spec)) continue;
-        violations.push({
-          file: toPosix(relative(ROOT, file)),
-          line,
-          importPath: spec,
-          fromService,
-          toService,
-        });
-      }
+  for (const file of discoverScanFiles()) {
+    const fromService = serviceOf(file);
+    if (!fromService) continue;
+    let content: string;
+    try {
+      content = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    const imports = extractImports(content);
+    for (const { spec, line } of imports) {
+      const toService = resolveCrossServiceTarget(file, spec, fromService);
+      if (!toService) continue;
+      if (isKnownViolation(file, spec)) continue;
+      violations.push({
+        file: toPosix(relative(ROOT, file)),
+        line,
+        importPath: spec,
+        fromService,
+        toService,
+      });
     }
   }
   return violations;
@@ -414,75 +471,55 @@ function detectEntityOwnershipViolations(): EntityViolation[] {
   const ownedEntities = Object.keys(ENTITY_OWNERSHIP);
   if (ownedEntities.length === 0) return violations;
 
-  const serviceDirs = (() => {
-    try {
-      return readdirSync(APPS_DIR).filter((name) => {
-        if (!isServiceDir(name)) return false;
-        const srcDir = join(APPS_DIR, name, 'src');
-        try {
-          return statSync(srcDir).isDirectory();
-        } catch {
-          return false;
-        }
-      });
-    } catch {
-      return [];
-    }
-  })();
-
   // Pattern: capture the named-import block from `@hubblewave/instance-db`.
   // Multiline support so the typical multi-line `import { ... }` block
   // matches as one specifier list.
   const importBlockRe =
     /\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s+['"]@hubblewave\/instance-db['"]/g;
 
-  for (const service of serviceDirs) {
-    const srcDir = join(APPS_DIR, service, 'src');
-    const files = walk(srcDir);
-    for (const file of files) {
-      const fromService = serviceOf(file);
-      if (!fromService) continue;
-      let content: string;
-      try {
-        content = readFileSync(file, 'utf8');
-      } catch {
-        continue;
-      }
-      const lines = content.split(/\r?\n/);
+  for (const file of discoverScanFiles()) {
+    const fromService = serviceOf(file);
+    if (!fromService) continue;
+    let content: string;
+    try {
+      content = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    const lines = content.split(/\r?\n/);
 
-      let blockMatch: RegExpExecArray | null;
-      while ((blockMatch = importBlockRe.exec(content)) !== null) {
-        const namedList = blockMatch[1];
-        // Compute 1-based line number for the start of the import block.
-        const offset = blockMatch.index;
-        let line = 1;
-        let count = 0;
-        for (const l of lines) {
-          if (count + l.length + 1 > offset) break;
-          count += l.length + 1;
-          line++;
-        }
-        // Each named binding is `Foo` or `Foo as Bar` — capture the source
-        // name (left of `as`) since that is what binds to the entity.
-        const names = namedList
-          .split(',')
-          .map((seg) => seg.trim())
-          .filter(Boolean)
-          .map((seg) => seg.split(/\s+as\s+/)[0].trim());
-        for (const name of names) {
-          const owner = ENTITY_OWNERSHIP[name];
-          if (!owner) continue;
-          if (owner === fromService) continue;
-          const relFile = toPosix(relative(ROOT, file));
-          if (isKnownEntityViolation(relFile, name)) continue;
-          violations.push({
-            file: relFile,
-            line,
-            entity: name,
-            expectedOwner: owner,
-            actualImporter: fromService,
-          });
-        }
+    let blockMatch: RegExpExecArray | null;
+    while ((blockMatch = importBlockRe.exec(content)) !== null) {
+      const namedList = blockMatch[1];
+      // Compute 1-based line number for the start of the import block.
+      const offset = blockMatch.index;
+      let line = 1;
+      let count = 0;
+      for (const l of lines) {
+        if (count + l.length + 1 > offset) break;
+        count += l.length + 1;
+        line++;
+      }
+      // Each named binding is `Foo` or `Foo as Bar` — capture the source
+      // name (left of `as`) since that is what binds to the entity.
+      const names = namedList
+        .split(',')
+        .map((seg) => seg.trim())
+        .filter(Boolean)
+        .map((seg) => seg.split(/\s+as\s+/)[0].trim());
+      for (const name of names) {
+        const owner = ENTITY_OWNERSHIP[name];
+        if (!owner) continue;
+        if (owner === fromService) continue;
+        const relFile = toPosix(relative(ROOT, file));
+        if (isKnownEntityViolation(relFile, name)) continue;
+        violations.push({
+          file: relFile,
+          line,
+          entity: name,
+          expectedOwner: owner,
+          actualImporter: fromService,
+        });
       }
     }
   }
@@ -560,67 +597,47 @@ function detectEntityWriteBypass(): EntityWriteViolation[] {
     deleteRe: new RegExp(`\\bDELETE\\s+FROM\\s+["']?${table}["']?\\b`, 'gi'),
   }));
 
-  const serviceDirs = (() => {
+  for (const file of discoverScanFiles()) {
+    const fromService = serviceOf(file);
+    if (!fromService) continue;
+
+    let content: string;
     try {
-      return readdirSync(APPS_DIR).filter((name) => {
-        if (!isServiceDir(name)) return false;
-        const srcDir = join(APPS_DIR, name, 'src');
-        try {
-          return statSync(srcDir).isDirectory();
-        } catch {
-          return false;
-        }
-      });
+      content = readFileSync(file, 'utf8');
     } catch {
-      return [];
+      continue;
     }
-  })();
+    const relFile = toPosix(relative(ROOT, file));
 
-  for (const service of serviceDirs) {
-    const srcDir = join(APPS_DIR, service, 'src');
-    const files = walk(srcDir);
-    for (const file of files) {
-      const fromService = serviceOf(file);
-      if (!fromService) continue;
+    for (const tp of tablePatterns) {
+      if (tp.owner === fromService) continue; // Owner can write freely.
+      if (isAllowlistedWriteBypass(relFile, tp.table)) continue;
 
-      let content: string;
-      try {
-        content = readFileSync(file, 'utf8');
-      } catch {
-        continue;
-      }
-      const relFile = toPosix(relative(ROOT, file));
+      // Reset regex lastIndex (g-flag patterns retain state).
+      tp.getRepoRe.lastIndex = 0;
+      tp.insertRe.lastIndex = 0;
+      tp.updateRe.lastIndex = 0;
+      tp.deleteRe.lastIndex = 0;
 
-      for (const tp of tablePatterns) {
-        if (tp.owner === fromService) continue; // Owner can write freely.
-        if (isAllowlistedWriteBypass(relFile, tp.table)) continue;
+      const checks: Array<{ re: RegExp; pattern: EntityWriteViolation['pattern'] }> = [
+        { re: tp.getRepoRe, pattern: 'string-getRepository' },
+        { re: tp.insertRe, pattern: 'raw-sql-insert' },
+        { re: tp.updateRe, pattern: 'raw-sql-update' },
+        { re: tp.deleteRe, pattern: 'raw-sql-delete' },
+      ];
 
-        // Reset regex lastIndex (g-flag patterns retain state).
-        tp.getRepoRe.lastIndex = 0;
-        tp.insertRe.lastIndex = 0;
-        tp.updateRe.lastIndex = 0;
-        tp.deleteRe.lastIndex = 0;
-
-        const checks: Array<{ re: RegExp; pattern: EntityWriteViolation['pattern'] }> = [
-          { re: tp.getRepoRe, pattern: 'string-getRepository' },
-          { re: tp.insertRe, pattern: 'raw-sql-insert' },
-          { re: tp.updateRe, pattern: 'raw-sql-update' },
-          { re: tp.deleteRe, pattern: 'raw-sql-delete' },
-        ];
-
-        for (const { re, pattern } of checks) {
-          let m: RegExpExecArray | null;
-          while ((m = re.exec(content)) !== null) {
-            violations.push({
-              file: relFile,
-              line: lineNumberAt(content, m.index),
-              table: tp.table,
-              entity: tp.entity,
-              expectedOwner: tp.owner,
-              actualWriter: fromService,
-              pattern,
-            });
-          }
+      for (const { re, pattern } of checks) {
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(content)) !== null) {
+          violations.push({
+            file: relFile,
+            line: lineNumberAt(content, m.index),
+            table: tp.table,
+            entity: tp.entity,
+            expectedOwner: tp.owner,
+            actualWriter: fromService,
+            pattern,
+          });
         }
       }
     }
