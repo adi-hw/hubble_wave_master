@@ -36,9 +36,56 @@ const INSTANCE_SERVICES: readonly string[] = [
   'svc-migrations',
 ];
 
-const SERVICE_ROOTS: string[] = INSTANCE_SERVICES.map((s) =>
-  join(APPS_ROOT, s, 'src', 'app'),
-);
+/**
+ * Areas that have migrated from `apps/svc-<area>/` into the modular monolith
+ * at `apps/api/src/app/<area>/`. After migration the legacy svc-* directory
+ * holds only a thin adapter app.module.ts; the actual service code lives at
+ * the apps/api home and is what the scanner should walk.
+ *
+ * Update when a new service migrates. The legacy svc-* directory entry can
+ * stay in place until the W1 final cutover deletes it; this scanner picks up
+ * the apps/api home automatically once the area is listed here.
+ */
+const MIGRATED_AREAS: ReadonlySet<string> = new Set([
+  'identity',
+  'metadata',
+  'data',
+]);
+
+interface ServiceContext {
+  name: string;            // canonical name (e.g. 'svc-data')
+  controllerRoot: string;  // dir to walk for *.controller.ts and *.service.ts
+  guardScanRoot: string;   // dir to walk for *.module.ts looking for guard registrations
+  mainTsPath: string;      // path to main.ts (for useGlobalGuards detection)
+}
+
+function getServiceContexts(): ServiceContext[] {
+  const contexts: ServiceContext[] = [];
+  for (const svc of INSTANCE_SERVICES) {
+    const area = svc.replace(/^svc-/, '');
+    if (MIGRATED_AREAS.has(area)) {
+      contexts.push({
+        name: svc,
+        controllerRoot: join(APPS_ROOT, 'api', 'src', 'app', area),
+        // Walk all of apps/api/src/app/ so the root app.module.ts (which
+        // wires GlobalGuardsModule for every migrated area) is included.
+        guardScanRoot: join(APPS_ROOT, 'api', 'src', 'app'),
+        mainTsPath: join(APPS_ROOT, 'api', 'src', 'main.ts'),
+      });
+    } else {
+      const appDir = join(APPS_ROOT, svc, 'src', 'app');
+      contexts.push({
+        name: svc,
+        controllerRoot: appDir,
+        guardScanRoot: appDir,
+        mainTsPath: join(APPS_ROOT, svc, 'src', 'main.ts'),
+      });
+    }
+  }
+  return contexts;
+}
+
+const SERVICE_ROOTS: string[] = getServiceContexts().map((c) => c.controllerRoot);
 
 const TARGET_SUFFIX = '.service.ts';
 const CONTROLLER_SUFFIX = '.controller.ts';
@@ -334,26 +381,20 @@ function checkControllerGuardChains(): Violation[] {
     return violations;
   }
 
-  const services = readdirSync(APPS_ROOT)
-    .filter((name) => name.startsWith('svc-'))
-    // Skip e2e test apps; they don't ship runtime endpoints.
-    .filter((name) => !name.endsWith('-e2e'));
-
-  for (const service of services) {
-    const serviceAppDir = join(APPS_ROOT, service, 'src', 'app');
-    if (!existsSync(serviceAppDir)) {
+  for (const ctx of getServiceContexts()) {
+    if (!existsSync(ctx.controllerRoot)) {
       continue;
     }
 
     // A service may wire APP_GUARD providers from any .module.ts in its
-    // graph; precompute once per service.
-    const serviceGuardsWired = serviceWiresGuardsGlobally(serviceAppDir);
-    const appModule = join(serviceAppDir, 'app.module.ts');
-    const mainGuardsWired = existsSync(appModule)
-      ? mainTsWiresGuardsGlobally(appModule)
+    // graph; precompute once per service. For migrated areas, this includes
+    // the apps/api root app.module.ts (where GlobalGuardsModule lives).
+    const serviceGuardsWired = serviceWiresGuardsGlobally(ctx.guardScanRoot);
+    const mainGuardsWired = existsSync(ctx.mainTsPath)
+      ? /useGlobalGuards\s*\(/.test(readFileSync(ctx.mainTsPath, 'utf8'))
       : false;
 
-    const controllerFiles = walk(serviceAppDir, [], CONTROLLER_SUFFIX);
+    const controllerFiles = walk(ctx.controllerRoot, [], CONTROLLER_SUFFIX);
 
     for (const controller of controllerFiles) {
       const content = readFileSync(controller, 'utf8');
@@ -376,7 +417,7 @@ function checkControllerGuardChains(): Violation[] {
         violations.push({
           file: `${controller}:${line}`,
           reason:
-            `Authz decorator (@Roles/@RequirePermission/@AbacScope) at line ${line} but no @UseGuards(JwtAuthGuard, ...) on the controller class or directly above the handler, and apps/${service} does not import GlobalGuardsModule (or wire APP_GUARD providers / useGlobalGuards in main.ts). Decorators are INERT - endpoint is anonymously callable.`,
+            `Authz decorator (@Roles/@RequirePermission/@AbacScope) at line ${line} but no @UseGuards(JwtAuthGuard, ...) on the controller class or directly above the handler, and ${ctx.name} does not import GlobalGuardsModule (or wire APP_GUARD providers / useGlobalGuards in main.ts). Decorators are INERT - endpoint is anonymously callable.`,
         });
       }
     }
