@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AlertsModule } from './alerts/alerts.module';
 
 /**
  * AnalyticsModule consolidates svc-insights into apps/api per spec §2.
@@ -7,7 +8,7 @@ import { Module } from '@nestjs/common';
  * HealthController; route '/analytics/health').
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-foldins-migration.md):
- *   [ ] alerts
+ *   [x] alerts
  *   [ ] audit-integrity
  *   [ ] backup
  *   [ ] dashboards
@@ -17,9 +18,9 @@ import { Module } from '@nestjs/common';
  *   [ ] svc-insights app.module thin adapter
  */
 @Module({
-  imports: [],
+  imports: [AlertsModule],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [AlertsModule],
 })
 export class AnalyticsModule {}
