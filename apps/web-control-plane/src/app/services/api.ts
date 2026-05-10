@@ -69,6 +69,25 @@ function resolvedRequestOrigin(config: { baseURL?: string; url?: string }): stri
   }
 }
 
+// F089 (W1 task 10): the access token comes from the in-memory store
+// in auth.ts, NOT from localStorage. The previous localStorage read was
+// the XSS exfil vector — any malicious script could
+// `localStorage.getItem('control_plane_token')` and send it off-origin.
+// Now there is nothing in localStorage to exfiltrate.
+//
+// Indirected via a getter to avoid a circular import (api.ts ←→ auth.ts):
+// auth.ts owns the variable; we read it through a closure-bound getter
+// installed at module init. The getter is plain JS scope, so an XSS
+// payload that runs in the same context can still reach
+// `inMemoryAccessToken` via reflection — but it CANNOT survive a page
+// reload, and it CANNOT be exfiltrated by the standard
+// "scrape localStorage" worm. That's the W1 win.
+let getAccessToken: () => string | null = () => null;
+
+export function _registerAccessTokenSource(getter: () => string | null): void {
+  getAccessToken = getter;
+}
+
 // Request interceptor: only attach the admin Bearer token when the request
 // actually targets the configured control-plane origin. A misuse of `api`
 // (or `axios.request({...})` against an absolute third-party URL through
@@ -79,7 +98,7 @@ api.interceptors.request.use(
     const requestOrigin = resolvedRequestOrigin(config);
     const sameOrigin = requestOrigin === API_BASE_PARSED.origin;
     if (sameOrigin) {
-      const token = localStorage.getItem('control_plane_token');
+      const token = getAccessToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -107,22 +126,36 @@ let logoutInFlight = false;
 // the burst awaits the same promise.
 let refreshInFlight: Promise<string> | null = null;
 
+// F089: refresh uses the HttpOnly cookie set by the backend; no body
+// token, no localStorage read. withCredentials on the api instance
+// causes the cookie to ride the request automatically.
+let setAccessToken: (token: string | null) => void = () => {
+  /* registered by auth.ts */
+};
+let clearAuthState: () => void = () => {
+  /* registered by auth.ts */
+};
+
+export function _registerTokenLifecycle(
+  setter: (token: string | null) => void,
+  clearer: () => void,
+): void {
+  setAccessToken = setter;
+  clearAuthState = clearer;
+}
+
 function refreshAccessToken(): Promise<string> {
   if (!refreshInFlight) {
-    const refreshToken = localStorage.getItem('control_plane_refresh');
-    if (!refreshToken) {
-      return Promise.reject(new Error('No refresh token available'));
-    }
     refreshInFlight = api
-      .post<{ accessToken: string; refreshToken: string }>(
+      .post<{ accessToken: string }>(
         '/auth/refresh',
-        { refreshToken },
+        // No body — refresh token is in HttpOnly cookie.
+        {},
         { headers: { 'X-Skip-Auth-Refresh': 'true' } },
       )
       .then((res) => {
-        const { accessToken, refreshToken: rotated } = res.data;
-        localStorage.setItem('control_plane_token', accessToken);
-        if (rotated) localStorage.setItem('control_plane_refresh', rotated);
+        const { accessToken } = res.data;
+        setAccessToken(accessToken);
         return accessToken;
       })
       .finally(() => {
@@ -138,9 +171,11 @@ function refreshAccessToken(): Promise<string> {
 function bounceToLogin(): void {
   if (logoutInFlight) return;
   logoutInFlight = true;
-  localStorage.removeItem('control_plane_token');
-  localStorage.removeItem('control_plane_refresh');
-  localStorage.removeItem('control_plane_user');
+  // F089: clear in-memory access token + the legacy localStorage user
+  // entry. The HttpOnly refresh cookie persists on the browser side
+  // until the next /auth/login or /auth/logout sets/clears it; that's
+  // fine — server-side reuse detection will flag a stolen cookie.
+  clearAuthState();
   window.location.href = '/login';
 }
 

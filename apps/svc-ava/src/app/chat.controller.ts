@@ -3,6 +3,7 @@ import {
   Post,
   Body,
   Get,
+  Req,
   Res,
   UseGuards,
   Logger,
@@ -20,7 +21,7 @@ import {
   LLMChatMessage,
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, AuthenticatedRequest, extractContext } from '@hubblewave/auth-guard';
 
 interface QueryDto {
   question: string;
@@ -80,12 +81,16 @@ export class ChatController {
   @ApiResponse({ status: 200, description: 'RAG response with sources' })
   async query(
     @CurrentUser() _user: any,
-    @Body() dto: QueryDto
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: QueryDto,
   ) {
+    // F073: thread RequestContext through RAG → vector search.
+    const ctx = extractContext(req);
     const response = await this.ragService.query(
       this.dataSource,
       dto.question,
-      dto.options
+      ctx,
+      dto.options,
     );
 
     return {
@@ -100,8 +105,9 @@ export class ChatController {
   @ApiOperation({ summary: 'Stream a RAG response' })
   async queryStream(
     @CurrentUser() _user: any,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: QueryDto,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
@@ -110,10 +116,13 @@ export class ChatController {
     res.setHeader('X-Accel-Buffering', 'no');
 
     try {
+      // F073: thread RequestContext through RAG → vector search.
+      const ctx = extractContext(req);
       for await (const event of this.ragService.queryStream(
         this.dataSource,
         dto.question,
-        dto.options
+        ctx,
+        dto.options,
       )) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
@@ -148,12 +157,16 @@ export class ChatController {
   @ApiResponse({ status: 200, description: 'Conversation response' })
   async chat(
     @CurrentUser() _user: any,
-    @Body() dto: ChatDto
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChatDto,
   ) {
+    // F073: thread RequestContext through RAG → vector search.
+    const ctx = extractContext(req);
     const response = await this.ragService.chat(
       this.dataSource,
       dto.messages,
-      dto.options
+      ctx,
+      dto.options,
     );
 
     return {
@@ -195,18 +208,22 @@ export class ChatController {
   @ApiResponse({ status: 200, description: 'Suggestions list' })
   async getSuggestions(
     @CurrentUser() _user: any,
+    @Req() req: AuthenticatedRequest,
     @Body()
     dto: {
       context: string;
       type: 'next_action' | 'related_content' | 'similar_issues';
       limit?: number;
-    }
+    },
   ) {
+    // F073: thread RequestContext through RAG → vector search.
+    const ctx = extractContext(req);
     const suggestions = await this.ragService.generateSuggestions(
       this.dataSource,
       dto.context,
       dto.type,
-      dto.limit
+      ctx,
+      dto.limit,
     );
 
     return { suggestions };

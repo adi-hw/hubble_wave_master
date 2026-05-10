@@ -1,16 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { randomUUID } from 'crypto';
 import {
   SSOConfig,
   SSOSession,
   SSOIdentity,
 } from '@hubblewave/instance-db';
+import {
+  escapeXmlAttribute,
+  assertSAMLAssertion,
+  SAML_SIGNATURE_VERIFIED,
+  SignatureVerifiedSentinel,
+} from './saml-assertion-gate';
+
+// Re-export so external callers (and the existing libs/enterprise
+// public surface) keep working without changing import sites.
+export { SAML_SIGNATURE_VERIFIED, SignatureVerifiedSentinel };
 
 export interface SAMLAssertion {
   nameId: string;
   nameIdFormat: string;
   sessionIndex: string;
   attributes: Record<string, string | string[]>;
+  /**
+   * F139 (W1 task 12): the caller MUST affirm that the assertion's
+   * XML-DSig signature was verified against the IdP's public key
+   * BEFORE invoking processSAMLAssertion. SSOService does not parse
+   * the raw SAML response — that's the responsibility of the SAML
+   * library at the controller layer (xml-crypto / samlify / @node-saml/
+   * passport-saml). Setting this to anything other than the literal
+   * sentinel below is a security-critical contract violation; the
+   * runtime check in assertSAMLAssertion enforces it even against
+   * `as any` bypasses.
+   */
+  signatureVerified: SignatureVerifiedSentinel;
+  /**
+   * Mirrors the OIDC `email_verified` claim. When the IdP attests the
+   * email is verified, set true. Default-false handling lives in the
+   * config: if config.requireEmailVerified is on (default), an
+   * unverified-email assertion is rejected.
+   */
+  emailVerified?: boolean;
 }
 
 export interface OIDCTokens {
@@ -102,9 +132,15 @@ export class SSOService {
     config: SSOConfig,
     baseUrl: string
   ): string {
-    const entityId = `${baseUrl}/sso/saml/${config.id}/metadata`;
-    const acsUrl = `${baseUrl}/sso/saml/${config.id}/acs`;
-    const sloUrl = `${baseUrl}/sso/saml/${config.id}/slo`;
+    // F141 (W1 task 13): every value that lands inside an XML
+    // attribute is XML-escaped before interpolation. Without the
+    // escape, an attacker controlling config.id (e.g., via the SSO
+    // config-edit UI) could inject `"` and break out of the
+    // entityID attribute to attach arbitrary XML elements that the
+    // IdP would treat as part of the SP descriptor.
+    const entityId = escapeXmlAttribute(`${baseUrl}/sso/saml/${config.id}/metadata`);
+    const acsUrl = escapeXmlAttribute(`${baseUrl}/sso/saml/${config.id}/acs`);
+    const sloUrl = escapeXmlAttribute(`${baseUrl}/sso/saml/${config.id}/slo`);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
@@ -136,6 +172,28 @@ export class SSOService {
     const config = await this.getConfig(dataSource, configId);
     if (!config || config.status !== 'active') {
       return { success: false, error: 'SSO configuration not found or inactive' };
+    }
+
+    // F139 (W1 task 12): hard-fail if the caller didn't affirm SAML
+    // signature verification AND if the IdP didn't attest the email
+    // is verified (when config.requireEmailVerified is on, the
+    // default). Both gates run via the shared assertSAMLAssertion()
+    // primitive so the contract stays portable when libs/enterprise
+    // is split into libs/sso/ in W4.
+    const gate = assertSAMLAssertion(assertion, {
+      requireEmailVerified: config.requireEmailVerified !== false,
+    });
+    if (!gate.ok) {
+      this.logger.error(
+        `${gate.message} (configId=${configId})`,
+      );
+      return {
+        success: false,
+        error:
+          gate.reason === 'signature'
+            ? 'SAML signature affirmation required (F139)'
+            : 'IdP did not attest email is verified (F139)',
+      };
     }
 
     try {
@@ -176,10 +234,13 @@ export class SSOService {
         identity.loginCount = identity.loginCount + 1;
         await identityRepo.save(identity);
       } else if (config.autoProvisionUsers) {
-        // Auto-provision new user
-        // Note: This would typically call a user service to create the user
+        // Auto-provision new user. The user-service integration is the
+        // controller's responsibility (it owns the user-create flow);
+        // SSOService records the SSO identity row + returns the
+        // generated user id, leaving the controller to wire the
+        // upstream user creation against the same id.
         isNewUser = true;
-        userId = crypto.randomUUID();
+        userId = randomUUID();
 
         identity = identityRepo.create({
           ssoConfigId: configId,
@@ -208,7 +269,7 @@ export class SSOService {
       const session = sessionRepo.create({
         ssoConfigId: configId,
         userId,
-        sessionId: assertion.sessionIndex || crypto.randomUUID(),
+        sessionId: assertion.sessionIndex || randomUUID(),
         nameId: assertion.nameId,
         nameIdFormat: assertion.nameIdFormat,
         attributes: profile.rawAttributes,
@@ -264,7 +325,7 @@ export class SSOService {
   async terminateSession(
     dataSource: DataSource,
     sessionId: string,
-    reason: string = 'user_logout'
+    reason = 'user_logout'
   ): Promise<boolean> {
     const repo = dataSource.getRepository(SSOSession);
     const result = await repo.update(

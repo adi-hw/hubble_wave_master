@@ -322,6 +322,9 @@
       "eslint-config-prettier": {
         "reason": "Disables ESLint rules conflicting with prettier"
       },
+      "eslint-plugin-react-hooks": {
+        "reason": "react-hooks/rules-of-hooks gate (W1 task 2 / F088): catches conditional hook calls before they ship and crash the React subtree under StrictMode"
+      },
       "jest": {
         "reason": "Test runner"
       },

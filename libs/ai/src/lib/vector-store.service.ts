@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { RequestContext } from '@hubblewave/auth-guard';
 import { LLMService } from './llm.service';
 
 // Default vector dimension - nomic-embed-text produces 768
@@ -31,7 +32,32 @@ export interface VectorSearchOptions {
   threshold?: number;
   sourceTypes?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * F073 (W1 task 9): per-result authorization check. If provided, the
+   * search post-filters results to those for which `authzCheck` returns
+   * true. The audit's primary concern was that vector search returned
+   * chunks from records the calling user could not read directly; the
+   * post-filter closes that surface. W2 owns moving this from post-
+   * filter to pre-filter at the SQL level (joining through
+   * CollectionDefinition + buildCollectionRowLevelClause); until that
+   * lands, the search-then-filter pattern is the safety contract.
+   *
+   * The check signature deliberately takes (sourceType, sourceId)
+   * rather than the full SearchResult so the caller doesn't have to
+   * inspect content/metadata when deciding access.
+   */
+  authzCheck?: (sourceType: string, sourceId: string) => Promise<boolean>;
 }
+
+/**
+ * Identity for an "as system" caller — embedding workers, scheduled
+ * indexers, and bootstrap paths that legitimately need to query the
+ * vector store without a user context. The literal string is used as a
+ * type-system marker so callers can't accidentally pass `null` or `{}`
+ * to bypass the new RequestContext requirement on search().
+ */
+export const SYSTEM_VECTOR_SEARCH_CONTEXT = '__hw_system_vector_search__' as const;
+export type VectorSearchPrincipal = RequestContext | typeof SYSTEM_VECTOR_SEARCH_CONTEXT;
 
 @Injectable()
 export class VectorStoreService {
@@ -193,14 +219,52 @@ export class VectorStoreService {
   }
 
   /**
-   * Perform similarity search using vector embeddings
+   * Perform similarity search using vector embeddings.
+   *
+   * F073 (W1 task 9): `principal` is REQUIRED. Callers must either
+   * supply a RequestContext (the user identity that initiated the
+   * search) or the SYSTEM_VECTOR_SEARCH_CONTEXT sentinel for legitimate
+   * "as system" callers (embedding workers, indexers). The change is
+   * non-default-bypassable — TypeScript forces every call site to make
+   * an explicit choice. Every search emits an audit log line tagged
+   * with the principal so post-incident analysis can attribute leaks.
+   *
+   * If `options.authzCheck` is provided, results are post-filtered to
+   * those for which the check returns true. Without a check, results
+   * are returned as-is — and a debug log records that the caller did
+   * not provide an authz filter (so we can find unprotected paths).
+   * The "no check" branch is acceptable for SYSTEM_VECTOR_SEARCH_CONTEXT
+   * (system callers can see everything) but is a SHOULD-FIX gap when
+   * the principal is a real user; W2 wires the chat path's check.
    */
   async search(
     dataSource: DataSource,
     query: string,
+    principal: VectorSearchPrincipal,
     options: VectorSearchOptions = {}
   ): Promise<SearchResult[]> {
     const { limit = 10, threshold = 0.7, sourceTypes, metadata } = options;
+
+    // Audit log every search with attribution. The query text is
+    // truncated for log compactness; full query is in the request log.
+    const principalDesc =
+      principal === SYSTEM_VECTOR_SEARCH_CONTEXT
+        ? 'system'
+        : `user:${principal.userId}`;
+    this.logger.log(
+      `vector search by ${principalDesc} — query="${query.slice(0, 80)}", limit=${limit}, threshold=${threshold}`,
+    );
+
+    if (principal !== SYSTEM_VECTOR_SEARCH_CONTEXT && !options.authzCheck) {
+      // Not a hard fail (W1 ratchet — would break the world). Log so
+      // operators can grep for the gap and W2 can prioritise wiring
+      // authzCheck on the remaining caller paths.
+      this.logger.warn(
+        `vector search by ${principalDesc} executed WITHOUT authzCheck (F073 gap). ` +
+          `Add an authzCheck to the call site at the chat / RAG layer. ` +
+          `Until then, this search may return chunks from sources the user cannot read directly.`,
+      );
+    }
 
     // Generate embedding for the query
     const queryEmbedding = await this.llmService.getEmbedding(query);
@@ -250,8 +314,7 @@ export class VectorStoreService {
     params.push(threshold, limit);
 
     const results = await dataSource.query(sql, params);
-
-    return results.map((row: Record<string, unknown>) => ({
+    const mapped: SearchResult[] = results.map((row: Record<string, unknown>) => ({
       id: row['id'] as string,
       sourceType: row['source_type'] as string,
       sourceId: row['source_id'] as string,
@@ -259,6 +322,32 @@ export class VectorStoreService {
       metadata: row['metadata'] as Record<string, unknown>,
       similarity: row['similarity'] as number,
     }));
+
+    // F073 post-filter. authzCheck runs in parallel — for typical
+    // limit≤10 the round-trip cost is one batch of N permission
+    // queries, which the caller's authz layer can amortize via its
+    // own caching.
+    if (options.authzCheck) {
+      const decisions = await Promise.all(
+        mapped.map((r) =>
+          options.authzCheck!(r.sourceType, r.sourceId).catch((err) => {
+            this.logger.warn(
+              `authzCheck threw for ${r.sourceType}/${r.sourceId}: ${(err as Error).message}; treating as DENY`,
+            );
+            return false;
+          }),
+        ),
+      );
+      const filtered = mapped.filter((_, i) => decisions[i]);
+      const dropped = mapped.length - filtered.length;
+      if (dropped > 0) {
+        this.logger.log(
+          `vector search filter dropped ${dropped}/${mapped.length} result(s) for ${principalDesc} (F073)`,
+        );
+      }
+      return filtered;
+    }
+    return mapped;
   }
 
   /**

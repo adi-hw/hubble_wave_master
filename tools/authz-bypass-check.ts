@@ -7,10 +7,67 @@ type Violation = {
 };
 
 const APPS_ROOT = join(process.cwd(), 'apps');
-const SERVICE_ROOT = join(APPS_ROOT, 'svc-data', 'src', 'app');
+
+/**
+ * Instance-plane services that share the canonical AuthorizationService
+ * gate. Every .service.ts in these services that accesses data on behalf
+ * of a RequestContext MUST consult AuthorizationService.
+ *
+ * svc-control-plane is INTENTIONALLY excluded — canon §18 carves out the
+ * control plane as multi-tenant by design with its own auth model. The
+ * `customerId`-scoped queries in svc-control-plane do not go through
+ * the instance AuthorizationService, and that is correct.
+ *
+ * Was scoped to svc-data only (F018, fixed in W0 task 4); each service
+ * in the list below is independently scanned for the same bypass
+ * patterns.
+ */
+const INSTANCE_SERVICES: readonly string[] = [
+  'svc-data',
+  'svc-metadata',
+  'svc-identity',
+  'svc-automation',
+  'svc-workflow',
+  'svc-notify',
+  'svc-insights',
+  'svc-ava',
+  'svc-view-engine',
+  'svc-instance-api',
+  'svc-migrations',
+];
+
+const SERVICE_ROOTS: string[] = INSTANCE_SERVICES.map((s) =>
+  join(APPS_ROOT, s, 'src', 'app'),
+);
+
 const TARGET_SUFFIX = '.service.ts';
 const CONTROLLER_SUFFIX = '.controller.ts';
 const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']);
+
+/**
+ * Allowlist for service files that legitimately access data without
+ * AuthorizationService. Each entry needs a structured reason.
+ *
+ * Examples of legitimate bypasses:
+ *   - Bootstrap code that runs before any user is authenticated.
+ *   - Migration code (svc-migrations runs as a single-shot K8s Job).
+ *   - Internal service-to-service callers that present their own service
+ *     identity rather than a user RequestContext (after W3 lands).
+ *
+ * Any new entry requires a follow-up wave reference.
+ */
+const KNOWN_BYPASSES: ReadonlyArray<{
+  file: string;
+  reason: string;
+  followUp: string;
+}> = [
+  {
+    file: 'apps/svc-insights/src/app/dashboards/dashboards.service.ts',
+    reason:
+      'Dashboard service reads layout content (widget references to collections) but does not enforce per-widget collection read access; widgets may reference collections the viewer cannot read. Audit finding F146; the scope check is owned by the dashboard read path which currently only checks dashboard-level scope (system/tenant/role/personal). Each widget call independently checks ABAC at the metrics layer (verified in metrics.service.ts:276-308) but the contract is ambient and easy to violate.',
+    followUp: 'W2 task — add per-widget authz at dashboard load time (F146).',
+  },
+];
 
 const NEEDS_AUTHZ_PATTERNS = [
   /RequestContext/,
@@ -227,23 +284,42 @@ function serviceWiresGuardsGlobally(serviceAppDir: string): boolean {
   return false;
 }
 
-function checkServiceAuthzBypass(): Violation[] {
-  if (!existsSync(SERVICE_ROOT)) {
-    return [];
+function isAllowlisted(file: string): { allowed: true; reason: string; followUp: string } | { allowed: false } {
+  const normalizedFile = file.replace(/\\/g, '/');
+  for (const entry of KNOWN_BYPASSES) {
+    const normalizedEntry = entry.file.replace(/\\/g, '/');
+    if (normalizedFile.endsWith(normalizedEntry)) {
+      return { allowed: true, reason: entry.reason, followUp: entry.followUp };
+    }
   }
+  return { allowed: false };
+}
 
-  const files = walk(SERVICE_ROOT, [], TARGET_SUFFIX);
+function checkServiceAuthzBypass(): Violation[] {
   const violations: Violation[] = [];
 
-  for (const file of files) {
-    const content = readFileSync(file, 'utf8');
-    if (!fileNeedsAuthz(content)) {
+  for (const root of SERVICE_ROOTS) {
+    if (!existsSync(root)) {
       continue;
     }
-    if (!fileUsesAuthz(content)) {
+
+    const files = walk(root, [], TARGET_SUFFIX);
+
+    for (const file of files) {
+      const content = readFileSync(file, 'utf8');
+      if (!fileNeedsAuthz(content)) {
+        continue;
+      }
+      if (fileUsesAuthz(content)) {
+        continue;
+      }
+      if (isAllowlisted(file).allowed) {
+        continue;
+      }
       violations.push({
         file,
-        reason: 'Missing AuthorizationService usage for RequestContext-based data access.',
+        reason:
+          'Missing AuthorizationService usage for RequestContext-based data access.',
       });
     }
   }
@@ -309,6 +385,15 @@ function checkControllerGuardChains(): Violation[] {
   return violations;
 }
 
+function toRelative(file: string): string {
+  const cwd = process.cwd().replace(/\\/g, '/');
+  const norm = file.replace(/\\/g, '/');
+  if (norm.startsWith(cwd)) {
+    return norm.slice(cwd.length).replace(/^\//, '');
+  }
+  return norm;
+}
+
 function main() {
   const violations: Violation[] = [
     ...checkServiceAuthzBypass(),
@@ -316,13 +401,22 @@ function main() {
   ];
 
   if (violations.length === 0) {
-    console.log('authz bypass check: ok');
+    if (KNOWN_BYPASSES.length > 0) {
+      console.log(
+        `authz bypass check: ok (${KNOWN_BYPASSES.length} allowlisted entry/entries tracked for follow-up)`,
+      );
+      for (const entry of KNOWN_BYPASSES) {
+        console.log(`  TRACKED: ${entry.file} -> ${entry.followUp}`);
+      }
+    } else {
+      console.log('authz bypass check: ok');
+    }
     return;
   }
 
   console.error('authz bypass check failed');
   for (const violation of violations) {
-    console.error(`- ${violation.file}: ${violation.reason}`);
+    console.error(`- ${toRelative(violation.file)}: ${violation.reason}`);
   }
   process.exit(1);
 }

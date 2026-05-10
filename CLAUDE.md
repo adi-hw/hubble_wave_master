@@ -98,29 +98,39 @@ Hardcoded business logic is architectural failure.
 
 ---
 
-## 5. One Instance per Customer (Non-Negotiable)
+## 5. Single-Tenant Default + Pooled Mode Optional (canon §5 SOFTEN, 2026-05-09)
 
-Customer isolation is architectural, not logical.
+Customer isolation is architectural, with two supported deployment modes.
 
-There are:
-- No tenant IDs in business logic
-- No shared runtime state between customers
-- No conditional isolation
+### Default: per-customer instance (single-tenant)
+For paying production customers, each instance is fully dedicated:
+- Own Nest API process
+- Own BullMQ worker process
+- Own Postgres database
+- Own Redis instance
 
-Each customer instance is fully independent.
+This is the default and is what every paying customer's procurement should expect.
 
-**Scope clarification (added 2026-05):** This rule applies to the
-**Customer Instance Plane** — the runtime environment customers use.
-The **Control Plane** (Part II §18) is a traditional multi-tenant SaaS
-application by design: it stores customers, instances, licenses, and
-admin audit trails in shared tables keyed by `customerId`. This is
-correct architecture, not a violation: the Control Plane *is* the
-multi-tenant management layer that provisions single-tenant Instances.
+### Optional: pooled mode (multi-tenant via Postgres RLS)
+For free trials, sales demos, internal dev/staging, lower-tier customers, and future ISV-marketplace test environments, multiple tenants share infrastructure isolated by Postgres Row-Level Security (RLS) policies keyed on `tenant_id`.
 
-The "no tenant IDs in business logic" rule MUST be enforced inside
-every instance service (svc-data, svc-metadata, svc-identity,
-svc-automation, etc.). Control Plane services may freely use
-`customerId` because that's the unit they operate on.
+In pooled mode:
+- Every database query carries a `tenant_id` (or its equivalent)
+- Postgres RLS policies enforce cross-tenant isolation at the SQL layer
+- Per-tenant cross-tenant-leak tests run in CI
+- Audit and identity continue to function exactly as in single-tenant mode
+
+Both modes use the same source code; only deployment topology differs.
+
+### Implementation requirements (binding on all instance services)
+- All data access must include tenant context. Use `RequestContext.tenantId` for the active tenant.
+- All Postgres tables that hold tenant-scoped data carry RLS policies (enabled in pooled mode; the policy is trivially `USING (true)` in single-tenant mode).
+- Tests must run in both modes (single-tenant fixture + pooled fixture) to catch isolation leaks.
+
+### Scope clarification
+This rule applies to the **Customer Instance Plane** — the runtime environment customers use. The **Control Plane** (Part II §18) is a traditional multi-tenant SaaS application by design.
+
+**Spec reference:** `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §6.3 (data isolation) and §9 (canon delta).
 
 ---
 
@@ -134,30 +144,39 @@ No property → no column.
 
 ---
 
-## 7. Views Are First-Class
+## 7. Views Are First-Class (canon §7 SOFTEN, 2026-05-09)
 
-Views are not UI sugar.
+Views are governed projections of data for specific audiences. The 5-tier hierarchy (System → Tenant → Role → Group → Personal) of the original §7 is dropped in favor of two hierarchy levels:
 
-They are governed projections of data for specific audiences.
+- **Customer-namespaced views** — defined in customer pack metadata; scoped to the customer's tenant.
+- **Role views** — bound to one or more customer-defined roles; visible to users with those roles.
+- **Personal views** (per-user) — owned and edited by the individual user; saved layout, filter, and column choices.
 
-Hierarchy:
-System → Tenant → Role → Group → Personal
+System and Tenant tiers are subsumed by "platform-default views" (shipped in vertical packs) and "customer-namespaced views" respectively. The simpler model covers all observed use cases without the governance overhead.
+
+Views are stored as pack metadata and subject to the upgrade-safety validator.
 
 ---
 
-## 8. Automation ≠ Workflow
+## 8. Automation + Workflow are One Engine (canon §8 INVERT, 2026-05-09)
 
-Automation rules are:
-- deterministic
-- record-scoped
-- synchronous
+The ServiceNow split between Flow Designer (durable, human-aware) and Workflow (deterministic, synchronous) is a tax we don't pay. HubbleWave's automation engine has two **modes** in one engine:
 
-Workflows are:
-- long-running
-- stateful
-- human-aware
+### Rule mode — synchronous, record-scoped, deterministic
+- Trigger types: before/after record events, manual, scheduled, webhook
+- Conditions in the platform's formula language
+- Actions: record CRUD, send email/SMS, call HTTP, run sandboxed script
+- Cycle and depth control; per-rule rate limiting (W7.C remediation work, preserved)
 
-They must never be merged.
+### Workflow mode — durable, multi-day, stateful
+- State persistence in Postgres
+- Human task assignment, approvals, escalations
+- Parallel branches, joins, loops
+- SLA timers
+
+One visual editor (using `@xyflow/react`) authors both. One sandbox (`script-sandbox`) executes scripted actions in either mode. One execution log captures both runtimes.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 automation engine + §9 canon delta.
 
 ---
 
@@ -211,29 +230,38 @@ violations. They MUST also write a `runtime_anomaly` row via
 
 ---
 
-## 11. AI Is Infrastructure
+## 11. AI is a Richly-Integrated Feature Surface (canon §11 SOFTEN, 2026-05-09)
 
-AVA is not a chatbot.
-AVA is a **reasoning layer over platform state**.
+AVA is not a chatbot. AVA is a feature surface wired into every workspace and authoring tool:
 
-If AVA cannot reason about a feature, the feature is incomplete.
+- **Conversational assistant** in every workspace (permission-aware retrieval)
+- **Natural language search** (vector + keyword hybrid)
+- **AI authoring assist** — drafted automation rules, views, workspaces, schema changes from natural language
+- **Document AI** — parse equipment manuals, recall notices, regulatory documents
+- **Voice work order completion** (mobile, on-device speech-to-text)
+- **Image analysis** (mobile + web; asset identification, fault detection, damage assessment)
+- **Predictive maintenance** (per-customer ML models)
+- **Smart triage** (incoming work order categorization)
+- **Anomaly detection** (equipment readings flagged proactively)
+- **AI Code Assistant** — Cursor/Copilot-style help for plugin authoring, formula editor, automation script editor, integration adapter authoring, workspace builder, analytics query builder. Direct competitor to ServiceNow's Now Assist for Creators.
+
+AVA is implemented as a Nest module (`ai`) inside `apps/api`, NOT as a separate service or runtime layer. Pluggable LLM provider per customer (Ollama for dev/local; production providers chosen per customer with their BAA).
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 AVA + AI Code Assistant.
 
 ---
 
-## 12. Trust Is Earned Incrementally
+## 12. Trust is Earned Per AI Feature (canon §12 PER-FEATURE, 2026-05-09)
 
-AVA progression:
-Suggest → Preview → Approve → Execute → Audit
+Each AI capability the customer enables for autonomous action progresses through:
 
-Skipping steps is forbidden.
+> Suggest → Preview → Approve → Execute → Audit
 
-**Implementation status (W5.B):** The progression is currently
-DOCUMENTED but not yet ENFORCED in code. Plan Fix 16 (AVA proposal
-state machine) is on the architecture remediation backlog. Until it
-lands, AVA execution gates are convention-based; the canon's
-"forbidden" stance is aspirational. Engineers writing AVA-adjacent
-code MUST NOT introduce paths that bypass the documented stages, but
-the platform does not yet enforce this with a state machine.
+The progression applies **per AI feature**, not platform-wide. A customer may enable "AVA can auto-triage low-urgency work orders" (configured for autonomous Execute) while keeping every other AI feature in Suggest-only mode.
+
+By default, all AI features ship in Suggest mode. Customer admin must explicitly configure each feature for higher trust levels. Every AI suggestion (and every autonomous action) is logged with prompt, model, version, response, applied/rejected status — the Audit stage is always-on.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 AVA + §9 canon delta.
 
 ---
 
@@ -300,14 +328,35 @@ If change is required, the manifesto is amended explicitly — never bypassed si
 
 # PART II — PLATFORM ARCHITECTURE (COMPLETE)
 
-## 17. High-Level Architecture
+## 17. High-Level Architecture (canon §17 UPDATE, 2026-05-09)
 
 HubbleWave consists of two strictly separated planes:
 
-1. **Control Plane** — platform ownership, provisioning, governance
-2. **Customer Instance Plane** — runtime platform used by customers
+1. **Control Plane** — multi-tenant HubbleWave-owned service (`apps/control-plane`) that provisions, upgrades, monitors, and bills customer instances.
+2. **Customer Instance Plane** — the runtime platform used by customers. Each customer instance is a single Nest API process (`apps/api`) plus a single BullMQ worker process (`apps/worker`), backed by per-customer Postgres + Redis (single-tenant default, canon §5).
 
-There is no shared business logic between planes.
+Clients:
+- `apps/web-client` — main React web client (consumed by all platform users)
+- `apps/web-control-plane` — HubbleWave admin console
+- `apps/mobile` — React Native + Expo, offline-first (canon §26)
+
+The instance API is a **modular monolith** (NestJS modules: kernel, db, identity, audit, metadata, data, automation, views, forms, dashboards, notifications, integrations, ai, packs, plugins, upgrade, storage, search). Module boundaries are the natural seams for future service extraction *if and when* a specific module hits a real performance ceiling — but the platform commits to the monolith shape for the first 10–20 customer instances.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §2.
+
+---
+
+## 17.5. Customization Contract (canon §17.5 NEW, 2026-05-09)
+
+**Customer customizations are versioned, namespaced, and validated against platform-API versions. No customization may modify platform schema. Upgrades are blocked when customer customizations would break.**
+
+Concretely:
+- All customer-defined collections, properties, relationships, automations, views, forms, dashboards, plugins, and integrations live in customer-namespaced metadata or customer-namespaced tables (`cust__{pack_id}__{collection_id}`) or JSONB extension columns on platform tables.
+- Customer customizations declare a `targetPlatformApiVersion` in their pack manifest.
+- Pre-upgrade validator (W5) inspects every installed pack against the new platform version and classifies the upgrade as green / yellow (auto-migrate) / red (manual remediation).
+- If validator output is green, the upgrade is architecturally guaranteed safe — no customization can break at runtime.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §5 (customization architecture, the moat).
 
 ---
 
@@ -355,17 +404,19 @@ The Control Plane **never**:
 
 ---
 
-## 19. Customer Instance Architecture (Recap)
+## 19. Customer Instance Architecture (canon §19 UPDATE, 2026-05-09)
 
-Each customer instance includes:
-- Identity & access services
-- Metadata & schema engine
-- Data services
-- Automation & workflow engines
-- UI & AVA runtime
-- Instance-scoped databases and storage
+Each customer instance is a single process group:
+- One `apps/api` process (Nest modular monolith with all instance-plane modules)
+- One `apps/worker` process (BullMQ consumer for async automation, scheduled jobs, AI background tasks)
+- One Postgres database (per-customer; pgvector + materialized views included)
+- One Redis instance (per-customer; cache + BullMQ queues)
 
-Instances are operationally independent.
+In pooled mode (canon §5 SOFTEN), multiple customers share these resources isolated by Postgres RLS keyed on `tenant_id`.
+
+Instances are operationally independent. The Control Plane communicates with each instance only via explicit, authenticated APIs.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §2.
 
 ---
 
@@ -420,20 +471,62 @@ The codebase must enforce:
 
 Builds fail if violations exist.
 
-**Implementation status (W6.A):** The scanners exist and exit non-zero
-on violations:
-- `npm run authz:check` (W1.2)
-- `npm run audit:check` (W1.6, KNOWN_DEFERRED_OFFENDERS empty after W2.E)
-- `npm run security:check` (existing)
-- `npm run compliance:check` (existing terminology scanner)
-- `npm run service-boundary:check` (W5.D, currently 0 violations)
+**Implementation status (W0, 2026-05-09):** Every canon-claimed
+scanner or lint rule below is enforced by code AND is wired into
+.github/workflows/ci.yml as a CI job. Each scanner ships with a
+self-test that proves it catches its claimed patterns (44 assertions
+across 5 suites + 21 ESLint rule assertions = 65 verifications on
+every CI run).
 
-Whether `.github/workflows/` actually FAILS PRs on these checks is
-a separate config concern. Engineers SHOULD verify CI gate status
-before merging architectural changes. If a PR passes lint locally
-but CI doesn't run the scanner, the rule is aspirational for that
-PR. Tracked for human follow-up: ensure all five scanners are required
-status checks on the merge protection rule.
+Static-analysis scanners (8 total; all required CI jobs):
+- `npm run authz:check` (W1.2; W0 task 4 extended scope to all 11
+  instance services; svc-control-plane intentionally excluded per
+  canon §18). 1 entry tracked in KNOWN_BYPASSES → W2/F146.
+- `npm run audit:check` (W1.6; KNOWN_DEFERRED_OFFENDERS empty).
+- `npm run security:check` (W0 task 3 reconciled PUBLIC_ALLOWLIST
+  to 27 entries in 5 categories; fixed cross-platform path bug;
+  tightened detection to ignore comment references).
+- `npm run compliance:check` (W0 task 1.5 fixed broken `glob` import
+  via native fs walk; F152 strict-mode-exit bug tracked → W4).
+- `npm run service-boundary:check` (W0 task 5 added entity-write
+  bypass detection: string-getRepository + raw SQL UPDATE/INSERT/
+  DELETE; word-boundary defense). 4 ownership rules + 4 write-bypass
+  rules + 7 allowlisted reads. In the modular monolith the scanner's
+  role shifts from import-topology enforcement to entity-write
+  ownership enforcement; both modes coexist.
+- `npm run deps:check` (existing; 1 legacy carve-out → W4/bcrypt).
+- `npm run cicd:check` (W0 task 7; asserts CD ↔ CI workflow_run
+  trigger + no `if: always()` bypass outside the notify job).
+- `npm run dead-code:check` (W0 task 10; trash-pattern + phantom-dep
+  + orphan-lib detection; 12-entry allowlist all owedTo: W4).
+
+ESLint enforcement (W0 task 6):
+- `no-warning-comments: error` (TODO/FIXME/XXX/HACK at comment start).
+- `@typescript-eslint/no-unused-vars: error` (with `^_` ignore).
+- `hw/no-versioned-identifier: error` (custom rule at
+  tools/eslint-rules/no-versioned-identifier.cjs; bans
+  *V<digits>$, Deprecated*, Temp*; legacy* and old* deliberately
+  not matched per the rule's header docs).
+- DEFERRED: react-hooks/rules-of-hooks (W1 owns F088 fix and the
+  plugin install). naming-convention (surface area too large for
+  W0; W4 cleanup pass).
+- ENFORCEMENT MODEL: `nx affected --target=lint` runs the new rules
+  on changed files. Pre-existing 89 violations in unchanged files
+  do not fail CI today; they get cleaned as files are touched in
+  later waves (the "delete ruthlessly" ratchet).
+
+Supply-chain & secret gates (W0 tasks 8 + 9; required CI jobs):
+- `gitleaks` (per-PR + push history scan; rules at .gitleaks.toml).
+- anchore/syft + grype SBOM + CVE scan (fail-build on high severity).
+- license-checker + tools/validate-licenses.ts (allowed/blocked/
+  exception structure with reason+addedBy+addedAt).
+
+Whether each gate is configured as a REQUIRED status check on the
+master branch protection rule is a GitHub repo-settings operation
+documented in `docs/plan-fixes/W00-required-status-checks.md`.
+Until that runbook is applied by the repo admin, the gates exist
+in CI but admin-merge could bypass them. Track via the W0 PR's
+follow-up issue.
 
 ---
 
@@ -493,6 +586,46 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-10 (W1 — Stop-the-Bleeding): all 14 W1-owned audit findings
+  closed (F011, F014, F027, F053, F073, F088, F089, F093, F111, F124,
+  F125, F126, F127, F139, F141). 13 commits, 148 new W1-specific spec
+  assertions, 0 regressions on the 65 W0 scanner self-tests.
+  Highlights tied to canon claims:
+  • §11 ("AVA reasons over platform state"): vector search now
+    requires a typed RequestContext principal + post-filter authzCheck
+    (F073). Audit log emits attribution on every search.
+  • §9 ("authorization centralized, no shortcuts"): F089 closes the
+    Control Plane localStorage XSS exfil vector — access token in
+    memory, refresh in HttpOnly+SameSite=Strict cookie. No
+    localStorage path remains for tokens.
+  • §1 ("written as if deploying to production today"): F124 deletes
+    the SQL-injection branch in reports rather than refactoring it;
+    F127 deletes the triple-brace XSS branch in template engine. Two
+    capability removals net-negative on LOC.
+  • §10 (auditability): F139's typed SAML signature affirmation
+    sentinel forces every SAML caller to make an explicit
+    verification choice; the runtime check defends against `as any`
+    bypasses.
+  Risks carried forward: F111 keypair rotation requires operator
+  action (documented in SECRETS_ROTATION.md OPEN INCIDENT block);
+  F089 frontend change needs browser verification per CLAUDE.md
+  frontend rule; libs/enterprise SSO domain is W4-pending-deletion
+  (F139+F141 fix lives in saml-assertion-gate.ts and is
+  forward-portable). Cf. master roadmap at
+  docs/plan-fixes/00-master-remediation-roadmap.md and W1 acceptance
+  at docs/plan-fixes/W01-acceptance.md.
+- 2026-05-09 (Architecture v3 spec): Major architectural shift from 14-service distributed system to 3-process modular monolith + Day-1 mobile + AI Code Assistant + full UI Builder. Amendments: §5 SOFTEN (single-tenant default + pooled mode), §7 SOFTEN (drop 5-tier view hierarchy), §8 INVERT (merge automation + workflow), §11 SOFTEN (AI as feature surface incl. AI Code Assistant), §12 PER-FEATURE (trust progression per AI feature), §17 UPDATE (monolith topology), §19 UPDATE (single Nest process per instance), §21 UPDATE (W0 expanded service-boundary:check to entity-write enforcement; import-topology TRIM no longer applies). New: §17.5 (customization contract, the moat), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder). Vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc; preserved as forward inventory in spec Appendix D. Solo founder timeline: ~10–12 months critical path for platform-only scope. Refs spec `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
+- 2026-05-09 (W0 — Foundation): §21 implementation status replaced
+  with current reality. 8 architectural scanners + ESLint rules +
+  gitleaks + SBOM + license-checker now CI-gated. Each new scanner
+  ships with a self-test (44 + 21 = 65 assertions on every CI).
+  CD ↔ CI workflow_run gating closes F106. PUBLIC_ALLOWLIST
+  reconciled (F105). Plan Fix 1 amendment from 2026-05 is partly
+  superseded: the service-boundary scanner now enforces entity-write
+  bypass (string-getRepository + raw SQL) in addition to the existing
+  import-topology rule (W0 task 5 / F056). Cf. master roadmap at
+  docs/plan-fixes/00-master-remediation-roadmap.md and W0 acceptance
+  at docs/plan-fixes/W00-acceptance.md.
 - 2026-05 (Plan Fix 1): §1 deferred-offender list pruned — the
   `apps/svc-data/src/app/automation/` deprecation entry is removed
   because the duplicate runtime is gone. svc-automation now owns the
@@ -510,6 +643,45 @@ Past amendments (most recent first):
   acknowledged); §10 audit-in-transaction requirement (W1.6 + W2.D +
   W3.C); §14 reference-checking on delete (W2.A); §12 AVA gate-
   enforcement deferral (W5.B). Refs Plan Fix 13.
+
+---
+
+## 25. Plugin SDK is the Platform Contract (canon §25 NEW, 2026-05-09)
+
+`@hubblewave/plugin-sdk` (web) and `@hubblewave/plugin-sdk-mobile` are the typed, versioned contract that customer plugin authors consume. The SDK commits to:
+
+- API stability for **N=2 major versions** (~2 years given quarterly release cadence). Plugins built against `2026.05` work through `2027.05` minimum.
+- Deprecated APIs continue to work for one full release cycle with console warnings.
+- Removed APIs ship with automated migration tooling (`hw-plugin migrate`).
+- No silent breakage: plugins outside the supported version window fail to load with a precise error pointing to the migration tool.
+
+The SDK is the precise commitment ServiceNow can't make — their customers customized via DOM and JavaScript injection over 20 years, no contract, no validator possible. We can promise it because we're greenfield and the contract IS the customization surface.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §5.3.
+
+---
+
+## 26. Mobile is a First-Class Platform Surface (canon §26 NEW, 2026-05-09)
+
+All field-staff workflows have mobile parity with web. Mobile is offline-first; the offline-degraded experience is the design baseline, online is the bonus. Customizations (workspaces, plugins, automations, views) apply to mobile via `@hubblewave/plugin-sdk-mobile`.
+
+Stack: React Native + Expo + WatermelonDB + react-native-vision-camera + react-native-mlkit. iOS + Android from one TypeScript codebase. JWT auth shared with web; biometric session unlock (FaceID, TouchID, fingerprint) per session.
+
+Direct competitive lever vs Nuvolo's weak mobile experience. Healthcare field staff are explicit pain-point.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 mobile experience.
+
+---
+
+## 27. Workspaces + UI Builder are the User-Facing Customization Surface (canon §27 NEW, 2026-05-09)
+
+Customers compose persona-tuned UIs (Workspaces) and entire pages (UI Builder full page authoring) without code, using the same primitives HubbleWave uses to ship vertical packs.
+
+The UI Builder achieves full feature parity with ServiceNow UI Builder: page composition, route definition, layout authoring, templates, multi-screen workflows, variants (web/mobile/desktop), localization, branding, conditional logic, event wiring, AI authoring assist via §AI Code Assistant.
+
+Eat-our-own-dog-food: every OOTB workspace shipped by HubbleWave is built via the same UI Builder customers use. If our own product can't be built on the customization layer, the layer isn't real.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 Workspaces + UI Builder.
 
 ---
 

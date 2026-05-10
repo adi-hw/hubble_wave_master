@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import DOMPurify from 'dompurify';
+import { sanitizeHtml } from '../../../lib/sanitize-html';
 import {
   FileText,
   Plus,
@@ -346,21 +346,13 @@ export const AIReportsPage: React.FC = () => {
                 ) : selectedReport.content ? (
                   <div
                     className="prose max-w-none text-foreground dark:prose-invert"
+                    // F093 (W1 task 11): the previous inline allowlist is
+                    // now expressed by the 'ai-report' profile in the
+                    // shared sanitizer. The allowlist contents are
+                    // identical so behavior is unchanged; the win is
+                    // single-source-of-truth across the three call sites.
                     dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(selectedReport.content, {
-                        // Strict allow-list mirrors the sanitizer used by
-                        // svc-ava when generating report HTML, so this
-                        // viewer cannot render anything richer than the
-                        // backend approves.
-                        ALLOWED_TAGS: [
-                          'p', 'span', 'strong', 'em',
-                          'ul', 'ol', 'li',
-                          'h1', 'h2', 'h3',
-                          'table', 'tr', 'td', 'th',
-                          'br',
-                        ],
-                        ALLOWED_ATTR: ['class'],
-                      }),
+                      __html: sanitizeHtml(selectedReport.content, 'ai-report'),
                     }}
                   />
                 ) : (
