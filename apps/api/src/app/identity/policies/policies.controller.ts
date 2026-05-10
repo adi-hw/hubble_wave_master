@@ -7,9 +7,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PoliciesService, PolicyListOptions } from './policies.service';
-import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
-import { JwtAuthGuard } from '../../../../api/src/app/identity/auth/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../../../api/src/app/identity/roles/guards/permission.guard';
+import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionGuard } from '../roles/guards/permission.guard';
 
 /**
  * PoliciesController
