@@ -50,7 +50,7 @@ import { AccessIngestService } from '../access/services/access-ingest.service';
 import { SearchIngestService } from '../search/search-ingest.service';
 import { AvaIngestService } from '../../../../api/src/app/metadata/ava/ava-ingest.service';
 import { InsightsIngestService } from '../../../../api/src/app/metadata/insights/insights-ingest.service';
-import { ConnectorsIngestService } from '../connectors/connectors-ingest.service';
+import { ConnectorsIngestService } from '../../../../api/src/app/metadata/connectors/connectors-ingest.service';
 import { LocalizationIngestService } from '../localization/localization-ingest.service';
 
 const RELEASE_ID_PATTERN = /^\d{8}\.\d{3,}$/;

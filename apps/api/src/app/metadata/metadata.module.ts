@@ -9,6 +9,7 @@ import { ViewModule } from './view/view.module';
 import { GuidedProcessModule } from './guided-processes/guided-process.module';
 import { NavigationMetadataModule } from './navigation/navigation.module';
 import { MetadataIngestService } from './metadata/metadata-ingest.service';
+import { ConnectorsIngestService } from './connectors/connectors-ingest.service';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -62,6 +63,7 @@ import { MetadataIngestService } from './metadata/metadata-ingest.service';
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,
+    ConnectorsIngestService,
   ],
   exports: [
     ApplicationModule,
@@ -74,6 +76,7 @@ import { MetadataIngestService } from './metadata/metadata-ingest.service';
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,
+    ConnectorsIngestService,
   ],
 })
 export class MetadataModule {}
