@@ -6,6 +6,19 @@ import { ModelRegistryModule } from './modelops/model-registry.module';
 import { ModelEvaluationModule } from './modelops/model-evaluation.module';
 import { TrainingModule } from './modelops/training.module';
 import { ModelDeploymentModule } from './modelops/model-deployment.module';
+import {
+  NLQueryController,
+  AIReportsController,
+  VoiceControlController,
+  PredictiveUIController,
+  AgileDevelopmentController,
+  LivingDocsController,
+  PredictiveOpsController,
+  DigitalTwinController,
+  SelfHealingController,
+  AppBuilderController,
+  UpgradeAssistantController,
+} from './phase7';
 
 /**
  * AvaModule consolidates everything from apps/svc-ava into the apps/api
@@ -17,7 +30,7 @@ import { ModelDeploymentModule } from './modelops/model-deployment.module';
  *     [x] ava-tools (AvaToolsModule)
  *     [x] search (SearchModule)
  *     [x] modelops (5 modules: Dataset/ModelRegistry/ModelEvaluation/Training/ModelDeployment)
- *     [ ] phase7 (11 standalone controllers + barrel; no module wrapper)
+ *     [x] phase7 (11 standalone controllers + barrel; no module wrapper)
  *   Final top-level (7 controllers + 1 service + app.module thin adapter):
  *     [ ] ava-health.controller (renamed from health.controller)
  *     [ ] chat, embedding, AVA, AVAGovernance, AVASchema, AvaProposal controllers
@@ -41,7 +54,19 @@ import { ModelDeploymentModule } from './modelops/model-deployment.module';
     TrainingModule,
     ModelDeploymentModule,
   ],
-  controllers: [],
+  controllers: [
+    NLQueryController,
+    AIReportsController,
+    VoiceControlController,
+    PredictiveUIController,
+    AgileDevelopmentController,
+    LivingDocsController,
+    PredictiveOpsController,
+    DigitalTwinController,
+    SelfHealingController,
+    AppBuilderController,
+    UpgradeAssistantController,
+  ],
   providers: [],
   exports: [
     AvaToolsModule,

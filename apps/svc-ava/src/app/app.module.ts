@@ -35,7 +35,7 @@ import {
   SelfHealingController,
   AppBuilderController,
   UpgradeAssistantController,
-} from './phase7';
+} from '../../../api/src/app/ava/phase7';
 
 @Module({
   imports: [
