@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RequestContext } from '@hubblewave/auth-guard';
-import { ExecutionContext, QueuedAction } from '../../types/automation.types';
+import { ExecutionContext, QueuedAction } from './automation.types';
 
 /**
  * Per-call timeout. svc-automation enforces its own 5s ceiling on the

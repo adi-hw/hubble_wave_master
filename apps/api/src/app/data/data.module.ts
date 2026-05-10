@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { WorkflowModule } from './workflow/workflow.module';
 import { EventOutboxService } from './events/event-outbox.service';
+import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -19,7 +20,7 @@ import { EventOutboxService } from './events/event-outbox.service';
  *     [ ] grid
  *   Service-only sub-directories:
  *     [x] events
- *     [ ] automation
+ *     [x] automation
  *     [ ] work
  *     [ ] offerings
  *   Top-level service files (mid-stream):
@@ -40,7 +41,7 @@ import { EventOutboxService } from './events/event-outbox.service';
 @Module({
   imports: [WorkflowModule],
   controllers: [],
-  providers: [EventOutboxService],
-  exports: [WorkflowModule, EventOutboxService],
+  providers: [EventOutboxService, SyncTriggerClientService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService],
 })
 export class DataModule {}

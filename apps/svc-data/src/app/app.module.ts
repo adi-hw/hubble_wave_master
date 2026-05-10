@@ -26,7 +26,7 @@ import { HealthController } from './health.controller';
 import { ModelRegistryService } from './model-registry.service';
 import { CollectionDataController } from './collection-data.controller';
 import { CollectionDataService } from './collection-data.service';
-import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
+import { SyncTriggerClientService } from '../../../api/src/app/data/automation/sync-trigger-client.service';
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
 import { OfferingsController } from './offerings/offerings.controller';
 import { OfferingsService } from './offerings/offerings.service';

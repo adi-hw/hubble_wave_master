@@ -20,7 +20,7 @@ import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'ty
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
-import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
+import { SyncTriggerClientService } from '../../../api/src/app/data/automation/sync-trigger-client.service';
 import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
 import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
 import { PropertyValidationResult, ValidationContext } from './validation/validation.types';
