@@ -43,14 +43,40 @@ function buildSslConfig(): SslConfig {
   return { rejectUnauthorized };
 }
 
+/**
+ * F053 (W1 task 3): require explicit env vars. The previous
+ * `?? 'hubblewave'` fallbacks meant a misconfigured K8s manifest would
+ * silently run migrations against `hubblewave:hubblewave@localhost/
+ * hubblewave` — the dev-default credentials shipped in `.env.example`.
+ * In production, that lands a successful migration on the wrong target
+ * with no surface signal. Fail loud at startup instead.
+ *
+ * DB_HOST and DB_PORT keep their dev defaults because they're network
+ * addresses, not credentials, and the connection failure surfaces
+ * immediately if they're wrong. DB_USER / DB_PASSWORD / DB_NAME must
+ * be explicit because they SUCCESSFULLY-CONNECTING TO THE WRONG TARGET
+ * is the failure mode we're guarding against.
+ */
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || value.trim() === '') {
+    throw new Error(
+      `svc-migrations: required env var ${name} is not set. ` +
+        `Migrations refuse to run without explicit credentials per F053 ` +
+        `(see SECRETS_ROTATION.md / canon §5).`,
+    );
+  }
+  return value;
+}
+
 async function main(): Promise<void> {
   const dataSource = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST ?? 'localhost',
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
-    username: process.env.DB_USER ?? 'hubblewave',
-    password: process.env.DB_PASSWORD ?? 'hubblewave',
-    database: process.env.DB_NAME ?? 'hubblewave',
+    username: requireEnv('DB_USER'),
+    password: requireEnv('DB_PASSWORD'),
+    database: requireEnv('DB_NAME'),
     entities: instanceEntities,
     migrations: ['dist/migrations/instance/*.js'],
     migrationsTableName: 'migrations',
