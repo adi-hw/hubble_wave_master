@@ -54,6 +54,14 @@ const KNOWN_VIOLATIONS: Array<{
     followUp:
       'W1 final cutover — delete apps/svc-workflow entirely. The AutomationModule will serve workflow endpoints from apps/api alone.',
   },
+  {
+    file: 'apps/svc-view-engine/src/app/app.module.ts',
+    importPath: '../../../api/src/app/views/views.module',
+    rationale:
+      'ARC-W1 Task 1: svc-view-engine folded into apps/api/src/app/views/ (ViewsModule). The thin adapter re-imports ViewsModule so svc-view-engine continues serving view engine endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-view-engine entirely. ViewsModule inside apps/api will serve all view engine endpoints.',
+  },
 ];
 
 /**
@@ -215,6 +223,7 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'data',
   'automation',
   'ava',
+  'views',
 ]);
 
 function isServiceDir(name: string): boolean {

@@ -55,20 +55,21 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-view-engine/src/app/health.controller.ts',
   'apps/svc-workflow/src/app/health.controller.ts',
   // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity,
-  // svc-metadata, svc-automation, and svc-ava services are now thin adapters;
-  // their controller files live at the apps/api locations below. Health
-  // controllers in data, metadata, automation, and ava were renamed to
-  // disambiguate route prefixes:
+  // svc-metadata, svc-automation, svc-ava, and svc-view-engine services are
+  // now thin adapters; their controller files live at the apps/api locations
+  // below. Health controllers were renamed to disambiguate route prefixes:
   //   data:       /data/health       (DataHealthController)
   //   metadata:   /metadata/health   (MetadataHealthController)
   //   identity:   /health            (HealthController, unchanged)
   //   automation: /automation/health (AutomationHealthController)
   //   ava:        /ava/health        (AvaHealthController)
+  //   views:      /views/health      (ViewsHealthController)
   'apps/api/src/app/data/data-health.controller.ts',
   'apps/api/src/app/identity/health.controller.ts',
   'apps/api/src/app/metadata/metadata-health.controller.ts',
   'apps/api/src/app/automation/automation-health.controller.ts',
   'apps/api/src/app/ava/ava-health.controller.ts',
+  'apps/api/src/app/views/views-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
