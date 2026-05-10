@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
+import { BackupModule } from './backup/backup.module';
 
 /**
  * AnalyticsModule consolidates svc-insights into apps/api per spec §2.
@@ -11,7 +12,7 @@ import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-foldins-migration.md):
  *   [x] alerts
  *   [x] audit-integrity
- *   [ ] backup
+ *   [x] backup
  *   [ ] dashboards
  *   [ ] metrics
  *   [ ] analytics-health.controller (renamed from health.controller)
@@ -19,9 +20,9 @@ import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
  *   [ ] svc-insights app.module thin adapter
  */
 @Module({
-  imports: [AlertsModule, AuditIntegrityModule],
+  imports: [AlertsModule, AuditIntegrityModule, BackupModule],
   controllers: [],
   providers: [],
-  exports: [AlertsModule, AuditIntegrityModule],
+  exports: [AlertsModule, AuditIntegrityModule, BackupModule],
 })
 export class AnalyticsModule {}
