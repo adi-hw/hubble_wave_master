@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { WorkflowModule } from './workflow/workflow.module';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -7,7 +8,7 @@ import { Module } from '@nestjs/common';
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-data-migration.md):
  *   Standard modules:
- *     [ ] workflow
+ *     [x] workflow
  *     [ ] defaults
  *     [ ] validation
  *     [ ] ava
@@ -36,9 +37,9 @@ import { Module } from '@nestjs/common';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [],
+  imports: [WorkflowModule],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [WorkflowModule],
 })
 export class DataModule {}

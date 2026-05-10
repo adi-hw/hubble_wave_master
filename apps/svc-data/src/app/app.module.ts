@@ -35,7 +35,7 @@ import { WorkService } from './work/work.service';
 
 import { IntegrationModule } from './integration/integration.module';
 import { AVAModule } from './ava/ava.module';
-import { WorkflowModule } from './workflow/workflow.module';
+import { WorkflowModule } from '../../../api/src/app/data/workflow/workflow.module';
 
 import { ValidationModule } from './validation/validation.module';
 import { DefaultsModule } from './defaults/defaults.module';
