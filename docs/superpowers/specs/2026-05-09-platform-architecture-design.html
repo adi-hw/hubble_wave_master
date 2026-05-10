@@ -241,10 +241,22 @@
 <p>This document proposes a course correction:</p>
 
 <ol>
-  <li><strong>Collapse the 14-service distributed system into a 3-process modular monolith</strong> (<code>api</code>, <code>worker</code>, <code>control-plane</code>), preserving every substantive capability that's been built.</li>
-  <li><strong>Make customization upgrade-safety the marquee architectural feature.</strong> This is the precise gap your first customer (a Nuvolo user) has — and an architectural problem ServiceNow can't solve retroactively.</li>
+  <li><strong>Collapse the 14-service distributed system into a 3-process modular monolith</strong> (<code>api</code>, <code>worker</code>, <code>control-plane</code>) plus a Day-1 native mobile app, preserving every substantive capability that's been built.</li>
+  <li><strong>Make customization upgrade-safety the marquee architectural feature.</strong> This is the precise gap the first customer (a Nuvolo user) has — and an architectural problem ServiceNow can't solve retroactively.</li>
   <li><strong>Build the Clinical/Facilities Asset Management vertical pack on top of the same customization layer customers will use</strong> — eat your own dog food, prove the platform claim by living on it.</li>
-  <li><strong>Ship in one shot, no phased pitches.</strong> Day-1 product includes custom tables, custom workflows, custom UI plugins, custom integrations, AND a precise upgrade-safety guarantee. ~6–9 months critical path.</li>
+  <li><strong>Ship in one shot, no phased pitches.</strong> Day-1 product includes:
+    <ul>
+      <li>Custom tables, properties, workflows, integrations</li>
+      <li>Custom React UI plugins (web + mobile)</li>
+      <li><strong>Workspaces</strong> — persona-tuned, customer-customizable UI compositions</li>
+      <li><strong>UI Builder</strong> — low-code page/route/layout authoring</li>
+      <li><strong>Mobile app</strong> — native-feeling, offline-first, scanning, voice, biometric</li>
+      <li><strong>Platform Analytics</strong> — both domain analytics and platform-usage analytics</li>
+      <li><strong>Rich AI feature surface</strong> — conversational assistant, NL authoring, doc-AI, predictive maintenance, smart triage, image analysis</li>
+      <li>Upgrade-safety guarantee (the moat)</li>
+    </ul>
+  </li>
+  <li><strong>Realistic timeline</strong>: 7–9 months with two engineers and aggressive parallelization; 12–18 months solo. Telling the first customer the optimistic number kills the trust the pitch is built on.</li>
 </ol>
 
 <p>The architecture preserves the substantive engineering investment (<code>schema-engine</code>, <code>formula-parser</code>, <code>relationship-resolver</code>, <code>authorization</code>, <code>automation</code> runtime) by relocating it from independent services to typed Nest modules. The structural overhead (cross-service transactions, service-boundary scanners, duplicate runtimes, the 14-service operational tax) is dropped.</p>
@@ -355,19 +367,20 @@ graph TB
 <h2 id="section-2">2. Target architecture</h2>
 
 <h3>Topology</h3>
-<p>Three backend processes, two frontends, one Postgres, one Redis per customer instance. Control plane stays separate (correctly multi-tenant per Canon §18).</p>
+<p>Three backend processes, two web frontends, one mobile app, one Postgres, one Redis per customer instance. Control plane stays separate (correctly multi-tenant per Canon §18).</p>
 
 <pre class="mermaid">
 graph TB
-  subgraph "Frontend (shared CDN-served)"
+  subgraph "Clients"
     WC["web-client<br/>+ Plugin Loader<br/>+ @hubblewave/plugin-sdk"]
     WCP[web-control-plane<br/>HW admin UI]
+    MOB["mobile<br/>React Native + Expo<br/>+ @hubblewave/plugin-sdk-mobile<br/>+ WatermelonDB offline"]
   end
 
-  subgraph "Customer Instance (one process per customer)"
+  subgraph "Customer Instance (one process group per customer)"
     API[api<br/>NestJS modular monolith<br/>~all instance modules]
-    WK[worker<br/>BullMQ consumer<br/>+ scheduled jobs]
-    PG_I[(Postgres<br/>per-customer)]
+    WK[worker<br/>BullMQ consumer<br/>+ scheduled jobs<br/>+ AI background tasks]
+    PG_I[(Postgres<br/>per-customer<br/>+ pgvector + materialized views)]
     R_I[(Redis<br/>per-customer)]
   end
 
@@ -376,25 +389,30 @@ graph TB
     PG_CP[(Postgres<br/>shared, customers table)]
   end
 
-  subgraph "Customer Plugin Bundles"
-    CDN[CDN<br/>signed plugin bundles]
+  subgraph "Edge"
+    CDN[CDN<br/>web + mobile plugin bundles<br/>signed]
+    LLM[LLM provider<br/>customer-chosen<br/>Claude / Bedrock / Azure / Ollama]
   end
 
   WC --> API
   WC --> CDN
+  MOB --> API
+  MOB --> CDN
   WCP --> CP
   CP -->|provision / upgrade / observe| API
   API <--> PG_I
   API <--> R_I
+  API --> LLM
   WK <--> PG_I
   WK <--> R_I
+  WK --> LLM
   CP --> PG_CP
 </pre>
 
 <h3>Module layout inside <code>api</code></h3>
 <pre class="mermaid">
 graph TB
-  subgraph "apps/api (NestJS)"
+  subgraph "apps/api (NestJS modular monolith)"
     K[kernel<br/>shared types, errors, RequestContext]
     DB[db<br/>TypeORM, transactions, datasources]
     ID[identity<br/>authn, authz, users, roles]
@@ -405,14 +423,18 @@ graph TB
     VIEWS[views<br/>view engine, projections]
     FORMS[forms<br/>form engine]
     DASH[dashboards<br/>composition + KPIs]
-    NOT[notifications<br/>email, SMS, in-app]
+    WS[workspaces<br/>persona compositions]
+    UIB[ui-builder<br/>page authoring + routes]
+    ANL[analytics<br/>domain + platform usage]
+    NOT[notifications<br/>email, SMS, push, in-app]
     INT[integrations<br/>typed adapters]
-    AI[ai<br/>AVA feature module]
+    AI[ai<br/>AVA feature surface<br/>NL search, doc-AI, predictive, vision]
+    SYNC[sync<br/>mobile offline-first sync engine]
     PACKS[packs<br/>install, upgrade, validate]
-    PLUG[plugins<br/>SDK loader, registry]
+    PLUG[plugins<br/>SDK loader, registry, web + mobile]
     UPG[upgrade<br/>validator, migration tools]
     STO[storage<br/>S3 abstraction]
-    SRCH[search<br/>Typesense abstraction]
+    SRCH[search<br/>Typesense + vector hybrid]
   end
 
   K --> DB
@@ -424,14 +446,24 @@ graph TB
   AUTO --> VIEWS
   AUTO --> FORMS
   AUTO --> DASH
+  VIEWS --> WS
+  FORMS --> WS
+  DASH --> WS
+  WS --> UIB
+  DATA --> ANL
+  AUTO --> ANL
   DATA --> NOT
   DATA --> INT
   DATA --> AI
+  AI --> ANL
+  DATA --> SYNC
   META --> PACKS
   PACKS --> PLUG
   PLUG --> UPG
+  UPG --> ANL
   DATA --> STO
   DATA --> SRCH
+  AI --> SRCH
 </pre>
 
 <h3>What stays vs drops</h3>
@@ -500,15 +532,26 @@ graph TB
     <tr><td>Vector DB</td><td>pgvector</td><td><span class="badge keep">keep</span></td><td>In-Postgres avoids extra infra</td></tr>
     <tr><td>Workflow visual editor</td><td>@xyflow/react 12</td><td><span class="badge keep">keep</span></td><td>For automation/workflow visual builder</td></tr>
     <tr><td>Code editor</td><td>@monaco-editor/react</td><td><span class="badge keep">keep</span></td><td>For formula/script authoring</td></tr>
-    <tr><td>Charting</td><td>(TBD — likely Recharts or Tremor)</td><td><span class="badge new">new</span></td><td>Currently no chart lib registered</td></tr>
+    <tr><td>Charting</td><td>Recharts</td><td><span class="badge new">new</span></td><td>Works in both web (React) and mobile (React Native compatible)</td></tr>
     <tr><td>Monorepo</td><td>Nx 22</td><td><span class="badge keep">keep</span></td><td>Already in use; well-suited</td></tr>
     <tr><td>Testing (unit)</td><td>Jest 30</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
     <tr><td>Testing (frontend)</td><td>Vitest 4</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
     <tr><td>Testing (e2e)</td><td>Playwright 1.36</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
-    <tr><td>Plugin federation</td><td>Vite Module Federation</td><td><span class="badge new">new</span></td><td>Required for plugin SDK</td></tr>
+    <tr><td>Mobile e2e</td><td>Detox or Maestro</td><td><span class="badge new">new (W3+)</span></td><td>Native mobile test automation</td></tr>
+    <tr><td>Plugin federation</td><td>Vite Module Federation</td><td><span class="badge new">new</span></td><td>Required for plugin SDK (web)</td></tr>
     <tr><td>Plugin sandbox</td><td>CSP + capability authz</td><td><span class="badge new">new</span></td><td>Defense-in-depth for plugin code</td></tr>
     <tr><td>Distributed tracing</td><td>OpenTelemetry</td><td><span class="badge new">new (W7)</span></td><td>Production observability</td></tr>
-    <tr><td>Mobile</td><td>React Native or Capacitor</td><td><span class="badge defer">defer</span></td><td>Not Day-1; addressed in Wave 8+</td></tr>
+    <tr><td><strong>Mobile framework</strong></td><td><strong>React Native + Expo</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>Day 1 — native-feeling, code reuse with web TS</strong></td></tr>
+    <tr><td><strong>Mobile offline DB</strong></td><td><strong>WatermelonDB</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>SQLite-backed reactive DB optimized for sync</strong></td></tr>
+    <tr><td><strong>Mobile camera/scan</strong></td><td><strong>react-native-vision-camera + MLKit</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>QR/barcode/OCR/RFID</strong></td></tr>
+    <tr><td><strong>Mobile push</strong></td><td><strong>FCM + APNs</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>Cross-platform push delivery</strong></td></tr>
+    <tr><td><strong>Mobile biometric</strong></td><td><strong>expo-local-authentication</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>FaceID, TouchID, fingerprint</strong></td></tr>
+    <tr><td><strong>ML / predictive maintenance</strong></td><td><strong>TensorFlow.js + per-customer model registry</strong></td><td><span class="badge new">new (W6+)</span></td><td><strong>Customer-specific models trained on their data</strong></td></tr>
+    <tr><td><strong>AI orchestration</strong></td><td><strong>LangChain.js or hand-rolled</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>Multi-step AI flows (search + summarize, doc-AI extraction)</strong></td></tr>
+    <tr><td><strong>Speech-to-text (mobile)</strong></td><td><strong>expo-speech / on-device</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>Voice work order completion</strong></td></tr>
+    <tr><td><strong>Image analysis</strong></td><td><strong>MLKit (mobile) + cloud LLM with vision (web)</strong></td><td><span class="badge new">new (W3+)</span></td><td><strong>Asset identification, fault detection</strong></td></tr>
+    <tr><td><strong>Analytics ingestion</strong></td><td><strong>self-hosted: Postgres + materialized views</strong></td><td><span class="badge new">new (W5+)</span></td><td><strong>Avoids 3rd-party data leakage for HIPAA</strong></td></tr>
+    <tr><td><strong>Analytics UI</strong></td><td><strong>custom on Recharts + TanStack Table</strong></td><td><span class="badge new">new (W5+)</span></td><td><strong>Domain analytics + platform usage analytics</strong></td></tr>
     <tr><td>Approved-deps registry</td><td>(existing W6.D)</td><td><span class="badge keep">keep</span></td><td>Cheap; broad value</td></tr>
     <tr><td>Service-boundary scanner</td><td>(existing W5.D)</td><td><span class="badge drop">drop</span></td><td>Irrelevant for monolith</td></tr>
   </tbody>
@@ -594,15 +637,193 @@ graph TB
 <li>Dashboards: KPIs, charts, gauges, custom widgets via plugin</li>
 </ul>
 
-<h4>Notification, integration, AI, packs, plugins, upgrade-safety</h4>
+<h4>Workspaces (Day 1)</h4>
+<p>Persona-tuned UIs that compose platform primitives (views, dashboards, forms, plugins) into focused work surfaces. Inspired by ServiceNow Workspaces but customer-customizable from Day 1 — a known weakness of ServiceNow's implementation, where Workspace customizations frequently break on upgrade.</p>
+
+<p><strong>OOTB workspaces shipped with the Clinical/Facilities pack</strong>:</p>
 <ul>
-<li><strong>Notifications</strong>: email, SMS, in-app, push (mobile, future); templates; per-user preferences</li>
+<li><strong>Maintenance Technician Workspace</strong> — assigned work, asset lookup, scanning, time entry</li>
+<li><strong>Facilities Manager Workspace</strong> — team workload, KPIs, escalations, approvals</li>
+<li><strong>Biomedical Engineer Workspace</strong> — calibration queue, recall management, regulatory readiness</li>
+<li><strong>Compliance Officer Workspace</strong> — audit trails, regulatory dashboards, e-sign queue</li>
+<li><strong>Department Manager Workspace</strong> — equipment status in their department, capital planning, downtime impact</li>
+</ul>
+
+<p><strong>Workspace components</strong>:</p>
+<ul>
+<li>Configurable tile grid (drag-drop layout)</li>
+<li>Persona homepage with most-relevant data + actions</li>
+<li>Pre-configured nav menu per persona</li>
+<li>Multi-tab work surface (work multiple records simultaneously)</li>
+<li>Embedded AVA chat panel (contextual to current work)</li>
+<li>Integrated search across persona-relevant collections</li>
+<li>Mobile-aware: each workspace has a corresponding mobile workspace with the same data binding but mobile-tuned layout</li>
+</ul>
+
+<p>Customers can use OOTB workspaces as-is, customize them, or build new ones via the UI Builder. Workspaces are stored as pack metadata — fully upgrade-safe.</p>
+
+<h4>UI Builder (Day 1)</h4>
+<p>Low-code UI composition tool. Customers compose pages, layouts, and entire workspaces from a palette of platform primitives + custom plugins, without writing code.</p>
+
+<p><strong>Capabilities</strong>:</p>
+<ul>
+<li><strong>Page composition</strong>: drag-drop arrangement of forms, views, dashboards, plugins onto a page canvas</li>
+<li><strong>Route definition</strong>: customer-defined URLs (e.g. <code>/acme/lab-asset-overview</code>)</li>
+<li><strong>Layout authoring</strong>: header, sidebar, content area arrangement</li>
+<li><strong>Component palette</strong>: reusable composed primitives (e.g. "asset card with PM countdown")</li>
+<li><strong>Conditional logic</strong>: show/hide components based on user role, record state, ABAC attributes</li>
+<li><strong>Event wiring</strong>: button clicks → automation trigger, navigation, modal open</li>
+<li><strong>Theme awareness</strong>: components inherit customer's theme pack</li>
+<li><strong>Mobile-aware</strong>: page authors target web, mobile, or both; mobile-specific layouts supported</li>
+</ul>
+
+<p><strong>Authoring environment</strong>:</p>
+<ul>
+<li>Visual canvas with live preview (web + mobile views)</li>
+<li>Property panel for selected component</li>
+<li>Data source binding panel</li>
+<li>Validation: every binding checked against current schema (design-time validation, §5.6)</li>
+<li>Versioning: each page has history; rollback per page</li>
+<li>AI authoring assist: <em>"Build a page that shows overdue inspections by department"</em> → drafted page</li>
+</ul>
+
+<p>Pages, layouts, and workspaces all become customer pack metadata. Subject to the upgrade-safety validator.</p>
+
+<h4>Notifications, integrations, packs, plugins, upgrade-safety</h4>
+<ul>
+<li><strong>Notifications</strong>: email, SMS, in-app, push (mobile); templates; per-user preferences</li>
 <li><strong>Integration platform</strong>: typed adapters (REST, GraphQL, SOAP, file); versioned contracts; retry + replay; webhooks (in/out)</li>
-<li><strong>AVA (AI assistant)</strong>: smart search, NL work order intake, automation rule authoring assistance, schema evolution suggestions, domain-specific Q&amp;A</li>
 <li><strong>Pack system</strong>: install/uninstall/upgrade/rollback; manifest validation; dependency resolution; export/import; maintenance-mode lock during install (W4.D)</li>
-<li><strong>Plugin system</strong>: Plugin SDK; registry; capability-based permissions; loader (module federation); admin approval flow</li>
+<li><strong>Plugin system</strong>: Plugin SDK (web + mobile); registry; capability-based permissions; loader (module federation web; native loader mobile); admin approval flow</li>
 <li><strong>Upgrade safety</strong>: pre-upgrade validator; auto-migration generator; remediation workflow; audit per upgrade</li>
 </ul>
+
+<h4>AVA — AI feature surface (Day 1)</h4>
+<p>AVA is the platform's AI feature surface — a rich set of features wired into every relevant module. The §11 framing of "AI is infrastructure" is amended to "AI is a richly-integrated feature surface" — not infrastructure in the load-bearing sense, but a feature pillar visible in every workspace.</p>
+
+<p><strong>Core AI capabilities</strong>:</p>
+<ul>
+<li><strong>Conversational assistant</strong>: chat panel embedded in every workspace. <em>"AVA, what's the maintenance status on all infusion pumps in ICU 4?"</em> Returns structured data + natural language answer. Permission-aware.</li>
+<li><strong>Natural language search</strong>: hybrid (vector + keyword) over all platform data, permission-aware.</li>
+<li><strong>AI-assisted authoring</strong>:
+  <ul>
+    <li><em>"Create a PM schedule for all infusion pumps every 6 months"</em> → drafted automation rule</li>
+    <li><em>"Show me overdue PMs by department"</em> → drafted view</li>
+    <li><em>"Build a workspace for biomedical engineers"</em> → drafted workspace skeleton in the UI Builder</li>
+    <li><em>"Add a custom field to track FDA UDI"</em> → drafted schema change</li>
+  </ul>
+</li>
+<li><strong>Document AI</strong>: parse equipment manuals, recall notices, regulatory documents → extract structured data into asset records (specs, serial numbers, FDA UDI, calibration intervals).</li>
+<li><strong>Voice work order completion</strong> (mobile): technician dictates findings → on-device speech-to-text + structured extraction → form fields populated.</li>
+<li><strong>Image analysis</strong> (mobile + web):
+  <ul>
+    <li>Snap photo of equipment → AI identifies asset (visual fingerprint matching)</li>
+    <li>Snap photo of fault → AI suggests probable cause + relevant work order template</li>
+    <li>Damage assessment from photos</li>
+  </ul>
+</li>
+<li><strong>Predictive maintenance</strong>: ML over historical work order + sensor data; surfaces assets trending toward failure with confidence + recommended action.</li>
+<li><strong>Smart triage</strong>: incoming work orders auto-categorized by urgency, type, recommended technician.</li>
+<li><strong>Anomaly detection</strong>: equipment readings outside expected ranges flagged proactively.</li>
+<li><strong>AI-suggested platform optimizations</strong>: analytics-driven suggestions to simplify workflows, retire unused fields, reorganize roles (powered by Platform Analytics data).</li>
+</ul>
+
+<p><strong>Architecture</strong>:</p>
+<ul>
+<li>AVA is a Nest module (<code>ai</code>) inside the api monolith</li>
+<li>Pluggable LLM provider per customer:
+  <ul>
+    <li>Local: Ollama (existing dev setup)</li>
+    <li>Production: customer-chosen with BAA — Anthropic Claude (via Bedrock or direct), Azure OpenAI, AWS Bedrock, GCP Vertex AI</li>
+  </ul>
+</li>
+<li>Vector embeddings stored in pgvector (in-Postgres, no extra infra)</li>
+<li>ML models for predictive maintenance: per-customer model registry; trained on customer's historical data; models version-tracked alongside customer pack</li>
+<li>Voice/image: on-device for mobile (privacy + latency); server-side for high-fidelity inference</li>
+<li>All AI features auditable: every AI suggestion logged with prompt, model, version, response, applied/rejected status</li>
+</ul>
+
+<div class="callout">
+<strong>Trust model (canon §12 reinterpreted)</strong>: AVA defaults to <strong>suggest/preview</strong> mode. Real autonomous actions require explicit per-feature configuration by customer admin. The §12 progression (Suggest → Preview → Approve → Execute → Audit) applies <em>per AI feature</em>, not platform-wide. Example: a customer can enable "AVA can auto-triage low-urgency work orders" while keeping every other AI feature in suggest-only mode. Easier to sell because customers control granularity.
+</div>
+
+<p><strong>Healthcare-specific AI safety</strong>:</p>
+<ul>
+<li>AI never generates clinical recommendations (out of scope)</li>
+<li>AI never modifies patient data (out of scope)</li>
+<li>AI suggestions involving safety-critical assets (life-support equipment) gated behind explicit human approval</li>
+<li>AI prompts and responses are auditable; PHI in prompts logged for HIPAA "minimum necessary" reviews</li>
+<li>Per-customer LLM provider choice means customer controls data flow (some hospitals require LLM never leave their cloud)</li>
+</ul>
+
+<h4>Platform Analytics (Day 1)</h4>
+<p>Two flavors of analytics, both Day 1.</p>
+
+<p><strong>Domain analytics (customer's data)</strong> — extends the dashboard engine into a full reporting suite:</p>
+<ul>
+<li>Ad-hoc query authoring (visual + SQL-like)</li>
+<li>Cross-collection joins (asset + work order + downtime)</li>
+<li>Trend analysis (uptime over 12 months, MTTR by department)</li>
+<li>Pivot tables and crosstabs</li>
+<li>Scheduled report delivery (email, dashboard, API)</li>
+<li>AI-suggested insights (<em>"PM compliance dropping in HVAC; here's why"</em>)</li>
+<li>Export to Excel, PDF, BI tool (Power BI, Tableau via SQL endpoint)</li>
+</ul>
+
+<p><strong>Platform usage analytics (how the platform is being used)</strong> — meta-analytics for customer admins:</p>
+<ul>
+<li><strong>User adoption</strong>: active users, feature adoption %, retention curves, mobile vs web split</li>
+<li><strong>Performance metrics</strong>: page load times, query times, slow paths, API latencies</li>
+<li><strong>Customization usage</strong>: which custom fields/forms/views/plugins are heavily used (informs what to keep/cut)</li>
+<li><strong>Error tracking</strong>: errors by user, by feature, by integration</li>
+<li><strong>Audit-ready reports</strong>: regulatory queries (who accessed PHI, when, why) — HIPAA-formatted exports</li>
+<li><strong>AI-suggested optimizations</strong>: <em>"Workflow X has 80% abandon rate; consider simplifying"</em>; <em>"Custom field Y unused for 6 months; safe to retire"</em></li>
+</ul>
+
+<p><strong>Implementation</strong>:</p>
+<ul>
+<li>Self-hosted (Postgres + materialized views + scheduled refresh) — avoids sending data to third-party analytics services, which is a HIPAA concern</li>
+<li>Integrates with customer SIEM/observability stack via standard exports (OTLP, syslog)</li>
+</ul>
+
+<div class="callout success">
+Platform analytics are a critical sales lever: customer admins show their leadership <em>"we adopted feature Y at Z%, saving $N/year."</em> Justifies platform investment internally — and surfaces upsell opportunities to HubbleWave.
+</div>
+
+<h4>Mobile experience (Day 1) — competitive differentiator</h4>
+<p>Native-feeling mobile app for technicians, supervisors, and managers. Offline-first by design — hospitals are full of dead zones (basements, MRI suites, equipment rooms behind shielding). Nuvolo's mobile is widely criticized as weak; this is direct customer-pain alignment and a primary scoring point for the pitch.</p>
+
+<p><strong>Stack</strong>: React Native + Expo + WatermelonDB (offline reactive DB) + react-native-vision-camera (scanning) + react-native-mlkit (on-device OCR/barcode/QR/RFID).</p>
+
+<p><strong>Capabilities</strong>:</p>
+<ul>
+<li><strong>Offline-first</strong>: full read/write while disconnected; sync on reconnect; conflict resolution via CRDT-style record-level merge</li>
+<li><strong>Scanning</strong>: QR + Barcode + RFID + NFC; one-tap asset lookup</li>
+<li><strong>Photo/video capture</strong>: with annotation, voice tags, automatic upload-on-reconnect</li>
+<li><strong>Voice input</strong>: dictate work order completion notes; speech-to-text on-device</li>
+<li><strong>Biometric auth</strong>: FaceID/TouchID/fingerprint; no password re-entry per session</li>
+<li><strong>Push notifications</strong>: assigned work, urgent inspections, recall alerts</li>
+<li><strong>Floor plan navigation</strong>: indoor wayfinding to asset locations (when CAD/BIM data is available)</li>
+<li><strong>Mobile-optimized work order flow</strong>: touch-friendly, large hit areas, glove-friendly mode (PPE workers)</li>
+<li><strong>Mobile plugin support</strong>: subset of Plugin SDK for mobile-specific custom components (<code>@hubblewave/plugin-sdk-mobile</code>)</li>
+<li><strong>Reduced bandwidth mode</strong>: hospital networks are often saturated; aggressive image compression and incremental sync</li>
+<li><strong>Background sync</strong>: continues syncing when app is backgrounded</li>
+<li><strong>Persona-tuned mobile workspaces</strong>: same Workspace concept on mobile, layouts mobile-specific</li>
+</ul>
+
+<p><strong>Architecture</strong>:</p>
+<ul>
+<li>Single React Native codebase deploys to iOS + Android (no separate Swift/Kotlin)</li>
+<li>Shared business logic with web via TypeScript packages (data hooks, plugin SDK consumers, formula engine)</li>
+<li>Sync engine: optimistic UI + background reconciliation against the API</li>
+<li>Local DB: WatermelonDB (SQLite-backed reactive DB optimized for sync, ~100k records on-device performant)</li>
+<li>Authentication: shared with web (JWT + biometric session unlock; certificate pinning for high-security deployments)</li>
+<li>Plugin SDK: mobile-specific subset (<code>@hubblewave/plugin-sdk-mobile</code>) — same contract philosophy, mobile-tuned components and APIs</li>
+</ul>
+
+<div class="callout success">
+<strong>Why this matters competitively</strong>: Field staff in healthcare facilities are explicit about wanting better mobile. A demo where the mobile app works offline in an MRI suite and syncs cleanly when the technician walks back to the corridor is a dealbreaker-level moment vs Nuvolo, where the same scenario fails.
+</div>
 
 <h3>4.2 Clinical/Facilities Asset Management pack features</h3>
 
@@ -1152,7 +1373,11 @@ flowchart TD
 
 <h2 id="section-8">8. Migration sequence</h2>
 
-<p>From current 14-service to target modular monolith. Nine waves (W0–W8) with effort estimates.</p>
+<p>From current 14-service to target modular monolith — with Day-1 mobile, Workspaces, UI Builder, Platform Analytics, and rich AI features. Nine waves (W0–W8), some parallelizable.</p>
+
+<div class="callout warn">
+<strong>Scope-expansion note</strong>: This sequence reflects the post-feedback v2 of the design — mobile is Day 1, Workspaces + UI Builder + Platform Analytics + rich AI are Day 1. The original 25-week critical path expands to <strong>~32–35 weeks (~8–9 months) with aggressive parallelization</strong> or <strong>~45–50 weeks (~10–12 months) sequential</strong>. Solo founder, realistically: 12–18 months. Two engineers, realistically: 8–10 months. Be honest with yourself and stakeholders about which lane you're in.
+</div>
 
 <h3>Wave 0 — Lock the architectural decision (1 week)</h3>
 <ul>
@@ -1179,42 +1404,56 @@ flowchart TD
 <li>Drop: enterprise, analytics</li>
 </ul>
 
-<h3>Wave 3 — Frontend consolidation &amp; Plugin SDK foundation (3 weeks)</h3>
+<h3>Wave 3 — Frontend + Plugin SDK + Mobile foundation (5 weeks)</h3>
 <ul>
 <li>web-control-plane folds into web-client (role-gated routes)</li>
-<li>Add <code>@hubblewave/plugin-sdk</code> package</li>
+<li>Add <code>@hubblewave/plugin-sdk</code> (web) and <code>@hubblewave/plugin-sdk-mobile</code> packages</li>
 <li>Add plugin loader (Vite module federation)</li>
-<li>Refactor existing customization UIs to consume the SDK internally — eat your own dog food</li>
+<li><strong>NEW</strong>: Set up <code>apps/mobile</code> (React Native + Expo) with shared TypeScript packages</li>
+<li><strong>NEW</strong>: Mobile auth (JWT + biometric session unlock)</li>
+<li><strong>NEW</strong>: WatermelonDB schema + sync engine skeleton</li>
+<li><strong>NEW</strong>: Mobile plugin SDK foundation (subset of web SDK adapted to RN)</li>
+<li><strong>NEW</strong>: Mobile data hooks (offline-first reads + optimistic writes)</li>
+<li>Refactor existing customization UIs (form builder, view builder, automation editor) to consume the web SDK internally</li>
 </ul>
 
-<h3>Wave 4 — Customization layer formalization (4 weeks)</h3>
+<h3>Wave 4 — Customization layer + Workspaces + UI Builder (8 weeks)</h3>
 <ul>
 <li>Define pack manifest format (version 1.0)</li>
 <li>Implement schema isolation (customer-namespaced tables, JSONB extensions, side tables)</li>
 <li>Build pack install/uninstall/upgrade/rollback flows</li>
 <li>Build customization design-time validation</li>
-<li>Define plugin SDK contract</li>
+<li>Define full plugin SDK contract (web + mobile)</li>
 <li>Build plugin install + upload + bundle-scan + admin-approval flow</li>
+<li><strong>NEW: Workspace engine</strong> — composition layer for views/dashboards/forms/plugins; persona homepages; multi-tab work surface; embedded AVA chat</li>
+<li><strong>NEW: UI Builder</strong> — page composition canvas; route definition; conditional logic; event wiring; theme awareness; live preview (web + mobile); design-time validation; AI authoring assist</li>
+<li><strong>NEW: Mobile workspace runtime</strong> — same workspace concept, mobile-tuned layouts</li>
 </ul>
 
-<h3>Wave 5 — Upgrade-safety validator (3 weeks)</h3>
+<h3>Wave 5 — Upgrade validator + Platform Analytics + AI features (6 weeks)</h3>
 <ul>
-<li>Schema diff calculator</li>
-<li>API diff calculator</li>
-<li>Plugin compatibility checker</li>
-<li>Workflow + integration validation</li>
+<li>Schema/API/plugin/workflow/integration diff calculators</li>
 <li>Validator UI (green/yellow/red display + remediation guide)</li>
-<li>Automated migration generator (yellow path)</li>
+<li>Automated migration generator (yellow path, common patterns)</li>
+<li><strong>NEW: Platform Analytics ingestion pipeline</strong> — event collection from api + worker + web + mobile; materialized views in Postgres</li>
+<li><strong>NEW: Domain analytics UI</strong> — ad-hoc query authoring, pivots, scheduled reports, BI tool export</li>
+<li><strong>NEW: Platform usage analytics UI</strong> — adoption, performance, customization usage, error tracking, AI-suggested optimizations</li>
+<li><strong>NEW: AVA conversational assistant</strong> — chat panel (web + mobile); permission-aware retrieval; pluggable LLM provider per customer</li>
+<li><strong>NEW: AI authoring assist</strong> — drafted automation rules, views, workspaces from natural language</li>
+<li><strong>NEW: AI search</strong> — vector + keyword hybrid</li>
 </ul>
 
-<h3>Wave 6 — Clinical/Facilities pack (8–12 weeks, parallel with W4–W5)</h3>
+<h3>Wave 6 — Clinical/Facilities pack + Mobile vertical UI + Advanced AI (12–14 weeks; parallelizable with W4–W5)</h3>
 <ul>
-<li>Domain entities (Asset, AssetCategory, WorkOrder, PreventiveMaintenance, Inspection, Calibration, Recall, Vendor, ServiceContract, Room, Floor, Building, Department)</li>
-<li>Vertical-specific UI screens (asset list/detail, work-order list/detail, PM scheduler, inspection runner, mobile technician UI)</li>
-<li>Compliance modules (Joint Commission, FDA UDI, AEM, 21 CFR Part 11, HIPAA logging)</li>
-<li>Integrations (HL7/FHIR, BACnet, Epic/Cerner, Maximo migration tool)</li>
-<li>Reports and dashboards</li>
-<li>Mobile UI</li>
+<li><strong>Domain entities</strong> (Asset, AssetCategory, WorkOrder, PreventiveMaintenance, Inspection, Calibration, Recall, Vendor, ServiceContract, Room, Floor, Building, Department, Patient-care-area)</li>
+<li><strong>Asset category type system</strong> with category-specific fields (FDA UDI, sterilization, calibration intervals, IR readings)</li>
+<li><strong>Vertical web UI</strong> (asset list/detail, WO list/detail, PM scheduler, inspection runner, calibration tracking, recall management)</li>
+<li><strong>Vertical OOTB workspaces</strong> (Maintenance Technician, Facilities Manager, Biomedical Engineer, Compliance Officer, Department Manager) — both web and mobile</li>
+<li><strong>Vertical mobile UI</strong> (technician work-order processing, scanning, photo capture with annotations, voice input, offline workflows, floor-plan navigation)</li>
+<li><strong>Compliance modules</strong> (Joint Commission, FDA UDI, AEM, 21 CFR Part 11, HIPAA logging)</li>
+<li><strong>Integrations</strong> (HL7/FHIR, BACnet, Epic/Cerner, Maximo migration tool, AD/SCIM)</li>
+<li><strong>Reports and dashboards</strong> (uptime, MTTR, PM compliance %, regulatory readiness)</li>
+<li><strong>Vertical-specific AI features</strong>: predictive maintenance ML, smart triage, document AI for manuals + recall notices, image analysis (asset ID + fault detection)</li>
 </ul>
 
 <h3>Wave 7 — Pre-launch hardening (4 weeks)</h3>
@@ -1238,33 +1477,66 @@ flowchart TD
 <li>Iterate on feedback; gather GA requirements</li>
 </ul>
 
-<h3>Total timeline</h3>
-<p><strong>Critical path (sequential)</strong>: ~25 weeks (~6 months)<br/>
-<strong>With parallelization (W6 alongside W4–W5)</strong>: ~22 weeks (~5–6 months)<br/>
-<strong>Realistic GA-quality demo with buffer</strong>: 7–9 months</p>
+<h3>Total timeline (revised for Day-1 mobile + Workspaces + UI Builder + Analytics + rich AI)</h3>
 
+<table>
+<thead><tr><th>Wave</th><th>Duration</th><th>Parallelizable?</th></tr></thead>
+<tbody>
+<tr><td>W0 Lock decision</td><td>1 wk</td><td>—</td></tr>
+<tr><td>W1 API consolidation</td><td>4–6 wk</td><td>—</td></tr>
+<tr><td>W2 Lib consolidation</td><td>2 wk</td><td>—</td></tr>
+<tr><td>W3 Frontend + SDK + Mobile foundation</td><td>5 wk</td><td>—</td></tr>
+<tr><td>W4 Customization + Workspaces + UI Builder</td><td>8 wk</td><td>—</td></tr>
+<tr><td>W5 Upgrade validator + Platform Analytics + AI features</td><td>6 wk</td><td>—</td></tr>
+<tr><td>W6 Vertical pack (web + mobile + advanced AI)</td><td>12–14 wk</td><td>with W4–W5 (frontend-pack work alongside backend platform work)</td></tr>
+<tr><td>W7 Hardening</td><td>4 wk</td><td>—</td></tr>
+<tr><td>W8 Pilot</td><td>4 wk</td><td>—</td></tr>
+</tbody>
+</table>
+
+<h4>Critical path scenarios</h4>
+<table>
+<thead><tr><th>Scenario</th><th>Critical path</th><th>Calendar time</th></tr></thead>
+<tbody>
+<tr><td><strong>Sequential (1 engineer, no parallelism)</strong></td><td>1+5+2+5+8+6+13+4+4 = <strong>48 wk</strong></td><td>~12 months</td></tr>
+<tr><td><strong>Aggressive parallelization (2 engineers, W6 alongside W4–W5)</strong></td><td>1+5+2+5+max(14,13)+4+4 = <strong>35 wk</strong></td><td>~8–9 months</td></tr>
+<tr><td><strong>Optimistic with 3 engineers + clean execution</strong></td><td>parallelism reduces W4–W5 work too</td><td>~7 months</td></tr>
+</tbody>
+</table>
+
+<div class="callout warn">
+<strong>Honest framing for the founder</strong>:
+<ul style="margin-top:8px;margin-bottom:0">
+<li><strong>Solo founder + occasional help</strong>: 14–18 months to GA-quality demo. Plan for it; pad your runway.</li>
+<li><strong>Founder + 1 full-time engineer</strong>: 9–12 months.</li>
+<li><strong>Founder + 2 full-time engineers</strong>: 7–9 months.</li>
+</ul>
+<p style="margin-top:8px;margin-bottom:0">The first customer (your employer) needs to be told the realistic timeline, not the optimistic one. Under-promising and over-delivering builds the trust your pitch needs; the opposite kills it.</p>
+</div>
+
+<h4>Wave gantt (aggressive-parallelization scenario)</h4>
 <pre class="mermaid">
 gantt
-  title Migration sequence
+  title Migration sequence (2-engineer scenario, parallelized)
   dateFormat YYYY-MM-DD
   axisFormat %b
 
   section Foundation
-  W0 Lock decision           :w0, 2026-05-15, 7d
-  W1 API consolidation       :w1, after w0, 35d
-  W2 Lib consolidation       :w2, after w1, 14d
-  W3 Frontend + SDK          :w3, after w2, 21d
+  W0 Lock decision                   :w0, 2026-05-15, 7d
+  W1 API consolidation               :w1, after w0, 35d
+  W2 Lib consolidation               :w2, after w1, 14d
+  W3 Frontend + SDK + Mobile         :w3, after w2, 35d
 
-  section Customization layer
-  W4 Pack + plugin layer     :w4, after w3, 28d
-  W5 Upgrade validator       :w5, after w4, 21d
+  section Platform features
+  W4 Customization + Workspaces + UIB:w4, after w3, 56d
+  W5 Validator + Analytics + AI      :w5, after w4, 42d
 
   section Vertical pack (parallel)
-  W6 Clinical/Facilities pack:w6, after w3, 70d
+  W6 Vertical pack (web + mobile)    :w6, after w3, 91d
 
   section Launch readiness
-  W7 Hardening               :w7, after w6, 28d
-  W8 Pilot                   :w8, after w7, 28d
+  W7 Hardening                       :w7, after w6, 28d
+  W8 Pilot                           :w8, after w7, 28d
 </pre>
 
 <hr />
@@ -1284,8 +1556,8 @@ gantt
 <tr><td>8</td><td>Automation ≠ Workflow</td><td><span class="badge invert">invert</span></td><td>Merge into ONE engine with two modes; ServiceNow split is a tax</td></tr>
 <tr><td>9</td><td>Authorization is centralized</td><td><span class="badge keep">keep</span></td><td>W1.2 + W1.5 + W5.D enforcement preserved</td></tr>
 <tr><td>10</td><td>Auditability is mandatory</td><td><span class="badge keep">keep</span></td><td>W1.6 + W2.D + W3.C transactional-audit preserved</td></tr>
-<tr><td>11</td><td>AI is infrastructure</td><td><span class="badge invert">invert</span></td><td>AI is a feature; AVA is a Nest module, not a runtime layer</td></tr>
-<tr><td>12</td><td>Trust earned incrementally</td><td><span class="badge defer">defer</span></td><td>Aspirational; activate when AVA takes real actions</td></tr>
+<tr><td>11</td><td>AI is infrastructure</td><td><span class="badge soften">soften</span></td><td>AI is a richly-integrated feature surface (chat, NL authoring, doc-AI, predictive, vision, voice); AVA wired into every workspace; not "infrastructure framework" but more central than originally proposed</td></tr>
+<tr><td>12</td><td>Trust earned incrementally</td><td><span class="badge soften">per-feature</span></td><td>Progression (Suggest → Preview → Approve → Execute → Audit) applies <em>per AI feature</em> when customer enables autonomous action; not platform-wide</td></tr>
 <tr><td>13</td><td>Upgrade safety is required</td><td><span class="badge expand">expand</span></td><td>Becomes the marquee differentiator; new mechanism in §5.4</td></tr>
 <tr><td>14</td><td>Delete ruthlessly</td><td><span class="badge keep">keep</span></td><td>W2.A reference-checker on metadata delete preserved</td></tr>
 <tr><td>15</td><td>Speed never justifies decay</td><td><span class="badge keep">keep</span></td><td></td></tr>
@@ -1299,7 +1571,9 @@ gantt
 <tr><td>23</td><td>Canon as execution contract</td><td><span class="badge keep">keep</span></td><td></td></tr>
 <tr><td>24</td><td>Canon maintenance</td><td><span class="badge keep">keep</span></td><td>Expand log to include this design doc</td></tr>
 <tr><td><strong>NEW §17.5</strong></td><td><strong>Customizations are versioned, namespaced, and validated against platform-API versions. No customization may modify platform schema. Upgrades are blocked when customer customizations would break.</strong></td><td><span class="badge add">add</span></td><td>Defines the upgrade-safety contract; this is the moat</td></tr>
-<tr><td><strong>NEW §25</strong></td><td><strong>Plugin SDK is the platform contract.</strong> API stability committed for N=2 major versions. Removed APIs ship with automated migration tooling.</td><td><span class="badge add">add</span></td><td>Stability promise to plugin authors</td></tr>
+<tr><td><strong>NEW §25</strong></td><td><strong>Plugin SDK is the platform contract.</strong> API stability committed for N=2 major versions. Removed APIs ship with automated migration tooling. Mobile and web SDKs share the contract philosophy with separate adapter packages.</td><td><span class="badge add">add</span></td><td>Stability promise to plugin authors; the precise commitment ServiceNow can't make</td></tr>
+<tr><td><strong>NEW §26</strong></td><td><strong>Mobile is a first-class platform surface.</strong> All field-staff workflows have mobile parity with web. Mobile is offline-first; the offline-degraded experience is the design baseline, online is the bonus. Customizations (workspaces, plugins, automations, views) apply to mobile via <code>@hubblewave/plugin-sdk-mobile</code>.</td><td><span class="badge add">add</span></td><td>Direct competitive lever vs Nuvolo's weak mobile; healthcare field staff explicit pain point</td></tr>
+<tr><td><strong>NEW §27</strong></td><td><strong>Workspaces and UI Builder are the platform's user-facing customization surface.</strong> Customers compose persona-tuned UIs and entire pages without code, using the same primitives HubbleWave uses to ship vertical packs. Eat-our-own-dog-food: every OOTB workspace is built via the same UI Builder customers use.</td><td><span class="badge add">add</span></td><td>Makes the platform claim visible in a demo</td></tr>
 </tbody>
 </table>
 
@@ -1320,9 +1594,14 @@ gantt
 <li><strong>Schema isolation via customer-namespaced tables + JSONB extensions</strong> — predicated on Postgres handling this gracefully at customer scale. Verify with synthetic load test in Wave 7.</li>
 <li><strong>Plugin SDK with module federation</strong> — predicated on Vite module federation being production-stable. If not, fall back to sandboxed iframes with PostMessage.</li>
 <li><strong>Automation + workflow merged</strong> — predicated on customers not needing both engines side-by-side. Validate with first customer in Wave 8.</li>
-<li><strong>AVA as feature module, not infrastructure</strong> — predicated on AI being value-add, not deal-maker for first customer. If first customer's pitch hinges on AVA, restore framing for that customer's instance.</li>
-<li><strong>Per-customer instance default</strong> — predicated on instances being lightweight enough to provision economically. Pooled mode kept available for unprofitable customers.</li>
-<li><strong>Upgrade-safety guarantee</strong> — predicated on the contract being complete (no side-channels). Audit aggressively in Wave 4.</li>
+<li><strong>AVA as a richly-integrated feature surface</strong> — not infrastructure framework, but central feature pillar. Predicated on AI features being scoring points, not platform foundation. The §11/§12 reinterpretation is what makes this scope shippable in v1.</li>
+<li><strong>Per-customer instance default</strong> — predicated on customer instances being lightweight enough to provision economically. Pooled mode kept available for unprofitable customers (trials, dev).</li>
+<li><strong>Upgrade-safety guarantee</strong> — predicated on the contract being complete (no side-channels for customizations). Audit aggressively in Wave 4.</li>
+<li><strong>React Native (not Flutter, not native)</strong> — predicated on TypeScript code reuse with web outweighing Flutter's performance edge. Validate with technician usability tests in Wave 6 — if mobile feel isn't competitive, consider migrating to Flutter or going native for performance-critical screens.</li>
+<li><strong>Single mobile codebase serves both technicians and managers</strong> — predicated on the same platform primitives + role-tuned workspaces being sufficient. If managers need fundamentally different UX patterns, may split into two mobile apps eventually.</li>
+<li><strong>Workspaces + UI Builder ship Day 1</strong> — predicated on these being demo-critical for the first customer pitch. If timeline pressure forces a cut, UI Builder is the candidate to scope down (deliver workspace customization but not arbitrary page authoring) — but Workspaces themselves are non-negotiable.</li>
+<li><strong>Pluggable LLM provider per customer</strong> — predicated on hospitals wanting control over LLM data residency for HIPAA. Default to Ollama (local) for dev; production providers chosen per customer with their BAA. If a customer wants HubbleWave-managed LLM, that's a higher-tier offering.</li>
+<li><strong>Self-hosted analytics (no third-party)</strong> — predicated on HIPAA concerns about data leaving customer instance. If third-party analytics get HIPAA-compliant offerings that customers accept, may revisit for cost reasons.</li>
 </ol>
 
 <h3>B. Out of scope for this document</h3>
