@@ -53,6 +53,7 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'automation',
   'ava',
   'views',
+  'notifications',
 ]);
 
 interface ServiceContext {
