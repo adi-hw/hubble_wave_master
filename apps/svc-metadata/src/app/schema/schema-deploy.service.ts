@@ -6,7 +6,7 @@ import {
   PropertyDefinition,
   SchemaChangeLog,
 } from '@hubblewave/instance-db';
-import { CollectionStorageService } from '../collection/collection-storage.service';
+import { CollectionStorageService } from '../../../../api/src/app/metadata/collection/collection-storage.service';
 import { SchemaDiffService, SchemaOperation, SchemaPlan } from './schema-diff.service';
 
 const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;

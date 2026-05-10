@@ -25,30 +25,27 @@ import { ModelController } from './model.controller';
 import { MetadataController } from './metadata.controller';
 import { HealthController } from './health.controller';
 
-import { PropertyModule } from './property/property.module';
-import { AccessModule } from './access/access.module';
-import { CollectionController } from './collection/collection.controller';
-import { CollectionService } from './collection/collection.service';
-import { CollectionStorageService } from './collection/collection-storage.service';
-import { CollectionAvaService } from './collection/collection-ava.service';
+import { PropertyModule } from '../../../api/src/app/metadata/property/property.module';
+import { AccessModule } from '../../../api/src/app/metadata/access/access.module';
+import { CollectionModule } from '../../../api/src/app/metadata/collection/collection.module';
 import { SchemaDiffService } from './schema/schema-diff.service';
 import { ThemeModule } from '../../../api/src/app/metadata/theme/theme.module';
-import { PreferencesModule } from './preferences/preferences.module';
+import { PreferencesModule } from '../../../api/src/app/metadata/preferences/preferences.module';
 import { ViewModule } from '../../../api/src/app/metadata/view/view.module';
 import { NavigationMetadataModule } from '../../../api/src/app/metadata/navigation/navigation.module';
 import { ScriptModule } from '../../../api/src/app/metadata/script/script.module';
 import { PacksModule } from './packs/packs.module';
 import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
-import { SearchModule } from './search/search.module';
-import { LocalizationModule } from './localization/localization.module';
+import { SearchModule } from '../../../api/src/app/metadata/search/search.module';
+import { LocalizationModule } from '../../../api/src/app/metadata/localization/localization.module';
 import { ApplicationModule } from '../../../api/src/app/metadata/application/application.module';
-import { PublishImpactModule } from './publish-impact/publish-impact.module';
+import { PublishImpactModule } from '../../../api/src/app/metadata/publish-impact/publish-impact.module';
 import { DisplayRuleModule } from '../../../api/src/app/metadata/display-rules/display-rule.module';
 import { DecisionTableModule } from '../../../api/src/app/metadata/decision-tables/decision-table.module';
 import { GuidedProcessModule } from '../../../api/src/app/metadata/guided-processes/guided-process.module';
 import { WorkspaceModule } from '../../../api/src/app/metadata/workspaces/workspace.module';
-import { ChangePackageModule } from './change-packages/change-package.module';
+import { ChangePackageModule } from '../../../api/src/app/metadata/change-packages/change-package.module';
 
 @Module({
   imports: [
@@ -65,6 +62,7 @@ import { ChangePackageModule } from './change-packages/change-package.module';
     ApplicationModule,
     PropertyModule,
     AccessModule,
+    CollectionModule,
     PublishImpactModule,
     DisplayRuleModule,
     DecisionTableModule,
@@ -85,15 +83,11 @@ import { ChangePackageModule } from './change-packages/change-package.module';
     ModuleController,
     ModelController,
     MetadataController,
-    CollectionController,
     SchemaController,
   ],
   providers: [
     ModuleService,
     ModelRegistryService,
-    CollectionService,
-    CollectionStorageService,
-    CollectionAvaService,
     SchemaDiffService,
     SchemaDeployService,
     {

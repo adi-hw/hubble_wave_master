@@ -12,6 +12,14 @@ import { MetadataIngestService } from './metadata/metadata-ingest.service';
 import { ConnectorsIngestService } from './connectors/connectors-ingest.service';
 import { DecisionTableModule } from './decision-tables/decision-table.module';
 import { WorkspaceModule } from './workspaces/workspace.module';
+import { SearchModule } from './search/search.module';
+import { PreferencesModule } from './preferences/preferences.module';
+import { LocalizationModule } from './localization/localization.module';
+import { ChangePackageModule } from './change-packages/change-package.module';
+import { PropertyModule } from './property/property.module';
+import { AccessModule } from './access/access.module';
+import { PublishImpactModule } from './publish-impact/publish-impact.module';
+import { CollectionModule } from './collection/collection.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -21,25 +29,25 @@ import { WorkspaceModule } from './workspaces/workspace.module';
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md):
  *   [x] application
  *   [x] ava
- *   [ ] change-packages
+ *   [x] change-packages
  *   [x] connectors
  *   [x] decision-tables
  *   [x] display-rules
  *   [x] guided-processes
  *   [x] insights
- *   [ ] localization
+ *   [x] localization
  *   [x] metadata
  *   [x] navigation
- *   [ ] preferences
- *   [ ] property
+ *   [x] preferences
+ *   [x] property
  *   [x] script
- *   [ ] search
+ *   [x] search
  *   [x] theme
  *   [x] view
  *   [x] workspaces
- *   [ ] access
- *   [ ] publish-impact
- *   [ ] collection
+ *   [x] access
+ *   [x] publish-impact
+ *   [x] collection
  *   [ ] schema
  *   [ ] packs
  *   [ ] top-level (HealthController + Metadata/Model/Module controllers + services + thin adapter)
@@ -52,8 +60,16 @@ import { WorkspaceModule } from './workspaces/workspace.module';
  */
 @Module({
   imports: [
+    AccessModule,
     ApplicationModule,
+    ChangePackageModule,
+    CollectionModule,
+    LocalizationModule,
+    PreferencesModule,
+    PropertyModule,
+    PublishImpactModule,
     ScriptModule,
+    SearchModule,
     ThemeModule,
     DisplayRuleModule,
     ViewModule,
@@ -70,8 +86,16 @@ import { WorkspaceModule } from './workspaces/workspace.module';
     ConnectorsIngestService,
   ],
   exports: [
+    AccessModule,
     ApplicationModule,
+    ChangePackageModule,
+    CollectionModule,
+    LocalizationModule,
+    PreferencesModule,
+    PropertyModule,
+    PublishImpactModule,
     ScriptModule,
+    SearchModule,
     ThemeModule,
     DisplayRuleModule,
     ViewModule,
