@@ -898,3 +898,53 @@ No issues found.
 ---
 
 **End of data migration plan.**
+
+
+---
+
+## Status: Complete (2026-05-10)
+
+ARC-W1 data migration complete. apps/api/src/app/data/ now contains all 12
+sub-directories (automation, ava, computed, defaults, events, formula, grid,
+integration, offerings, validation, work, workflow) + 5 controllers
+(DataController, CollectionDataController, DataHealthController) + 3 services
+(DataService, ModelRegistryService, CollectionDataService) + data.module.ts
+(full composition with global wiring). The types file from
+apps/svc-data/src/types/automation.types.ts is colocated with automation/.
+apps/svc-data is reduced to a thin adapter; legacy service stays runnable for
+parallel deployment until full W1 cutover.
+
+**Verification gate results:**
+- authz:check: PASS
+- audit:check: PASS
+- security:check: PASS
+- deps:check: PASS (1 tracked legacy carve-out: bcrypt)
+- service-boundary:check: PASS (7 allowlisted crossings, all expected)
+- compliance:check: PASS (exit 0; 384 files with pre-existing terminology violations)
+- api:build: PASS
+- svc-identity:build: PASS
+- svc-metadata:build: PASS
+- svc-data:build: PASS
+- api:test: PASS (21 test suites, 233 tests all passing)
+- apps/api/data directory: CORRECT (12 sub-dirs + 9 .ts files)
+- apps/svc-data directory: CORRECT (only app.module.ts in src/app/, no types/ in src/)
+- data.module.ts checklist: 100% (18/18 items checked)
+
+**Tag:** `arc-w1-data-complete` at HEAD `d10f0d9`
+
+### Next steps in W1
+
+The remaining svc-* services (ava, automation, control-plane, workflow,
+view-engine, insights, notify, instance-api) need migration plans of similar
+shape. Each follows the same template:
+1. Survey sub-modules + cross-deps
+2. Skeleton + register module
+3. Sub-module migrations (cyclic-core bundle if cycles exist; leaves first otherwise)
+4. Mid-stream top-level service-file move if any sub-module depends on top-level files
+5. Sub-modules dependent on top-level files
+6. Final composition with thin adapter
+7. Verification gate
+
+After all instance services migrate, full W1 cutover deletes the legacy
+svc-* directories, the service-boundary scanner, and routes traffic
+fully to apps/api.
