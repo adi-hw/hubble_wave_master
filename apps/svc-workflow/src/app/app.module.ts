@@ -11,7 +11,7 @@ import { AutomationModule } from '@hubblewave/automation';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
-import { WorkflowModule } from './workflow/workflow.module';
+import { WorkflowModule } from '../../../api/src/app/automation/workflow/workflow.module';
 
 @Module({
   imports: [

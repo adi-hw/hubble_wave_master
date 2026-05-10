@@ -16,6 +16,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
 import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
 import { AvaModule } from './ava/ava.module';
 import { RulesModule } from './rules/rules.module';
+import { WorkflowModule } from './workflow/workflow.module';
 
 /**
  * AutomationModule — canonical home for the automation plane (formerly apps/svc-automation).
@@ -27,6 +28,8 @@ import { RulesModule } from './rules/rules.module';
  *     [x] sync-trigger (depends on runtime)
  *   Cyclic-core bundle (atomic single-commit, ava ↔ rules):
  *     [x] ava + rules
+ *   Workflow (folded under automation per canon §8 INVERT):
+ *     [x] workflow (WorkflowModule — migrated 2026-05-10 via arc-w1-workflow-complete)
  *   Final top-level (controller, app.module thin adapter):
  *     [x] automation-health.controller (renamed from health.controller; route 'automation/health')
  *     [x] automation.module final composition
@@ -55,6 +58,7 @@ import { RulesModule } from './rules/rules.module';
     SyncTriggerModule,
     AvaModule,
     RulesModule,
+    WorkflowModule,
   ],
   controllers: [AutomationHealthController],
   providers: [],
@@ -64,6 +68,7 @@ import { RulesModule } from './rules/rules.module';
     SyncTriggerModule,
     AvaModule,
     RulesModule,
+    WorkflowModule,
   ],
 })
 export class AutomationModule {}
