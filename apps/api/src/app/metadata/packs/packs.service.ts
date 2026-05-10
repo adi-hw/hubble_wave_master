@@ -37,6 +37,7 @@ import {
   CollectionDefinition,
 } from '@hubblewave/instance-db';
 import { parseYaml, validatePackManifest, verifyEd25519, sha256 } from '@hubblewave/packs';
+import { validateOutboundUrl } from '@hubblewave/integrations';
 import { RedisService } from '@hubblewave/redis';
 import {
   MAINTENANCE_MODE_FLAG_KEY,
@@ -1911,7 +1912,7 @@ export class PacksService {
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           return parsed as Record<string, unknown>;
         }
-      } catch (error) {
+      } catch (_error) {
         throw new BadRequestException(`Invalid ${key} JSON payload`);
       }
     }
@@ -2125,11 +2126,34 @@ export class PacksService {
     if (!url || typeof url !== 'string') {
       throw new BadRequestException('artifactUrl is required');
     }
+
+    // F125 (W1 task 6): the artifactUrl arrives directly from the
+    // install request body — caller-controlled. Without validation the
+    // pack-install path is an SSRF vector against link-local
+    // (169.254.169.254 cloud metadata), loopback, RFC1918, and IPv6
+    // ULA ranges. validateOutboundUrl(url) blocks all of those plus
+    // restricts to https only. The host allowlist is left empty here
+    // because pack artifacts can legitimately come from any public
+    // CDN / S3 / GCS bucket; operators who want a tighter list set
+    // OUTBOUND_HOST_ALLOWLIST in env.
+    //
+    // F129 (audit secondary finding) is acknowledged: this validation
+    // happens BEFORE the fetch, but the maintenance-mode flag is set
+    // by the caller AFTER loadArtifact() returns. Reordering is
+    // tracked for W10. The SSRF guard fires whether or not the flag
+    // is set, so F125 is independently fixed by this change.
+    try {
+      validateOutboundUrl(url);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      throw new BadRequestException(`artifactUrl rejected: ${message} (F125)`);
+    }
+
     const timeoutMs = this.getDownloadTimeoutMs();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, { signal: controller.signal, redirect: 'error' });
       if (!response.ok) {
         throw new BadRequestException(`Failed to download pack artifact: ${response.status}`);
       }
@@ -2246,7 +2270,7 @@ export class PacksService {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
-    } catch (error) {
+    } catch (_error) {
       throw new BadRequestException('PACK_SIGNING_PUBLIC_KEYS must be valid JSON');
     }
     if (!parsed || typeof parsed !== 'object') {
