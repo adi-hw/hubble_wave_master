@@ -20,7 +20,7 @@ import {
 import { HealthController } from './health.controller';
 import { ViewModule } from './view/view.module';
 import { TransformModule } from './transform/transform.module';
-import { NavigationResolveModule } from './navigation/navigation.module';
+import { NavigationResolveModule } from '../../../api/src/app/views/navigation/navigation.module';
 
 @Module({
   imports: [

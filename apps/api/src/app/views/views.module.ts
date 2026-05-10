@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NavigationResolveModule } from './navigation/navigation.module';
 
 /**
  * ViewsModule consolidates svc-view-engine into apps/api per spec §2.
@@ -6,7 +7,7 @@ import { Module } from '@nestjs/common';
  * (renamed from svc-view-engine's HealthController; route 'views/health').
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-foldins-migration.md):
- *   [ ] navigation
+ *   [x] navigation
  *   [ ] transform
  *   [ ] view
  *   [ ] views-health.controller (renamed from health.controller)
@@ -14,9 +15,9 @@ import { Module } from '@nestjs/common';
  *   [ ] svc-view-engine app.module thin adapter
  */
 @Module({
-  imports: [],
+  imports: [NavigationResolveModule],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [NavigationResolveModule],
 })
 export class ViewsModule {}
