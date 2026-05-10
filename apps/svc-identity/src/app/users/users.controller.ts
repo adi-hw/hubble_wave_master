@@ -26,7 +26,7 @@ import { RequirePermission } from '../../../../api/src/app/identity/roles/decora
 import { CurrentUser } from '../../../../api/src/app/identity/auth/decorators/current-user.decorator';
 import { UserStatus, AuthEvent } from '@hubblewave/instance-db';
 import { UserRoleService } from '../../../../api/src/app/identity/roles/user-role.service';
-import { MembershipService } from '../groups/membership.service';
+import { MembershipService } from '../../../../api/src/app/identity/groups/membership.service';
 
 interface UserContext {
   userId: string;

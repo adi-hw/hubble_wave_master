@@ -15,10 +15,10 @@ import {
 import { GroupService, CreateGroupDto, UpdateGroupDto, GroupListOptions } from './group.service';
 import { MembershipService, AddMemberDto, UpdateMemberDto, BulkAddMembersDto } from './membership.service';
 import { GroupRoleService, AssignRoleDto } from './group-role.service';
-import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
-import { CurrentUser } from '../../../../api/src/app/identity/auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../../../../api/src/app/identity/auth/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../../../api/src/app/identity/roles/guards/permission.guard';
+import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionGuard } from '../roles/guards/permission.guard';
 import { GroupType } from '@hubblewave/instance-db';
 
 interface UserContext {

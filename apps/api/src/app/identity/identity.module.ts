@@ -11,6 +11,7 @@ import { UiModule } from './ui/ui.module';
 import { SettingsModule } from './config/config.module';
 import { AuditModule as IdentityAuditModule } from './audit/audit.module';
 import { NavigationModule } from './navigation/navigation.module';
+import { GroupsModule } from './groups/groups.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -26,7 +27,7 @@ import { NavigationModule } from './navigation/navigation.module';
  *   [x] policies
  *   [ ] users
  *   [x] roles
- *   [ ] groups
+ *   [x] groups
  *   [x] iam
  *   [x] ldap
  *   [x] oidc
@@ -42,9 +43,9 @@ import { NavigationModule } from './navigation/navigation.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule, NavigationModule],
+  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule, NavigationModule, GroupsModule],
   controllers: [],
   providers: [],
-  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule, NavigationModule],
+  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule, NavigationModule, GroupsModule],
 })
 export class IdentityModule {}
