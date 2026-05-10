@@ -144,30 +144,39 @@ No property → no column.
 
 ---
 
-## 7. Views Are First-Class
+## 7. Views Are First-Class (canon §7 SOFTEN, 2026-05-09)
 
-Views are not UI sugar.
+Views are governed projections of data for specific audiences. The 5-tier hierarchy (System → Tenant → Role → Group → Personal) of the original §7 is dropped in favor of two hierarchy levels:
 
-They are governed projections of data for specific audiences.
+- **Customer-namespaced views** — defined in customer pack metadata; scoped to the customer's tenant.
+- **Role views** — bound to one or more customer-defined roles; visible to users with those roles.
+- **Personal views** (per-user) — owned and edited by the individual user; saved layout, filter, and column choices.
 
-Hierarchy:
-System → Tenant → Role → Group → Personal
+System and Tenant tiers are subsumed by "platform-default views" (shipped in vertical packs) and "customer-namespaced views" respectively. The simpler model covers all observed use cases without the governance overhead.
+
+Views are stored as pack metadata and subject to the upgrade-safety validator.
 
 ---
 
-## 8. Automation ≠ Workflow
+## 8. Automation + Workflow are One Engine (canon §8 INVERT, 2026-05-09)
 
-Automation rules are:
-- deterministic
-- record-scoped
-- synchronous
+The ServiceNow split between Flow Designer (durable, human-aware) and Workflow (deterministic, synchronous) is a tax we don't pay. HubbleWave's automation engine has two **modes** in one engine:
 
-Workflows are:
-- long-running
-- stateful
-- human-aware
+### Rule mode — synchronous, record-scoped, deterministic
+- Trigger types: before/after record events, manual, scheduled, webhook
+- Conditions in the platform's formula language
+- Actions: record CRUD, send email/SMS, call HTTP, run sandboxed script
+- Cycle and depth control; per-rule rate limiting (W7.C remediation work, preserved)
 
-They must never be merged.
+### Workflow mode — durable, multi-day, stateful
+- State persistence in Postgres
+- Human task assignment, approvals, escalations
+- Parallel branches, joins, loops
+- SLA timers
+
+One visual editor (using `@xyflow/react`) authors both. One sandbox (`script-sandbox`) executes scripted actions in either mode. One execution log captures both runtimes.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 automation engine + §9 canon delta.
 
 ---
 
