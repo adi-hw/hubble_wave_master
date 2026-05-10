@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './subscriptions.dto';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
 
 @Controller('subscriptions')
 @Roles('operator')

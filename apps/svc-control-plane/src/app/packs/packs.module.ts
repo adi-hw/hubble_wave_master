@@ -6,7 +6,7 @@ import { StorageModule } from '@hubblewave/storage';
 import { PacksController } from './packs.controller';
 import { PacksCatalogController } from './packs.catalog.controller';
 import { PacksService } from './packs.service';
-import { InstanceTokenGuard } from '../auth/instance-token.guard';
+import { InstanceTokenGuard } from '../../../../control-plane/src/app/auth/instance-token.guard';
 
 @Module({
   imports: [

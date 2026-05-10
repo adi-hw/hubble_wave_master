@@ -1,6 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { Roles } from '../auth/roles.decorator';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
+import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
 import { RecoveryService } from './recovery.service';
 import { BackupTriggerDto, RestoreTriggerDto } from './recovery.dto';
 

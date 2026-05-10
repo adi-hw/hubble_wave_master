@@ -6,7 +6,7 @@ import {
   Instance,
   InstanceHealth,
 } from '@hubblewave/control-plane-db';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 import { CreateInstanceDto, UpdateInstanceDto, InstanceQueryParams } from './instances.dto';
 import { TerraformService } from '../terraform/terraform.service';
 import { TerraformWorkspaceService } from '../terraform/terraform.workspace.service';

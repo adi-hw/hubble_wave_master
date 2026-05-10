@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { Public } from '../auth/public.decorator';
-import { InstanceTokenGuard } from '../auth/instance-token.guard';
+import { Public } from '../../../../control-plane/src/app/auth/public.decorator';
+import { InstanceTokenGuard } from '../../../../control-plane/src/app/auth/instance-token.guard';
 import { PackDownloadUrlDto } from './packs.dto';
 import { PacksService } from './packs.service';
 

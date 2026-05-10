@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Param, Body, Query, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
 import { LicensesService } from './licenses.service';
 import { CreateLicenseDto, UpdateLicenseStatusDto, ValidateLicenseDto } from './licenses.dto';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
 
 @Controller('licenses')
 @Roles('operator')

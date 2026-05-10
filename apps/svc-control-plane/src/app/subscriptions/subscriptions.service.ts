@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Customer } from '@hubblewave/control-plane-db';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './subscriptions.dto';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 
 /**
  * Plan tier ranking from lowest to highest. Downgrades step towards index 0;

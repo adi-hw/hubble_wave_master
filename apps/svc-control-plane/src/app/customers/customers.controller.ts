@@ -17,7 +17,7 @@ import {
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto, CustomerQueryParams } from './customers.dto';
 import { CustomerSettingsDto } from './customer-settings.dto';
-import { Roles } from '../auth/roles.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
 
 @Controller('customers')
 @Roles('operator')

@@ -4,7 +4,7 @@ import { Repository, IsNull } from 'typeorm';
 import { Customer, CustomerSettings } from '@hubblewave/control-plane-db';
 import { CreateCustomerDto, UpdateCustomerDto, CustomerQueryParams } from './customers.dto';
 import { CustomerSettingsDto } from './customer-settings.dto';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 
 @Injectable()
 export class CustomersService {

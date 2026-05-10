@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
 
 /**
  * ControlPlaneModule — canonical home for the platform's control plane
@@ -10,7 +12,7 @@ import { Module } from '@nestjs/common';
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-control-plane-migration.md):
  *   Foundation cyclic-core:
- *     [ ] audit + auth (atomic bundle)
+ *     [x] audit + auth (atomic bundle)
  *   Standard modules:
  *     [ ] licenses (depends on audit+auth)
  *     [ ] customers, health-aggregator, packs (single-dep on audit+auth)
@@ -25,9 +27,9 @@ import { Module } from '@nestjs/common';
  *     [ ] svc-control-plane app.module thin adapter
  */
 @Module({
-  imports: [],
+  imports: [AuditModule, AuthModule],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [AuditModule, AuthModule],
 })
 export class ControlPlaneModule {}

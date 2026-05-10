@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { TerraformService, CreateTerraformJobDto, TerraformJobQueryParams } from './terraform.service';
 import { TerraformOutputLine } from '@hubblewave/control-plane-db';
-import { Roles } from '../auth/roles.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
 
 @Controller('terraform')
 @Roles('operator')

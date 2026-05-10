@@ -14,8 +14,8 @@ import {
 } from '@nestjs/common';
 import { InstancesService } from './instances.service';
 import { CreateInstanceDto, UpdateInstanceDto, InstanceQueryParams } from './instances.dto';
-import { Roles } from '../auth/roles.decorator';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
+import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
 
 @Controller('instances')
 @Roles('operator')

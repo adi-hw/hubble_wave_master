@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Instance } from '@hubblewave/control-plane-db';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 import { BackupTriggerDto, RestoreTriggerDto } from './recovery.dto';
 
 @Injectable()

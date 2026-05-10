@@ -7,10 +7,10 @@ import { controlPlaneEntities } from '@hubblewave/control-plane-db';
 import { ThrottlerGuard, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AuthModule } from './auth';
+import { AuthModule } from '../../../control-plane/src/app/auth';
 import { CustomersModule } from './customers';
 import { InstancesModule } from './instances';
-import { AuditModule } from './audit';
+import { AuditModule } from '../../../control-plane/src/app/audit';
 import { TerraformModule } from './terraform';
 import { MetricsModule } from './metrics';
 import { LicensesModule } from './licenses/licenses.module';
@@ -20,7 +20,7 @@ import { PacksModule } from './packs';
 import { RecoveryModule } from './recovery/recovery.module';
 import { SettingsModule } from './settings';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { AuditInterceptor } from './audit/audit.interceptor';
+import { AuditInterceptor } from '../../../control-plane/src/app/audit/audit.interceptor';
 
 @Module({
   imports: [

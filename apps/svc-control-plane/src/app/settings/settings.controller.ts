@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
-import { Roles } from '../auth/roles.decorator';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
+import { CurrentUser } from '../../../../control-plane/src/app/auth/current-user.decorator';
 import { SettingsService } from './settings.service';
 import { UpdateGlobalSettingsDto } from './settings.dto';
 

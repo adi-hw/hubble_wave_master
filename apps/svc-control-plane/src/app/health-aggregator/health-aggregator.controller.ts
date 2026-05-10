@@ -8,16 +8,16 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import { CurrentUser, CurrentUserData } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../../../../control-plane/src/app/auth/jwt-auth.guard';
+import { RolesGuard } from '../../../../control-plane/src/app/auth/roles.guard';
+import { Roles } from '../../../../control-plane/src/app/auth/roles.decorator';
+import { CurrentUser, CurrentUserData } from '../../../../control-plane/src/app/auth/current-user.decorator';
 import {
   HealthAggregatorService,
   HealthAggregationSummary,
   InstanceHealthResult,
 } from './health-aggregator.service';
-import { Public } from '../auth/public.decorator';
+import { Public } from '../../../../control-plane/src/app/auth/public.decorator';
 
 @ApiTags('Health')
 @Controller('health')

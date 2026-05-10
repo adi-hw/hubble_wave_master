@@ -16,7 +16,7 @@ import { StorageClient, STORAGE_CLIENT } from '@hubblewave/storage';
 import { PackRegistry, PackRelease, Instance } from '@hubblewave/control-plane-db';
 import { parseYaml, validatePackManifest, verifyEd25519, sha256 } from '@hubblewave/packs';
 import * as unzipper from 'unzipper';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 import {
   PackInstallDto,
   PackInstallStatusDto,

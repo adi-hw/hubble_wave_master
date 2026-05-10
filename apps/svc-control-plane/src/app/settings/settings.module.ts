@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GlobalSettings } from '@hubblewave/control-plane-db';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
-import { AuditModule } from '../audit';
+import { AuditModule } from '../../../../control-plane/src/app/audit';
 
 @Module({
   imports: [TypeOrmModule.forFeature([GlobalSettings]), AuditModule],

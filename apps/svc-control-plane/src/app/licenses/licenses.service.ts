@@ -4,7 +4,7 @@ import { Repository, IsNull } from 'typeorm';
 import { License } from '@hubblewave/control-plane-db';
 import { randomUUID } from 'crypto';
 import { CreateLicenseDto, UpdateLicenseStatusDto, ValidateLicenseDto } from './licenses.dto';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 
