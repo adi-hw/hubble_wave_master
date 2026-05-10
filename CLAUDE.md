@@ -328,14 +328,21 @@ If change is required, the manifesto is amended explicitly — never bypassed si
 
 # PART II — PLATFORM ARCHITECTURE (COMPLETE)
 
-## 17. High-Level Architecture
+## 17. High-Level Architecture (canon §17 UPDATE, 2026-05-09)
 
 HubbleWave consists of two strictly separated planes:
 
-1. **Control Plane** — platform ownership, provisioning, governance
-2. **Customer Instance Plane** — runtime platform used by customers
+1. **Control Plane** — multi-tenant HubbleWave-owned service (`apps/control-plane`) that provisions, upgrades, monitors, and bills customer instances.
+2. **Customer Instance Plane** — the runtime platform used by customers. Each customer instance is a single Nest API process (`apps/api`) plus a single BullMQ worker process (`apps/worker`), backed by per-customer Postgres + Redis (single-tenant default, canon §5).
 
-There is no shared business logic between planes.
+Clients:
+- `apps/web-client` — main React web client (consumed by all platform users)
+- `apps/web-control-plane` — HubbleWave admin console
+- `apps/mobile` — React Native + Expo, offline-first (canon §26)
+
+The instance API is a **modular monolith** (NestJS modules: kernel, db, identity, audit, metadata, data, automation, views, forms, dashboards, notifications, integrations, ai, packs, plugins, upgrade, storage, search). Module boundaries are the natural seams for future service extraction *if and when* a specific module hits a real performance ceiling — but the platform commits to the monolith shape for the first 10–20 customer instances.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §2.
 
 ---
 
@@ -383,17 +390,19 @@ The Control Plane **never**:
 
 ---
 
-## 19. Customer Instance Architecture (Recap)
+## 19. Customer Instance Architecture (canon §19 UPDATE, 2026-05-09)
 
-Each customer instance includes:
-- Identity & access services
-- Metadata & schema engine
-- Data services
-- Automation & workflow engines
-- UI & AVA runtime
-- Instance-scoped databases and storage
+Each customer instance is a single process group:
+- One `apps/api` process (Nest modular monolith with all instance-plane modules)
+- One `apps/worker` process (BullMQ consumer for async automation, scheduled jobs, AI background tasks)
+- One Postgres database (per-customer; pgvector + materialized views included)
+- One Redis instance (per-customer; cache + BullMQ queues)
 
-Instances are operationally independent.
+In pooled mode (canon §5 SOFTEN), multiple customers share these resources isolated by Postgres RLS keyed on `tenant_id`.
+
+Instances are operationally independent. The Control Plane communicates with each instance only via explicit, authenticated APIs.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §2.
 
 ---
 
@@ -448,20 +457,20 @@ The codebase must enforce:
 
 Builds fail if violations exist.
 
-**Implementation status (W6.A):** The scanners exist and exit non-zero
-on violations:
-- `npm run authz:check` (W1.2)
-- `npm run audit:check` (W1.6, KNOWN_DEFERRED_OFFENDERS empty after W2.E)
-- `npm run security:check` (existing)
-- `npm run compliance:check` (existing terminology scanner)
-- `npm run service-boundary:check` (W5.D, currently 0 violations)
+**Enforcement scanners (CI gates) (canon §21 TRIM, 2026-05-09):**
 
-Whether `.github/workflows/` actually FAILS PRs on these checks is
-a separate config concern. Engineers SHOULD verify CI gate status
-before merging architectural changes. If a PR passes lint locally
-but CI doesn't run the scanner, the rule is aspirational for that
-PR. Tracked for human follow-up: ensure all five scanners are required
-status checks on the merge protection rule.
+The following scanners run in CI and block merges on violations:
+
+- `npm run authz:check` — call-site verification (W1.2 enforcement)
+- `npm run audit:check` — save-then-audit pattern detection (W1.6 enforcement)
+- `npm run security:check` — security pattern checks
+- `npm run deps:check` — approved-deps registry (W6.D)
+- `npm run compliance:check` — terminology scanner (running as a lint rule in W4+)
+
+**Removed scanners** (no longer relevant in modular monolith):
+- ~~`npm run service-boundary:check`~~ — irrelevant when there's only one process; the monolith's TypeScript module system enforces what the scanner used to enforce. Removed in W1 final cleanup.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §3 (tech stack changes) + §9.
 
 ---
 
