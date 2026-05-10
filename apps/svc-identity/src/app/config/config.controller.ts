@@ -2,8 +2,8 @@ import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { ConfigServiceLocal } from './config.service';
 type ConfigScope = string;
 type ConfigType = string;
-import { AbacResource } from '../abac/abac.guard';
-import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { AbacResource } from '../../../../api/src/app/identity/abac/abac.guard';
+import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
 
 @Controller('config')
 export class ConfigController {

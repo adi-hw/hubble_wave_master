@@ -4,7 +4,7 @@ import { GroupService } from './group.service';
 import { MembershipService } from './membership.service';
 import { GroupRoleService } from './group-role.service';
 import { GroupsController } from './groups.controller';
-import { RolesModule } from '../roles/roles.module';
+import { RolesModule } from '../../../../api/src/app/identity/roles/roles.module';
 
 /**
  * GroupsModule

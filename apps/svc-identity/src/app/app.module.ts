@@ -6,26 +6,26 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 import { AuthGuardModule } from '@hubblewave/auth-guard';
 import { IdentityService } from './identity.service';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from '../../../api/src/app/identity/auth/auth.module';
 import { OidcModule } from './oidc/oidc.module';
 import { EmailModule } from '../../../api/src/app/identity/email/email.module';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from './auth/guards/permissions.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
+import { JwtAuthGuard } from '../../../api/src/app/identity/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../../api/src/app/identity/auth/guards/permissions.guard';
+import { RolesGuard } from '../../../api/src/app/identity/auth/guards/roles.guard';
 import { LoggingInterceptor } from '../../../api/src/app/identity/common/interceptors/logging.interceptor';
-import { ApiKeyGuard } from './auth/api-key/api-key.guard';
-import { AbacModule } from './abac/abac.module';
+import { ApiKeyGuard } from '../../../api/src/app/identity/auth/api-key/api-key.guard';
+import { AbacModule } from '../../../api/src/app/identity/abac/abac.module';
 import { SettingsModule } from './config/config.module';
-import { AbacGuard } from './abac/abac.guard';
+import { AbacGuard } from '../../../api/src/app/identity/abac/abac.guard';
 import { UiModule } from './ui/ui.module';
 import { HealthController } from './health.controller';
 import { IamModule } from './iam/iam.module';
 import { NavigationModule } from './navigation/navigation.module';
 import { GroupsModule } from './groups/groups.module';
-import { RolesModule } from './roles/roles.module';
+import { RolesModule } from '../../../api/src/app/identity/roles/roles.module';
 import { AuditModule } from './audit/audit.module';
 import { PoliciesModule } from './policies/policies.module';
-import { CsrfMiddleware } from './auth/middleware/csrf.middleware';
+import { CsrfMiddleware } from '../../../api/src/app/identity/auth/middleware/csrf.middleware';
 
 @Module({
   imports: [

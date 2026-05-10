@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { EmailModule } from './email/email.module';
+import { AuthModule } from './auth/auth.module';
+import { AbacModule } from './abac/abac.module';
+import { LdapModule } from './ldap/ldap.module';
+import { RolesModule } from './roles/roles.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -10,14 +14,14 @@ import { EmailModule } from './email/email.module';
  *   [x] common
  *   [ ] config
  *   [x] email
- *   [ ] auth
- *   [ ] abac
+ *   [x] auth
+ *   [x] abac
  *   [ ] policies
  *   [ ] users
- *   [ ] roles
+ *   [x] roles
  *   [ ] groups
  *   [ ] iam
- *   [ ] ldap
+ *   [x] ldap
  *   [ ] oidc
  *   [ ] navigation
  *   [ ] ui
@@ -31,9 +35,9 @@ import { EmailModule } from './email/email.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [EmailModule],
+  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule],
   controllers: [],
   providers: [],
-  exports: [EmailModule],
+  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule],
 })
 export class IdentityModule {}

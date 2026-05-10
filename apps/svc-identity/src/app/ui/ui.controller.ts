@@ -3,8 +3,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { UiService } from './ui.service';
 import { Request } from 'express';
-import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
-import { RequirePermission } from '../roles/decorators/permission.decorator';
+import { AuthenticatedOnly } from '../../../../api/src/app/identity/auth/decorators/public.decorator';
+import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
 
 @ApiTags('UI')
 @Controller()
