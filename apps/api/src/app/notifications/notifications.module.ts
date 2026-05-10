@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthGuardModule, GlobalGuardsModule } from '@hubblewave/auth-guard';
+import { AuthorizationModule } from '@hubblewave/authorization';
 import {
   AuditLog,
   InAppNotification,
@@ -18,6 +22,7 @@ import { NotificationOutboxProcessor } from './notification-outbox-processor.ser
 import { NotificationTemplatesController } from './notification-templates.controller';
 import { NotificationsController } from './notifications.controller';
 import { InAppNotificationsController } from './in-app-notifications.controller';
+import { NotificationsHealthController } from './notifications-health.controller';
 import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers';
 
 /**
@@ -27,18 +32,25 @@ import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers'
  * NotificationsHealthController serves /notifications/health (renamed from
  * svc-notify's HealthController at /health).
  *
- * Global wiring (InstanceDbModule, AuthGuardModule, GlobalGuardsModule,
- * AuthorizationModule, ScheduleModule, ThrottlerModule) is inherited from the
- * root AppModule in apps/api — no duplication needed here.
+ * Global wiring mirrors svc-notify app.module.ts:
+ *   - AuthGuardModule + GlobalGuardsModule for JWT + RBAC guard chain
+ *   - AuthorizationModule.forInstance() for centralized authz (canon §9)
+ *   - ScheduleModule for the @Cron processor on NotificationService
+ *   - ThrottlerModule for the per-endpoint rate limit on NotificationsController
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-foldins-migration.md):
  *   [x] notifications sub-module contents
- *   [ ] notifications-health.controller (renamed from health.controller)
- *   [ ] notifications.module final composition
+ *   [x] notifications-health.controller (renamed from health.controller)
+ *   [x] notifications.module final composition
  *   [ ] svc-notify app.module thin adapter
  */
 @Module({
   imports: [
+    AuthGuardModule,
+    GlobalGuardsModule,
+    AuthorizationModule.forInstance(),
+    ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([{ name: 'default', limit: 100, ttl: 60_000 }]),
     TypeOrmModule.forFeature([
       NotificationTemplate,
       NotificationQueue,
@@ -52,6 +64,7 @@ import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers'
     RuntimeAnomalyModule,
   ],
   controllers: [
+    NotificationsHealthController,
     NotificationTemplatesController,
     NotificationsController,
     InAppNotificationsController,
@@ -63,6 +76,11 @@ import { ChannelProviderRegistry, SmtpEmailProvider } from './channel-providers'
     NotificationOutboxProcessor,
     SmtpEmailProvider,
     ChannelProviderRegistry,
+  ],
+  exports: [
+    NotificationService,
+    InAppNotificationService,
+    TemplateEngineService,
   ],
 })
 export class NotificationsModule {}
