@@ -54,6 +54,38 @@ const KNOWN_VIOLATIONS: Array<{
     followUp:
       'W1 final cutover — delete apps/svc-workflow entirely. The AutomationModule will serve workflow endpoints from apps/api alone.',
   },
+  {
+    file: 'apps/svc-view-engine/src/app/app.module.ts',
+    importPath: '../../../api/src/app/views/views.module',
+    rationale:
+      'ARC-W1 Task 1: svc-view-engine folded into apps/api/src/app/views/ (ViewsModule). The thin adapter re-imports ViewsModule so svc-view-engine continues serving view engine endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-view-engine entirely. ViewsModule inside apps/api will serve all view engine endpoints.',
+  },
+  {
+    file: 'apps/svc-notify/src/app/app.module.ts',
+    importPath: '../../../api/src/app/notifications/notifications.module',
+    rationale:
+      'ARC-W1 Task 2: svc-notify folded into apps/api/src/app/notifications/ (NotificationsModule). The thin adapter re-imports NotificationsModule so svc-notify continues serving notification endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-notify entirely. NotificationsModule inside apps/api will serve all notification endpoints.',
+  },
+  {
+    file: 'apps/svc-instance-api/src/app/app.module.ts',
+    importPath: '../../../api/src/app/instance-api/instance-api.module',
+    rationale:
+      'ARC-W1 Task 3: svc-instance-api folded into apps/api/src/app/instance-api/ (InstanceApiModule). The thin adapter re-imports InstanceApiModule so svc-instance-api continues serving auth-flow and pack endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-instance-api entirely. InstanceApiModule inside apps/api will serve all instance-api endpoints.',
+  },
+  {
+    file: 'apps/svc-insights/src/app/app.module.ts',
+    importPath: '../../../api/src/app/analytics/analytics.module',
+    rationale:
+      'ARC-W1 Task 4: svc-insights folded into apps/api/src/app/analytics/ (AnalyticsModule). The thin adapter re-imports AnalyticsModule so svc-insights continues serving analytics endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-insights entirely. AnalyticsModule inside apps/api will serve all analytics endpoints.',
+  },
 ];
 
 /**
@@ -215,6 +247,10 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'data',
   'automation',
   'ava',
+  'views',
+  'notifications',
+  'instance-api',
+  'analytics',
 ]);
 
 function isServiceDir(name: string): boolean {

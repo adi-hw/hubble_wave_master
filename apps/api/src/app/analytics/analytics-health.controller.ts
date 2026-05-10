@@ -1,19 +1,17 @@
-/**
- * Health Controller
- * HubbleWave Platform - Phase 2
- */
-
 import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@hubblewave/auth-guard';
 
-@Controller('health')
-export class HealthController {
+@ApiTags('Health')
+@Controller('analytics/health')
+export class AnalyticsHealthController {
   @Public()
   @Get()
+  @ApiOperation({ summary: 'Health check' })
   check() {
     return {
       status: 'ok',
-      service: 'svc-view-engine',
+      service: 'analytics',
       timestamp: new Date().toISOString(),
       dependencies: {},
     };

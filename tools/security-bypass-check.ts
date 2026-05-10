@@ -48,27 +48,33 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
   'apps/svc-data/src/app/health.controller.ts',
   'apps/svc-identity/src/app/health.controller.ts',
-  'apps/svc-insights/src/app/health.controller.ts',
   'apps/svc-instance-api/src/app/health.controller.ts',
   'apps/svc-metadata/src/app/health.controller.ts',
   'apps/svc-notify/src/app/health.controller.ts',
   'apps/svc-view-engine/src/app/health.controller.ts',
   'apps/svc-workflow/src/app/health.controller.ts',
   // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity,
-  // svc-metadata, svc-automation, and svc-ava services are now thin adapters;
-  // their controller files live at the apps/api locations below. Health
-  // controllers in data, metadata, automation, and ava were renamed to
-  // disambiguate route prefixes:
-  //   data:       /data/health       (DataHealthController)
-  //   metadata:   /metadata/health   (MetadataHealthController)
-  //   identity:   /health            (HealthController, unchanged)
-  //   automation: /automation/health (AutomationHealthController)
-  //   ava:        /ava/health        (AvaHealthController)
+  // svc-metadata, svc-automation, svc-ava, svc-view-engine, and svc-notify
+  // are now thin adapters; their controller files live at the apps/api
+  // locations below. Health controllers were renamed to disambiguate routes:
+  //   data:          /data/health          (DataHealthController)
+  //   metadata:      /metadata/health      (MetadataHealthController)
+  //   identity:      /health               (HealthController, unchanged)
+  //   automation:    /automation/health    (AutomationHealthController)
+  //   ava:           /ava/health           (AvaHealthController)
+  //   views:         /views/health         (ViewsHealthController)
+  //   notifications: /notifications/health (NotificationsHealthController)
   'apps/api/src/app/data/data-health.controller.ts',
   'apps/api/src/app/identity/health.controller.ts',
   'apps/api/src/app/metadata/metadata-health.controller.ts',
   'apps/api/src/app/automation/automation-health.controller.ts',
   'apps/api/src/app/ava/ava-health.controller.ts',
+  'apps/api/src/app/views/views-health.controller.ts',
+  'apps/api/src/app/notifications/notifications-health.controller.ts',
+  //   instance-api: /instance-api/health (InstanceApiHealthController)
+  'apps/api/src/app/instance-api/instance-api-health.controller.ts',
+  //   analytics:    /analytics/health    (AnalyticsHealthController)
+  'apps/api/src/app/analytics/analytics-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
@@ -83,6 +89,9 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-identity/src/app/oidc/oidc.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/auth.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/sso-config.controller.ts',
+  // ARC-W1 Task 3 post-migration paths (apps/api/instance-api/identity).
+  'apps/api/src/app/instance-api/identity/auth/auth.controller.ts',
+  'apps/api/src/app/instance-api/identity/auth/sso-config.controller.ts',
   // ARC-W1 post-migration paths (apps/api/identity).
   'apps/api/src/app/identity/auth/auth.controller.ts',
   'apps/api/src/app/identity/auth/email-verification.controller.ts',
@@ -147,7 +156,10 @@ const BANNED_PATTERNS: Array<{
       'apps/svc-ava/src/app/embedding.controller.ts',
       // ARC-W1 post-migration path (apps/api/ava home).
       'apps/api/src/app/ava/embedding.controller.ts',
-      'apps/svc-insights/src/app/backup/backup.service.ts',
+      // backup.service.ts uses client.eval() for the Redis distributed lock
+      // (same Lua-on-server-side pattern as ava embedding). ARC-W1 Task 4:
+      // migrated from svc-insights to apps/api/analytics.
+      'apps/api/src/app/analytics/backup/backup.service.ts',
     ]),
   },
   {
@@ -158,7 +170,11 @@ const BANNED_PATTERNS: Array<{
     pattern: /\bspawn\s*\(/,
     description: 'spawn() is restricted to approved runtime utilities',
     allowlist: new Set([
-      'apps/svc-insights/src/app/backup/backup.service.ts',
+      // backup.service.ts uses spawn() exclusively for pg_dump and pg_restore.
+      // These are approved infrastructure utilities; the command is hardcoded
+      // and no user input flows into args. ARC-W1 Task 4: migrated from
+      // svc-insights to apps/api/analytics.
+      'apps/api/src/app/analytics/backup/backup.service.ts',
       'apps/svc-control-plane/src/app/terraform/terraform.executor.ts',
       // ARC-W1 post-migration path (apps/control-plane home).
       'apps/control-plane/src/app/terraform/terraform.executor.ts',

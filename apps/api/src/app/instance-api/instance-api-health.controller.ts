@@ -1,8 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '@hubblewave/auth-guard';
 
-@Controller('health')
-export class HealthController {
+@Controller('instance-api/health')
+export class InstanceApiHealthController {
   @Public()
   @Get()
   health() {

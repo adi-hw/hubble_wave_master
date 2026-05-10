@@ -1,15 +1,21 @@
+/**
+ * Views Health Controller
+ * HubbleWave Platform - Phase 2
+ */
+
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '@hubblewave/auth-guard';
 
-@Controller('health')
-export class HealthController {
+@Controller('views/health')
+export class ViewsHealthController {
   @Public()
   @Get()
-  getHealth() {
+  check() {
     return {
       status: 'ok',
-      service: 'svc-notify',
+      service: 'views',
       timestamp: new Date().toISOString(),
+      dependencies: {},
     };
   }
 }
