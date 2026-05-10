@@ -34,7 +34,7 @@ import { PreferencesModule } from '../../../api/src/app/metadata/preferences/pre
 import { ViewModule } from '../../../api/src/app/metadata/view/view.module';
 import { NavigationMetadataModule } from '../../../api/src/app/metadata/navigation/navigation.module';
 import { ScriptModule } from '../../../api/src/app/metadata/script/script.module';
-import { PacksModule } from './packs/packs.module';
+import { PacksModule } from '../../../api/src/app/metadata/packs/packs.module';
 import { SchemaController } from '../../../api/src/app/metadata/schema/schema.controller';
 import { SchemaDeployService } from '../../../api/src/app/metadata/schema/schema-deploy.service';
 import { SearchModule } from '../../../api/src/app/metadata/search/search.module';

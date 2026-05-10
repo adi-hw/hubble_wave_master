@@ -23,6 +23,7 @@ import { CollectionModule } from './collection/collection.module';
 import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
 import { SchemaDiffService } from './schema/schema-diff.service';
+import { PacksModule } from './packs/packs.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -52,7 +53,7 @@ import { SchemaDiffService } from './schema/schema-diff.service';
  *   [x] publish-impact
  *   [x] collection
  *   [x] schema
- *   [ ] packs
+ *   [x] packs
  *   [ ] top-level (HealthController + Metadata/Model/Module controllers + services + thin adapter)
  *
  * MetadataModule re-exports each migrated sub-module so that:
@@ -80,6 +81,7 @@ import { SchemaDiffService } from './schema/schema-diff.service';
     NavigationMetadataModule,
     DecisionTableModule,
     WorkspaceModule,
+    PacksModule,
   ],
   controllers: [SchemaController],
   providers: [
@@ -108,6 +110,7 @@ import { SchemaDiffService } from './schema/schema-diff.service';
     NavigationMetadataModule,
     DecisionTableModule,
     WorkspaceModule,
+    PacksModule,
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,

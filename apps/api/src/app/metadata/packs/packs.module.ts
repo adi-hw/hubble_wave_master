@@ -11,14 +11,14 @@ import { AuthGuardModule, JwtAuthGuard } from '@hubblewave/auth-guard';
 import { PacksController } from './packs.controller';
 import { PacksService } from './packs.service';
 import { PackInstallGuard } from './pack-install.guard';
-import { MetadataIngestService } from '../../../../api/src/app/metadata/metadata/metadata-ingest.service';
+import { MetadataIngestService } from '../metadata/metadata-ingest.service';
 import { PackCatalogService } from './pack-catalog.service';
-import { AccessIngestService } from '../../../../api/src/app/metadata/access/services/access-ingest.service';
-import { SearchIngestService } from '../../../../api/src/app/metadata/search/search-ingest.service';
-import { AvaIngestService } from '../../../../api/src/app/metadata/ava/ava-ingest.service';
-import { InsightsIngestService } from '../../../../api/src/app/metadata/insights/insights-ingest.service';
-import { ConnectorsIngestService } from '../../../../api/src/app/metadata/connectors/connectors-ingest.service';
-import { LocalizationIngestService } from '../../../../api/src/app/metadata/localization/localization-ingest.service';
+import { AccessIngestService } from '../access/services/access-ingest.service';
+import { SearchIngestService } from '../search/search-ingest.service';
+import { AvaIngestService } from '../ava/ava-ingest.service';
+import { InsightsIngestService } from '../insights/insights-ingest.service';
+import { ConnectorsIngestService } from '../connectors/connectors-ingest.service';
+import { LocalizationIngestService } from '../localization/localization-ingest.service';
 
 @Module({
   imports: [
