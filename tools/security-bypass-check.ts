@@ -52,16 +52,19 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-notify/src/app/health.controller.ts',
   'apps/svc-view-engine/src/app/health.controller.ts',
   'apps/svc-workflow/src/app/health.controller.ts',
-  // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity, and
-  // svc-metadata services are now thin adapters; their controller files
-  // live at the apps/api locations below. Health controllers in data and
-  // metadata were renamed to disambiguate route prefixes:
-  //   data:     /data/health     (DataHealthController)
-  //   metadata: /metadata/health (MetadataHealthController)
-  //   identity: /health          (HealthController, unchanged)
+  // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity,
+  // svc-metadata, and svc-automation services are now thin adapters; their
+  // controller files live at the apps/api locations below. Health controllers
+  // in data, metadata, and automation were renamed to disambiguate route
+  // prefixes:
+  //   data:       /data/health       (DataHealthController)
+  //   metadata:   /metadata/health   (MetadataHealthController)
+  //   identity:   /health            (HealthController, unchanged)
+  //   automation: /automation/health (AutomationHealthController)
   'apps/api/src/app/data/data-health.controller.ts',
   'apps/api/src/app/identity/health.controller.ts',
   'apps/api/src/app/metadata/metadata-health.controller.ts',
+  'apps/api/src/app/automation/automation-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
@@ -122,6 +125,9 @@ const BANNED_PATTERNS: Array<{
       // spec; the strings are parsed by expr-eval and rejected by the
       // deny-list. Refs Plan §S5 W1.9 / Fix 6.
       'apps/svc-automation/src/app/runtime/script-sandbox.service.spec.ts',
+      // ARC-W1 post-migration path (apps/api/automation home). svc-automation
+      // is now a thin adapter; the spec lives at the apps/api location.
+      'apps/api/src/app/automation/runtime/script-sandbox.service.spec.ts',
       // Safe-expression-evaluator RCE corpus (W1 task 8 / F027). Same
       // rationale as script-sandbox: `eval(` and other RCE patterns
       // appear AS STRING DATA in the corpus that the evaluator must

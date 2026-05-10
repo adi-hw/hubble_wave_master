@@ -5,6 +5,7 @@ import { AuditModule } from './audit/audit.module';
 import { IdentityModule } from './identity/identity.module';
 import { MetadataModule } from './metadata/metadata.module';
 import { DataModule } from './data/data.module';
+import { AutomationModule } from './automation/automation.module';
 
 /**
  * apps/api root module.
@@ -18,7 +19,7 @@ import { DataModule } from './data/data.module';
  * Subsequent modules land in a follow-on plan.
  */
 @Module({
-  imports: [KernelModule, DbModule, AuditModule, IdentityModule, MetadataModule, DataModule],
+  imports: [KernelModule, DbModule, AuditModule, IdentityModule, MetadataModule, DataModule, AutomationModule],
   controllers: [],
   providers: [],
 })

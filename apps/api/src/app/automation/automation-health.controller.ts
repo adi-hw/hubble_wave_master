@@ -3,11 +3,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@hubblewave/auth-guard';
 
 @ApiTags('Health')
-@Controller('health')
-export class HealthController {
+@Controller('automation/health')
+export class AutomationHealthController {
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Health check' })
+  @ApiOperation({ summary: 'Automation service health check' })
   check() {
     return {
       status: 'ok',

@@ -42,6 +42,14 @@ import { AvaAutomationController } from './ava-automation.controller';
     OutboxPublisherService,
     OutboxProcessorService,
   ],
-  exports: [AutomationRuntimeService],
+  exports: [
+    AutomationRuntimeService,
+    // Exposed because consuming modules inject these services directly:
+    // - RulesController injects ExecutionLogService for log read endpoints
+    // - AvaAutomationService injects ConditionEvaluatorService for AVA-driven
+    //   condition checks
+    ExecutionLogService,
+    ConditionEvaluatorService,
+  ],
 })
 export class AutomationRuntimeModule {}
