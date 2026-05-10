@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { TerraformWorker } from '../../../control-plane/src/app/terraform/terraform.worker';
+import { TerraformWorker } from './terraform/terraform.worker';
 import { ConfigService } from '@nestjs/config';
-import { AuditService } from '../../../control-plane/src/app/audit/audit.service';
+import { AuditService } from './audit/audit.service';
 
 @Injectable()
 export class AppService implements OnModuleInit, OnModuleDestroy {
