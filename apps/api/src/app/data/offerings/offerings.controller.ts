@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { OfferingsService, SubmitOfferingRequest } from './offerings.service';
-import { QueryOptions } from '../../../../api/src/app/data/collection-data.service';
+import { QueryOptions } from '../collection-data.service';
 
 interface ListQueryDto {
   page?: string;

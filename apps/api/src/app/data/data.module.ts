@@ -12,6 +12,8 @@ import { CollectionDataService } from './collection-data.service';
 import { ModelRegistryService } from './model-registry.service';
 import { WorkController } from './work/work.controller';
 import { WorkService } from './work/work.service';
+import { OfferingsController } from './offerings/offerings.controller';
+import { OfferingsService } from './offerings/offerings.service';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -32,7 +34,7 @@ import { WorkService } from './work/work.service';
  *     [x] events
  *     [x] automation
  *     [x] work
- *     [ ] offerings
+ *     [x] offerings
  *   Top-level service files (mid-stream):
  *     [x] collection-data.service + spec
  *     [x] model-registry.service
@@ -50,8 +52,8 @@ import { WorkService } from './work/work.service';
  */
 @Module({
   imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
-  controllers: [WorkController],
-  providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService, WorkService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService, WorkService],
+  controllers: [WorkController, OfferingsController],
+  providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService, WorkService, OfferingsService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService, WorkService, OfferingsService],
 })
 export class DataModule {}

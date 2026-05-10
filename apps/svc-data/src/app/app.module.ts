@@ -28,8 +28,8 @@ import { CollectionDataController } from './collection-data.controller';
 import { CollectionDataService } from '../../../api/src/app/data/collection-data.service';
 import { SyncTriggerClientService } from '../../../api/src/app/data/automation/sync-trigger-client.service';
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
-import { OfferingsController } from './offerings/offerings.controller';
-import { OfferingsService } from './offerings/offerings.service';
+import { OfferingsController } from '../../../api/src/app/data/offerings/offerings.controller';
+import { OfferingsService } from '../../../api/src/app/data/offerings/offerings.service';
 import { WorkController } from '../../../api/src/app/data/work/work.controller';
 import { WorkService } from '../../../api/src/app/data/work/work.service';
 
