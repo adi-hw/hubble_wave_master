@@ -52,6 +52,16 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-notify/src/app/health.controller.ts',
   'apps/svc-view-engine/src/app/health.controller.ts',
   'apps/svc-workflow/src/app/health.controller.ts',
+  // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity, and
+  // svc-metadata services are now thin adapters; their controller files
+  // live at the apps/api locations below. Health controllers in data and
+  // metadata were renamed to disambiguate route prefixes:
+  //   data:     /data/health     (DataHealthController)
+  //   metadata: /metadata/health (MetadataHealthController)
+  //   identity: /health          (HealthController, unchanged)
+  'apps/api/src/app/data/data-health.controller.ts',
+  'apps/api/src/app/identity/health.controller.ts',
+  'apps/api/src/app/metadata/metadata-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
@@ -65,6 +75,14 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-identity/src/app/oidc/oidc.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/auth.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/sso-config.controller.ts',
+  // ARC-W1 post-migration paths (apps/api/identity).
+  'apps/api/src/app/identity/auth/auth.controller.ts',
+  'apps/api/src/app/identity/auth/email-verification.controller.ts',
+  'apps/api/src/app/identity/auth/magic-link.controller.ts',
+  'apps/api/src/app/identity/auth/password-reset.controller.ts',
+  'apps/api/src/app/identity/auth/sso/sso-config.controller.ts',
+  'apps/api/src/app/identity/auth/sso/sso.controller.ts',
+  'apps/api/src/app/identity/oidc/oidc.controller.ts',
   // -------------------------------------------------------------------
   // Category 3: Public catalogs / unauthenticated render surfaces.
   // -------------------------------------------------------------------
@@ -73,14 +91,17 @@ const PUBLIC_ALLOWLIST = new Set([
   // controller has @Public on individual GET routes only — POST/PUT/
   // DELETE remain auth-required (verified at theme.controller.ts).
   'apps/svc-metadata/src/app/theme/theme.controller.ts',
+  'apps/api/src/app/metadata/theme/theme.controller.ts',
   // -------------------------------------------------------------------
   // Category 4: OAuth / OIDC integration callbacks (IdP-initiated).
   // -------------------------------------------------------------------
   'apps/svc-data/src/app/integration/oauth2.controller.ts',
+  'apps/api/src/app/data/integration/oauth2.controller.ts',
   // -------------------------------------------------------------------
   // Category 5: Auth handled by a dedicated guard (PackInstallGuard).
   // -------------------------------------------------------------------
   'apps/svc-metadata/src/app/packs/packs.controller.ts',
+  'apps/api/src/app/metadata/packs/packs.controller.ts',
 ]);
 
 export { PUBLIC_ALLOWLIST };
