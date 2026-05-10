@@ -6,7 +6,7 @@ import { Module } from '@nestjs/common';
  * each migration registers its module here.
  *
  * Migration progress (per docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md):
- *   [ ] common
+ *   [x] common
  *   [ ] config
  *   [ ] email
  *   [ ] auth

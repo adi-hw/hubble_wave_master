@@ -12,7 +12,7 @@ import { EmailModule } from './email/email.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { LoggingInterceptor } from '../../../api/src/app/identity/common/interceptors/logging.interceptor';
 import { ApiKeyGuard } from './auth/api-key/api-key.guard';
 import { AbacModule } from './abac/abac.module';
 import { SettingsModule } from './config/config.module';
