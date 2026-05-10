@@ -738,3 +738,82 @@ No issues found.
 ---
 
 **End of Phase 0 reconciliation plan.**
+
+---
+
+## Status: Complete (2026-05-10)
+
+Phase 0 branch reconciliation complete. 27 W0+W1 security/correctness commits
+landed on `claude/amazing-yalow-0f9c37` across 9 implementation tasks plus
+auxiliary follow-ups:
+
+- **21 cherry-picked clean** (Tasks 1, 3 batches: 11 W0 + 10 W1)
+- **1 CLAUDE.md additive merge** for §21 + amendment-log (Task 2: c4f3d73; the
+  reviewer recognized our branch's earlier "TRIM scanner list" framing was
+  outdated — W0 actually expanded service-boundary:check rather than removing
+  it — and resolved by accepting the security branch's W0 reality block while
+  preserving our amendment-log entries)
+- **1 web-client + eslint additive** (Task 4: 4ccae79) — pragmatic forward-pull
+  of bdbe876's eslint.config.mjs content because 4ccae79's diff context assumed
+  bdbe876 was already applied in the source-branch order; resolved with an
+  inline conditional loader for the custom rule file
+- **2 path-translated** for migrated services:
+  - Task 5: F011 LDAP filter escape, `apps/svc-identity/src/app/ldap/` → `apps/api/src/app/identity/ldap/`
+  - Task 6: F125+F126 packs SSRF, `apps/svc-metadata/src/app/packs/` → `apps/api/src/app/metadata/packs/`
+- **1 mixed apply** for bdbe876 (Task 7: F104 ESLint enforcement) — path-translated
+  3 svc-data lint fixes to apps/api/data, created remaining tools/eslint-rules/
+  files (index.js, no-versioned-identifier.spec.cjs, tsconfig.json), confirmed
+  the eslint.config.mjs and no-versioned-identifier.cjs content from Task 4 was
+  redundant; selftest:eslint-rules passes (14 valid + 7 invalid cases)
+- **1 W1 acceptance docs + amendment-log** (Task 8: 99b3d18) — chronologically-ordered
+  amendment-log entries in CLAUDE.md
+- **Auxiliary 1**: package-lock.json follow-up after Task 4's npm install
+- **Auxiliary 2 (Task 8.5)**: PUBLIC_ALLOWLIST entries for the 13 migrated
+  apps/api endpoints (the W0 baseline's allowlist referenced apps/svc-* paths
+  that no longer exist on this branch post-migration; security:check now passes)
+- **Auxiliary 3**: svc-notify tsconfig.app.json spec-exclude (the F127 cherry-pick
+  added a spec file but svc-notify's tsconfig didn't exclude *.spec.ts from the
+  production build — added the same exclude pattern present in svc-data's tsconfig)
+
+**Tag:** `arc-reconciled-with-w1-security` at HEAD `9135f53`. 33 commits since
+`arc-w1-data-complete`.
+
+### Verification at tag
+
+| Check | Result |
+|---|---|
+| `authz:check` | PASS (1 deferred entry tracked) |
+| `audit:check` | PASS |
+| `security:check` | PASS (after Task 8.5 allowlist update) |
+| `service-boundary:check` | PASS (7 allowlisted crossings) |
+| `deps:check` | PASS (1 legacy carve-out) |
+| `dead-code:check` | PASS |
+| `compliance:check` | PASS |
+| `selftest:scanners` | PASS (eslint-rules 14+7, others 7+12+11) |
+| nx build api | PASS |
+| nx build svc-identity | PASS |
+| nx build svc-metadata | PASS |
+| nx build svc-data | PASS |
+| nx build svc-notify | PASS (after auxiliary 3) |
+| nx build svc-control-plane | PASS |
+| nx build svc-ava | PASS |
+| nx build svc-migrations | PASS |
+| nx build web-client | PASS |
+| nx build web-control-plane | PASS |
+| nx test api | PASS (255 tests) |
+
+### Next steps unblocked
+
+Master roadmap §Phase 1 unblocked: continue W1 architectural migration in this
+order per PLATFORM-ROADMAP.md:
+1. svc-automation (~6,000 LoC, partly consolidated by Plan Fix 1)
+2. svc-ava (~8,000 LoC; AVA runtime, may have F072+F074 proposal state machine concerns)
+3. svc-workflow (~3,000 LoC; per canon §8 INVERT may merge with automation)
+4. svc-control-plane (~6,000 LoC; multi-tenant by design, different shape)
+5. svc-view-engine, svc-insights, svc-notify, svc-instance-api fold-ins
+6. Final cutover: delete legacy svc-* directories, delete service-boundary scanner
+   per canon §21 TRIM, route 100% traffic to apps/api, tag `arc-w1-complete`.
+
+The remaining svc-* services migrate against a baseline that already includes
+W0+W1 security work, so future migrations don't accumulate files needing
+post-hoc security re-fixes at new locations.
