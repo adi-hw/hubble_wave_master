@@ -6,6 +6,7 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app/app.module';
 import { ConfigService } from '@nestjs/config';
 import { assertSecureConfig, assertJwtConfig } from '@hubblewave/shared-types';
@@ -21,6 +22,11 @@ async function bootstrap() {
 
   // Security middleware
   app.use(helmet());
+  // F089 (W1 task 10): cookie-parser is required for the HttpOnly
+  // refresh-token cookie. login() sets it; refresh() reads it from
+  // req.cookies; logout() clears it. The frontend stores the access
+  // token in memory only — no localStorage path remains.
+  app.use(cookieParser());
 
   const corsOrigins =
     config.get<string>('CONTROL_PLANE_UI_URL') ||
