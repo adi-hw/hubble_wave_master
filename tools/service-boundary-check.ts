@@ -70,6 +70,14 @@ const KNOWN_VIOLATIONS: Array<{
     followUp:
       'W1 final cutover — delete apps/svc-notify entirely. NotificationsModule inside apps/api will serve all notification endpoints.',
   },
+  {
+    file: 'apps/svc-instance-api/src/app/app.module.ts',
+    importPath: '../../../api/src/app/instance-api/instance-api.module',
+    rationale:
+      'ARC-W1 Task 3: svc-instance-api folded into apps/api/src/app/instance-api/ (InstanceApiModule). The thin adapter re-imports InstanceApiModule so svc-instance-api continues serving auth-flow and pack endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
+    followUp:
+      'W1 final cutover — delete apps/svc-instance-api entirely. InstanceApiModule inside apps/api will serve all instance-api endpoints.',
+  },
 ];
 
 /**
@@ -233,6 +241,7 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'ava',
   'views',
   'notifications',
+  'instance-api',
 ]);
 
 function isServiceDir(name: string): boolean {

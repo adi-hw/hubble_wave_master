@@ -72,6 +72,8 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/api/src/app/ava/ava-health.controller.ts',
   'apps/api/src/app/views/views-health.controller.ts',
   'apps/api/src/app/notifications/notifications-health.controller.ts',
+  //   instance-api: /instance-api/health (InstanceApiHealthController)
+  'apps/api/src/app/instance-api/instance-api-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
@@ -86,6 +88,9 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-identity/src/app/oidc/oidc.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/auth.controller.ts',
   'apps/svc-instance-api/src/app/identity/auth/sso-config.controller.ts',
+  // ARC-W1 Task 3 post-migration paths (apps/api/instance-api/identity).
+  'apps/api/src/app/instance-api/identity/auth/auth.controller.ts',
+  'apps/api/src/app/instance-api/identity/auth/sso-config.controller.ts',
   // ARC-W1 post-migration paths (apps/api/identity).
   'apps/api/src/app/identity/auth/auth.controller.ts',
   'apps/api/src/app/identity/auth/email-verification.controller.ts',
