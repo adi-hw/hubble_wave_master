@@ -7,6 +7,7 @@ import { ValidationModule } from './validation/validation.module';
 import { AVAModule } from './ava/ava.module';
 import { FormulaModule } from './formula/formula.module';
 import { ComputedModule } from './computed/computed.module';
+import { IntegrationModule } from './integration/integration.module';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -21,7 +22,7 @@ import { ComputedModule } from './computed/computed.module';
  *     [x] ava
  *     [x] formula
  *     [x] computed
- *     [ ] integration
+ *     [x] integration
  *     [ ] grid
  *   Service-only sub-directories:
  *     [x] events
@@ -44,9 +45,9 @@ import { ComputedModule } from './computed/computed.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule],
+  imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
   controllers: [],
   providers: [EventOutboxService, SyncTriggerClientService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
 })
 export class DataModule {}

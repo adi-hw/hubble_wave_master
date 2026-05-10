@@ -38,7 +38,7 @@ import { ApiKeyController } from './api-key.controller';
 import { OAuth2Controller } from './oauth2.controller';
 import { ImportExportController } from './import-export.controller';
 import { ConnectorController } from './connector.controller';
-import { EventOutboxService } from '../../../../api/src/app/data/events/event-outbox.service';
+import { EventOutboxService } from '../events/event-outbox.service';
 
 @Module({
   imports: [

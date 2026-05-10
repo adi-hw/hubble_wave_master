@@ -33,7 +33,7 @@ import { OfferingsService } from './offerings/offerings.service';
 import { WorkController } from './work/work.controller';
 import { WorkService } from './work/work.service';
 
-import { IntegrationModule } from './integration/integration.module';
+import { IntegrationModule } from '../../../api/src/app/data/integration/integration.module';
 import { AVAModule } from '../../../api/src/app/data/ava/ava.module';
 import { WorkflowModule } from '../../../api/src/app/data/workflow/workflow.module';
 

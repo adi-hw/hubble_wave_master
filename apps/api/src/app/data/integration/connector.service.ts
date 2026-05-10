@@ -28,7 +28,7 @@ import {
   withAudit,
 } from '@hubblewave/instance-db';
 import { ConnectorCredentialsService } from './connector-credentials.service';
-import { EventOutboxService } from '../../../../api/src/app/data/events/event-outbox.service';
+import { EventOutboxService } from '../events/event-outbox.service';
 import { RequestContext } from '@hubblewave/auth-guard';
 
 /**
