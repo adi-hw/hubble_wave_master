@@ -7,6 +7,7 @@ import { RolesModule } from './roles/roles.module';
 import { IamModule } from './iam/iam.module';
 import { OidcModule } from './oidc/oidc.module';
 import { PoliciesModule } from './policies/policies.module';
+import { UiModule } from './ui/ui.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -27,7 +28,7 @@ import { PoliciesModule } from './policies/policies.module';
  *   [x] ldap
  *   [x] oidc
  *   [ ] navigation
- *   [ ] ui
+ *   [x] ui
  *   [ ] audit
  *   [ ] top-level (health controller + IdentityService + global guards/middleware)
  *
@@ -38,9 +39,9 @@ import { PoliciesModule } from './policies/policies.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule],
+  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule],
   controllers: [],
   providers: [],
-  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule],
+  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule],
 })
 export class IdentityModule {}

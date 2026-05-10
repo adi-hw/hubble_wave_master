@@ -17,7 +17,7 @@ import { ApiKeyGuard } from '../../../api/src/app/identity/auth/api-key/api-key.
 import { AbacModule } from '../../../api/src/app/identity/abac/abac.module';
 import { SettingsModule } from './config/config.module';
 import { AbacGuard } from '../../../api/src/app/identity/abac/abac.guard';
-import { UiModule } from './ui/ui.module';
+import { UiModule } from '../../../api/src/app/identity/ui/ui.module';
 import { HealthController } from './health.controller';
 import { IamModule } from '../../../api/src/app/identity/iam/iam.module';
 import { NavigationModule } from './navigation/navigation.module';
