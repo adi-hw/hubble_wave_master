@@ -35,7 +35,7 @@ import {
   ScheduledJobService,
   CreateScheduledJobDto,
   UpdateScheduledJobDto,
-} from '../scheduling/scheduled-job.service';
+} from '../../../../api/src/app/automation/scheduling/scheduled-job.service';
 import { ExecutionLogService, ExecutionStatus } from '../../../../api/src/app/automation/runtime/execution-log.service';
 import { AvaAutomationService, AvaAutomationRequest } from '../ava/ava-automation.service';
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
 
 /**
  * AutomationModule consolidates everything from apps/svc-automation into the
@@ -9,7 +10,7 @@ import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-automation-migration.md):
  *   Standard modules (clean-DAG order):
  *     [x] runtime (AutomationRuntimeModule — leaf)
- *     [ ] scheduling (depends on runtime)
+ *     [x] scheduling (depends on runtime)
  *     [ ] sync-trigger (depends on runtime)
  *   Cyclic-core bundle (atomic single-commit, ava ↔ rules):
  *     [ ] ava + rules
@@ -26,9 +27,9 @@ import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
  *   endpoints
  */
 @Module({
-  imports: [AutomationRuntimeModule],
+  imports: [AutomationRuntimeModule, SchedulingModule],
   controllers: [],
   providers: [],
-  exports: [AutomationRuntimeModule],
+  exports: [AutomationRuntimeModule, SchedulingModule],
 })
 export class AutomationModule {}

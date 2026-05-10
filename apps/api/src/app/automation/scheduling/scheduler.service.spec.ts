@@ -5,9 +5,9 @@ import { ScheduledJob } from '@hubblewave/instance-db';
 
 import { SchedulerService } from './scheduler.service';
 import { ScheduledJobService } from './scheduled-job.service';
-import { ActionHandlerService } from '../../../../api/src/app/automation/runtime/action-handler.service';
-import { ScriptSandboxService } from '../../../../api/src/app/automation/runtime/script-sandbox.service';
-import { ExecutionLogService } from '../../../../api/src/app/automation/runtime/execution-log.service';
+import { ActionHandlerService } from '../runtime/action-handler.service';
+import { ScriptSandboxService } from '../runtime/script-sandbox.service';
+import { ExecutionLogService } from '../runtime/execution-log.service';
 import {
   AutomationRateLimiterService,
   RateLimiterDecision,

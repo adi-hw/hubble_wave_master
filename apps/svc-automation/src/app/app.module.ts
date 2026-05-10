@@ -12,7 +12,7 @@ import { HealthController } from './health.controller';
 import { AutomationRuntimeModule } from '../../../api/src/app/automation/runtime/automation-runtime.module';
 import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
 import { RulesModule } from './rules/rules.module';
-import { SchedulingModule } from './scheduling/scheduling.module';
+import { SchedulingModule } from '../../../api/src/app/automation/scheduling/scheduling.module';
 import { AvaModule } from './ava/ava.module';
 
 @Module({
