@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { ProcessFlowDefinition } from '@hubblewave/instance-db';
 import { RequestUser } from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from '../collection-data.service';
-import { EventOutboxService } from '../events/event-outbox.service';
+import { EventOutboxService } from '../../../../api/src/app/data/events/event-outbox.service';
 
 const OFFERINGS_COLLECTION = 'offerings';
 const WORK_ITEMS_COLLECTION = 'work_items';

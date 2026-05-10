@@ -19,7 +19,7 @@ import { RequestContext } from '@hubblewave/auth-guard';
 import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'typeorm';
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
-import { EventOutboxService } from './events/event-outbox.service';
+import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
 import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
 import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
