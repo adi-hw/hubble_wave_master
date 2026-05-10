@@ -5,7 +5,7 @@ import {
   PropertyType,
 } from '@hubblewave/instance-db';
 import { SchemaDiffService } from './schema-diff.service';
-import type { CollectionStorageService } from '../../../../api/src/app/metadata/collection/collection-storage.service';
+import type { CollectionStorageService } from '../collection/collection-storage.service';
 
 /**
  * Construct a SchemaDiffService with stubbed repos. Only the

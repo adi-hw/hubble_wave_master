@@ -2,7 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { CollectionDefinition, PropertyDefinition, PropertyType } from '@hubblewave/instance-db';
-import { CollectionStorageService } from '../../../../api/src/app/metadata/collection/collection-storage.service';
+import { CollectionStorageService } from '../collection/collection-storage.service';
 
 const STANDARD_COLUMNS = new Set([
   'id',

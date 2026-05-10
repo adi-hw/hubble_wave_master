@@ -20,6 +20,9 @@ import { PropertyModule } from './property/property.module';
 import { AccessModule } from './access/access.module';
 import { PublishImpactModule } from './publish-impact/publish-impact.module';
 import { CollectionModule } from './collection/collection.module';
+import { SchemaController } from './schema/schema.controller';
+import { SchemaDeployService } from './schema/schema-deploy.service';
+import { SchemaDiffService } from './schema/schema-diff.service';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -48,7 +51,7 @@ import { CollectionModule } from './collection/collection.module';
  *   [x] access
  *   [x] publish-impact
  *   [x] collection
- *   [ ] schema
+ *   [x] schema
  *   [ ] packs
  *   [ ] top-level (HealthController + Metadata/Model/Module controllers + services + thin adapter)
  *
@@ -78,12 +81,14 @@ import { CollectionModule } from './collection/collection.module';
     DecisionTableModule,
     WorkspaceModule,
   ],
-  controllers: [],
+  controllers: [SchemaController],
   providers: [
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,
     ConnectorsIngestService,
+    SchemaDeployService,
+    SchemaDiffService,
   ],
   exports: [
     AccessModule,
@@ -107,6 +112,8 @@ import { CollectionModule } from './collection/collection.module';
     AvaIngestService,
     MetadataIngestService,
     ConnectorsIngestService,
+    SchemaDeployService,
+    SchemaDiffService,
   ],
 })
 export class MetadataModule {}
