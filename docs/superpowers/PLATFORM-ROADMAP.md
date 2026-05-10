@@ -1,25 +1,23 @@
 # HubbleWave Platform Master Roadmap
 
-> **This is the single source of truth.** It supersedes the parallel `docs/plan-fixes/00-master-remediation-roadmap.md` (which lives on a sibling branch and was a separate audit-driven effort) and integrates with our architectural work in `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
+> **This is the single source of truth.** It supersedes the parallel `docs/plan-fixes/00-master-remediation-roadmap.md` (which lived on a sibling branch and was a separate audit-driven effort) and integrates with our architectural work in `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
 >
 > **Read this file at the start of any session** to understand state, priorities, and what to do next. Update when a new tag lands or a major decision changes.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-metadata-complete`)
+> **Last updated:** 2026-05-10 (after `arc-w1-data-complete` + `arc-reconciled-with-w1-security` consolidated into master via PR #4 + PR #5)
 
 ---
 
 ## State of play
 
-There are **two parallel efforts** that started 2026-05-08 from common base `96c92c2`. They've diverged:
+Both efforts have now been consolidated into **`master`**. PR #4 (`arc-w1-data-complete` + `arc-reconciled-with-w1-security`) and PR #5 (coding-skills design spec) both landed 2026-05-10.
 
-| Effort | Branch | Tags / Acceptance | Status |
-|---|---|---|---|
-| **A — Architectural reshape** (this worktree) | `claude/nervous-volhard-f9abc2` | `arc-w0-complete`, `arc-w1-foundation-partial`, `arc-w1-identity-complete`, `arc-w1-metadata-complete` | ~38,400 LoC reshaped from 14-service distributed system → modular monolith. Identity + metadata done; 9 instance services remain. |
-| **B — Security/correctness audit remediation** (sibling worktree at `condescending-shamir-92422b`) | `claude/condescending-shamir-92422b` | W00-acceptance, W01-acceptance | 150-finding audit; 27 commits ahead of `96c92c2`. W0 (foundation: scanners) + W1 (stop-the-bleeding: 14 critical security fixes) shipped. W2–W11 (~120 findings) not started. |
+| Effort | Status |
+|---|---|
+| **A — Architectural reshape** (`apps/svc-* → apps/api`) | ~56,100 LoC migrated. Foundation + identity + metadata + data done. 4 instance services + fold-in services + cutover remain. |
+| **B — Security/correctness audit remediation** | W0 (foundation scanners) + W1 (14 critical fixes) cherry-picked into master via Phase 0 reconciliation. W2–W11 (~120 findings) still owed. |
 
-**Integration status**: The 27 W0+W1 security commits exist in the shared git object database but are **not in this branch's history** (verified: `git merge-base --is-ancestor` returns false for all 19 spot-checked SHAs). A direct merge would conflict heavily because the architectural reshape moved files (e.g. `apps/svc-identity/src/app/auth/oidc.service.ts` → `apps/api/src/app/identity/auth/sso/oidc.service.ts`); the security branch fixed those files at their old paths.
-
-Resolution path: **cherry-pick W0+W1 fixes from sibling branch into this branch with paths updated to apps/api**. ~3–5 days of careful work.
+The originally-diverged W0+W1 security commits from `claude/condescending-shamir-92422b` were path-translated and cherry-picked into the architectural branch (Phase 0, complete). master now contains both the modular monolith and the W0+W1 security baseline. Future migrations build on a clean baseline; future security work cherry-picks against post-migration paths.
 
 ---
 
@@ -32,10 +30,13 @@ Resolution path: **cherry-pick W0+W1 fixes from sibling branch into this branch 
 | `docs/superpowers/plans/2026-05-09-platform-w0-w1-foundation.md` | Foundation plan (executed) |
 | `docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md` | Identity migration plan (executed) |
 | `docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md` | Metadata migration plan (executed) |
+| `docs/superpowers/plans/2026-05-10-platform-w1-data-migration.md` | Data migration plan (executed) |
+| `docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md` | Phase 0 branch reconciliation plan (executed) |
 | **(this file)** | Master roadmap that sequences all remaining work across both efforts |
 | `CLAUDE.md` | The canon (amended through `arc-w0-complete`). Authoritative on rules. |
 | `apps/api/src/app/identity/identity.module.ts` | Migration progress checklist for identity (15 sub-modules ✓) |
 | `apps/api/src/app/metadata/metadata.module.ts` | Migration progress checklist for metadata (23 sub-modules ✓) |
+| `apps/api/src/app/data/data.module.ts` | Migration progress checklist for data (12 sub-directories ✓) |
 
 ---
 
@@ -57,7 +58,7 @@ From the spec + founder direction (2026-05-09):
 
 ## What's done
 
-### Effort A — architectural (4 git tags in this branch)
+### Effort A — architectural (6 tags, all consolidated into master)
 
 | Tag | HEAD | What |
 |---|---|---|
@@ -65,6 +66,10 @@ From the spec + founder direction (2026-05-09):
 | `arc-w1-foundation-partial` | `bffef2f` | kernel + db + audit module wrappers in apps/api (re-exports from libs/instance-db) |
 | `arc-w1-identity-complete` | `8710e79` | All 15 svc-identity sub-modules + 3 top-level files → apps/api/identity (~17,200 LoC; cyclic-core bundle for auth+abac+ldap+roles) |
 | `arc-w1-metadata-complete` | `0b2f0d9` | All 23 svc-metadata sub-modules + 7 top-level files → apps/api/metadata (~21,200 LoC) |
+| `arc-w1-data-complete` | `d10f0d9` | All 12 svc-data sub-directories + 9 top-level files → apps/api/data (~17,700 LoC). Mid-stream service-file move pattern handled cross-deps cleanly. |
+| `arc-reconciled-with-w1-security` | `fbb640b` | 27 W0+W1 security commits cherry-picked from `claude/condescending-shamir-92422b` with path-translation for migrated services (LDAP F011, packs SSRF F125+F126, ESLint F104). |
+
+**Cumulative**: ~56,100 LoC migrated across 273 files via `git mv` (history preserved). Both PRs merged into master (PR #4 = ARC-W1 + Phase 0; PR #5 = coding-skills design spec). Master HEAD: `7b47d49`.
 
 ### Effort B — security/correctness (in sibling branch only)
 
@@ -100,51 +105,40 @@ From the spec + founder direction (2026-05-09):
 
 ## Remaining work (consolidated, sequenced by priority)
 
-### Phase 0: Branch reconciliation [CRITICAL — do FIRST in next session]
+### Phase 0: Branch reconciliation — **COMPLETE** ✓ (2026-05-10)
 
-**Objective**: Get the W0+W1 security work into our branch before any further migration work, so we don't accumulate more files that need security fixes in their new locations.
+Tag `arc-reconciled-with-w1-security` at `fbb640b`. 27 W0+W1 security commits from `claude/condescending-shamir-92422b` cherry-picked into the architectural branch:
+- 21 cherry-picked clean (paths unchanged on architectural branch — libs/, tools/, .github/, web-client, svc-* services not yet migrated)
+- 1 CLAUDE.md additive merge (W0 acceptance + §21 amendment-log)
+- 1 web-client + eslint additive merge
+- 2 path-translated for migrated services (F011 LDAP → apps/api/identity/ldap; F125+F126 packs SSRF → apps/api/metadata/packs)
+- 1 mixed apply for bdbe876 ESLint enforcement (svc-data lint fixes path-translated to apps/api/data, plus eslint-rules new files)
+- 1 W1 acceptance + amendment-log additive merge
+- Auxiliary: PUBLIC_ALLOWLIST entries added for migrated apps/api endpoints, svc-notify tsconfig spec exclude, scanner-coverage-gap acknowledged in code
 
-**Tasks** (~3–5 days):
+See [docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md](plans/2026-05-10-phase0-branch-reconciliation.md) for the full plan + completion note.
 
-1. **Survey conflicts**: For each of the 27 commits in `claude/condescending-shamir-92422b` since `96c92c2`, run `git diff --name-only` and identify which paths still exist in our branch versus which moved to apps/api during identity/metadata migrations.
+### Phase 1: Complete W1 architectural migration (in progress)
 
-2. **Cherry-pick low-conflict commits first** (W0 scanners + custom ESLint rule + CI config — these touched `tools/`, `.github/`, `eslint.config.mjs`, `package.json`, NOT the migrated services). Likely cleanly applicable.
+Per spec §8. svc-data is done; 4 instance services + fold-ins remain:
 
-3. **Cherry-pick W1 fixes with path translation**:
-   - F011 (LDAP filter injection): was in `apps/svc-identity/src/app/ldap/ldap.service.ts:54`, now needs to land in `apps/api/src/app/identity/ldap/ldap.service.ts:54`. Same fix, new path.
-   - F027 (expr-eval sandbox): in `libs/automation/...` — path unchanged.
-   - F053 (default password): in `apps/svc-migrations/src/main.ts` — unchanged.
-   - F073 (vector authz): in `libs/ai/...` — unchanged.
-   - F088 (Rules-of-Hooks): in `apps/web-client/...` — unchanged.
-   - F089 (control plane tokens): in `apps/svc-control-plane/...` and `apps/web-control-plane/...` — unchanged (svc-control-plane hasn't migrated yet).
-   - F093 (sanitizeHtml): in `apps/web-client/...` — unchanged.
-   - F111 (secrets-rotation redaction): doc-only — unchanged.
-   - F124 (report SQL injection): in `libs/analytics/...` — unchanged.
-   - F125, F126 (pack SSRF + public): was in `apps/svc-metadata/src/app/packs/...`, **migrated** — now `apps/api/src/app/metadata/packs/...`. Path translation needed.
-   - F127 (notification template XSS): in `apps/svc-notify/...` — unchanged (notify hasn't migrated).
-   - F139, F141 (SAML): in `libs/enterprise/...` — unchanged (W4 of Effort B will move it; until then, libs path is correct).
+| Service | LoC | Order | Status | Notes |
+|---|---|---|---|---|
+| svc-data | ~17,700 | — | ✓ COMPLETE | Tag `arc-w1-data-complete`. 12 sub-directories + 9 top-level files at `apps/api/src/app/data/`. |
+| **svc-automation** | **~6,000** | **1st** | **next** | Already partially consolidated in Plan Fix 1; should be fast |
+| svc-ava | ~8,000 | 2nd | pending | AVA runtime; F072+F074 proposal state machine overlap with Plan Fix 16 (`ca16e40`) — coordinate before migrating |
+| svc-workflow | ~3,000 | 3rd | pending | Per canon §8 INVERT, merges with automation engine — may fold into `apps/api/src/app/automation/` rather than getting its own module |
+| svc-control-plane | ~6,000 | 4th | pending | Different plane (multi-tenant by design); different shape than instance-plane migrations |
+| svc-view-engine | ~2,000 | 5th | pending | Folds into spec §2 `views` module concept |
+| svc-insights | ~2,000 | 6th | pending | Folds into spec §2 `analytics` module concept |
+| svc-notify | ~1,000 | 7th | pending | Folds into spec §2 `notifications` module concept |
+| svc-instance-api | ~1,000 | 8th | pending | Aggregator/proxy; "fold into apps/api wholesale" per spec §2 |
 
-4. **Verify** all spec assertions pass (148 W1 assertions) + all scanners green + both monolith builds clean.
+**Phase 1 prerequisites (before next migration):**
 
-5. **Tag** `arc-reconciled-with-w1-security` after the cherry-pick lands.
+- **Scanner coverage extension** — `tools/service-boundary-check.ts` and `tools/authz-bypass-check.ts` currently use `SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/` which only matches `apps/svc-*`. ~56,100 LoC of migrated services live at `apps/api/src/app/{identity,metadata,data}/` where the scanners don't reach. Documented in code as a Phase 1 follow-up. Must extend before legacy `apps/svc-*` deletion can land per canon §21 TRIM.
 
-### Phase 1: Complete W1 architectural migration (next biggest unblocker)
-
-Per spec §8 + RESUME-CONTEXT.md "what's left in W1":
-
-| Service | LoC | Order | Notes |
-|---|---|---|---|
-| svc-data | ~15,000 | 1st | Biggest unblocker for W4 customization layer; survey first for cyclic deps |
-| svc-automation | ~6,000 | 2nd | Already partially consolidated in Plan Fix 1; should be fast |
-| svc-ava | ~8,000 | 3rd | AVA runtime; may have proposal state machine concerns (F072, F074) |
-| svc-workflow | ~3,000 | 4th | Per canon §8 INVERT, merges with automation engine — may not need a separate apps/api/workflow module |
-| svc-control-plane | ~6,000 | 5th | Different plane (multi-tenant by design); may be a different shape than instance-plane migrations |
-| svc-view-engine | ~2,000 | 6th | Folds into spec §2 `views` module concept |
-| svc-insights | ~2,000 | 7th | Folds into spec §2 `analytics` module concept |
-| svc-notify | ~1,000 | 8th | Folds into spec §2 `notifications` module concept |
-| svc-instance-api | ~1,000 | 9th | Aggregator/proxy; "fold into apps/api wholesale" per spec §2 |
-
-**Estimated**: 6–10 weeks solo for the 9 services + final cutover (delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api).
+**Estimated**: 4–8 weeks solo for the 8 remaining services + final cutover (delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api).
 
 After this: tag `arc-w1-complete`. apps/api is the sole instance-plane runtime.
 
@@ -258,26 +252,28 @@ Estimated calendar to all checkboxes done: **12–15 months solo** (per RESUME-C
 
 ## What to do next session
 
-Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`.
+Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`. master is at `7b47d49` with all of Effort A and the W0+W1 portion of Effort B consolidated.
 
-**Recommended next move**: Phase 0 — branch reconciliation. Get the W0+W1 security work into this branch before any further migration. Path-translate the W1 fixes that touched migrated files; cherry-pick the rest cleanly.
+**Recommended next move**: Phase 1 — extend scanners to apps/api, then continue W1 architectural migration with svc-automation.
 
 Specifically:
 
 ```text
 Read docs/superpowers/PLATFORM-ROADMAP.md and RESUME-CONTEXT.md.
 
-Then start Phase 0 (branch reconciliation):
-1. Survey all 27 commits in claude/condescending-shamir-92422b that aren't in our branch
-2. Categorize each by conflict risk (clean / path-translation / semantic-conflict)
-3. Cherry-pick the clean ones first
-4. For path-translation cases (F125, F126 in packs; F011 in identity/ldap), apply the same fix at the new apps/api path
-5. After all are in, tag `arc-reconciled-with-w1-security`
-6. Then resume migration plan: write svc-data migration plan as the next phase of W1
+Then:
+1. Phase 1 prerequisite: extend tools/service-boundary-check.ts and tools/authz-bypass-check.ts
+   to walk apps/api/src/app/{identity,metadata,data,...}/ — currently SERVICE_DIR_RE only
+   matches apps/svc-*, leaving ~56,100 LoC of migrated services unscanned.
+2. Survey svc-automation sub-modules + cross-deps (PowerShell snippet from RESUME-CONTEXT.md).
+3. Write the svc-automation migration plan at docs/superpowers/plans/<today>-platform-w1-automation-migration.md
+   in the same shape as data and metadata migration plans.
+4. Execute the plan via subagent-driven-development.
+5. Tag arc-w1-automation-complete.
 ```
 
-After Phase 0 lands, the priorities go:
-1. Continue W1 architectural migration (svc-data → svc-automation → svc-ava → svc-workflow → svc-control-plane → fold-in services → final cutover)
+After svc-automation lands, the priorities go:
+1. Continue W1 architectural migration (svc-ava → svc-workflow → svc-control-plane → fold-in services → final cutover)
 2. Then Phase 2 critical security (W2 authz correctness, W3 JWT/SSO/MFA, W5 audit/data-plane)
 3. Then Phase 3 architectural moat (W2-W8 from spec § 8)
 
