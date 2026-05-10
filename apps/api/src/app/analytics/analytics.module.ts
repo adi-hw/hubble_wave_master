@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
 import { BackupModule } from './backup/backup.module';
+import { DashboardsModule } from './dashboards/dashboards.module';
 
 /**
  * AnalyticsModule consolidates svc-insights into apps/api per spec §2.
@@ -13,16 +14,16 @@ import { BackupModule } from './backup/backup.module';
  *   [x] alerts
  *   [x] audit-integrity
  *   [x] backup
- *   [ ] dashboards
+ *   [x] dashboards
  *   [ ] metrics
  *   [ ] analytics-health.controller (renamed from health.controller)
  *   [ ] analytics.module final composition
  *   [ ] svc-insights app.module thin adapter
  */
 @Module({
-  imports: [AlertsModule, AuditIntegrityModule, BackupModule],
+  imports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule],
   controllers: [],
   providers: [],
-  exports: [AlertsModule, AuditIntegrityModule, BackupModule],
+  exports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule],
 })
 export class AnalyticsModule {}
