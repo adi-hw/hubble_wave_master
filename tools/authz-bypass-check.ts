@@ -50,6 +50,7 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'identity',
   'metadata',
   'data',
+  'automation',
 ]);
 
 interface ServiceContext {
