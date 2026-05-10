@@ -376,7 +376,7 @@ export class OAuth2Service {
         userId: decoded.sub,
         scope: decoded.scope,
       };
-    } catch (error) {
+    } catch (_error) {
       return { valid: false, error: 'Invalid token' };
     }
   }

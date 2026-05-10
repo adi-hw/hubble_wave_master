@@ -51,7 +51,7 @@ export class ConnectorCredentialsService {
     let parsed: unknown;
     try {
       parsed = JSON.parse(value);
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Credential secret must be valid JSON');
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {

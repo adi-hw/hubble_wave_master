@@ -18,11 +18,17 @@ export default [
   ...nx.configs['flat/typescript'],
   ...nx.configs['flat/javascript'],
   {
-      "ignores": [
-        "**/dist",
-        "**/out-tsc",
-        "**/vite.config.*.timestamp*"
-      ]
+    ignores: [
+      '**/dist',
+      '**/out-tsc',
+      '**/vite.config.*.timestamp*',
+      // Self-test fixtures plant TODO/FIXME-shaped strings AS DATA;
+      // exclude them so they don't trip no-warning-comments.
+      '**/__selftest_fixture__/**',
+      '**/__fixture__/**',
+      'tools/dead-code-allowlist.json',
+      'tools/eslint-rules/no-versioned-identifier.spec.cjs',
+    ],
   },
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
@@ -42,6 +48,63 @@ export default [
       ],
     },
   },
+  // ----------------------------------------------------------------
+  // Enforcement model:
+  //
+  // CI uses `nx affected --target=lint` (see .github/workflows/ci.yml
+  // "lint" job), which runs ESLint on files changed in the current PR
+  // — not the entire repo. The implication: new rules below apply
+  // immediately to any file touched by any future PR. Pre-existing
+  // rule violations in unchanged files (89 across apps/+libs/ as of
+  // 2026-05-09: 23 no-unused-vars, 17 no-case-declarations, 17
+  // no-inferrable-types, 10 no-useless-escape, etc.) do NOT fail CI
+  // until those files are next modified, at which point the affected-
+  // file lint will surface them and they must be cleaned up before
+  // merge. The pre-existing backlog is tracked by W4 ("delete
+  // ruthlessly" includes lint debt).
+  //
+  // Trade-off: a one-shot full-repo cleanup of 89 errors would be ~2
+  // days of mechanical work that doesn't move the needle on any
+  // architectural finding. Catching new violations + cleaning as we
+  // go is consistent with the master roadmap's "do not block waves
+  // on cleanup outside their scope" principle.
+  // ----------------------------------------------------------------
+  // Canon §21 enforcement (W0 task 6 / F104).
+  //
+  // Rules that previously existed only in canon prose are now lint-
+  // enforced. Per-rule rollout strategy:
+  //
+  //   - no-warning-comments: error. Catches TODO/FIXME/XXX/HACK. The
+  //     4 known existing TODOs each carry an inline
+  //     `// eslint-disable-next-line no-warning-comments -- F<id>/W<wave>`
+  //     comment that links them to a tracked finding + owning wave.
+  //
+  //   - hw/no-versioned-identifier: error. Custom rule defined at
+  //     tools/eslint-rules/no-versioned-identifier.cjs; spec at the
+  //     adjacent .spec.cjs. Detects V<digits>$, Deprecated*, old*,
+  //     Temp*. Intentionally does NOT match `legacy*` because that
+  //     prefix describes domain concepts in this codebase ('legacyPack'
+  //     = 'pack code recorded in a prior entity version'); rename to
+  //     'priorPack' etc. is W4 cleanup work per master roadmap §D.3.
+  //
+  //   - @typescript-eslint/no-unused-vars: error with
+  //     argsIgnorePattern: '^_'. Catches the obvious dead-code class
+  //     inside files. Args prefixed with _ remain valid (pattern
+  //     supports the "intentionally unused" idiom).
+  //
+  //   - react-hooks/rules-of-hooks: DEFERRED to W1 (owns F088 fix
+  //     + the related plugin install). Adding the rule now without
+  //     fixing F088 first would error on master immediately.
+  //
+  //   - @typescript-eslint/naming-convention: DEFERRED. Surface area
+  //     is huge across 1000+ files; W0 ships the high-leverage rules
+  //     and a separate pass will handle naming systematically.
+  //
+  //   - no-restricted-syntax for "no commented-out code": DEFERRED.
+  //     Reliable detection requires AST-level analysis; the simpler
+  //     no-warning-comments + dead-code-check covers the most common
+  //     vectors today.
+  // ----------------------------------------------------------------
   {
     files: [
       '**/*.ts',

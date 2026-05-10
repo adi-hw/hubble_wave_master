@@ -183,6 +183,7 @@ describe('ScriptSandboxService', () => {
     // expr-eval upgrade changes that shape, this guard must still detect
     // pathological nesting. Plan §S5 W1.9 flags this as 'untested'.
     it.skip('depth limit fires deterministically across expr-eval shapes (Plan §S5 W1.9)', async () => {
+      // eslint-disable-next-line no-warning-comments -- F121, owed to W7 (script-sandbox hardening replaces this guard)
       // TODO: revisit once Fix 6 lands and the allow-list provides a
       // function-based depth bound rather than token-shape introspection.
     });
@@ -216,6 +217,7 @@ describe('ScriptSandboxService', () => {
     // genuinely slow expr-eval expression here would either not exist or
     // would hang the test runner.
     it.skip('cancels a synchronously-hung expression at the timeout (Plan Fix 5 / W1.9)', async () => {
+      // eslint-disable-next-line no-warning-comments -- F121, owed to W7 (worker_thread cancellation per master roadmap §D.3)
       // TODO: add once Fix 6 introduces a step-counter on the parser
       // that can yield to the event loop.
     });

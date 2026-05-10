@@ -249,7 +249,7 @@ function checkBannedPatterns(violations: Violation[]) {
 // Match a literal string containing an http(s):// URL when used in code
 // (assignments, fetch calls, axios.get, new URL, etc). Excludes URLs that
 // appear only inside line/block comments or docstrings.
-const HARDCODED_URL_PATTERN = /(?:^|[^\/\*])(?:['"`])https?:\/\/[^\s'"`]+['"`]/m;
+const HARDCODED_URL_PATTERN = /(?:^|[^/*])(?:['"`])https?:\/\/[^\s'"`]+['"`]/m;
 
 function stripCommentsAndStrings(source: string): string {
   // Remove block comments

@@ -84,7 +84,7 @@ export class ComputedPropertyDispatcher {
     operation: 'create' | 'update';
   }): Promise<Record<string, unknown>> {
     const computed = args.properties.filter((p) => this.isComputedProperty(p));
-    let merged: Record<string, unknown> = { ...args.record };
+    const merged: Record<string, unknown> = { ...args.record };
 
     // NOTE: even when this collection has zero computed properties,
     // we still need to run the parent-rollup discovery pass below —

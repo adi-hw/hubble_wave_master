@@ -337,7 +337,7 @@ function detectOrphanLibs(allowlist: AllowlistEntry[]): Finding[] {
   }
 
   // Read tsconfig.base.json to map alias → primary file.
-  let aliasToPath: Record<string, string> = {};
+  const aliasToPath: Record<string, string> = {};
   try {
     const tsc = JSON.parse(readFileSync(join(ROOT, 'tsconfig.base.json'), 'utf-8')) as {
       compilerOptions?: { paths?: Record<string, string[]> };
