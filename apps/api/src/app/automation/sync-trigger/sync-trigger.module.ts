@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AutomationRuntimeModule } from '../../../../api/src/app/automation/runtime/automation-runtime.module';
+import { AutomationRuntimeModule } from '../runtime/automation-runtime.module';
 import { SyncTriggerController } from './sync-trigger.controller';
 import { SyncTriggerService } from './sync-trigger.service';
 

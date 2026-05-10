@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RequestContext } from '@hubblewave/auth-guard';
-import { AutomationRuntimeService } from '../../../../api/src/app/automation/runtime/automation-runtime.service';
+import { AutomationRuntimeService } from '../runtime/automation-runtime.service';
 import {
   ExecuteSyncTriggerRequestDto,
   ExecuteSyncTriggerResponseDto,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
+import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
 
 /**
  * AutomationModule consolidates everything from apps/svc-automation into the
@@ -11,7 +12,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
  *   Standard modules (clean-DAG order):
  *     [x] runtime (AutomationRuntimeModule — leaf)
  *     [x] scheduling (depends on runtime)
- *     [ ] sync-trigger (depends on runtime)
+ *     [x] sync-trigger (depends on runtime)
  *   Cyclic-core bundle (atomic single-commit, ava ↔ rules):
  *     [ ] ava + rules
  *   Final top-level (controller, app.module thin adapter):
@@ -27,9 +28,9 @@ import { SchedulingModule } from './scheduling/scheduling.module';
  *   endpoints
  */
 @Module({
-  imports: [AutomationRuntimeModule, SchedulingModule],
+  imports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule],
   controllers: [],
   providers: [],
-  exports: [AutomationRuntimeModule, SchedulingModule],
+  exports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule],
 })
 export class AutomationModule {}
