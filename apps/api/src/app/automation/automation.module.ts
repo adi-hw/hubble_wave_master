@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AutomationRuntimeModule } from './runtime/automation-runtime.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
+import { AvaModule } from './ava/ava.module';
+import { RulesModule } from './rules/rules.module';
 
 /**
  * AutomationModule consolidates everything from apps/svc-automation into the
@@ -14,7 +16,7 @@ import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
  *     [x] scheduling (depends on runtime)
  *     [x] sync-trigger (depends on runtime)
  *   Cyclic-core bundle (atomic single-commit, ava ↔ rules):
- *     [ ] ava + rules
+ *     [x] ava + rules
  *   Final top-level (controller, app.module thin adapter):
  *     [ ] automation-health.controller (renamed from health.controller)
  *     [ ] automation.module final composition
@@ -28,9 +30,9 @@ import { SyncTriggerModule } from './sync-trigger/sync-trigger.module';
  *   endpoints
  */
 @Module({
-  imports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule],
+  imports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule, AvaModule, RulesModule],
   controllers: [],
   providers: [],
-  exports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule],
+  exports: [AutomationRuntimeModule, SchedulingModule, SyncTriggerModule, AvaModule, RulesModule],
 })
 export class AutomationModule {}

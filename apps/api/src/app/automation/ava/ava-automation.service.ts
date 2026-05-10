@@ -8,7 +8,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { AutomationService } from '../rules/rules.service';
-import { ConditionEvaluatorService } from '../../../../api/src/app/automation/runtime/condition-evaluator.service';
+import { ConditionEvaluatorService } from '../runtime/condition-evaluator.service';
 
 export interface AvaAutomationRequest {
   intent: 'create_rule' | 'explain_rule' | 'suggest_rules' | 'list_rules' | 'debug_rule';
