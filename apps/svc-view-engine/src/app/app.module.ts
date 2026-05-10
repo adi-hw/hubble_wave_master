@@ -18,7 +18,7 @@ import {
   PropertyAccessRule,
 } from '@hubblewave/instance-db';
 import { HealthController } from './health.controller';
-import { ViewModule } from './view/view.module';
+import { ViewModule } from '../../../api/src/app/views/view/view.module';
 import { TransformModule } from '../../../api/src/app/views/transform/transform.module';
 import { NavigationResolveModule } from '../../../api/src/app/views/navigation/navigation.module';
 
