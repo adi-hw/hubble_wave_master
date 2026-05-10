@@ -8,7 +8,7 @@ import { AuthGuardModule } from '@hubblewave/auth-guard';
 import { IdentityService } from './identity.service';
 import { AuthModule } from './auth/auth.module';
 import { OidcModule } from './oidc/oidc.module';
-import { EmailModule } from './email/email.module';
+import { EmailModule } from '../../../api/src/app/identity/email/email.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { RolesGuard } from './auth/guards/roles.guard';

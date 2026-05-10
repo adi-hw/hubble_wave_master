@@ -6,7 +6,7 @@ import {
   EmailVerificationToken,
   User,
 } from '@hubblewave/instance-db';
-import { EmailService } from '../email/email.service';
+import { EmailService } from '../../../../api/src/app/identity/email/email.service';
 import { RedisService } from '@hubblewave/redis';
 
 /**

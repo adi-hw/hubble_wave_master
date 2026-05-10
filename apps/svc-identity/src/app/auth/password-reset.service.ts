@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, IsNull } from 'typeorm';
 import { PasswordResetToken, User, RefreshToken } from '@hubblewave/instance-db';
-import { EmailService } from '../email/email.service';
+import { EmailService } from '../../../../api/src/app/identity/email/email.service';
 import { AuthEventsService } from './auth-events.service';
 import * as crypto from 'crypto';
 import * as argon2 from 'argon2';

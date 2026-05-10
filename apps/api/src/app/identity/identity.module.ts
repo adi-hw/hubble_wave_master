@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EmailModule } from './email/email.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -8,7 +9,7 @@ import { Module } from '@nestjs/common';
  * Migration progress (per docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md):
  *   [x] common
  *   [ ] config
- *   [ ] email
+ *   [x] email
  *   [ ] auth
  *   [ ] abac
  *   [ ] policies
@@ -30,9 +31,9 @@ import { Module } from '@nestjs/common';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [],
+  imports: [EmailModule],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [EmailModule],
 })
 export class IdentityModule {}

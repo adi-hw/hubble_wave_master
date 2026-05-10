@@ -50,7 +50,7 @@ import { EmailVerificationController } from './email-verification.controller';
 import { ApiKeyService } from './api-key/api-key.service';
 import { ApiKeyController } from './api-key/api-key.controller';
 import { ApiKeyGuard } from './api-key/api-key.guard';
-import { EmailModule } from '../email/email.module';
+import { EmailModule } from '../../../../api/src/app/identity/email/email.module';
 import { AuthEventsService } from './auth-events.service';
 import { SessionService } from './session.service';
 import { SessionController } from './session.controller';
