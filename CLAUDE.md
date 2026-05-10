@@ -346,6 +346,20 @@ Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.
 
 ---
 
+## 17.5. Customization Contract (canon §17.5 NEW, 2026-05-09)
+
+**Customer customizations are versioned, namespaced, and validated against platform-API versions. No customization may modify platform schema. Upgrades are blocked when customer customizations would break.**
+
+Concretely:
+- All customer-defined collections, properties, relationships, automations, views, forms, dashboards, plugins, and integrations live in customer-namespaced metadata or customer-namespaced tables (`cust__{pack_id}__{collection_id}`) or JSONB extension columns on platform tables.
+- Customer customizations declare a `targetPlatformApiVersion` in their pack manifest.
+- Pre-upgrade validator (W5) inspects every installed pack against the new platform version and classifies the upgrade as green / yellow (auto-migrate) / red (manual remediation).
+- If validator output is green, the upgrade is architecturally guaranteed safe — no customization can break at runtime.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §5 (customization architecture, the moat).
+
+---
+
 ## 18. Control Plane Architecture
 
 ### Purpose
@@ -547,6 +561,45 @@ Past amendments (most recent first):
   acknowledged); §10 audit-in-transaction requirement (W1.6 + W2.D +
   W3.C); §14 reference-checking on delete (W2.A); §12 AVA gate-
   enforcement deferral (W5.B). Refs Plan Fix 13.
+
+---
+
+## 25. Plugin SDK is the Platform Contract (canon §25 NEW, 2026-05-09)
+
+`@hubblewave/plugin-sdk` (web) and `@hubblewave/plugin-sdk-mobile` are the typed, versioned contract that customer plugin authors consume. The SDK commits to:
+
+- API stability for **N=2 major versions** (~2 years given quarterly release cadence). Plugins built against `2026.05` work through `2027.05` minimum.
+- Deprecated APIs continue to work for one full release cycle with console warnings.
+- Removed APIs ship with automated migration tooling (`hw-plugin migrate`).
+- No silent breakage: plugins outside the supported version window fail to load with a precise error pointing to the migration tool.
+
+The SDK is the precise commitment ServiceNow can't make — their customers customized via DOM and JavaScript injection over 20 years, no contract, no validator possible. We can promise it because we're greenfield and the contract IS the customization surface.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §5.3.
+
+---
+
+## 26. Mobile is a First-Class Platform Surface (canon §26 NEW, 2026-05-09)
+
+All field-staff workflows have mobile parity with web. Mobile is offline-first; the offline-degraded experience is the design baseline, online is the bonus. Customizations (workspaces, plugins, automations, views) apply to mobile via `@hubblewave/plugin-sdk-mobile`.
+
+Stack: React Native + Expo + WatermelonDB + react-native-vision-camera + react-native-mlkit. iOS + Android from one TypeScript codebase. JWT auth shared with web; biometric session unlock (FaceID, TouchID, fingerprint) per session.
+
+Direct competitive lever vs Nuvolo's weak mobile experience. Healthcare field staff are explicit pain-point.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 mobile experience.
+
+---
+
+## 27. Workspaces + UI Builder are the User-Facing Customization Surface (canon §27 NEW, 2026-05-09)
+
+Customers compose persona-tuned UIs (Workspaces) and entire pages (UI Builder full page authoring) without code, using the same primitives HubbleWave uses to ship vertical packs.
+
+The UI Builder achieves full feature parity with ServiceNow UI Builder: page composition, route definition, layout authoring, templates, multi-screen workflows, variants (web/mobile/desktop), localization, branding, conditional logic, event wiring, AI authoring assist via §AI Code Assistant.
+
+Eat-our-own-dog-food: every OOTB workspace shipped by HubbleWave is built via the same UI Builder customers use. If our own product can't be built on the customization layer, the layer isn't real.
+
+Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 Workspaces + UI Builder.
 
 ---
 
