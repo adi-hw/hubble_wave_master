@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HubbleWave Platform Architecture Design — 2026-05-09</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --fg: #1f2328;
+    --fg-muted: #59636e;
+    --bg: #ffffff;
+    --bg-soft: #f6f8fa;
+    --border: #d0d7de;
+    --accent: #0969da;
+    --accent-soft: #ddf4ff;
+    --warn: #9a6700;
+    --warn-soft: #fff8c5;
+    --danger: #cf222e;
+    --danger-soft: #ffebe9;
+    --success: #1a7f37;
+    --success-soft: #dafbe1;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #e6edf3;
+      --fg-muted: #7d8590;
+      --bg: #0d1117;
+      --bg-soft: #161b22;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent-soft: #163556;
+      --warn: #d29922;
+      --warn-soft: #4d3a00;
+      --danger: #f85149;
+      --danger-soft: #4d1010;
+      --success: #3fb950;
+      --success-soft: #0f3a1a;
+      --code-bg: #161b22;
+      --code-fg: #c9d1d9;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    color: var(--fg);
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { display: none; } }
+  .toc {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    background: var(--bg-soft);
+    padding: 24px 16px 24px 24px;
+    font-size: 14px;
+  }
+  .toc h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 8px 0 8px 0;
+    border: 0;
+    padding: 0;
+  }
+  .toc ol { list-style: none; padding: 0; margin: 0 0 16px 0; }
+  .toc ol li { margin: 2px 0; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .content {
+    padding: 40px 60px;
+    max-width: 980px;
+  }
+  @media (max-width: 900px) { .content { padding: 24px 20px; } }
+  h1, h2, h3, h4 {
+    font-weight: 600;
+    line-height: 1.25;
+    margin-top: 32px;
+    margin-bottom: 12px;
+  }
+  h1 { font-size: 28px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-top: 0; }
+  h2 { font-size: 22px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 18px; }
+  h4 { font-size: 16px; color: var(--fg-muted); }
+  p { margin: 8px 0 12px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 24px; margin: 8px 0 16px; }
+  li { margin: 4px 0; }
+  blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 6px;
+  }
+  blockquote p { margin: 0; }
+  code {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875em;
+    line-height: 1.5;
+    margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-soft);
+    font-weight: 600;
+  }
+  tr:nth-child(even) td { background: var(--bg-soft); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+  .meta {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 0 0 24px 0;
+    font-size: 14px;
+  }
+  .meta dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+  .meta dt { color: var(--fg-muted); font-weight: 500; }
+  .meta dd { margin: 0; }
+  .mermaid {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    text-align: center;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-right: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge.keep { background: var(--success-soft); color: var(--success); }
+  .badge.soften, .badge.update, .badge.expand, .badge.trim, .badge.defer { background: var(--warn-soft); color: var(--warn); }
+  .badge.invert, .badge.drop { background: var(--danger-soft); color: var(--danger); }
+  .badge.add, .badge.new { background: var(--accent-soft); color: var(--accent); }
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    background: var(--bg-soft);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.danger { border-left-color: var(--danger); }
+  .callout.success { border-left-color: var(--success); }
+  .toc-section { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="toc">
+    <h2>Contents</h2>
+    <div class="toc-section">
+      <ol>
+        <li><a href="#section-1">1. Current state</a></li>
+        <li><a href="#section-2">2. Target architecture</a></li>
+        <li><a href="#section-3">3. Tech stack</a></li>
+        <li><a href="#section-4">4. Feature inventory</a></li>
+        <li><a href="#section-5">5. Customization architecture</a></li>
+        <li><a href="#section-6">6. Security model</a></li>
+        <li><a href="#section-7">7. Evolution map</a></li>
+        <li><a href="#section-8">8. Migration sequence</a></li>
+        <li><a href="#section-9">9. Canon delta</a></li>
+        <li><a href="#appendices">Appendices</a></li>
+      </ol>
+    </div>
+    <h2>Quick links</h2>
+    <ul style="list-style:none;padding:0;font-size:13px">
+      <li><a href="#exec-summary">Executive summary</a></li>
+      <li><a href="#decision-request">Decision request</a></li>
+      <li><a href="#section-5">The moat (§5)</a></li>
+      <li><a href="#section-9">Canon delta (§9)</a></li>
+    </ul>
+  </aside>
+
+  <main class="content">
+
+<h1>HubbleWave Platform Architecture Design</h1>
+
+<div class="meta">
+  <dl>
+    <dt>Date</dt><dd>2026-05-09</dd>
+    <dt>Status</dt><dd>Design — Awaiting Approval</dd>
+    <dt>Author</dt><dd>Aditya Singampally + Claude (collaborative)</dd>
+    <dt>Supersedes</dt><dd>Aspects of <code>CLAUDE.md</code> (Master Canon) — see §9 Canon Delta</dd>
+    <dt>Audience</dt><dd>Founder, future engineers, security reviewers, prospective first customer (technical readers)</dd>
+  </dl>
+</div>
+
+<h2 id="exec-summary">Executive summary</h2>
+
+<p>HubbleWave today is structured as a <strong>14-service distributed system</strong> with 21 supporting libraries — roughly 278,000 lines of TypeScript that build a generic platform engine, with <strong>zero domain models for the asset-management product the platform is supposed to host</strong>. The architecture has shipped no customer-visible features and is currently operating in pure remediation mode: of the last 40 commits, all are architectural cleanup (Plan Fixes 1, 11, 14, 15, 16; waves W1–W7), none are feature work.</p>
+
+<p>This document proposes a course correction:</p>
+
+<ol>
+  <li><strong>Collapse the 14-service distributed system into a 3-process modular monolith</strong> (<code>api</code>, <code>worker</code>, <code>control-plane</code>), preserving every substantive capability that's been built.</li>
+  <li><strong>Make customization upgrade-safety the marquee architectural feature.</strong> This is the precise gap your first customer (a Nuvolo user) has — and an architectural problem ServiceNow can't solve retroactively.</li>
+  <li><strong>Build the Clinical/Facilities Asset Management vertical pack on top of the same customization layer customers will use</strong> — eat your own dog food, prove the platform claim by living on it.</li>
+  <li><strong>Ship in one shot, no phased pitches.</strong> Day-1 product includes custom tables, custom workflows, custom UI plugins, custom integrations, AND a precise upgrade-safety guarantee. ~6–9 months critical path.</li>
+</ol>
+
+<p>The architecture preserves the substantive engineering investment (<code>schema-engine</code>, <code>formula-parser</code>, <code>relationship-resolver</code>, <code>authorization</code>, <code>automation</code> runtime) by relocating it from independent services to typed Nest modules. The structural overhead (cross-service transactions, service-boundary scanners, duplicate runtimes, the 14-service operational tax) is dropped.</p>
+
+<hr />
+
+<h2 id="section-1">1. Current state</h2>
+
+<h3>Inventory (measured)</h3>
+<table>
+  <thead><tr><th>Layer</th><th>Count</th><th>Lines of code</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Backend services</td><td><strong>14</strong></td><td>~83,500</td><td>12 Nest apps + 2 entry points; mostly <code>apps/svc-*</code></td></tr>
+    <tr><td>Shared libraries</td><td><strong>21</strong></td><td>~67,000</td><td><code>libs/*</code></td></tr>
+    <tr><td>Frontend apps</td><td>2</td><td>~128,400</td><td><code>web-client</code> (490 files), <code>web-control-plane</code></td></tr>
+    <tr><td>CI scanners</td><td>6</td><td>—</td><td>authz, audit, security, service-boundary, deps, terminology</td></tr>
+    <tr><td>Documentation</td><td>64+ files</td><td>—</td><td>8 phases × 8 sub-docs each, plus canon and plan fixes</td></tr>
+    <tr><td>Plan-fix backlog</td><td><strong>8+ tracked</strong></td><td>—</td><td>#1 done; #11, #14, #15, #16 referenced; #8, #12, #13, #24 also called out</td></tr>
+    <tr><td><strong>Total TypeScript</strong></td><td></td><td><strong>~278,900 LoC</strong></td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>What's actually built vs scaffolded</h3>
+<ul>
+  <li><strong>Genuinely substantive</strong>: <code>libs/schema-engine</code>, <code>libs/formula-parser</code>, <code>libs/relationship-resolver</code>, <code>libs/authorization</code>, <code>libs/instance-db</code>, the runtime in <code>svc-automation</code>, the identity layer in <code>svc-identity</code>, the metadata layer in <code>svc-metadata</code>. Combined ~50–60k LoC of work that ports forward cleanly.</li>
+  <li><strong>Structural overhead</strong>: 11 of the 14 service entry points (each with <code>main.ts</code>, <code>module.ts</code>, <code>app.module.ts</code>, Dockerfile, e2e harness, scanner allowlists). The cross-service plumbing exists to satisfy decomposition that the team didn't need.</li>
+  <li><strong>Domain gap</strong>: A grep of <code>libs/instance-db/src</code> for <code>asset|equipment|facility|clinical|patient|hospital|hvac|maintenance|workorder</code> returns 6 files, all platform infrastructure (permissions, AVA, collection-definition, app-builder, access-rule, runtime-anomaly). <strong>No <code>Asset</code>, <code>WorkOrder</code>, <code>MaintenanceSchedule</code>, <code>Equipment</code>, <code>Patient</code>, <code>Bed</code>, <code>MedicalDevice</code> entities exist.</strong></li>
+</ul>
+
+<h3>Recent velocity (last 40 commits)</h3>
+<ul>
+  <li>Architectural remediation / consolidation (W1–W7, Plan Fixes): ~32 commits</li>
+  <li>Compliance scanners and CI gates: ~6 commits</li>
+  <li>Canon amendments: 2 commits</li>
+  <li>Customer-visible features: <strong>0 commits</strong></li>
+</ul>
+
+<h3>Current topology</h3>
+<pre class="mermaid">
+graph TB
+  subgraph Frontend
+    WC[web-client<br/>119k LoC]
+    WCP[web-control-plane<br/>9k LoC]
+  end
+
+  subgraph "Instance Plane (per customer)"
+    SI[svc-identity<br/>17k LoC]
+    SD[svc-data<br/>15k LoC]
+    SM[svc-metadata<br/>22k LoC]
+    SA[svc-automation<br/>6k LoC]
+    SW[svc-workflow<br/>3k LoC]
+    SV[svc-view-engine<br/>2k LoC]
+    SIN[svc-insights<br/>2k LoC]
+    SAV[svc-ava<br/>8k LoC]
+    SN[svc-notify<br/>1k LoC]
+    SIA[svc-instance-api<br/>1k LoC]
+    SMI[svc-migrations<br/>0.1k LoC]
+  end
+
+  subgraph "Control Plane"
+    SCP[svc-control-plane<br/>6k LoC]
+  end
+
+  subgraph "Data infra (per instance)"
+    PG[(Postgres<br/>+ pgvector)]
+    R[(Redis<br/>BullMQ)]
+    TS[(Typesense)]
+  end
+
+  WC --> SI
+  WC --> SD
+  WC --> SM
+  WC --> SA
+  WC --> SAV
+  WC --> SIN
+  WC --> SIA
+  SD <--> SA
+  SD --> SM
+  WCP --> SCP
+
+  SI --> PG
+  SD --> PG
+  SM --> PG
+  SA --> PG
+  SW --> PG
+  SV --> PG
+  SIN --> PG
+  SAV --> PG
+  SN --> PG
+
+  SI --> R
+  SD --> R
+  SM --> R
+  SA --> R
+  SW --> R
+  SAV --> R
+
+  SD --> TS
+  SM --> TS
+</pre>
+
+<div class="callout warn">
+<strong>Ground truth.</strong> The architecture is structured for a 50-engineer platform org running at scale; the team is 1–2 people building toward a first paying customer. The mismatch is what's eating engineering hours. Plan Fix 1 alone took 5 PRs to consolidate two duplicated runtimes that the architecture-as-designed allowed to drift; the next 7 plan fixes are similar shape. The CI scanners are treating symptoms of the architectural choice, not the underlying mismatch.
+</div>
+
+<hr />
+
+<h2 id="section-2">2. Target architecture</h2>
+
+<h3>Topology</h3>
+<p>Three backend processes, two frontends, one Postgres, one Redis per customer instance. Control plane stays separate (correctly multi-tenant per Canon §18).</p>
+
+<pre class="mermaid">
+graph TB
+  subgraph "Frontend (shared CDN-served)"
+    WC["web-client<br/>+ Plugin Loader<br/>+ @hubblewave/plugin-sdk"]
+    WCP[web-control-plane<br/>HW admin UI]
+  end
+
+  subgraph "Customer Instance (one process per customer)"
+    API[api<br/>NestJS modular monolith<br/>~all instance modules]
+    WK[worker<br/>BullMQ consumer<br/>+ scheduled jobs]
+    PG_I[(Postgres<br/>per-customer)]
+    R_I[(Redis<br/>per-customer)]
+  end
+
+  subgraph "HubbleWave Control Plane (multi-tenant)"
+    CP[control-plane<br/>provisioning + upgrades + licensing]
+    PG_CP[(Postgres<br/>shared, customers table)]
+  end
+
+  subgraph "Customer Plugin Bundles"
+    CDN[CDN<br/>signed plugin bundles]
+  end
+
+  WC --> API
+  WC --> CDN
+  WCP --> CP
+  CP -->|provision / upgrade / observe| API
+  API <--> PG_I
+  API <--> R_I
+  WK <--> PG_I
+  WK <--> R_I
+  CP --> PG_CP
+</pre>
+
+<h3>Module layout inside <code>api</code></h3>
+<pre class="mermaid">
+graph TB
+  subgraph "apps/api (NestJS)"
+    K[kernel<br/>shared types, errors, RequestContext]
+    DB[db<br/>TypeORM, transactions, datasources]
+    ID[identity<br/>authn, authz, users, roles]
+    AU[audit<br/>audit log, runtime anomalies]
+    META[metadata<br/>schema engine, validation, formulas]
+    DATA[data<br/>generic CRUD over collections]
+    AUTO[automation<br/>rules + workflows merged]
+    VIEWS[views<br/>view engine, projections]
+    FORMS[forms<br/>form engine]
+    DASH[dashboards<br/>composition + KPIs]
+    NOT[notifications<br/>email, SMS, in-app]
+    INT[integrations<br/>typed adapters]
+    AI[ai<br/>AVA feature module]
+    PACKS[packs<br/>install, upgrade, validate]
+    PLUG[plugins<br/>SDK loader, registry]
+    UPG[upgrade<br/>validator, migration tools]
+    STO[storage<br/>S3 abstraction]
+    SRCH[search<br/>Typesense abstraction]
+  end
+
+  K --> DB
+  DB --> ID
+  ID --> AU
+  AU --> META
+  META --> DATA
+  DATA --> AUTO
+  AUTO --> VIEWS
+  AUTO --> FORMS
+  AUTO --> DASH
+  DATA --> NOT
+  DATA --> INT
+  DATA --> AI
+  META --> PACKS
+  PACKS --> PLUG
+  PLUG --> UPG
+  DATA --> STO
+  DATA --> SRCH
+</pre>
+
+<h3>What stays vs drops</h3>
+
+<p><strong>Stays</strong> (becomes a Nest module or library):</p>
+<ul>
+  <li>All <code>libs/schema-engine</code>, <code>libs/schema-validator</code>, <code>libs/formula-parser</code>, <code>libs/relationship-resolver</code>, <code>libs/authorization</code> content</li>
+  <li>The <code>svc-automation</code> runtime (rule engine, condition evaluator, action handler, script sandbox)</li>
+  <li>The <code>svc-identity</code> content (JWT, OIDC, LDAP, MFA, RBAC)</li>
+  <li>The <code>svc-metadata</code> content (collection/property/relationship CRUD, publish-impact analyzer, packs install path)</li>
+  <li>The <code>svc-data</code> content (CRUD, sync-trigger client folds back into automation module)</li>
+  <li>The <code>svc-ava</code> runtime (becomes <code>ai</code> module — same code, different home)</li>
+  <li>The <code>web-client</code> content (490 files, ~119k LoC) — bulk preserved; refactored to consume Plugin SDK internally</li>
+  <li>All 6 instance Postgres schemas (consolidated into a single migration set)</li>
+</ul>
+
+<p><strong>Drops or merges</strong>:</p>
+<ul>
+  <li>11 of the 14 backend service entry points (Dockerfiles, <code>main.ts</code>, <code>app.module.ts</code>, e2e harnesses)</li>
+  <li><code>svc-workflow</code> — folds into <code>automation</code> (one engine; ServiceNow's split is a tax we don't pay)</li>
+  <li><code>svc-instance-api</code> — folds into <code>api</code> (it was an aggregator/proxy)</li>
+  <li><code>svc-view-engine</code>, <code>svc-insights</code>, <code>svc-notify</code> — fold into respective modules</li>
+  <li>4 of 6 CI scanners: <code>service-boundary</code> (irrelevant for monolith), <code>terminology</code> (lint rule instead), <code>security-bypass</code> (covered by audit + authz scanners), <code>audit-bypass</code> (kept simpler form)</li>
+  <li>The cross-service distributed-transaction problem documented in Plan Fix 1's "Out of scope"</li>
+  <li>Plan Fix 12 (service-boundary scanner) and Plan Fix 24 (per-service entity sets) — backlog items become irrelevant</li>
+</ul>
+
+<p><strong>New</strong> (introduced by this design):</p>
+<ul>
+  <li><code>apps/control-plane</code> — formerly <code>svc-control-plane</code>, kept distinct because it's correctly multi-tenant</li>
+  <li><code>apps/worker</code> — single BullMQ consumer process for async automation, scheduled jobs, AVA tasks</li>
+  <li><code>@hubblewave/plugin-sdk</code> package — typed contract for customer plugin authors</li>
+  <li>Plugin loader in <code>web-client</code> (Vite module federation runtime)</li>
+  <li>Pack manifest format</li>
+  <li>Pre-upgrade compatibility validator</li>
+</ul>
+
+<div class="callout success">
+<strong>Why this is evolution-friendly.</strong> Module boundaries inside the monolith become the natural seams for future service extraction <em>if and when</em> a specific module hits a real performance ceiling. The boundaries you're committing to today (the Nest module list above) are the same ones you'd use to split into services later — but you don't pay the distributed-systems cost until you have evidence you need to. Shopify ran a Rails modular monolith to billions in GMV before any service extraction; Basecamp/HEY still does. Approach 2+ keeps that option open.
+</div>
+
+<hr />
+
+<h2 id="section-3">3. Tech stack</h2>
+
+<table>
+  <thead><tr><th>Category</th><th>Tech</th><th>Status</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>Language</td><td>TypeScript 5.9</td><td><span class="badge keep">keep</span></td><td>Type-safety crucial for plugin SDK contract</td></tr>
+    <tr><td>Backend framework</td><td>NestJS 11</td><td><span class="badge keep">keep</span></td><td>Module system maps cleanly to monolith plan</td></tr>
+    <tr><td>ORM</td><td>TypeORM 0.3</td><td><span class="badge keep">keep</span></td><td>Custom entities for metadata engine; good migration tooling</td></tr>
+    <tr><td>Database</td><td>Postgres + pgvector</td><td><span class="badge keep">keep</span></td><td>RLS, JSONB, vectors all in one engine</td></tr>
+    <tr><td>Queue</td><td>BullMQ 5</td><td><span class="badge keep">keep</span></td><td>Already in use; well-supported</td></tr>
+    <tr><td>Cache</td><td>Redis (cache-manager)</td><td><span class="badge keep">keep</span></td><td>Recently consolidated (W5.C)</td></tr>
+    <tr><td>Frontend framework</td><td>React 19</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>UI library</td><td>MUI 7</td><td><span class="badge keep">keep</span></td><td>Already in use; matches enterprise expectations</td></tr>
+    <tr><td>State / data fetching</td><td>TanStack Query 5</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>Tables</td><td>TanStack Table 8 + Virtual</td><td><span class="badge keep">keep</span></td><td>Needed for asset list scale</td></tr>
+    <tr><td>Build (frontend)</td><td>Vite 7</td><td><span class="badge keep">keep</span></td><td>Module federation support is reason for this choice</td></tr>
+    <tr><td>Build (backend)</td><td>Webpack via Nx</td><td><span class="badge keep">keep</span></td><td>NestJS-default; revisit if compile time becomes pain</td></tr>
+    <tr><td>Search</td><td>Typesense 2</td><td><span class="badge keep">keep</span></td><td>Already in use; good fit for asset search</td></tr>
+    <tr><td>Storage</td><td>AWS S3</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>Auth providers</td><td>OIDC, SAML, LDAP, JWT</td><td><span class="badge keep">keep</span></td><td>OIDC + SAML cover enterprise; LDAP for legacy AD</td></tr>
+    <tr><td>MFA</td><td>TOTP (otplib)</td><td><span class="badge keep">keep</span></td><td>Add WebAuthn in Wave 7 hardening</td></tr>
+    <tr><td>AI provider</td><td>Pluggable (Ollama dev, customer choice prod)</td><td><span class="badge keep">keep</span></td><td>Customer-controlled; HIPAA implications</td></tr>
+    <tr><td>Vector DB</td><td>pgvector</td><td><span class="badge keep">keep</span></td><td>In-Postgres avoids extra infra</td></tr>
+    <tr><td>Workflow visual editor</td><td>@xyflow/react 12</td><td><span class="badge keep">keep</span></td><td>For automation/workflow visual builder</td></tr>
+    <tr><td>Code editor</td><td>@monaco-editor/react</td><td><span class="badge keep">keep</span></td><td>For formula/script authoring</td></tr>
+    <tr><td>Charting</td><td>(TBD — likely Recharts or Tremor)</td><td><span class="badge new">new</span></td><td>Currently no chart lib registered</td></tr>
+    <tr><td>Monorepo</td><td>Nx 22</td><td><span class="badge keep">keep</span></td><td>Already in use; well-suited</td></tr>
+    <tr><td>Testing (unit)</td><td>Jest 30</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>Testing (frontend)</td><td>Vitest 4</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>Testing (e2e)</td><td>Playwright 1.36</td><td><span class="badge keep">keep</span></td><td>Already in use</td></tr>
+    <tr><td>Plugin federation</td><td>Vite Module Federation</td><td><span class="badge new">new</span></td><td>Required for plugin SDK</td></tr>
+    <tr><td>Plugin sandbox</td><td>CSP + capability authz</td><td><span class="badge new">new</span></td><td>Defense-in-depth for plugin code</td></tr>
+    <tr><td>Distributed tracing</td><td>OpenTelemetry</td><td><span class="badge new">new (W7)</span></td><td>Production observability</td></tr>
+    <tr><td>Mobile</td><td>React Native or Capacitor</td><td><span class="badge defer">defer</span></td><td>Not Day-1; addressed in Wave 8+</td></tr>
+    <tr><td>Approved-deps registry</td><td>(existing W6.D)</td><td><span class="badge keep">keep</span></td><td>Cheap; broad value</td></tr>
+    <tr><td>Service-boundary scanner</td><td>(existing W5.D)</td><td><span class="badge drop">drop</span></td><td>Irrelevant for monolith</td></tr>
+  </tbody>
+</table>
+
+<h3>Net codebase change</h3>
+<p>Newly added: ~30k LoC (plugin SDK ~3k, plugin loader ~5k, pack manifest tooling ~4k, upgrade validator ~6k, clinical/facilities domain ~12k backend + ~30k frontend depending on scope).</p>
+<p>Deleted: ~50k LoC (11 service entry points, cross-service plumbing, 4 scanners + allowlists, duplicate Nest modules, irrelevant plan-fix tracking).</p>
+<p><strong>Net: roughly flat (-50k +30k = -20k LoC), but with massively reduced operational and cognitive surface.</strong></p>
+
+<hr />
+
+<h2 id="section-4">4. Feature inventory</h2>
+
+<h3>4.1 Platform features (the engine)</h3>
+
+<h4>Identity &amp; access</h4>
+<ul>
+<li>SSO via OIDC, SAML</li>
+<li>LDAP / Active Directory for legacy enterprise</li>
+<li>OAuth2 for API tokens</li>
+<li>MFA: TOTP (existing); WebAuthn (Wave 7)</li>
+<li>RBAC: roles, hierarchical roles</li>
+<li>ABAC: attribute-based rules combining role + record + user attributes</li>
+<li>Row-level security: per-record authz</li>
+<li>Field-level security: hide/mask sensitive fields per role</li>
+<li>Session management: Redis-backed; idle + absolute timeouts</li>
+<li>API token management: scoped, rotatable, auditable</li>
+<li>SCIM 2.0 for user provisioning</li>
+</ul>
+
+<h4>Schema engine (metadata)</h4>
+<ul>
+<li>Collection definition (custom tables)</li>
+<li>Property definition with 16+ types (text, number, date, datetime, currency, boolean, picklist, multi-picklist, lookup, multi-lookup, formula, JSON, file, image, geo, vector)</li>
+<li>Relationship definition (one-to-many, many-to-many, polymorphic, hierarchical)</li>
+<li>Validation rules (required, regex, range, custom formula)</li>
+<li>Formulas / computed fields (deterministic expression language)</li>
+<li>History tracking (per-property, configurable retention)</li>
+<li>Dependency graph (publish-impact analyzer; existing W2.A)</li>
+<li>Reference checking on delete (existing W2.A)</li>
+</ul>
+
+<h4>Data engine</h4>
+<ul>
+<li>CRUD over any collection (system or customer-defined)</li>
+<li>Bulk operations (insert, update, delete)</li>
+<li>Query builder (filters, sorts, joins, aggregations)</li>
+<li>Full-text search (Typesense backed)</li>
+<li>Vector search (pgvector backed; for AVA semantic queries)</li>
+<li>Soft delete + restore</li>
+<li>Record locking (optimistic + pessimistic)</li>
+<li>Import/export (CSV, Excel, JSON)</li>
+</ul>
+
+<h4>Automation engine (rules + workflows merged)</h4>
+<ul>
+<li><strong>Rule mode</strong> — synchronous, record-scoped, deterministic (canon §8 "automation"):
+  <ul>
+    <li>Trigger types: before/after record events, manual, scheduled, webhook</li>
+    <li>Conditions in formula language</li>
+    <li>Actions: record CRUD, send email/SMS, call HTTP, run sandboxed script</li>
+    <li>Cycle and depth control</li>
+    <li>Per-rule rate limiting (existing W7.C)</li>
+  </ul>
+</li>
+<li><strong>Workflow mode</strong> — durable, multi-day, stateful:
+  <ul>
+    <li>State persistence</li>
+    <li>Human task assignment, approvals, escalations</li>
+    <li>Parallel branches, joins, loops</li>
+    <li>SLA timers</li>
+  </ul>
+</li>
+<li>Visual workflow editor (existing @xyflow/react usage)</li>
+<li>Script sandbox (existing) — JS subset with allowlisted globals</li>
+</ul>
+
+<h4>View / form / dashboard engines</h4>
+<ul>
+<li>Views: list, kanban, calendar, timeline, gantt, map; custom view via plugin</li>
+<li>Forms: declarative, conditional logic, multi-step, autosave, custom field via plugin</li>
+<li>Dashboards: KPIs, charts, gauges, custom widgets via plugin</li>
+</ul>
+
+<h4>Notification, integration, AI, packs, plugins, upgrade-safety</h4>
+<ul>
+<li><strong>Notifications</strong>: email, SMS, in-app, push (mobile, future); templates; per-user preferences</li>
+<li><strong>Integration platform</strong>: typed adapters (REST, GraphQL, SOAP, file); versioned contracts; retry + replay; webhooks (in/out)</li>
+<li><strong>AVA (AI assistant)</strong>: smart search, NL work order intake, automation rule authoring assistance, schema evolution suggestions, domain-specific Q&amp;A</li>
+<li><strong>Pack system</strong>: install/uninstall/upgrade/rollback; manifest validation; dependency resolution; export/import; maintenance-mode lock during install (W4.D)</li>
+<li><strong>Plugin system</strong>: Plugin SDK; registry; capability-based permissions; loader (module federation); admin approval flow</li>
+<li><strong>Upgrade safety</strong>: pre-upgrade validator; auto-migration generator; remediation workflow; audit per upgrade</li>
+</ul>
+
+<h3>4.2 Clinical/Facilities Asset Management pack features</h3>
+
+<h4>Asset management</h4>
+<ul>
+<li>Asset inventory (medical devices, HVAC, MRI, infusion pumps, biomedical equipment, building systems)</li>
+<li>Asset hierarchy (system → subsystem → component)</li>
+<li>Asset categories with category-specific fields (FDA Class I/II/III, FDA UDI, sterilization status, calibration intervals, IR/vibration/ultrasound readings, recall status)</li>
+<li>Asset lifecycle (commissioned → in-service → maintenance → retired → decommissioned)</li>
+<li>Photos, manuals, schematics, warranty docs (S3-backed)</li>
+<li>Mobile asset lookup (QR/barcode scanning)</li>
+</ul>
+
+<h4>Work order management</h4>
+<ul>
+<li>Reactive work orders (corrective maintenance)</li>
+<li>Preventive maintenance schedules (interval, condition, runtime-based)</li>
+<li>Inspections (Joint Commission, fire safety, biomedical)</li>
+<li>Calibrations (with traceable certificates)</li>
+<li>Permit-to-work (lockout/tagout, hot work, confined space)</li>
+<li>Multi-shop assignment + dispatch</li>
+<li>Technician mobile UI (lookup, status update, parts request, photo capture)</li>
+</ul>
+
+<h4>Space, compliance, vendor, parts, reporting, integrations</h4>
+<ul>
+<li><strong>Space &amp; location</strong>: hospital → building → floor → room → bed; CAD/floor plan integration; patient-care-area mapping</li>
+<li><strong>Compliance</strong>: Joint Commission audit trails; FDA recall management; equipment downtime impact tracking; 21 CFR Part 11 e-signatures; HITECH HIPAA logging; AEM program docs</li>
+<li><strong>Vendor</strong>: vendor records; service contracts with SLA; warranty tracking; service history; vendor portal</li>
+<li><strong>Inventory &amp; parts</strong>: parts catalog; inventory levels; requisition workflow; reorder automation; vendor cross-reference</li>
+<li><strong>Reporting</strong>: uptime, MTTR, MTBF; PM compliance %; cost-center spend; vendor scorecards; regulatory readiness; asset utilization heatmaps</li>
+<li><strong>Integrations</strong>: HL7 v2 / FHIR R4; BACnet / Modbus; legacy CMMS connectors (Maximo, Infor, Nuvolo); ERP (SAP, Oracle, Workday); EHR (Epic, Cerner); Active Directory / SCIM; email/SMS gateways; mobile apps</li>
+</ul>
+
+<h3>4.3 Customization surface (what customers can extend)</h3>
+
+<p><strong>Day 1 (no code required, declarative)</strong>:</p>
+<ul>
+<li>Add custom collections with custom properties</li>
+<li>Add custom properties to platform collections (via JSONB extension or side tables)</li>
+<li>Define custom relationships</li>
+<li>Define custom validation rules (formula language)</li>
+<li>Define custom formulas / computed fields</li>
+<li>Define custom automations (rules + workflows) — visual editor + optional sandboxed script</li>
+<li>Define custom views (list, kanban, calendar, gantt, etc.)</li>
+<li>Define custom forms with conditional logic</li>
+<li>Define custom dashboards</li>
+<li>Define custom roles + permissions</li>
+<li>Define custom integrations — typed adapters with config</li>
+<li>Customize email/notification templates</li>
+<li>Customize navigation/menu</li>
+<li>White-label theming (logo, colors, fonts)</li>
+</ul>
+
+<p><strong>Day 1 (code-based, the differentiator vs Nuvolo)</strong>:</p>
+<ul>
+<li><strong>Upload custom React UI components via Plugin SDK</strong></li>
+</ul>
+
+<hr />
+
+<h2 id="section-5">5. Customization architecture (the moat)</h2>
+
+<div class="callout">
+This is the section that makes the platform claim defensible. Your first customer's complaint about Nuvolo is that customizations break on upgrade — not that customization is impossible. ServiceNow allows nearly all the customization you'd want; it just doesn't <em>isolate</em> customizations from platform internals, so each upgrade is a roll of the dice.
+<br/><br/>
+We can do this better because we're greenfield. The customization surface IS the contract, and the contract is enforced by the platform engine. Customers can't customize their way around it because there's no path off the contract.
+</div>
+
+<h3>5.1 The pack model</h3>
+
+<p>A "pack" is a versioned bundle of customizations. Three tiers:</p>
+<ol>
+  <li><strong>Platform packs</strong> — base capabilities shipped by HubbleWave (identity, metadata, automation, etc.). Updated only via platform upgrades. Customers cannot modify these.</li>
+  <li><strong>Vertical packs</strong> — pre-built apps shipped by HubbleWave (Clinical/Facilities Asset Management today; future Pharmacy, EHS, etc.). Updated via platform upgrades; customers can EXTEND but not modify the base pack.</li>
+  <li><strong>Customer packs</strong> — customizations authored by customers. Owned by customer; never modified by platform upgrades.</li>
+</ol>
+
+<p>Each pack contains:</p>
+<ul>
+<li><strong>Manifest</strong> (<code>pack.json</code>) — id, version, target platform API version, declared capabilities, dependencies on other packs</li>
+<li><strong>Schema definitions</strong> — collections, properties, relationships</li>
+<li><strong>Automation definitions</strong> — rules and workflows</li>
+<li><strong>View / form / dashboard definitions</strong> — declarative</li>
+<li><strong>UI plugin bundles</strong> — references to uploaded React components</li>
+<li><strong>Integration adapter configs</strong> — typed integrations with versioned contracts</li>
+<li><strong>Permissions / roles</strong></li>
+<li><strong>Seed / reference data</strong> (e.g. picklist values, lookup tables)</li>
+</ul>
+
+<blockquote>Customer instance state = base platform packs + selected vertical pack(s) + customer pack(s)</blockquote>
+
+<p><strong>Pack composition rules</strong>:</p>
+<ul>
+<li><strong>ADD</strong> — new collections (in customer namespace)</li>
+<li><strong>EXTEND</strong> — platform/vertical collections (add custom properties, relationships)</li>
+<li><strong>OVERRIDE</strong> — views/forms/dashboards (with explicit upgrade-impact warning)</li>
+<li><strong>REGISTER</strong> — plugins, automations, integrations</li>
+</ul>
+
+<h4>Diagram 1 — Pack architecture &amp; schema isolation</h4>
+<pre class="mermaid">
+graph TB
+  subgraph "Customer Instance Schema"
+    subgraph "Platform schema (HubbleWave-owned)"
+      PT[Platform tables<br/>users, roles, audit_log, ...]
+      VT[Vertical-pack tables<br/>Asset, WorkOrder, Room, ...]
+    end
+
+    subgraph "Customer schema (customer-owned)"
+      CT[Custom collections<br/>cust__acme__lab_assets<br/>cust__acme__safety_audit]
+      CE["customer_extensions JSONB<br/>on platform tables<br/>(simple custom props)"]
+      CST[Custom side tables<br/>cust__acme__inspection_extras<br/>linked by record_id]
+    end
+  end
+
+  CT -.references via FK.-> VT
+  CE -.attached column.-> VT
+  CE -.attached column.-> PT
+  CST -.linked by record_id.-> VT
+</pre>
+
+<h3>5.2 Schema isolation</h3>
+<p><strong>Customer customizations NEVER modify platform schema.</strong> This is the architectural guarantee that enables upgrade safety. Three strategies, picked per use case:</p>
+
+<h4>Custom collections → customer-namespaced tables</h4>
+<p>Naming: <code>cust__{customer_pack_id}__{collection_id}</code>. Migrations for these tables are owned by the customer pack version, not the platform version. Querying is via the same TypeORM and data engine — the platform doesn't care whether a collection is platform-defined or customer-defined.</p>
+
+<h4>Simple custom properties on platform collections → JSONB extension column</h4>
+<p>Every platform table has a <code>customer_extensions</code> JSONB column. Customer packs declare property type metadata in the manifest. Platform engine handles serialization, validation, indexing (Postgres GIN on JSONB).</p>
+
+<pre><code>-- Platform-owned column on Asset table
+customer_extensions JSONB DEFAULT '{}'
+
+-- Customer pack manifest declares:
+{
+  "extensions": {
+    "Asset": {
+      "acme.fda_class": { "type": "picklist", "values": ["I", "II", "III"] },
+      "acme.last_inspection": { "type": "date", "indexed": true }
+    }
+  }
+}</code></pre>
+
+<h4>Complex custom properties → side tables</h4>
+<p>For relational extensions or fields needing complex indexes/queries, customer packs create side tables linked by <code>record_id</code>. Platform engine joins these automatically when querying.</p>
+
+<pre><code>CREATE TABLE cust__acme__asset_extras (
+  record_id UUID PRIMARY KEY REFERENCES "Asset"(id),
+  custom_field_a TEXT,
+  custom_field_b INTEGER,
+  ...
+);</code></pre>
+
+<div class="callout success">
+<strong>Why this matters</strong>: when HubbleWave ships a platform upgrade migrating platform schema, customer schema is <em>completely orthogonal</em>. Migrations CAN'T conflict because they touch disjoint name spaces. The platform's migration tool literally cannot break a customer's custom collection.
+</div>
+
+<h3>5.3 Plugin SDK contract</h3>
+<p>Custom UI components are the highest-risk customization surface (arbitrary code execution). The Plugin SDK is the contract that makes them safe and upgrade-stable.</p>
+
+<h4>Authoring a plugin</h4>
+<pre><code>// my-asset-utilization-chart/src/index.tsx
+import {
+  definePlugin,
+  useRecord,
+  usePlatformAPI,
+  RecordList,
+  PlatformProvider
+} from '@hubblewave/plugin-sdk';
+
+export default definePlugin({
+  id: 'acme.asset-utilization-chart',
+  version: '1.0.0',
+  targetPlatformApiVersion: '2026.05',
+  capabilities: ['read:Asset', 'read:WorkOrder'],
+  components: {
+    AssetUtilizationChart: ({ assetId }) =&gt; {
+      const asset = useRecord('Asset', assetId);
+      const workOrders = usePlatformAPI('2026.05')
+        .data.query('WorkOrder', { assetId, status: 'closed' });
+      return &lt;Chart data={...} /&gt;;
+    }
+  },
+  slots: {
+    'asset.detail.sidebar': 'AssetUtilizationChart'
+  }
+});</code></pre>
+
+<p>Build with <code>hw-plugin build</code> (CLI shipped with the SDK): compiles TypeScript, bundles as ESM with module federation manifest, generates plugin manifest, signs the bundle. Upload + install via platform admin UI or <code>hw-plugin publish</code>.</p>
+
+<h4>Stability guarantees</h4>
+<ul>
+<li><strong>Stability for N major versions</strong> (proposed N=2, ~2 years). Plugins built against <code>2026.05</code> work through <code>2027.05</code> minimum.</li>
+<li><strong>Deprecated APIs</strong> still work for one full release cycle (1 year) with console warnings.</li>
+<li><strong>Removed APIs</strong> ship with automated migration tooling for common patterns; <code>hw-plugin migrate</code> runs the migration.</li>
+<li><strong>No silent breakage</strong>: plugin <code>targetPlatformApiVersion</code> matching current API version (or within 2-version window) loads and works. Outside the window: precise error pointing to migration tool.</li>
+</ul>
+
+<h4>Diagram 2 — Plugin lifecycle</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant Author as Plugin Author
+  participant CLI as hw-plugin CLI
+  participant Platform as Platform API
+  participant Registry as Plugin Registry
+  participant CDN as CDN
+  participant Client as Web Client (browser)
+
+  Author->>CLI: hw-plugin build
+  CLI->>CLI: Compile TS, bundle ESM,<br/>generate manifest, sign bundle
+  Author->>Platform: hw-plugin publish (upload bundle + manifest)
+  Platform->>Platform: Validate manifest<br/>(API version, capabilities)
+  Platform->>Platform: Security scan<br/>(known-bad, vulns, size)
+  Platform->>Platform: Verify signature
+  Platform->>Registry: Register plugin (per customer)
+  Platform->>CDN: Publish bundle (immutable URL)
+
+  Note over Author,Client: --- Plugin live ---
+
+  Client->>Client: User opens page with plugin slot
+  Client->>Registry: Query plugins bound to slot
+  Registry-->>Client: Plugin manifest + bundle URL
+  Client->>CDN: Fetch bundle (strict CSP)
+  CDN-->>Client: Bundle (verified signature)
+  Client->>Client: Module federation resolves<br/>shared deps (React, MUI, SDK)
+  Client->>Client: Instantiate plugin<br/>inside PlatformProvider
+  Client->>Platform: Plugin SDK API calls<br/>(scoped to declared capabilities)
+  Platform-->>Client: Data / mutations
+</pre>
+
+<h3>5.4 Upgrade-safety mechanism</h3>
+
+<p><strong>This is the marquee architectural feature</strong> — the precise problem your customer is trying to solve.</p>
+
+<h4>Customer-controlled upgrade flow</h4>
+<p>Customer environments stay on their current platform version until they accept an upgrade. The accept flow:</p>
+
+<h4>Step 1: Pre-upgrade validation runs on the customer instance</h4>
+
+<p>The validator inspects all installed packs and computes diffs against the new platform version's contract:</p>
+
+<table>
+<thead><tr><th>Diff type</th><th>Issue</th><th>Disposition</th></tr></thead>
+<tbody>
+<tr><td rowspan="5"><strong>Schema</strong></td><td>Removed table referenced by customer</td><td><span class="badge drop">block (red)</span></td></tr>
+<tr><td>Removed column referenced by customer</td><td><span class="badge drop">block (red)</span></td></tr>
+<tr><td>Renamed column</td><td><span class="badge soften">auto-migrate (yellow)</span></td></tr>
+<tr><td>Type narrowed</td><td><span class="badge drop">block (red)</span></td></tr>
+<tr><td>Type widened / new column</td><td><span class="badge keep">no impact (green)</span></td></tr>
+<tr><td rowspan="3"><strong>API</strong></td><td>Removed REST endpoint used by integration</td><td><span class="badge drop">block (red)</span></td></tr>
+<tr><td>Removed SDK function used by plugin</td><td><span class="badge drop">block (red)</span> (or auto-migrate if pattern known)</td></tr>
+<tr><td>Deprecated API still in use</td><td><span class="badge soften">warn (yellow)</span></td></tr>
+<tr><td rowspan="2"><strong>Plugin</strong></td><td>Plugin <code>targetPlatformApiVersion</code> outside window</td><td><span class="badge drop">block (red)</span></td></tr>
+<tr><td>Plugin uses removed SDK function</td><td><span class="badge drop">block (red)</span> with line-level guide</td></tr>
+<tr><td><strong>Workflow</strong></td><td>Workflow references removed table/column</td><td><span class="badge drop">block (red)</span> with offending steps highlighted</td></tr>
+<tr><td><strong>Integration</strong></td><td>Integration uses removed endpoint</td><td><span class="badge drop">block (red)</span></td></tr>
+</tbody>
+</table>
+
+<h4>Step 2: Validator output classified</h4>
+<ul>
+<li><span class="badge keep">GREEN — proceed</span>: no blocking issues; minor warnings advisory. Click "upgrade now".</li>
+<li><span class="badge soften">YELLOW — auto-migrate</span>: blocking issues exist BUT automated migrations are available. Customer reviews proposed migrations in diff UI, approves, applies. Auto-rollback on any failure.</li>
+<li><span class="badge drop">RED — manual remediation</span>: blocking issues without auto-fix. Validator surfaces precise remediation guide (which pack, which file, which line, what contract was violated, suggested fix). Upgrade refuses to proceed until red is resolved (or explicit operator override, audited).</li>
+</ul>
+
+<h4>Step 3: Upgrade applies</h4>
+<ul>
+<li>Platform schema migrations run in transaction</li>
+<li>Customer pack revalidated against new platform schema (post-migration check)</li>
+<li>Plugins reloaded with new platform API version</li>
+<li>Audit row written: who, from version, to version, validator output, applied migrations, customer pack versions before/after</li>
+</ul>
+
+<div class="callout success">
+<strong>The architectural guarantee</strong>: if the validator says <strong>green</strong>, the upgrade IS safe. There is no path where validator passes and customizations break at runtime.
+<br/><br/>
+This is enforceable because: customizations live on a typed, versioned contract (the pack manifest + plugin SDK); the platform engine is the only consumer of customization metadata at runtime; the validator runs the same metadata through compatibility checks before the engine sees it; there's no DOM-hack or side-channel for customizations to enter the system unvalidated.
+<br/><br/>
+This is precisely what ServiceNow can't promise — their customers customized via DOM and JavaScript injection over 20 years, no contract, no validator possible. <strong>We can promise it because we're greenfield and the contract IS the customization surface.</strong>
+</div>
+
+<h4>Diagram 3 — Upgrade flow</h4>
+<pre class="mermaid">
+flowchart TB
+  Start[Customer accepts<br/>upgrade prompt] --> Snapshot[Snapshot customer<br/>state for rollback]
+  Snapshot --> Validator{Pre-upgrade<br/>validator}
+
+  Validator -->|GREEN<br/>no blockers| Apply[Apply platform migrations<br/>in transaction]
+  Validator -->|YELLOW<br/>auto-fixable| AutoMigrate[Generate auto-migrations<br/>Customer reviews + approves]
+  Validator -->|RED<br/>manual remediation| Block[Block upgrade<br/>Surface remediation guide]
+
+  AutoMigrate --> Apply
+  Block --> CustomerFix[Customer fixes pack<br/>Re-runs validator]
+  CustomerFix --> Validator
+
+  Apply --> Revalidate[Revalidate pack<br/>against new schema]
+  Revalidate -->|Pass| Audit[Write audit row<br/>Mark upgrade complete]
+  Revalidate -->|Fail| Rollback[Auto-rollback<br/>to snapshot]
+  Rollback --> Block
+
+  Audit --> Done[Upgrade done<br/>Customer notified]
+</pre>
+
+<h3>5.5 Versioning strategy</h3>
+<ul>
+<li><strong>Platform versions</strong>: <code>YYYY.MM</code> for major releases (e.g. <code>2026.05</code>, <code>2026.08</code>). Quarterly cadence.</li>
+<li><strong>Pack versions</strong>: semver per pack (e.g. <code>acme-cmms-extensions@1.4.2</code>).</li>
+<li><strong>Plugin SDK versions</strong>: semver, tied to platform API versions.</li>
+<li><strong>Platform API versions</strong>: same as platform versions.</li>
+</ul>
+
+<p><strong>Stability windows</strong>:</p>
+<ul>
+<li>Plugin SDK: 2 major versions of forward compatibility</li>
+<li>Pack manifest format: 1 major version with mandatory automated migration</li>
+<li>Schema migrations: forward-only with rollback support; no breaking column type changes within a major version</li>
+</ul>
+
+<h3>5.6 Customization design-time validation</h3>
+<p>The richest payoff for the contract is shifted left: customers get errors at <em>design time</em>, not at upgrade time. When a customer authors a workflow that references a column in the platform schema, the validator checks against current schema in real time. Removed/renamed column → error in the editor, before they save. Same for form fields, view columns, automation conditions/actions, and plugin SDK calls (caught by TypeScript at plugin build time).</p>
+
+<hr />
+
+<h2 id="section-6">6. Security model</h2>
+
+<p>Defense-in-depth across six layers. Every layer is auditable, every layer fails closed, and there's no single layer whose compromise gives an attacker free rein.</p>
+
+<h3>6.1 Authentication</h3>
+<ul>
+<li><strong>JWT</strong> for session tokens (short-lived access + refresh). Signed with per-instance asymmetric key.</li>
+<li><strong>OIDC</strong> for SSO (Azure AD, Okta, Google Workspace, Auth0).</li>
+<li><strong>SAML 2.0</strong> for enterprise SSO with legacy IdPs.</li>
+<li><strong>LDAP / Active Directory</strong> for legacy enterprise directories.</li>
+<li><strong>MFA</strong>: TOTP (otplib already in dependencies); WebAuthn (Wave 7).</li>
+<li><strong>Session management</strong>: Redis-backed; per-session security context; configurable idle (default 30 min) + absolute timeouts (default 12 hours).</li>
+<li><strong>API tokens</strong>: per-user, scoped, rotatable, full audit trail.</li>
+<li><strong>Account lockout</strong>: configurable failure threshold + exponential backoff.</li>
+<li><strong>Password policy</strong>: configurable complexity; common-password blocklist; rotation policy per role.</li>
+</ul>
+
+<h3>6.2 Authorization</h3>
+<ul>
+<li><strong>RBAC</strong>: role-based, hierarchical roles. System roles + customer-defined roles.</li>
+<li><strong>ABAC</strong>: attribute-based rules combining user, record, contextual attributes.</li>
+<li><strong>Row-level security</strong>: per-record authz combining RBAC + ABAC. Evaluated at query layer, not after-the-fact filtering.</li>
+<li><strong>Field-level security</strong>: hide/mask sensitive fields per role.</li>
+<li><strong>Centralized</strong>: every data access flows through <code>libs/authorization</code>. Canon §9 stays.</li>
+<li><strong>Pluggable</strong>: customer packs can add custom permissions/roles. Plugin manifests declare capabilities; runtime enforces.</li>
+<li><strong>No fail-open</strong>: authz resolution failure is <code>NotFoundException</code>, never empty rules (W1.5).</li>
+</ul>
+
+<h3>6.3 Data isolation</h3>
+<ul>
+<li><strong>Default deployment: per-customer instance</strong> with own Postgres database, own Redis, own process. Network and process isolation between customers.</li>
+<li><strong>Pooled deployment</strong> (optional, lower-tier): shared Postgres with strict RLS keyed by <code>tenant_id</code>. Per-tenant tests. Chaos-engineering style suite for cross-tenant leakage.</li>
+<li><strong>Encryption at rest</strong>: AWS-managed keys default; <strong>customer-managed keys (KMS BYOK)</strong> for premium tier. Per-customer key gives the customer the kill switch.</li>
+<li><strong>Encryption in transit</strong>: TLS 1.3 minimum; mTLS between platform components inside the same instance.</li>
+<li><strong>Database backups</strong>: per-customer encrypted; per-customer retention; backup encryption with separate key from runtime data.</li>
+</ul>
+
+<h3>6.4 Plugin sandbox (detail)</h3>
+
+<h4>Content Security Policy</h4>
+<pre><code>Content-Security-Policy:
+  default-src 'self';
+  script-src 'self' cdn.platform;
+  connect-src 'self';
+  object-src 'none';
+  frame-src 'none';
+  base-uri 'self';
+  form-action 'self';</code></pre>
+
+<p>Blocks: inline scripts (XSS via DOM injection), cross-origin XHR/fetch (data exfiltration), plugin-loaded iframes (phishing within plugin), object/embed tags (Flash-style escapes).</p>
+
+<h4>Restricted runtime</h4>
+<ul>
+<li>Plugin runs in same React tree but with restricted JavaScript context: no <code>eval</code>, no <code>Function()</code>, no <code>setTimeout(string)</code> (CSP enforced)</li>
+<li><code>window</code> global access mediated by platform shim — direct access to <code>window.localStorage</code>, <code>window.navigator.geolocation</code>, etc. requires capability declaration</li>
+<li>No access to other plugins' React state (each plugin gets isolated context provider)</li>
+<li>All data access via Plugin SDK; raw <code>fetch</code> to non-platform origins blocked by CSP <code>connect-src</code></li>
+</ul>
+
+<h4>Capability-based authz</h4>
+<pre><code>{
+  "capabilities": [
+    "read:Asset",
+    "read:WorkOrder",
+    "write:Asset.customer_extensions.acme.fda_class"
+  ]
+}</code></pre>
+
+<ul>
+<li>Read capabilities checked at SDK hook level</li>
+<li>Write capabilities checked at mutation layer</li>
+<li>Field-level capabilities supported (plugin can write specific custom fields without write access to the whole record)</li>
+<li>Capability denial fails closed: SDK call throws <code>CapabilityNotGrantedError</code></li>
+</ul>
+
+<h4>Install-time approval &amp; bundle scanning</h4>
+<ul>
+<li>Plugin install requires <strong>platform admin approval</strong> per plugin per customer</li>
+<li>Admin sees plugin manifest, declared capabilities, signature, scan results before approving</li>
+<li>"Trusted publishers" registered with HubbleWave can have streamlined approval</li>
+<li>Bundle scan: known-bad pattern detection, dependency vulnerability scan, bundle size limits, static analysis for <code>eval</code>/<code>Function</code>/<code>document.write</code> etc.</li>
+<li>Optional: signed bundles (publisher-signed; platform verifies at load)</li>
+</ul>
+
+<h3>6.5 Audit</h3>
+<ul>
+<li><strong>Every state-changing action writes an audit row in the same database transaction</strong> (Canon §10; W1.6 + W2.D + W3.C). Use <code>withAudit(dataSource, fn)</code> helper.</li>
+<li><strong>Audit row content</strong>: actor (user, session, IP, user-agent), action (verb + resource + record ID), timestamp, purpose code, permission context.</li>
+<li><strong>Read access auditing</strong>: optional per-collection (HIPAA-required for PHI; configurable).</li>
+<li><strong>Audit retention</strong>: per-customer policy (default 7 years for HIPAA-eligible; configurable down to 1 year for non-regulated).</li>
+<li><strong>Audit immutability</strong>: append-only; no updates; no deletes. Cryptographic hash chain (optional, enabled for HIPAA tier).</li>
+<li><strong>Runtime anomaly tracking</strong>: silent skips, fallback behaviors, unexpected state writes go to <code>runtime_anomaly</code> table (W2.D infrastructure preserved).</li>
+</ul>
+
+<h3>6.6 Secrets &amp; 6.7 Network</h3>
+<ul>
+<li><strong>AWS Secrets Manager</strong> for all secrets. No env vars except dev. Per-customer namespace with per-instance KMS key.</li>
+<li><strong>Plugin secrets</strong>: customers register secrets the plugin needs; platform exposes via <code>usePlatformSecret()</code> hook with capability check. Never in plugin bundle.</li>
+<li><strong>Per-customer instance</strong>: own VPC/tenant; private DB subnet; public ingress only via platform API gateway with rate limiting, DDoS protection, OWASP top-10 WAF.</li>
+<li><strong>Outbound integrations</strong>: per-instance NAT IP for customer-side IP whitelisting.</li>
+<li><strong>Webhooks</strong>: HMAC signature required (sign outbound, verify inbound); replay protection via timestamp + nonce.</li>
+</ul>
+
+<h3>6.8 Compliance posture</h3>
+<ul>
+<li><strong>HIPAA-eligible</strong>: BAA available; audit trail satisfies §164.312(b); access controls satisfy §164.312(a); transmission security satisfies §164.312(e); data integrity via audit hash chain.</li>
+<li><strong>21 CFR Part 11</strong>: e-signatures via MFA + audit; non-repudiation guaranteed; record-integrity via append-only audit.</li>
+<li><strong>SOC 2 Type II</strong>: audit-friendly architecture; pursued in Wave 7.</li>
+<li><strong>GDPR</strong>: data residency per-instance; right-to-deletion; data subject access export.</li>
+<li><strong>HITRUST CSF</strong>: framework alignment for healthcare-specific controls.</li>
+</ul>
+
+<h3>6.9 Threat model summary</h3>
+
+<table>
+<thead><tr><th>Threat</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Plugin code escape</td><td>CSP + Plugin SDK restricted runtime + capability authz + admin install + bundle scan + signing</td></tr>
+<tr><td>Cross-tenant data leakage (pooled)</td><td>Strict RLS + per-tenant test suite + chaos engineering</td></tr>
+<tr><td>Privileged-account compromise</td><td>MFA + admin session monitoring + JIT access for sensitive ops</td></tr>
+<tr><td>Data exfiltration via integration</td><td>Egress allowlist per integration + audit + rate limit</td></tr>
+<tr><td>SQL injection</td><td>Parameterized queries (TypeORM enforced) + lint + scanner</td></tr>
+<tr><td>XSS in custom UI</td><td>DOMPurify + CSP + plugin SDK escaping</td></tr>
+<tr><td>CSRF</td><td>SameSite=Strict cookies + CSRF tokens + Origin header validation</td></tr>
+<tr><td>Supply-chain (deps)</td><td>Approved-deps registry (W6.D) + Renovate with security alerts + bundle scan</td></tr>
+<tr><td>Insider threat</td><td>Field-level security + audit + dual-control + JIT admin access</td></tr>
+<tr><td>Stolen JWT</td><td>Short access TTL + refresh rotation + IP-binding option + revocation list</td></tr>
+<tr><td>Brute force on auth</td><td>Account lockout + exponential backoff + WAF + rate limit</td></tr>
+</tbody>
+</table>
+
+<h4>Defense-in-depth diagram</h4>
+<pre class="mermaid">
+graph TB
+  subgraph L1["Layer 1: Network perimeter"]
+    WAF[WAF + DDoS protection]
+    GW[API gateway<br/>+ rate limiting]
+  end
+
+  subgraph L2["Layer 2: Authentication"]
+    JWT[JWT, OIDC, SAML, LDAP, MFA]
+  end
+
+  subgraph L3["Layer 3: Authorization"]
+    RBAC[RBAC + ABAC]
+    RLS[Row-level + field-level]
+  end
+
+  subgraph L4["Layer 4: Application"]
+    SAN[Input sanitization<br/>+ TypeORM parameterized]
+    PLUG[Plugin sandbox<br/>CSP + capability authz]
+  end
+
+  subgraph L5["Layer 5: Data"]
+    ENC[Encryption at rest + in transit<br/>+ BYOK premium]
+    ISO[Per-instance isolation<br/>or strict RLS pooled]
+  end
+
+  subgraph L6["Layer 6: Audit + detection"]
+    AUDIT[Transactional audit<br/>+ hash chain]
+    ANOM[Runtime anomaly detection]
+    MON[Continuous monitoring<br/>+ SIEM integration]
+  end
+
+  L1 --> L2 --> L3 --> L4 --> L5 --> L6
+</pre>
+
+<hr />
+
+<h2 id="section-7">7. Evolution map</h2>
+
+<p>How does Approach 2+ evolve in each future scenario?</p>
+
+<h3>Scenario 1: Add a 2nd vertical app (Pharmacy)</h3>
+<p><strong>Architecture impact: zero infrastructure change.</strong> New vertical pack, new domain entities, new vertical UI screens. Same metadata engine, automation engine, plugin SDK. Eat-your-own-dog-food validates the platform design.</p>
+
+<h3>Scenario 2: Scale to 5–20 customers</h3>
+<p><strong>Architecture impact: linear.</strong> Provision more customer instances. Each is single Nest process + Postgres + Redis. Control plane handles provisioning, billing, upgrades, monitoring.</p>
+
+<h3>Scenario 3: A specific module hits performance limit</h3>
+<p><strong>Example</strong>: AVA needs GPU-heavy LLM serving and high-throughput vector search. <strong>Solution</strong>: extract the <code>ai</code> module as a separate service. Module boundaries make this surgical — well-defined Nest module with explicit interface becomes a HTTP/gRPC service. Other modules unaffected. The split is deferred until evidence demands it.</p>
+
+<h3>Scenario 4: Multi-region (US + EU customers)</h3>
+<p><strong>Per-region deployment.</strong> Customer instance deploys in customer's region. Control plane multi-region (active-active). Per-customer data NEVER crosses region boundaries.</p>
+
+<h3>Scenario 5–7: White-label, app marketplace, self-hosted</h3>
+<ul>
+<li><strong>White-label</strong>: theming + plugin SDK already support this. Different white-label gets different theme pack + branded plugin pack.</li>
+<li><strong>App marketplace</strong>: extend pack registry to public. Add publishing flow, monetization, ratings, ISV onboarding.</li>
+<li><strong>Self-hosted</strong>: Helm chart, Docker compose. Control plane optional. Plugin/upgrade-safety mechanism unchanged.</li>
+</ul>
+
+<h3>Decision tree</h3>
+<pre class="mermaid">
+flowchart TD
+  Future[Future need] --> Q1{What kind?}
+
+  Q1 -->|New vertical app| NewApp[Build as new vertical pack<br/>Same architecture]
+  Q1 -->|New customer feature| Q2{Scope?}
+  Q1 -->|Performance pressure| Q3{Where?}
+  Q1 -->|More customers| Provision[Provision new instances<br/>via control plane]
+  Q1 -->|New region| Region[Deploy customer instance<br/>in customer's region]
+  Q1 -->|White-label| Theme[Theme pack + branded<br/>plugin pack]
+  Q1 -->|Marketplace| Marketplace[Extend pack registry<br/>+ ISV onboarding]
+  Q1 -->|Self-hosted| Helm[Helm chart distribution<br/>Validator runs in-instance]
+
+  Q2 -->|One customer| CustPack[Customer pack<br/>+ optional plugins]
+  Q2 -->|All customers| VerticalUpdate[Vertical pack update<br/>or platform feature]
+
+  Q3 -->|One module| Extract[Extract module<br/>as service]
+  Q3 -->|Whole instance| Q4{Pattern?}
+  Q4 -->|CPU/memory| Vertical[Vertical scale<br/>same instance shape]
+  Q4 -->|Database hot| ReadReplica[Read replicas<br/>or shard customer]
+  Q4 -->|Concurrent users| API_HPA[Horizontal pod autoscale<br/>API behind LB]
+</pre>
+
+<div class="callout warn">
+<strong>What's hard to undo</strong>: pack manifest format, Plugin SDK API surface, customer schema namespace convention, audit row schema. These commitments should be intentional. Pack manifest v1 should be reviewed by 2–3 future-self thought experiments before publishing.
+</div>
+
+<hr />
+
+<h2 id="section-8">8. Migration sequence</h2>
+
+<p>From current 14-service to target modular monolith. Nine waves (W0–W8) with effort estimates.</p>
+
+<h3>Wave 0 — Lock the architectural decision (1 week)</h3>
+<ul>
+<li>Amend canon (this design doc + canon delta in §9)</li>
+<li>Pause Plan Fix work that becomes irrelevant (Plan Fix 12, 24; defer 16)</li>
+<li>Re-orient remediation backlog around target architecture</li>
+<li>Set up <code>apps/api</code>, <code>apps/worker</code>, <code>apps/control-plane</code> directories (empty Nest scaffolds)</li>
+</ul>
+
+<h3>Wave 1 — API consolidation (4–6 weeks)</h3>
+<ul>
+<li>Move modules from each instance service into <code>apps/api/src/app/{module-name}/</code></li>
+<li>Order (per dependency graph): kernel → db → identity → audit → metadata → data → automation → views → forms → dashboards → notifications → integrations → ai → packs → plugins → upgrade → storage → search</li>
+<li>Each module retains its existing tests</li>
+<li>Service-boundary scanner deleted</li>
+<li>Old services kept running side-by-side via routing rules; new traffic routed to monolith</li>
+<li>Cutover when all integration tests green and shadow comparator detects no drift</li>
+</ul>
+
+<h3>Wave 2 — Library consolidation (2 weeks)</h3>
+<ul>
+<li>Merge event-bus, redis, auth-guard, automation, control-plane-db into appropriate modules</li>
+<li>Keep: schema-engine, schema-validator, formula-parser, relationship-resolver, authorization, ai, storage, shared-types, ui-components</li>
+<li>Drop: enterprise, analytics</li>
+</ul>
+
+<h3>Wave 3 — Frontend consolidation &amp; Plugin SDK foundation (3 weeks)</h3>
+<ul>
+<li>web-control-plane folds into web-client (role-gated routes)</li>
+<li>Add <code>@hubblewave/plugin-sdk</code> package</li>
+<li>Add plugin loader (Vite module federation)</li>
+<li>Refactor existing customization UIs to consume the SDK internally — eat your own dog food</li>
+</ul>
+
+<h3>Wave 4 — Customization layer formalization (4 weeks)</h3>
+<ul>
+<li>Define pack manifest format (version 1.0)</li>
+<li>Implement schema isolation (customer-namespaced tables, JSONB extensions, side tables)</li>
+<li>Build pack install/uninstall/upgrade/rollback flows</li>
+<li>Build customization design-time validation</li>
+<li>Define plugin SDK contract</li>
+<li>Build plugin install + upload + bundle-scan + admin-approval flow</li>
+</ul>
+
+<h3>Wave 5 — Upgrade-safety validator (3 weeks)</h3>
+<ul>
+<li>Schema diff calculator</li>
+<li>API diff calculator</li>
+<li>Plugin compatibility checker</li>
+<li>Workflow + integration validation</li>
+<li>Validator UI (green/yellow/red display + remediation guide)</li>
+<li>Automated migration generator (yellow path)</li>
+</ul>
+
+<h3>Wave 6 — Clinical/Facilities pack (8–12 weeks, parallel with W4–W5)</h3>
+<ul>
+<li>Domain entities (Asset, AssetCategory, WorkOrder, PreventiveMaintenance, Inspection, Calibration, Recall, Vendor, ServiceContract, Room, Floor, Building, Department)</li>
+<li>Vertical-specific UI screens (asset list/detail, work-order list/detail, PM scheduler, inspection runner, mobile technician UI)</li>
+<li>Compliance modules (Joint Commission, FDA UDI, AEM, 21 CFR Part 11, HIPAA logging)</li>
+<li>Integrations (HL7/FHIR, BACnet, Epic/Cerner, Maximo migration tool)</li>
+<li>Reports and dashboards</li>
+<li>Mobile UI</li>
+</ul>
+
+<h3>Wave 7 — Pre-launch hardening (4 weeks)</h3>
+<ul>
+<li>Performance testing under realistic customer load</li>
+<li>External penetration testing</li>
+<li>HIPAA compliance audit (external)</li>
+<li>Disaster recovery drill</li>
+<li>Customer instance provisioning runbook</li>
+<li>Documentation (admin/customer/plugin-developer/integration-developer guides)</li>
+<li>WebAuthn MFA</li>
+<li>OpenTelemetry tracing</li>
+</ul>
+
+<h3>Wave 8 — Pilot with first customer (4 weeks)</h3>
+<ul>
+<li>Provision pilot instance for current employer</li>
+<li>Customer-led customization workshop (build their first custom pack with them)</li>
+<li>Build at least one customer-specific plugin together (proves SDK story end-to-end)</li>
+<li>Test full upgrade path (deploy → ship "upgrade" → run validator → apply)</li>
+<li>Iterate on feedback; gather GA requirements</li>
+</ul>
+
+<h3>Total timeline</h3>
+<p><strong>Critical path (sequential)</strong>: ~25 weeks (~6 months)<br/>
+<strong>With parallelization (W6 alongside W4–W5)</strong>: ~22 weeks (~5–6 months)<br/>
+<strong>Realistic GA-quality demo with buffer</strong>: 7–9 months</p>
+
+<pre class="mermaid">
+gantt
+  title Migration sequence
+  dateFormat YYYY-MM-DD
+  axisFormat %b
+
+  section Foundation
+  W0 Lock decision           :w0, 2026-05-15, 7d
+  W1 API consolidation       :w1, after w0, 35d
+  W2 Lib consolidation       :w2, after w1, 14d
+  W3 Frontend + SDK          :w3, after w2, 21d
+
+  section Customization layer
+  W4 Pack + plugin layer     :w4, after w3, 28d
+  W5 Upgrade validator       :w5, after w4, 21d
+
+  section Vertical pack (parallel)
+  W6 Clinical/Facilities pack:w6, after w3, 70d
+
+  section Launch readiness
+  W7 Hardening               :w7, after w6, 28d
+  W8 Pilot                   :w8, after w7, 28d
+</pre>
+
+<hr />
+
+<h2 id="section-9">9. Canon delta</h2>
+
+<table>
+<thead><tr><th>§</th><th>Clause</th><th>Action</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>This is a brand-new platform</td><td><span class="badge keep">keep</span></td><td>Greenfield discipline still right</td></tr>
+<tr><td>2</td><td>Code is a product surface</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>3</td><td>Platform, not application</td><td><span class="badge keep">keep</span></td><td>Confirmed by user's positioning</td></tr>
+<tr><td>4</td><td>Metadata is the product</td><td><span class="badge keep">keep</span></td><td>Now load-bearing for the customization moat</td></tr>
+<tr><td>5</td><td>One instance per customer</td><td><span class="badge soften">soften</span></td><td>Default deployment; pooled (RLS) mode for trial/lower-tier</td></tr>
+<tr><td>6</td><td>Schema before data</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>7</td><td>Views are first-class</td><td><span class="badge soften">soften</span></td><td>Drop the 5-tier hierarchy; customer/role views sufficient</td></tr>
+<tr><td>8</td><td>Automation ≠ Workflow</td><td><span class="badge invert">invert</span></td><td>Merge into ONE engine with two modes; ServiceNow split is a tax</td></tr>
+<tr><td>9</td><td>Authorization is centralized</td><td><span class="badge keep">keep</span></td><td>W1.2 + W1.5 + W5.D enforcement preserved</td></tr>
+<tr><td>10</td><td>Auditability is mandatory</td><td><span class="badge keep">keep</span></td><td>W1.6 + W2.D + W3.C transactional-audit preserved</td></tr>
+<tr><td>11</td><td>AI is infrastructure</td><td><span class="badge invert">invert</span></td><td>AI is a feature; AVA is a Nest module, not a runtime layer</td></tr>
+<tr><td>12</td><td>Trust earned incrementally</td><td><span class="badge defer">defer</span></td><td>Aspirational; activate when AVA takes real actions</td></tr>
+<tr><td>13</td><td>Upgrade safety is required</td><td><span class="badge expand">expand</span></td><td>Becomes the marquee differentiator; new mechanism in §5.4</td></tr>
+<tr><td>14</td><td>Delete ruthlessly</td><td><span class="badge keep">keep</span></td><td>W2.A reference-checker on metadata delete preserved</td></tr>
+<tr><td>15</td><td>Speed never justifies decay</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>16</td><td>Manifesto is law</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>17</td><td>High-level architecture</td><td><span class="badge update">update</span></td><td>Reflect modular monolith topology</td></tr>
+<tr><td>18</td><td>Control Plane</td><td><span class="badge keep">keep</span></td><td>Stays as separate process; correctly multi-tenant</td></tr>
+<tr><td>19</td><td>Customer Instance</td><td><span class="badge update">update</span></td><td>Single Nest process per instance, not 14 services</td></tr>
+<tr><td>20</td><td>Enforcement is part of architecture</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>21</td><td>Enforcement layers</td><td><span class="badge trim">trim</span></td><td>Drop service-boundary + terminology scanners; keep audit + authz + deps</td></tr>
+<tr><td>22</td><td>AI agent compliance</td><td><span class="badge keep">keep</span></td><td>Applies to me as well as future agents</td></tr>
+<tr><td>23</td><td>Canon as execution contract</td><td><span class="badge keep">keep</span></td><td></td></tr>
+<tr><td>24</td><td>Canon maintenance</td><td><span class="badge keep">keep</span></td><td>Expand log to include this design doc</td></tr>
+<tr><td><strong>NEW §17.5</strong></td><td><strong>Customizations are versioned, namespaced, and validated against platform-API versions. No customization may modify platform schema. Upgrades are blocked when customer customizations would break.</strong></td><td><span class="badge add">add</span></td><td>Defines the upgrade-safety contract; this is the moat</td></tr>
+<tr><td><strong>NEW §25</strong></td><td><strong>Plugin SDK is the platform contract.</strong> API stability committed for N=2 major versions. Removed APIs ship with automated migration tooling.</td><td><span class="badge add">add</span></td><td>Stability promise to plugin authors</td></tr>
+</tbody>
+</table>
+
+<h3>Summary of canon energy redirected</h3>
+<ul>
+<li><strong>Stays load-bearing</strong>: §1, §2, §3, §4, §6, §9, §10, §13 (now expanded), §14, §15, §16, §18, §20, §22, §23, §24</li>
+<li><strong>Softened or inverted to match modular monolith reality</strong>: §5, §7, §8, §11, §12, §17, §19, §21</li>
+<li><strong>New clauses for the moat</strong>: §17.5 (upgrade safety contract), §25 (plugin SDK stability)</li>
+</ul>
+
+<hr />
+
+<h2 id="appendices">Appendices</h2>
+
+<h3>A. Load-bearing decisions to challenge</h3>
+<ol>
+<li><strong>Modular monolith over microservices</strong> for customer instance — predicated on team size + Shopify/Basecamp precedent. If team grows to 20+ engineers in year 2, revisit.</li>
+<li><strong>Schema isolation via customer-namespaced tables + JSONB extensions</strong> — predicated on Postgres handling this gracefully at customer scale. Verify with synthetic load test in Wave 7.</li>
+<li><strong>Plugin SDK with module federation</strong> — predicated on Vite module federation being production-stable. If not, fall back to sandboxed iframes with PostMessage.</li>
+<li><strong>Automation + workflow merged</strong> — predicated on customers not needing both engines side-by-side. Validate with first customer in Wave 8.</li>
+<li><strong>AVA as feature module, not infrastructure</strong> — predicated on AI being value-add, not deal-maker for first customer. If first customer's pitch hinges on AVA, restore framing for that customer's instance.</li>
+<li><strong>Per-customer instance default</strong> — predicated on instances being lightweight enough to provision economically. Pooled mode kept available for unprofitable customers.</li>
+<li><strong>Upgrade-safety guarantee</strong> — predicated on the contract being complete (no side-channels). Audit aggressively in Wave 4.</li>
+</ol>
+
+<h3>B. Out of scope for this document</h3>
+<ul>
+<li>Specific TypeScript interface definitions — emerge during implementation</li>
+<li>Database column types and exact entity schemas — emerge during Wave 6 domain modeling</li>
+<li>PR-by-PR migration plan — produced by <code>superpowers:writing-plans</code> after this doc is approved</li>
+<li>UI mockups — separate concern (frontend-design)</li>
+<li>Sales/pitch deck content — derivable but a different artifact</li>
+</ul>
+
+<h3>C. Glossary</h3>
+<ul>
+<li><strong>Pack</strong> — versioned bundle of customizations (schema, automation, views, plugins, integrations) with a manifest declaring its API contract.</li>
+<li><strong>Customer pack</strong> — pack authored by a customer for their own instance.</li>
+<li><strong>Vertical pack</strong> — pre-built application pack shipped by HubbleWave (e.g. Clinical/Facilities Asset Management).</li>
+<li><strong>Plugin</strong> — customer-uploaded React component bundle that runs in the platform's web client via the Plugin SDK.</li>
+<li><strong>Plugin SDK</strong> — <code>@hubblewave/plugin-sdk</code>; the typed, versioned contract plugins consume.</li>
+<li><strong>Customization surface</strong> — set of platform extension points (schema, automation, views, forms, integrations, plugins) customers can modify; this surface IS the contract for upgrade safety.</li>
+<li><strong>Customer instance</strong> — per-customer deployment: one <code>api</code>, one <code>worker</code>, one Postgres, one Redis.</li>
+<li><strong>Control plane</strong> — multi-tenant HubbleWave service that provisions, upgrades, monitors, and bills customer instances.</li>
+<li><strong>Validator (upgrade)</strong> — pre-upgrade compatibility checker; classifies upgrades as green/yellow/red.</li>
+</ul>
+
+<hr />
+
+<h2 id="decision-request">Decision request</h2>
+
+<p>This design supersedes parts of <code>CLAUDE.md</code> (the master canon). Specifically, it asks the founder to:</p>
+
+<ol>
+<li><strong>Approve the architectural shift</strong> from 14-service distributed system to 3-process modular monolith.</li>
+<li><strong>Approve the canon delta</strong> in §9.</li>
+<li><strong>Approve the migration sequence</strong> in §8 (~25 weeks critical path).</li>
+<li><strong>Approve the customization moat</strong> in §5 as the load-bearing differentiator vs Nuvolo/ServiceNow.</li>
+</ol>
+
+<p>Once approved, the next step is <code>superpowers:writing-plans</code> to produce the per-wave implementation plan (PR-level, file-level).</p>
+
+<p><strong>Push back on any section before that step.</strong></p>
+
+  </main>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, curve: 'basis' },
+    sequence: { showSequenceNumbers: false, mirrorActors: false }
+  });
+</script>
+</body>
+</html>
