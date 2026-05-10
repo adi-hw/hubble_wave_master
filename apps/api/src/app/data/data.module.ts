@@ -3,6 +3,7 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { EventOutboxService } from './events/event-outbox.service';
 import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
 import { DefaultsModule } from './defaults/defaults.module';
+import { ValidationModule } from './validation/validation.module';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -13,7 +14,7 @@ import { DefaultsModule } from './defaults/defaults.module';
  *   Standard modules:
  *     [x] workflow
  *     [x] defaults
- *     [ ] validation
+ *     [x] validation
  *     [ ] ava
  *     [ ] formula
  *     [ ] computed
@@ -40,9 +41,9 @@ import { DefaultsModule } from './defaults/defaults.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [WorkflowModule, DefaultsModule],
+  imports: [WorkflowModule, DefaultsModule, ValidationModule],
   controllers: [],
   providers: [EventOutboxService, SyncTriggerClientService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule],
 })
 export class DataModule {}
