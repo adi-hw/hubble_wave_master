@@ -98,29 +98,39 @@ Hardcoded business logic is architectural failure.
 
 ---
 
-## 5. One Instance per Customer (Non-Negotiable)
+## 5. Single-Tenant Default + Pooled Mode Optional (canon §5 SOFTEN, 2026-05-09)
 
-Customer isolation is architectural, not logical.
+Customer isolation is architectural, with two supported deployment modes.
 
-There are:
-- No tenant IDs in business logic
-- No shared runtime state between customers
-- No conditional isolation
+### Default: per-customer instance (single-tenant)
+For paying production customers, each instance is fully dedicated:
+- Own Nest API process
+- Own BullMQ worker process
+- Own Postgres database
+- Own Redis instance
 
-Each customer instance is fully independent.
+This is the default and is what every paying customer's procurement should expect.
 
-**Scope clarification (added 2026-05):** This rule applies to the
-**Customer Instance Plane** — the runtime environment customers use.
-The **Control Plane** (Part II §18) is a traditional multi-tenant SaaS
-application by design: it stores customers, instances, licenses, and
-admin audit trails in shared tables keyed by `customerId`. This is
-correct architecture, not a violation: the Control Plane *is* the
-multi-tenant management layer that provisions single-tenant Instances.
+### Optional: pooled mode (multi-tenant via Postgres RLS)
+For free trials, sales demos, internal dev/staging, lower-tier customers, and future ISV-marketplace test environments, multiple tenants share infrastructure isolated by Postgres Row-Level Security (RLS) policies keyed on `tenant_id`.
 
-The "no tenant IDs in business logic" rule MUST be enforced inside
-every instance service (svc-data, svc-metadata, svc-identity,
-svc-automation, etc.). Control Plane services may freely use
-`customerId` because that's the unit they operate on.
+In pooled mode:
+- Every database query carries a `tenant_id` (or its equivalent)
+- Postgres RLS policies enforce cross-tenant isolation at the SQL layer
+- Per-tenant cross-tenant-leak tests run in CI
+- Audit and identity continue to function exactly as in single-tenant mode
+
+Both modes use the same source code; only deployment topology differs.
+
+### Implementation requirements (binding on all instance services)
+- All data access must include tenant context. Use `RequestContext.tenantId` for the active tenant.
+- All Postgres tables that hold tenant-scoped data carry RLS policies (enabled in pooled mode; the policy is trivially `USING (true)` in single-tenant mode).
+- Tests must run in both modes (single-tenant fixture + pooled fixture) to catch isolation leaks.
+
+### Scope clarification
+This rule applies to the **Customer Instance Plane** — the runtime environment customers use. The **Control Plane** (Part II §18) is a traditional multi-tenant SaaS application by design.
+
+**Spec reference:** `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §6.3 (data isolation) and §9 (canon delta).
 
 ---
 
