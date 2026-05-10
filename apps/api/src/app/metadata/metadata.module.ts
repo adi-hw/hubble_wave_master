@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScriptModule } from './script/script.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -19,7 +20,7 @@ import { Module } from '@nestjs/common';
  *   [ ] navigation
  *   [ ] preferences
  *   [ ] property
- *   [ ] script
+ *   [x] script
  *   [ ] search
  *   [ ] theme
  *   [ ] view
@@ -38,9 +39,13 @@ import { Module } from '@nestjs/common';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [],
+  imports: [
+    ScriptModule,
+  ],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [
+    ScriptModule,
+  ],
 })
 export class MetadataModule {}

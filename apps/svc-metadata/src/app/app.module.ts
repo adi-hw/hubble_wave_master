@@ -36,7 +36,7 @@ import { ThemeModule } from './theme/theme.module';
 import { PreferencesModule } from './preferences/preferences.module';
 import { ViewModule } from './view/view.module';
 import { NavigationMetadataModule } from './navigation/navigation.module';
-import { ScriptModule } from './script/script.module';
+import { ScriptModule } from '../../../api/src/app/metadata/script/script.module';
 import { PacksModule } from './packs/packs.module';
 import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
