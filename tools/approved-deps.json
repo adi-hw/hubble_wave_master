@@ -159,7 +159,7 @@
         "reason": "Winston transport for NestJS logger"
       },
       "nodemailer": {
-        "reason": "Canonical SMTP transport for svc-notify"
+        "reason": "Canonical SMTP transport for the notifications module"
       },
       "openid-client": {
         "reason": "Canonical OIDC client for SSO flows"

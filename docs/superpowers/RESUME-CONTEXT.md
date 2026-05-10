@@ -4,11 +4,11 @@
 >
 > **Master roadmap:** `docs/superpowers/PLATFORM-ROADMAP.md` — single source of truth coordinating BOTH the architectural reshape and the parallel security audit remediation. Read PLATFORM-ROADMAP.md FIRST for the bigger picture, then this file for the architecture-specific lessons + cheat sheet.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-data-complete` + `arc-reconciled-with-w1-security` consolidated into master via PR #4 + PR #5)
+> **Last updated:** 2026-05-10 (after `arc-w1-complete` — Phase 1 complete; all 11 instance/control-plane services migrated and svc-* thin adapters deleted)
 
 ## Working directory
 
-Both prior architectural work branches (`claude/nervous-volhard-f9abc2` and its source `claude/amazing-yalow-0f9c37`) have been merged into `master` and the remote PR-head branches deleted. master is at `7b47d49` with the full W1 migration through data + Phase 0 reconciliation.
+ARC-W1 work is complete. All architectural migrations have been consolidated into `master`. The current branch (`claude/amazing-yalow-0f9c37`) carried PRs #4 → #11. After PR #11 merged, the W1 final cutover landed in PR #12.
 
 Future Claude Code sessions should spawn a fresh worktree off master in the `OneDrive...HW Platform/` parent folder. The pattern observed in this project:
 
@@ -44,25 +44,43 @@ Founder-approved architectural decisions baked into the spec:
 | Vertical pack deferred | Platform-first discipline for solo execution; first customer's pilot is stronger when they build their own pack on the platform |
 | LLM provider per customer (BAA-controlled) | Hospitals require data-residency control |
 
-## Completed work (6 git tags, all on master)
+## Completed work (13 git tags, all on master)
 
-| Tag | Commit | What | Size |
+### Foundation + Phase 0 reconciliation
+
+| Tag | What |
+|---|---|
+| `arc-w0-complete` | Canon amendments to CLAUDE.md + apps/api & apps/worker Nest scaffolds + 8 architectural scanners + ESLint canon rules + gitleaks + SBOM + license-checker |
+| `arc-w1-foundation-partial` | kernel + db + audit module wrappers in apps/api (re-exports from `libs/instance-db`) |
+| `arc-reconciled-with-w1-security` | 27 W0+W1 security commits cherry-picked from `claude/condescending-shamir-92422b` with path-translation for migrated services (LDAP F011, packs SSRF F125+F126, ESLint F104) |
+
+### Per-service migrations (11 of 11 complete)
+
+| Tag | Service | New home | LoC |
 |---|---|---|---|
-| `arc-w0-complete` | `d3dede3` | Canon amendments to CLAUDE.md (§5/§7/§8/§11/§12/§17/§19/§21 amended; §17.5/§25/§26/§27 added; §24 maintenance log) + apps/api & apps/worker Nest scaffolds + package.json scripts | doc-only |
-| `arc-w1-foundation-partial` | `bffef2f` | kernel + db + audit module wrappers in apps/api (re-exports from `libs/instance-db`) | small wrappers |
-| `arc-w1-identity-complete` | `8710e79` | All 15 svc-identity sub-modules + 3 top-level files → apps/api/identity. Includes the **cyclic-core bundle** (auth+abac+ldap+roles, 71 files atomic). svc-identity reduced to a 27-line thin adapter. | ~17,200 LoC, 105 files |
-| `arc-w1-metadata-complete` | `0b2f0d9` | All 23 svc-metadata sub-modules + 7 top-level files → apps/api/metadata. svc-metadata reduced to a 16-line thin adapter. HealthController renamed to `MetadataHealthController` (route `/metadata/health`) to avoid collision with identity's. | ~21,200 LoC, 102 files |
-| `arc-w1-data-complete` | `d10f0d9` | All 12 svc-data sub-directories + 9 top-level files → apps/api/data. svc-data reduced to a thin adapter. HealthController renamed to `DataHealthController` (route `/data/health`). Mid-stream service-file move pattern: `collection-data.service` + `model-registry.service` migrated mid-stream so `work`/`offerings`/`grid` could resolve sibling-relative imports. | ~17,700 LoC, 66 files |
-| `arc-reconciled-with-w1-security` | `fbb640b` | 27 W0+W1 security commits cherry-picked from `claude/condescending-shamir-92422b` with path-translation for migrated services (LDAP F011 → apps/api/identity/ldap; packs SSRF F125+F126 → apps/api/metadata/packs; ESLint F104 lint fixes path-translated to apps/api/data). | ~6,500 additions / ~50 deletions across ~50 files |
+| `arc-w1-identity-complete` | svc-identity | `apps/api/src/app/identity/` | ~17,200 |
+| `arc-w1-metadata-complete` | svc-metadata | `apps/api/src/app/metadata/` | ~21,200 |
+| `arc-w1-data-complete` | svc-data | `apps/api/src/app/data/` | ~17,700 |
+| `arc-w1-automation-complete` | svc-automation | `apps/api/src/app/automation/` | ~6,000 |
+| `arc-w1-ava-complete` | svc-ava | `apps/api/src/app/ava/` | ~8,000 |
+| `arc-w1-workflow-complete` | svc-workflow | `apps/api/src/app/automation/workflow/` (canon §8 INVERT merger) | ~3,000 |
+| `arc-w1-control-plane-complete` | svc-control-plane | `apps/control-plane/src/app/` (NEW Nest app, canon §18) | ~6,000 |
+| `arc-w1-foldins-complete` | svc-view-engine + svc-notify + svc-instance-api + svc-insights | `apps/api/src/app/{views,notifications,instance-api,analytics}/` | ~6,500 |
 
-**Cumulative**: ~56,100 LoC migrated across ~273 files via `git mv` (history preserved). All in master at HEAD `7b47d49`.
+### Final cutover
 
-To see the full migration narrative:
+| Tag | What |
+|---|---|
+| `arc-w1-complete` | All 11 thin-adapter `apps/svc-*` directories deleted. Scanners retargeted (MIGRATED_AREAS → SERVICE_AREAS; INSTANCE_SERVICES collapsed to `['api']`; thin-adapter KNOWN_VIOLATIONS cleared). CI/CD matrix → `api, control-plane, svc-migrations, web-client, web-control-plane`. Helm collapsed to single `api` deployment. `dev:*` package scripts trimmed. New Dockerfiles for `apps/api`, `apps/control-plane`, `apps/svc-migrations`. |
+
+**Cumulative**: ~91,000+ LoC consolidated. `apps/api` is the sole instance-plane runtime. `apps/control-plane` is the multi-tenant control plane. Only `apps/svc-migrations` remains (single-shot K8s Job).
+
+To see the full Phase 1 narrative:
 
 ```bash
-git log --oneline arc-w0-complete..arc-reconciled-with-w1-security | wc -l   # ~80 commits
-git log --oneline arc-w1-metadata-complete..arc-w1-data-complete             # 17 commits (data migration)
-git log --oneline arc-w1-data-complete..arc-reconciled-with-w1-security      # 35 commits (Phase 0 reconciliation)
+git log --oneline arc-w0-complete..arc-w1-complete                            # all of Phase 1
+git log --oneline arc-w1-foldins-complete..arc-w1-complete                    # final cutover only
+git tag --list 'arc-*'                                                        # all 13 tags
 ```
 
 ## Implementation plans (executed)
@@ -204,46 +222,41 @@ grep -E "^\s*\*\s+\[" apps/api/src/app/<area>/<area>.module.ts
 
 Verify all newly-migrated sub-modules show `[x]` in the comment-block checklist. The first metadata combined batch missed this — the @Module decorator was correct but the human-readable checklist was stale. One follow-up commit synced it. Adding the self-review step prevents this.
 
-## What's left in W1
+## What's next — Phase 2 (W2 onward)
 
-### Phase 1 prerequisite: scanner coverage extension
+Phase 1 is COMPLETE. The architectural reshape from a 14-service distributed system to a 3-process modular monolith (apps/api + apps/worker + apps/control-plane) is done.
 
-`tools/service-boundary-check.ts` and `tools/authz-bypass-check.ts` use `SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/` which only matches `apps/svc-*`. After the identity/metadata/data migrations, ~56,100 LoC live at `apps/api/src/app/{identity,metadata,data}/` where the scanners don't reach. Extend the scanners (and update `KNOWN_ENTITY_VIOLATIONS` allowlist paths if needed) before further service migrations so "scanners green" is meaningful.
+The remaining work is the security/correctness audit remediation (Effort B from PLATFORM-ROADMAP.md) plus the spec-defined waves W2–W8. Phase 2 priorities by criticality:
 
-### Remaining instance-plane services to migrate
+### Immediate (Phase 2 / W2 — ~3 weeks)
 
-Each needs its own focused plan + execution following the same template:
+**Authorization correctness fixes (must land before any customer pilot)**
 
-| Service | LoC (approx) | Notes |
+| ID | Finding | Path |
 |---|---|---|
-| svc-automation | 6,000 | Already partially consolidated in Plan Fix 1; should be fast |
-| svc-ava | 8,000 | AVA runtime; F072+F074 proposal state machine overlap with Plan Fix 16 (`ca16e40`) |
-| svc-control-plane | 6,000 | Different plane (multi-tenant by design); different shape |
-| svc-workflow | 3,000 | Will likely fold into apps/api/automation per canon §8 INVERT |
-| svc-view-engine | 2,000 | Small leaf |
-| svc-insights | 2,000 | Small leaf |
-| svc-notify | 1,000 | Small leaf |
-| svc-instance-api | 1,000 | Likely an aggregator/proxy that folds into apps/api wholesale |
+| F003 | ACL predicates AND'd not OR'd → users see fewer records than entitled | `libs/authorization/src/lib/authorization.service.ts:144-163` |
+| F004 | Field-level masking hardcoded NONE — HIPAA blocker | `libs/authorization/src/lib/property-acl.repository.ts:514` |
+| F005 | Field-level access defaults to ALLOW | `libs/authorization/src/lib/property-acl.repository.ts:343-446` |
+| F006 | No deny rules in ACL model | `libs/authorization/src/lib/types.ts:30-61` |
+| F021 | Admin role bypasses everything — canon §10 violation | `libs/auth-guard/.../permissions.guard.ts:97-101` |
+| F146 | Insights dashboards: no authz on layout content | `apps/api/src/app/analytics/dashboards/dashboards.service.ts` (tracked in `authz-bypass-check.ts` KNOWN_BYPASSES) |
+| F136 | Search authz post-filters after search (pagination + facet leak) | `apps/api/src/app/ava/search/search-query.service.ts` (post-cutover path) |
 
-### W1 final cutover (separate plan)
+Plus lib consolidation: the 3 orphan libs (`libs/relationship-resolver`, `libs/schema-engine`, `libs/schema-validator`) flagged in `tools/dead-code-allowlist.json` need either reconnecting to apps/api or deletion after feature-parity verification.
 
-After all instance services migrate:
-1. Delete legacy `apps/svc-*` directories (the thin adapters)
-2. Delete `tools/service-boundary-check.ts` (no longer relevant)
-3. Update CI to remove the service-boundary scanner from required checks
-4. Update Nx project graph
-5. Verify apps/api handles 100% of instance-plane traffic
-6. Tag `arc-w1-cutover-complete`
+### W3 — JWT / session / MFA / SSO hardening (~3 weeks)
 
-### Then W2 onward (per spec §8)
+Refresh-token reuse detection, JWT revocation, OIDC PKCE/nonce/state, JWT key rotation, MFA recovery code hashing, service-to-service auth, permission-cache invalidation. ~13 findings.
 
-- W2: Library consolidation (~2 weeks)
-- W3: Frontend + SDK + Mobile foundation (~5 weeks)
+### W4–W8 (per spec §8)
+
 - W4: Customization layer + Workspaces + UI Builder (~10 weeks)
-- W5: Upgrade validator + Platform Analytics + AI features + AI Code Assistant (~8 weeks)
+- W5: Upgrade validator + Platform Analytics + AI features + AI Code Assistant + Data plane survival (~8 weeks)
 - W6: Platform demo build (~6 weeks)
 - W7: Pre-launch hardening (~4 weeks)
 - W8: Pilot with first customer (~4 weeks)
+
+See PLATFORM-ROADMAP.md for the full sequenced backlog.
 
 ## How to start a fresh session
 
@@ -255,37 +268,34 @@ Spawn a new Claude Code worktree off `master` and say:
 
 Auto mode for continuous execution if you want minimal interruption.
 
-**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 1 prerequisite (extend scanners to apps/api), then continue W1 architectural migration with svc-automation.
+**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 2 W2 authorization correctness fixes (F003, F004, F005, F006, F021, F146, F136). These are HIPAA-blocking correctness bugs in shared libs.
 
 ## Useful tags + commands cheat sheet
 
 ```bash
 # Where am I?
 git log --oneline -1
-git tag --list | grep arc
-
-# What's the migration narrative?
-git log --oneline arc-w0-complete..arc-reconciled-with-w1-security | wc -l   # ~80 commits across all migrations + reconciliation
+git tag --list 'arc-*'                                # all 13 ARC tags
 
 # Verify everything still builds
-npx nx build api && npx nx build svc-identity && npx nx build svc-metadata && npx nx build svc-data && npx nx build worker
+npx nx run-many --target=build --projects=api,control-plane,worker,web-client,web-control-plane,svc-migrations --parallel=2
 
 # All scanners green?
 npm run authz:check && npm run audit:check && npm run security:check && npm run service-boundary:check && npm run deps:check && npm run dead-code:check
-npm run selftest:scanners
+
+# All selftests pass?
+npx ts-node tools/authz-bypass-check-selftest.ts
+npx ts-node tools/service-boundary-check-selftest.ts
+npx ts-node tools/security-bypass-check-selftest.ts
+npx ts-node tools/dead-code-check-selftest.ts
+
+# Tests pass?
+npx nx test api
 
 # What's in apps/api now?
-ls apps/api/src/app/   # has identity, metadata, data, kernel, db, audit
-
-# What's left in svc-identity / svc-metadata / svc-data?
-ls apps/svc-identity/src/app/   # only app.module.ts (thin adapter)
-ls apps/svc-metadata/src/app/   # only app.module.ts (thin adapter)
-ls apps/svc-data/src/app/       # only app.module.ts (thin adapter)
-
-# Migration progress checklist (per-area)
-grep -E "^\s*\*\s+\[" apps/api/src/app/identity/identity.module.ts
-grep -E "^\s*\*\s+\[" apps/api/src/app/metadata/metadata.module.ts
-grep -E "^\s*\*\s+\[" apps/api/src/app/data/data.module.ts
+ls apps/api/src/app/                                  # identity, metadata, data, automation, ava, views, notifications, instance-api, analytics, kernel, db, audit, app.module.ts
+ls apps/control-plane/src/app/                        # customers, instances, packs, licenses, recovery, audit, auth, settings, terraform, subscriptions, metrics, health-aggregator
+ls apps/                                              # api, api-e2e, control-plane, svc-migrations, web-client, web-control-plane, worker, worker-e2e  (no svc-* except svc-migrations)
 ```
 
 ---

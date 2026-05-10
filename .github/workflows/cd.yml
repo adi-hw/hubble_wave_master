@@ -86,11 +86,9 @@ jobs:
     strategy:
       matrix:
         service:
-          - svc-identity
-          - svc-data
-          - svc-metadata
-          - svc-ai
-          - svc-control-plane
+          - api
+          - control-plane
+          - svc-migrations
           - web-client
           - web-control-plane
     steps:
@@ -248,9 +246,8 @@ jobs:
 
       - name: Verify deployment
         run: |
-          kubectl rollout status deployment/svc-identity -n hubblewave-system --timeout=300s
-          kubectl rollout status deployment/svc-data -n hubblewave-system --timeout=300s
-          kubectl rollout status deployment/svc-metadata -n hubblewave-system --timeout=300s
+          kubectl rollout status deployment/api -n hubblewave-system --timeout=300s
+          kubectl rollout status deployment/control-plane -n hubblewave-control-plane --timeout=300s
           kubectl rollout status deployment/web-client -n hubblewave-system --timeout=300s
 
   # Post-deployment health checks

@@ -4,20 +4,20 @@
 >
 > **Read this file at the start of any session** to understand state, priorities, and what to do next. Update when a new tag lands or a major decision changes.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-data-complete` + `arc-reconciled-with-w1-security` consolidated into master via PR #4 + PR #5)
+> **Last updated:** 2026-05-10 (after `arc-w1-complete` — Phase 1 COMPLETE)
 
 ---
 
 ## State of play
 
-Both efforts have now been consolidated into **`master`**. PR #4 (`arc-w1-data-complete` + `arc-reconciled-with-w1-security`) and PR #5 (coding-skills design spec) both landed 2026-05-10.
+**Phase 1 is COMPLETE.** All 11 instance/control-plane services have been migrated from `apps/svc-*` into `apps/api` + `apps/control-plane`. The thin-adapter `svc-*` directories have been deleted in the W1 final cutover. CI/CD, helm, scanners, and package.json scripts have been retargeted at the new topology.
 
 | Effort | Status |
 |---|---|
-| **A — Architectural reshape** (`apps/svc-* → apps/api`) | ~56,100 LoC migrated. Foundation + identity + metadata + data done. 4 instance services + fold-in services + cutover remain. |
+| **A — Architectural reshape** (`apps/svc-* → apps/api` + `apps/control-plane`) | **PHASE 1 COMPLETE.** 11/11 instance/control-plane services migrated (~91,000+ LoC consolidated). svc-* thin adapters deleted. `apps/svc-migrations` retained (single-shot K8s Job). |
 | **B — Security/correctness audit remediation** | W0 (foundation scanners) + W1 (14 critical fixes) cherry-picked into master via Phase 0 reconciliation. W2–W11 (~120 findings) still owed. |
 
-The originally-diverged W0+W1 security commits from `claude/condescending-shamir-92422b` were path-translated and cherry-picked into the architectural branch (Phase 0, complete). master now contains both the modular monolith and the W0+W1 security baseline. Future migrations build on a clean baseline; future security work cherry-picks against post-migration paths.
+The originally-diverged W0+W1 security commits from `claude/condescending-shamir-92422b` were path-translated and cherry-picked into the architectural branch (Phase 0, complete). master now contains both the modular monolith and the W0+W1 security baseline. Future security work cherry-picks against the consolidated paths.
 
 ---
 
@@ -58,7 +58,7 @@ From the spec + founder direction (2026-05-09):
 
 ## What's done
 
-### Effort A — architectural (6 tags, all consolidated into master)
+### Effort A — architectural (13 tags, all consolidated into master)
 
 | Tag | HEAD | What |
 |---|---|---|
@@ -68,8 +68,14 @@ From the spec + founder direction (2026-05-09):
 | `arc-w1-metadata-complete` | `0b2f0d9` | All 23 svc-metadata sub-modules + 7 top-level files → apps/api/metadata (~21,200 LoC) |
 | `arc-w1-data-complete` | `d10f0d9` | All 12 svc-data sub-directories + 9 top-level files → apps/api/data (~17,700 LoC). Mid-stream service-file move pattern handled cross-deps cleanly. |
 | `arc-reconciled-with-w1-security` | `fbb640b` | 27 W0+W1 security commits cherry-picked from `claude/condescending-shamir-92422b` with path-translation for migrated services (LDAP F011, packs SSRF F125+F126, ESLint F104). |
+| `arc-w1-automation-complete` | `2d77402` | svc-automation runtime + sync-trigger + scheduling + AVA + CRUD → apps/api/automation (~6,000 LoC, cyclic-core bundle) |
+| `arc-w1-ava-complete` | `01e2dbe` | svc-ava core + governance + reasoning → apps/api/ava (~8,000 LoC, clean DAG) |
+| `arc-w1-workflow-complete` | `39e260b` | svc-workflow folded into apps/api/automation/workflow per canon §8 INVERT (~3,000 LoC) |
+| `arc-w1-control-plane-complete` | `86e9ca1` | svc-control-plane → apps/control-plane (NEW Nest app, multi-tenant per canon §18, ~6,000 LoC, 2 cyclic-core bundles) |
+| `arc-w1-foldins-complete` | `4fd1cfd` | svc-view-engine → apps/api/views; svc-notify → apps/api/notifications; svc-instance-api → apps/api/instance-api; svc-insights → apps/api/analytics (~6,500 LoC across 4 services) |
+| `arc-w1-complete` | (latest) | **PHASE 1 FINAL CUTOVER.** Deleted all 11 svc-* thin adapters. Retargeted CI/CD matrix (api, control-plane, svc-migrations, web-client, web-control-plane), helm chart (single `api` deployment), scanners (`MIGRATED_AREAS` → `SERVICE_AREAS`; INSTANCE_SERVICES collapsed; svc-* PUBLIC_ALLOWLIST entries removed), package.json (`dev:*` scripts trimmed). |
 
-**Cumulative**: ~56,100 LoC migrated across 273 files via `git mv` (history preserved). Both PRs merged into master (PR #4 = ARC-W1 + Phase 0; PR #5 = coding-skills design spec). Master HEAD: `7b47d49`.
+**Cumulative**: 11 of 11 instance/control-plane services consolidated into apps/api + apps/control-plane (~91,000+ LoC across 273+ files via `git mv` with history preserved). Only `apps/svc-migrations` remains (single-shot K8s Job for instance DB migrations).
 
 ### Effort B — security/correctness (in sibling branch only)
 
@@ -118,29 +124,35 @@ Tag `arc-reconciled-with-w1-security` at `fbb640b`. 27 W0+W1 security commits fr
 
 See [docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md](plans/2026-05-10-phase0-branch-reconciliation.md) for the full plan + completion note.
 
-### Phase 1: Complete W1 architectural migration (in progress)
+### Phase 1: Complete W1 architectural migration — **COMPLETE** ✓ (2026-05-10)
 
-Per spec §8. svc-data is done; 4 instance services + fold-ins remain:
+Per spec §8. All 11 instance/control-plane services migrated:
 
-| Service | LoC | Order | Status | Notes |
-|---|---|---|---|---|
-| svc-data | ~17,700 | — | ✓ COMPLETE | Tag `arc-w1-data-complete`. 12 sub-directories + 9 top-level files at `apps/api/src/app/data/`. |
-| **svc-automation** | **~6,000** | **1st** | **next** | Already partially consolidated in Plan Fix 1; should be fast |
-| svc-ava | ~8,000 | 2nd | pending | AVA runtime; F072+F074 proposal state machine overlap with Plan Fix 16 (`ca16e40`) — coordinate before migrating |
-| svc-workflow | ~3,000 | 3rd | pending | Per canon §8 INVERT, merges with automation engine — may fold into `apps/api/src/app/automation/` rather than getting its own module |
-| svc-control-plane | ~6,000 | 4th | pending | Different plane (multi-tenant by design); different shape than instance-plane migrations |
-| svc-view-engine | ~2,000 | 5th | pending | Folds into spec §2 `views` module concept |
-| svc-insights | ~2,000 | 6th | pending | Folds into spec §2 `analytics` module concept |
-| svc-notify | ~1,000 | 7th | pending | Folds into spec §2 `notifications` module concept |
-| svc-instance-api | ~1,000 | 8th | pending | Aggregator/proxy; "fold into apps/api wholesale" per spec §2 |
+| Service | LoC | Status | New home |
+|---|---|---|---|
+| svc-identity | ~17,200 | ✅ | `apps/api/src/app/identity/` |
+| svc-metadata | ~21,200 | ✅ | `apps/api/src/app/metadata/` |
+| svc-data | ~17,700 | ✅ | `apps/api/src/app/data/` |
+| svc-automation | ~6,000 | ✅ | `apps/api/src/app/automation/` |
+| svc-ava | ~8,000 | ✅ | `apps/api/src/app/ava/` |
+| svc-workflow | ~3,000 | ✅ | `apps/api/src/app/automation/workflow/` (canon §8 INVERT) |
+| svc-control-plane | ~6,000 | ✅ | `apps/control-plane/src/app/` (new Nest app) |
+| svc-view-engine | ~1,700 | ✅ | `apps/api/src/app/views/` |
+| svc-insights | ~2,300 | ✅ | `apps/api/src/app/analytics/` |
+| svc-notify | ~1,300 | ✅ | `apps/api/src/app/notifications/` |
+| svc-instance-api | ~1,200 | ✅ | `apps/api/src/app/instance-api/` |
 
-**Phase 1 prerequisites (before next migration):**
+**Final cutover delivered (tag `arc-w1-complete`):**
 
-- **Scanner coverage extension** — `tools/service-boundary-check.ts` and `tools/authz-bypass-check.ts` currently use `SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/` which only matches `apps/svc-*`. ~56,100 LoC of migrated services live at `apps/api/src/app/{identity,metadata,data}/` where the scanners don't reach. Documented in code as a Phase 1 follow-up. Must extend before legacy `apps/svc-*` deletion can land per canon §21 TRIM.
+- All 11 thin-adapter `apps/svc-*` directories deleted
+- `apps/svc-migrations` retained (single-shot K8s Job for instance DB migrations)
+- Scanners retargeted: `MIGRATED_AREAS` → `SERVICE_AREAS`; `INSTANCE_SERVICES` collapsed to `['api']`; thin-adapter `KNOWN_VIOLATIONS` cleared
+- CI/CD build matrix: `api, control-plane, svc-migrations, web-client, web-control-plane`
+- Helm `instance-services` chart: single `api` deployment (replaces 11 per-service deployments)
+- `package.json` scripts: `dev:identity/metadata/data/ava/view-engine` dropped; `dev:control-plane` and `dev:web-control-plane` added; `dev:all` runs the new monolith set
+- New `Dockerfile`s for `apps/api`, `apps/control-plane`, `apps/svc-migrations`
 
-**Estimated**: 4–8 weeks solo for the 8 remaining services + final cutover (delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api).
-
-After this: tag `arc-w1-complete`. apps/api is the sole instance-plane runtime.
+apps/api is now the sole instance-plane runtime. apps/control-plane is the multi-tenant control plane (canon §18).
 
 ### Phase 2: Critical security findings that must land before pilot (W2–W5 from Effort B)
 

@@ -1,6 +1,10 @@
 # =============================================================================
 # HubbleWave Instance API - Dockerfile
 # =============================================================================
+# Modular monolith hosting all instance-plane modules:
+# identity, metadata, data, automation (incl. workflow), ava, views,
+# notifications, instance-api, analytics. Per spec §2 (ARC-W1 final cutover).
+# =============================================================================
 
 FROM node:20-alpine AS builder
 
@@ -19,30 +23,21 @@ COPY eslint.config.mjs ./
 # Install all dependencies
 RUN npm ci --legacy-peer-deps
 
-# Copy the instance-api app
-COPY apps/svc-instance-api/ ./apps/svc-instance-api/
+# Copy the api app + worker (consumed transitively at build time for type refs)
+COPY apps/api/ ./apps/api/
+COPY apps/worker/ ./apps/worker/
 
-# Copy instance-api relevant libs
-COPY libs/instance-db/ ./libs/instance-db/
-COPY libs/shared-types/ ./libs/shared-types/
-COPY libs/auth-guard/ ./libs/auth-guard/
-COPY libs/authorization/ ./libs/authorization/
-COPY libs/redis/ ./libs/redis/
-COPY libs/packs/ ./libs/packs/
-COPY libs/storage/ ./libs/storage/
+# Copy all shared libs (the monolith consumes most of libs/)
+COPY libs/ ./libs/
 
-# Copy migrations and scripts
-COPY migrations/ ./migrations/
-COPY scripts/ ./scripts/
+# Copy migrations metadata for typeorm entity discovery
+COPY migrations/instance/ ./migrations/instance/
 
-# Copy tools if needed for build
+# Copy tools if needed for build-time scripts
 COPY tools/ ./tools/
 
 # Build the application
-RUN npx nx build svc-instance-api
-
-# Build migrations
-RUN npx tsc -p scripts/tsconfig.migration.json --outDir dist || true
+RUN npx nx build api
 
 # -----------------------------------------------------------------------------
 # Stage 2: Production
@@ -63,11 +58,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
 # Copy built output
-COPY --from=builder /app/dist/apps/svc-instance-api ./dist
-
-# Copy compiled migrations and datasource scripts
-COPY --from=builder /app/dist/migrations ./dist/migrations
-COPY --from=builder /app/dist/scripts ./dist/scripts
+COPY --from=builder /app/dist/apps/api ./dist
 
 USER nestjs
 

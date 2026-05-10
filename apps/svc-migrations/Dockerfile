@@ -1,5 +1,9 @@
 # =============================================================================
-# HubbleWave Metadata Service - Dockerfile
+# HubbleWave Instance Migration Runner - Dockerfile
+# =============================================================================
+# Single-shot Kubernetes Job that applies pending TypeORM migrations to the
+# customer instance database ahead of api/worker pods. Serialises concurrent
+# invocations via Postgres advisory lock.
 # =============================================================================
 
 FROM node:20-alpine AS builder
@@ -19,21 +23,18 @@ COPY eslint.config.mjs ./
 # Install all dependencies
 RUN npm ci --legacy-peer-deps
 
-# Copy the metadata service app
-COPY apps/svc-metadata/ ./apps/svc-metadata/
+# Copy the migrations runner app
+COPY apps/svc-migrations/ ./apps/svc-migrations/
 
-# Copy metadata service relevant libs
+# Copy required libs
 COPY libs/instance-db/ ./libs/instance-db/
 COPY libs/shared-types/ ./libs/shared-types/
-COPY libs/auth-guard/ ./libs/auth-guard/
-COPY libs/authorization/ ./libs/authorization/
-COPY libs/packs/ ./libs/packs/
 
-# Copy tools if needed for build
-COPY tools/ ./tools/
+# Copy migrations source
+COPY migrations/instance/ ./migrations/instance/
 
 # Build the application
-RUN npx nx build svc-metadata
+RUN npx nx build svc-migrations
 
 # -----------------------------------------------------------------------------
 # Stage 2: Production
@@ -47,20 +48,17 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nestjs
 
 ENV NODE_ENV=production
-ENV PORT=3000
 
 # Copy package files and install production dependencies
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Copy built output
-COPY --from=builder /app/dist/apps/svc-metadata ./dist
+# Copy built output + compiled migrations
+COPY --from=builder /app/dist/apps/svc-migrations ./dist
+COPY --from=builder /app/dist/migrations ./dist/migrations
 
 USER nestjs
 
-EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD ["node", "-e", "const http=require('http');const port=parseInt(process.env.PORT||'3000',10);const req=http.get({hostname:'127.0.0.1',port,path:'/api/health'},res=>{if(res.statusCode!==200){process.exit(1);}res.resume();});req.on('error',()=>process.exit(1));req.setTimeout(5000,()=>{req.destroy();process.exit(1);});"]
+# No HEALTHCHECK — single-shot job exits on completion.
 
 CMD ["node", "dist/main.js"]

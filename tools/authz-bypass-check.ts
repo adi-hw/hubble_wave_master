@@ -9,86 +9,35 @@ type Violation = {
 const APPS_ROOT = join(process.cwd(), 'apps');
 
 /**
- * Instance-plane services that share the canonical AuthorizationService
- * gate. Every .service.ts in these services that accesses data on behalf
- * of a RequestContext MUST consult AuthorizationService.
+ * Instance-plane runtime root(s) that share the canonical AuthorizationService
+ * gate. Every .service.ts under these roots that accesses data on behalf of a
+ * RequestContext MUST consult AuthorizationService.
  *
- * svc-control-plane is INTENTIONALLY excluded — canon §18 carves out the
+ * apps/control-plane is INTENTIONALLY excluded — canon §18 carves out the
  * control plane as multi-tenant by design with its own auth model. The
- * `customerId`-scoped queries in svc-control-plane do not go through
- * the instance AuthorizationService, and that is correct.
+ * `customerId`-scoped queries in apps/control-plane do not go through the
+ * instance AuthorizationService, and that is correct.
  *
- * Was scoped to svc-data only (F018, fixed in W0 task 4); each service
- * in the list below is independently scanned for the same bypass
- * patterns.
+ * After the W1 final cutover (arc-w1-complete) the entire instance plane
+ * lives at apps/api/src/app/. The legacy per-svc-* directory list was
+ * collapsed to a single apps/api entry.
  */
-const INSTANCE_SERVICES: readonly string[] = [
-  'svc-data',
-  'svc-metadata',
-  'svc-identity',
-  'svc-automation',
-  'svc-workflow',
-  'svc-notify',
-  'svc-insights',
-  'svc-ava',
-  'svc-view-engine',
-  'svc-instance-api',
-  'svc-migrations',
-];
-
-/**
- * Areas that have migrated from `apps/svc-<area>/` into the modular monolith
- * at `apps/api/src/app/<area>/`. After migration the legacy svc-* directory
- * holds only a thin adapter app.module.ts; the actual service code lives at
- * the apps/api home and is what the scanner should walk.
- *
- * Update when a new service migrates. The legacy svc-* directory entry can
- * stay in place until the W1 final cutover deletes it; this scanner picks up
- * the apps/api home automatically once the area is listed here.
- */
-const MIGRATED_AREAS: ReadonlySet<string> = new Set([
-  'identity',
-  'metadata',
-  'data',
-  'automation',
-  'ava',
-  'views',
-  'notifications',
-  'instance-api',
-  'analytics',
-]);
+const INSTANCE_SERVICES: readonly string[] = ['api'];
 
 interface ServiceContext {
-  name: string;            // canonical name (e.g. 'svc-data')
+  name: string;            // canonical name (e.g. 'api')
   controllerRoot: string;  // dir to walk for *.controller.ts and *.service.ts
   guardScanRoot: string;   // dir to walk for *.module.ts looking for guard registrations
   mainTsPath: string;      // path to main.ts (for useGlobalGuards detection)
 }
 
 function getServiceContexts(): ServiceContext[] {
-  const contexts: ServiceContext[] = [];
-  for (const svc of INSTANCE_SERVICES) {
-    const area = svc.replace(/^svc-/, '');
-    if (MIGRATED_AREAS.has(area)) {
-      contexts.push({
-        name: svc,
-        controllerRoot: join(APPS_ROOT, 'api', 'src', 'app', area),
-        // Walk all of apps/api/src/app/ so the root app.module.ts (which
-        // wires GlobalGuardsModule for every migrated area) is included.
-        guardScanRoot: join(APPS_ROOT, 'api', 'src', 'app'),
-        mainTsPath: join(APPS_ROOT, 'api', 'src', 'main.ts'),
-      });
-    } else {
-      const appDir = join(APPS_ROOT, svc, 'src', 'app');
-      contexts.push({
-        name: svc,
-        controllerRoot: appDir,
-        guardScanRoot: appDir,
-        mainTsPath: join(APPS_ROOT, svc, 'src', 'main.ts'),
-      });
-    }
-  }
-  return contexts;
+  return INSTANCE_SERVICES.map((svc) => ({
+    name: svc,
+    controllerRoot: join(APPS_ROOT, svc, 'src', 'app'),
+    guardScanRoot: join(APPS_ROOT, svc, 'src', 'app'),
+    mainTsPath: join(APPS_ROOT, svc, 'src', 'main.ts'),
+  }));
 }
 
 const SERVICE_ROOTS: string[] = getServiceContexts().map((c) => c.controllerRoot);
