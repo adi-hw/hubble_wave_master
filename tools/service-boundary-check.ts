@@ -137,37 +137,37 @@ const KNOWN_ENTITY_VIOLATIONS: Array<{
   rationale: string;
 }> = [
   {
-    file: 'apps/svc-metadata/src/app/publish-impact/analyzers/automation-rule-impact.analyzer.ts',
+    file: 'apps/api/src/app/metadata/publish-impact/analyzers/automation-rule-impact.analyzer.ts',
     entity: 'AutomationRule',
     rationale: 'Design-time impact analysis. Reads automation rules to compute downstream effects of metadata changes.',
   },
   {
-    file: 'apps/svc-metadata/src/app/publish-impact/publish-impact.module.ts',
+    file: 'apps/api/src/app/metadata/publish-impact/publish-impact.module.ts',
     entity: 'AutomationRule',
     rationale: 'Module wiring for the impact analyzer above.',
   },
   {
-    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.ts',
+    file: 'apps/api/src/app/metadata/property/reference-scanner.service.ts',
     entity: 'AutomationRule',
     rationale: 'W2.A reference scanner. Reads automation rules to find references to a property before delete (canon §14).',
   },
   {
-    file: 'apps/svc-metadata/src/app/property/reference-scanner.service.spec.ts',
+    file: 'apps/api/src/app/metadata/property/reference-scanner.service.spec.ts',
     entity: 'AutomationRule',
     rationale: 'Test fixture for the reference scanner above.',
   },
   {
-    file: 'apps/svc-metadata/src/app/packs/packs.service.ts',
+    file: 'apps/api/src/app/metadata/packs/packs.service.ts',
     entity: 'AutomationRule',
     rationale: 'Pack install/export. Reads + writes automation rules as part of bundling and applying customer packs (zippy-creek Fix 8 — pack install is svc-metadata\'s design-time responsibility).',
   },
   {
-    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.ts',
+    file: 'apps/api/src/app/metadata/change-packages/change-package.service.ts',
     entity: 'AutomationRule',
     rationale: 'Change-package authoring. Reads automation rules to bundle them in a change package for export.',
   },
   {
-    file: 'apps/svc-metadata/src/app/change-packages/change-package.service.spec.ts',
+    file: 'apps/api/src/app/metadata/change-packages/change-package.service.spec.ts',
     entity: 'AutomationRule',
     rationale: 'Test fixture for the change-package service above.',
   },
@@ -180,6 +180,25 @@ function isKnownEntityViolation(file: string, entity: string): boolean {
   );
 }
 
+/**
+ * SCANNER COVERAGE GAP (tracked for Phase 1):
+ *
+ * SERVICE_DIR_RE only matches `apps/svc-*` directories. After the ARC-W1
+ * identity, metadata, and data migrations, ~56,000 LoC of those services
+ * now live at `apps/api/src/app/{identity,metadata,data}/`. This scanner
+ * walks those svc-* directories which (post-migration) contain only thin
+ * adapter app.module.ts files — no entity-write surfaces to detect.
+ *
+ * The KNOWN_ENTITY_VIOLATIONS allowlist above was updated to reference the
+ * post-migration apps/api/src/app/metadata/* paths so the documentation
+ * matches reality, but those files are not actually scanned today because
+ * 'api' is not a SERVICE_DIR.
+ *
+ * Phase 1 of the master roadmap (next migration wave + final cutover) MUST
+ * extend this scanner to also walk apps/api/src/app/{identity,metadata,
+ * data,...}/ before the legacy svc-* deletion can land. Until then, treat
+ * "service-boundary:check ok" as a vacuous result for the migrated services.
+ */
 const SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/;
 
 function isServiceDir(name: string): boolean {

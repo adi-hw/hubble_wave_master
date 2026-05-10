@@ -775,8 +775,9 @@ auxiliary follow-ups:
   added a spec file but svc-notify's tsconfig didn't exclude *.spec.ts from the
   production build — added the same exclude pattern present in svc-data's tsconfig)
 
-**Tag:** `arc-reconciled-with-w1-security` at HEAD `9135f53`. 33 commits since
-`arc-w1-data-complete`.
+**Tag:** `arc-reconciled-with-w1-security` (re-pointed to the final fix-up
+commit after a holistic code review surfaced two follow-ups; see "Post-tag
+fixups" below). Resolve current target with `git rev-parse arc-reconciled-with-w1-security`.
 
 ### Verification at tag
 
@@ -785,7 +786,7 @@ auxiliary follow-ups:
 | `authz:check` | PASS (1 deferred entry tracked) |
 | `audit:check` | PASS |
 | `security:check` | PASS (after Task 8.5 allowlist update) |
-| `service-boundary:check` | PASS (7 allowlisted crossings) |
+| `service-boundary:check` | PASS — but see scanner-coverage-gap caveat below |
 | `deps:check` | PASS (1 legacy carve-out) |
 | `dead-code:check` | PASS |
 | `compliance:check` | PASS |
@@ -801,6 +802,27 @@ auxiliary follow-ups:
 | nx build web-client | PASS |
 | nx build web-control-plane | PASS |
 | nx test api | PASS (255 tests) |
+
+### Post-tag fixups (from holistic code review)
+
+The final code review surfaced two important documentation/bookkeeping issues
+that landed as a follow-up commit after the initial tag was placed:
+
+1. **Dead allowlist entries** — `tools/service-boundary-check.ts` `KNOWN_ENTITY_VIOLATIONS`
+   had 7 entries pointing at `apps/svc-metadata/src/app/...` paths that no
+   longer exist post-metadata-migration. Updated to `apps/api/src/app/metadata/...`.
+2. **Scanner coverage gap acknowledged** — `SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/`
+   matches only `apps/svc-*` directories. After ARC-W1 identity, metadata, and
+   data migrations, ~56,000 LoC of those services now live at `apps/api/src/app/`.
+   The scanner walks the svc-* dirs which (post-migration) contain only thin
+   adapter `app.module.ts` files — no entity-write surfaces to detect. So
+   "service-boundary:check ok" is a vacuous result for the migrated services.
+   Added a header comment documenting this as a Phase 1 prerequisite (the scanner
+   must be extended to walk `apps/api/src/app/...` before the legacy svc-*
+   deletion can land per canon §21 TRIM). Same gap exists in `authz-bypass-check.ts`
+   and is similarly noted.
+
+The tag was re-pointed to the post-fixup HEAD so the docs match the code.
 
 ### Next steps unblocked
 
