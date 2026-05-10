@@ -9,6 +9,7 @@ import { OidcModule } from './oidc/oidc.module';
 import { PoliciesModule } from './policies/policies.module';
 import { UiModule } from './ui/ui.module';
 import { SettingsModule } from './config/config.module';
+import { AuditModule as IdentityAuditModule } from './audit/audit.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -30,7 +31,7 @@ import { SettingsModule } from './config/config.module';
  *   [x] oidc
  *   [ ] navigation
  *   [x] ui
- *   [ ] audit
+ *   [x] audit
  *   [ ] top-level (health controller + IdentityService + global guards/middleware)
  *
  * IdentityModule re-exports each migrated sub-module so that:
@@ -40,9 +41,9 @@ import { SettingsModule } from './config/config.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule],
+  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule],
   controllers: [],
   providers: [],
-  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule],
+  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule, IdentityAuditModule],
 })
 export class IdentityModule {}

@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthEvent, AuditLog } from '@hubblewave/instance-db';
 import { AuditLogsController } from './audit-logs.controller';
 import { AuditEventsController } from './audit-events.controller';
-import { RolesModule } from '../../../../api/src/app/identity/roles/roles.module';
+import { RolesModule } from '../roles/roles.module';
 
 @Module({
   imports: [

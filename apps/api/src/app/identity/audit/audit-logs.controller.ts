@@ -7,9 +7,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { AuthEvent } from '@hubblewave/instance-db';
-import { JwtAuthGuard } from '../../../../api/src/app/identity/auth/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../../../api/src/app/identity/roles/guards/permission.guard';
-import { RequirePermission } from '../../../../api/src/app/identity/roles/decorators/permission.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionGuard } from '../roles/guards/permission.guard';
+import { RequirePermission } from '../roles/decorators/permission.decorator';
 
 interface AuditLogsQuery {
   q?: string;

@@ -23,7 +23,7 @@ import { IamModule } from '../../../api/src/app/identity/iam/iam.module';
 import { NavigationModule } from './navigation/navigation.module';
 import { GroupsModule } from './groups/groups.module';
 import { RolesModule } from '../../../api/src/app/identity/roles/roles.module';
-import { AuditModule } from './audit/audit.module';
+import { AuditModule } from '../../../api/src/app/identity/audit/audit.module';
 import { PoliciesModule } from '../../../api/src/app/identity/policies/policies.module';
 import { CsrfMiddleware } from '../../../api/src/app/identity/auth/middleware/csrf.middleware';
 
