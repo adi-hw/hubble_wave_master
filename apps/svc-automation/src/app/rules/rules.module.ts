@@ -4,7 +4,7 @@ import {
   AutomationRule,
   AutomationRuleRevision,
 } from '@hubblewave/instance-db';
-import { AutomationRuntimeModule } from '../runtime/automation-runtime.module';
+import { AutomationRuntimeModule } from '../../../../api/src/app/automation/runtime/automation-runtime.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { AvaModule } from '../ava/ava.module';
 import { RulesController } from './rules.controller';

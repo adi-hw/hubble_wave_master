@@ -9,17 +9,17 @@ import {
   RuntimeAnomalyService,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { AutomationRuntimeService } from '../runtime/automation-runtime.service';
-import { ConditionEvaluatorService } from '../runtime/condition-evaluator.service';
-import { ActionHandlerService } from '../runtime/action-handler.service';
-import { ScriptSandboxService } from '../runtime/script-sandbox.service';
-import { ExecutionLogService } from '../runtime/execution-log.service';
-import { RecordMutationService } from '../runtime/record-mutation.service';
-import { OutboxPublisherService } from '../runtime/outbox-publisher.service';
+import { AutomationRuntimeService } from '../../../../api/src/app/automation/runtime/automation-runtime.service';
+import { ConditionEvaluatorService } from '../../../../api/src/app/automation/runtime/condition-evaluator.service';
+import { ActionHandlerService } from '../../../../api/src/app/automation/runtime/action-handler.service';
+import { ScriptSandboxService } from '../../../../api/src/app/automation/runtime/script-sandbox.service';
+import { ExecutionLogService } from '../../../../api/src/app/automation/runtime/execution-log.service';
+import { RecordMutationService } from '../../../../api/src/app/automation/runtime/record-mutation.service';
+import { OutboxPublisherService } from '../../../../api/src/app/automation/runtime/outbox-publisher.service';
 import {
   ExecuteSyncTriggerArgs,
   SyncTriggerResult,
-} from '../runtime/automation-runtime.types';
+} from '../../../../api/src/app/automation/runtime/automation-runtime.types';
 
 /**
  * Cross-service contract test for executeSyncTrigger().

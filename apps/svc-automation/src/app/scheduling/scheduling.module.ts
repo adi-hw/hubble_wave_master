@@ -4,7 +4,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduledJob } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
-import { AutomationRuntimeModule } from '../runtime/automation-runtime.module';
+import { AutomationRuntimeModule } from '../../../../api/src/app/automation/runtime/automation-runtime.module';
 import { ScheduledJobService } from './scheduled-job.service';
 import { SchedulerService } from './scheduler.service';
 import { AutomationRateLimiterService } from './automation-rate-limiter.service';

@@ -10,9 +10,9 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject, Optional } f
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue, Worker, Job, ConnectionOptions } from 'bullmq';
 import { ScheduledJobService } from './scheduled-job.service';
-import { ActionHandlerService } from '../runtime/action-handler.service';
-import { ScriptSandboxService } from '../runtime/script-sandbox.service';
-import { ExecutionLogService } from '../runtime/execution-log.service';
+import { ActionHandlerService } from '../../../../api/src/app/automation/runtime/action-handler.service';
+import { ScriptSandboxService } from '../../../../api/src/app/automation/runtime/script-sandbox.service';
+import { ExecutionLogService } from '../../../../api/src/app/automation/runtime/execution-log.service';
 import { ScheduledJob } from '@hubblewave/instance-db';
 import { AutomationRateLimiterService } from './automation-rate-limiter.service';
 
