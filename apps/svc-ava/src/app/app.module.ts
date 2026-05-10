@@ -13,14 +13,14 @@ import { AVAGovernanceController } from './ava-governance.controller';
 import { AVASchemaController } from './ava-schema.controller';
 import { AvaProposalController } from './ava-proposal.controller';
 import { HealthController } from './health.controller';
-import { SearchModule } from './search/search.module';
-import { AvaToolsModule } from './ava-tools/ava-tools.module';
+import { SearchModule } from '../../../api/src/app/ava/search/search.module';
+import { AvaToolsModule } from '../../../api/src/app/ava/ava-tools/ava-tools.module';
 import { AvaPreviewService } from './ava-preview.service';
-import { DatasetModule } from './modelops/dataset.module';
-import { ModelRegistryModule } from './modelops/model-registry.module';
-import { ModelEvaluationModule } from './modelops/model-evaluation.module';
-import { TrainingModule } from './modelops/training.module';
-import { ModelDeploymentModule } from './modelops/model-deployment.module';
+import { DatasetModule } from '../../../api/src/app/ava/modelops/dataset.module';
+import { ModelRegistryModule } from '../../../api/src/app/ava/modelops/model-registry.module';
+import { ModelEvaluationModule } from '../../../api/src/app/ava/modelops/model-evaluation.module';
+import { TrainingModule } from '../../../api/src/app/ava/modelops/training.module';
+import { ModelDeploymentModule } from '../../../api/src/app/ava/modelops/model-deployment.module';
 
 // Phase 7 Controllers
 import {

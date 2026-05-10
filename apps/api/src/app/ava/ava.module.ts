@@ -1,4 +1,11 @@
 import { Module } from '@nestjs/common';
+import { AvaToolsModule } from './ava-tools/ava-tools.module';
+import { SearchModule } from './search/search.module';
+import { DatasetModule } from './modelops/dataset.module';
+import { ModelRegistryModule } from './modelops/model-registry.module';
+import { ModelEvaluationModule } from './modelops/model-evaluation.module';
+import { TrainingModule } from './modelops/training.module';
+import { ModelDeploymentModule } from './modelops/model-deployment.module';
 
 /**
  * AvaModule consolidates everything from apps/svc-ava into the apps/api
@@ -7,9 +14,9 @@ import { Module } from '@nestjs/common';
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-ava-migration.md):
  *   Sub-areas:
- *     [ ] ava-tools (AvaToolsModule)
- *     [ ] search (SearchModule)
- *     [ ] modelops (5 modules: Dataset/ModelRegistry/ModelEvaluation/Training/ModelDeployment)
+ *     [x] ava-tools (AvaToolsModule)
+ *     [x] search (SearchModule)
+ *     [x] modelops (5 modules: Dataset/ModelRegistry/ModelEvaluation/Training/ModelDeployment)
  *     [ ] phase7 (11 standalone controllers + barrel; no module wrapper)
  *   Final top-level (7 controllers + 1 service + app.module thin adapter):
  *     [ ] ava-health.controller (renamed from health.controller)
@@ -25,9 +32,25 @@ import { Module } from '@nestjs/common';
  * namespaces; consumers that need both alias one on import.
  */
 @Module({
-  imports: [],
+  imports: [
+    AvaToolsModule,
+    SearchModule,
+    DatasetModule,
+    ModelRegistryModule,
+    ModelEvaluationModule,
+    TrainingModule,
+    ModelDeploymentModule,
+  ],
   controllers: [],
   providers: [],
-  exports: [],
+  exports: [
+    AvaToolsModule,
+    SearchModule,
+    DatasetModule,
+    ModelRegistryModule,
+    ModelEvaluationModule,
+    TrainingModule,
+    ModelDeploymentModule,
+  ],
 })
 export class AvaModule {}
