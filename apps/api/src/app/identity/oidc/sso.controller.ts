@@ -16,9 +16,9 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SsoProvider } from '@hubblewave/instance-db';
-import { JwtAuthGuard } from '../../../../api/src/app/identity/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../../api/src/app/identity/auth/guards/roles.guard';
-import { Roles } from '../../../../api/src/app/identity/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 

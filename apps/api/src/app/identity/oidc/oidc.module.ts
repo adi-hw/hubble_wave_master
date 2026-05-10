@@ -5,7 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { OidcService } from './oidc.service';
 import { OidcController } from './oidc.controller';
 import { SsoAdminController } from './sso.controller';
-import { AuthModule } from '../../../../api/src/app/identity/auth/auth.module';
+import { AuthModule } from '../auth/auth.module';
 import { InstanceDbModule } from '@hubblewave/instance-db';
 
 @Module({

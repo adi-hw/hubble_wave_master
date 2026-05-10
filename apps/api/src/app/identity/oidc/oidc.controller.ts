@@ -1,5 +1,5 @@
 import { Controller, Get, Param, UnauthorizedException } from '@nestjs/common';
-import { Public } from '../../../../api/src/app/identity/auth/decorators/public.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 
 /**
  * SSO authentication controller. Returns appropriate errors when SSO is not configured.

@@ -7,7 +7,7 @@ import { InstanceDbModule } from '@hubblewave/instance-db';
 import { AuthGuardModule } from '@hubblewave/auth-guard';
 import { IdentityService } from './identity.service';
 import { AuthModule } from '../../../api/src/app/identity/auth/auth.module';
-import { OidcModule } from './oidc/oidc.module';
+import { OidcModule } from '../../../api/src/app/identity/oidc/oidc.module';
 import { EmailModule } from '../../../api/src/app/identity/email/email.module';
 import { JwtAuthGuard } from '../../../api/src/app/identity/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../api/src/app/identity/auth/guards/permissions.guard';
