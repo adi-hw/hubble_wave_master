@@ -40,7 +40,7 @@ import { WorkflowModule } from '../../../api/src/app/data/workflow/workflow.modu
 import { ValidationModule } from '../../../api/src/app/data/validation/validation.module';
 import { DefaultsModule } from '../../../api/src/app/data/defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
-import { FormulaModule } from './formula/formula.module';
+import { FormulaModule } from '../../../api/src/app/data/formula/formula.module';
 import { ComputedModule } from './computed/computed.module';
 import { ScheduleModule } from '@nestjs/schedule';
 

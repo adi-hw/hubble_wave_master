@@ -2,9 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InstanceEventOutbox, PropertyDefinition } from '@hubblewave/instance-db';
 import { DataSource, Repository } from 'typeorm';
-import { FormulaService } from '../formula/formula.service';
-import { LookupService } from '../formula/lookup.service';
-import { HierarchicalService } from '../formula/hierarchical.service';
+import { FormulaService } from '../../../../api/src/app/data/formula/formula.service';
+import { LookupService } from '../../../../api/src/app/data/formula/lookup.service';
+import { HierarchicalService } from '../../../../api/src/app/data/formula/hierarchical.service';
 
 /**
  * Plan §6.5 — computed property dispatcher.

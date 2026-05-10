@@ -6,7 +6,7 @@ import {
   InstanceEventOutbox,
   PropertyDefinition,
 } from '@hubblewave/instance-db';
-import { FormulaModule } from '../formula/formula.module';
+import { FormulaModule } from '../../../../api/src/app/data/formula/formula.module';
 import { ComputedPropertyDispatcher } from './computed-property-dispatcher.service';
 import { ComputedOutboxProcessor } from './computed-outbox-processor.service';
 

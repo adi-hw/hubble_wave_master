@@ -7,7 +7,7 @@ import {
   InstanceEventOutbox,
   PropertyDefinition,
 } from '@hubblewave/instance-db';
-import { RollupService } from '../formula/rollup.service';
+import { RollupService } from '../../../../api/src/app/data/formula/rollup.service';
 
 /**
  * Plan §6.5 — outbox processor for `computed.rollup.recompute` events
