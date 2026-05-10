@@ -15,7 +15,7 @@ import {
 } from '@hubblewave/authorization';
 import { RedisModule } from '@hubblewave/redis';
 import { HealthController } from './health.controller';
-import { IdentityModule } from './identity/identity.module';
+import { IdentityModule } from '../../../api/src/app/instance-api/identity/identity.module';
 
 @Module({
   imports: [
