@@ -586,6 +586,34 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-10 (W1 — Stop-the-Bleeding): all 14 W1-owned audit findings
+  closed (F011, F014, F027, F053, F073, F088, F089, F093, F111, F124,
+  F125, F126, F127, F139, F141). 13 commits, 148 new W1-specific spec
+  assertions, 0 regressions on the 65 W0 scanner self-tests.
+  Highlights tied to canon claims:
+  • §11 ("AVA reasons over platform state"): vector search now
+    requires a typed RequestContext principal + post-filter authzCheck
+    (F073). Audit log emits attribution on every search.
+  • §9 ("authorization centralized, no shortcuts"): F089 closes the
+    Control Plane localStorage XSS exfil vector — access token in
+    memory, refresh in HttpOnly+SameSite=Strict cookie. No
+    localStorage path remains for tokens.
+  • §1 ("written as if deploying to production today"): F124 deletes
+    the SQL-injection branch in reports rather than refactoring it;
+    F127 deletes the triple-brace XSS branch in template engine. Two
+    capability removals net-negative on LOC.
+  • §10 (auditability): F139's typed SAML signature affirmation
+    sentinel forces every SAML caller to make an explicit
+    verification choice; the runtime check defends against `as any`
+    bypasses.
+  Risks carried forward: F111 keypair rotation requires operator
+  action (documented in SECRETS_ROTATION.md OPEN INCIDENT block);
+  F089 frontend change needs browser verification per CLAUDE.md
+  frontend rule; libs/enterprise SSO domain is W4-pending-deletion
+  (F139+F141 fix lives in saml-assertion-gate.ts and is
+  forward-portable). Cf. master roadmap at
+  docs/plan-fixes/00-master-remediation-roadmap.md and W1 acceptance
+  at docs/plan-fixes/W01-acceptance.md.
 - 2026-05-09 (Architecture v3 spec): Major architectural shift from 14-service distributed system to 3-process modular monolith + Day-1 mobile + AI Code Assistant + full UI Builder. Amendments: §5 SOFTEN (single-tenant default + pooled mode), §7 SOFTEN (drop 5-tier view hierarchy), §8 INVERT (merge automation + workflow), §11 SOFTEN (AI as feature surface incl. AI Code Assistant), §12 PER-FEATURE (trust progression per AI feature), §17 UPDATE (monolith topology), §19 UPDATE (single Nest process per instance), §21 UPDATE (W0 expanded service-boundary:check to entity-write enforcement; import-topology TRIM no longer applies). New: §17.5 (customization contract, the moat), §25 (Plugin SDK contract), §26 (mobile first-class), §27 (Workspaces + UI Builder). Vertical pack (Clinical/Facilities Asset Management) deferred to a separate design doc; preserved as forward inventory in spec Appendix D. Solo founder timeline: ~10–12 months critical path for platform-only scope. Refs spec `docs/superpowers/specs/2026-05-09-platform-architecture-design.md`.
 - 2026-05-09 (W0 — Foundation): §21 implementation status replaced
   with current reality. 8 architectural scanners + ESLint rules +
