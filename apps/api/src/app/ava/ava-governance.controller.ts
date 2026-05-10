@@ -17,7 +17,13 @@ import {
 } from '@hubblewave/ai';
 import { AVAActionType, AVAActionStatus } from '@hubblewave/instance-db';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser, PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
+import {
+  JwtAuthGuard,
+  CurrentUser,
+  PermissionsGuard,
+  RequirePermission,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 
 interface UpdateGlobalSettingsDto {
   avaEnabled?: boolean;
@@ -90,7 +96,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Get AVA global settings' })
   @ApiResponse({ status: 200, description: 'Global settings' })
   async getGlobalSettings(
-    @CurrentUser() _user: { userId: string; role?: string }
+    @CurrentUser() _user: RequestUser
   ) {
     const dataSource = this.dataSource;
     const settings = await this.governanceService.getGlobalSettings(dataSource);
@@ -102,7 +108,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Update AVA global settings' })
   @ApiResponse({ status: 200, description: 'Updated settings' })
   async updateGlobalSettings(
-    @CurrentUser() user: { userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Body() dto: UpdateGlobalSettingsDto
   ) {
     const dataSource = this.dataSource;
@@ -121,7 +127,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Get all AVA permission configurations' })
   @ApiResponse({ status: 200, description: 'Permission configurations' })
   async getPermissionConfigs(
-    @CurrentUser() _user: { userId: string; role?: string }
+    @CurrentUser() _user: RequestUser
   ) {
     const dataSource = this.dataSource;
     const permissions = await this.governanceService.getPermissionConfigs(dataSource);
@@ -133,7 +139,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Create a new permission configuration' })
   @ApiResponse({ status: 201, description: 'Created permission configuration' })
   async createPermissionConfig(
-    @CurrentUser() user: { userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Body() dto: CreatePermissionConfigDto
   ) {
     const dataSource = this.dataSource;
@@ -150,7 +156,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Update a permission configuration' })
   @ApiResponse({ status: 200, description: 'Updated permission configuration' })
   async updatePermissionConfig(
-    @CurrentUser() user: { userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Param('id') id: string,
     @Body() dto: UpdatePermissionConfigDto
   ) {
@@ -173,7 +179,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Delete a permission configuration' })
   @ApiResponse({ status: 200, description: 'Deleted' })
   async deletePermissionConfig(
-    @CurrentUser() _user: { userId: string; role?: string },
+    @CurrentUser() _user: RequestUser,
     @Param('id') id: string
   ) {
     const dataSource = this.dataSource;
@@ -188,7 +194,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Get AVA audit trail' })
   @ApiResponse({ status: 200, description: 'Audit trail entries' })
   async getAuditTrail(
-    @CurrentUser() _user: { userId: string; role?: string },
+    @CurrentUser() _user: RequestUser,
     @Query() query: AuditQueryDto
   ) {
     const dataSource = this.dataSource;
@@ -214,7 +220,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Get AVA audit statistics' })
   @ApiResponse({ status: 200, description: 'Audit statistics' })
   async getAuditStats(
-    @CurrentUser() _user: { userId: string; role?: string },
+    @CurrentUser() _user: RequestUser,
     @Query('fromDate') fromDate?: string
   ) {
     const dataSource = this.dataSource;
@@ -230,7 +236,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Get revertible AVA actions' })
   @ApiResponse({ status: 200, description: 'Revertible actions' })
   async getRevertibleActions(
-    @CurrentUser() _user: { userId: string; role?: string },
+    @CurrentUser() _user: RequestUser,
     @Query('userId') targetUserId?: string,
     @Query('limit') limit?: string
   ) {
@@ -247,7 +253,7 @@ export class AVAGovernanceController {
     @ApiOperation({ summary: 'Revert an AVA action' })
   @ApiResponse({ status: 200, description: 'Revert result' })
   async revertAction(
-    @CurrentUser() user: { userId: string; role?: string },
+    @CurrentUser() user: RequestUser,
     @Param('id') auditId: string,
     @Body() dto: RevertActionDto
   ) {

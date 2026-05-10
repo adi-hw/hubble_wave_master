@@ -53,18 +53,20 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-view-engine/src/app/health.controller.ts',
   'apps/svc-workflow/src/app/health.controller.ts',
   // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity,
-  // svc-metadata, and svc-automation services are now thin adapters; their
-  // controller files live at the apps/api locations below. Health controllers
-  // in data, metadata, and automation were renamed to disambiguate route
-  // prefixes:
+  // svc-metadata, svc-automation, and svc-ava services are now thin adapters;
+  // their controller files live at the apps/api locations below. Health
+  // controllers in data, metadata, automation, and ava were renamed to
+  // disambiguate route prefixes:
   //   data:       /data/health       (DataHealthController)
   //   metadata:   /metadata/health   (MetadataHealthController)
   //   identity:   /health            (HealthController, unchanged)
   //   automation: /automation/health (AutomationHealthController)
+  //   ava:        /ava/health        (AvaHealthController)
   'apps/api/src/app/data/data-health.controller.ts',
   'apps/api/src/app/identity/health.controller.ts',
   'apps/api/src/app/metadata/metadata-health.controller.ts',
   'apps/api/src/app/automation/automation-health.controller.ts',
+  'apps/api/src/app/ava/ava-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
@@ -139,6 +141,8 @@ const BANNED_PATTERNS: Array<{
       // user input flows into the script and Redis Lua is server-side
       // sandboxed. This is `client.eval(lua, ...)`, NOT JavaScript eval.
       'apps/svc-ava/src/app/embedding.controller.ts',
+      // ARC-W1 post-migration path (apps/api/ava home).
+      'apps/api/src/app/ava/embedding.controller.ts',
       'apps/svc-insights/src/app/backup/backup.service.ts',
     ]),
   },

@@ -4,13 +4,13 @@ import { LLMService } from '@hubblewave/ai';
 import { Public } from '@hubblewave/auth-guard';
 
 @ApiTags('Health')
-@Controller('health')
-export class HealthController {
+@Controller('ava/health')
+export class AvaHealthController {
   constructor(private readonly llmService: LLMService) {}
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Health check' })
+  @ApiOperation({ summary: 'AVA service health check' })
   async check() {
     const timestamp = new Date().toISOString();
 
@@ -24,7 +24,7 @@ export class HealthController {
 
       return {
         status: status.available ? 'ok' : 'degraded',
-        service: 'svc-ava',
+        service: 'ava',
         timestamp,
         dependencies: {
           avaRuntime,
@@ -33,7 +33,7 @@ export class HealthController {
     } catch (error) {
       return {
         status: 'degraded',
-        service: 'svc-ava',
+        service: 'ava',
         timestamp,
         dependencies: {
           avaRuntime: {
