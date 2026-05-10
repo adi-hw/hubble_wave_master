@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
-import { QueryOptions } from '../../../../api/src/app/data/collection-data.service';
+import { QueryOptions } from '../collection-data.service';
 import { AddWorkCommentRequest, TransitionWorkItemRequest, WorkService } from './work.service';
 
 interface ListQueryDto {

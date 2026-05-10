@@ -10,6 +10,8 @@ import { ComputedModule } from './computed/computed.module';
 import { IntegrationModule } from './integration/integration.module';
 import { CollectionDataService } from './collection-data.service';
 import { ModelRegistryService } from './model-registry.service';
+import { WorkController } from './work/work.controller';
+import { WorkService } from './work/work.service';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -29,7 +31,7 @@ import { ModelRegistryService } from './model-registry.service';
  *   Service-only sub-directories:
  *     [x] events
  *     [x] automation
- *     [ ] work
+ *     [x] work
  *     [ ] offerings
  *   Top-level service files (mid-stream):
  *     [x] collection-data.service + spec
@@ -48,8 +50,8 @@ import { ModelRegistryService } from './model-registry.service';
  */
 @Module({
   imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
-  controllers: [],
-  providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService],
+  controllers: [WorkController],
+  providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService, WorkService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService, WorkService],
 })
 export class DataModule {}

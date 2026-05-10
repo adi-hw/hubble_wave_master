@@ -30,8 +30,8 @@ import { SyncTriggerClientService } from '../../../api/src/app/data/automation/s
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
 import { OfferingsController } from './offerings/offerings.controller';
 import { OfferingsService } from './offerings/offerings.service';
-import { WorkController } from './work/work.controller';
-import { WorkService } from './work/work.service';
+import { WorkController } from '../../../api/src/app/data/work/work.controller';
+import { WorkService } from '../../../api/src/app/data/work/work.service';
 
 import { IntegrationModule } from '../../../api/src/app/data/integration/integration.module';
 import { AVAModule } from '../../../api/src/app/data/ava/ava.module';
