@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScriptModule } from './script/script.module';
+import { ApplicationModule } from './application/application.module';
 import { InsightsIngestService } from './insights/insights-ingest.service';
 
 /**
@@ -8,7 +9,7 @@ import { InsightsIngestService } from './insights/insights-ingest.service';
  * each migration registers its module here.
  *
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md):
- *   [ ] application
+ *   [x] application
  *   [ ] ava
  *   [ ] change-packages
  *   [ ] connectors
@@ -41,6 +42,7 @@ import { InsightsIngestService } from './insights/insights-ingest.service';
  */
 @Module({
   imports: [
+    ApplicationModule,
     ScriptModule,
   ],
   controllers: [],
@@ -48,6 +50,7 @@ import { InsightsIngestService } from './insights/insights-ingest.service';
     InsightsIngestService,
   ],
   exports: [
+    ApplicationModule,
     ScriptModule,
     InsightsIngestService,
   ],

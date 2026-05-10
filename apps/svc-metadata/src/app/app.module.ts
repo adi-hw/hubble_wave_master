@@ -42,7 +42,7 @@ import { SchemaController } from './schema/schema.controller';
 import { SchemaDeployService } from './schema/schema-deploy.service';
 import { SearchModule } from './search/search.module';
 import { LocalizationModule } from './localization/localization.module';
-import { ApplicationModule } from './application/application.module';
+import { ApplicationModule } from '../../../api/src/app/metadata/application/application.module';
 import { PublishImpactModule } from './publish-impact/publish-impact.module';
 import { DisplayRuleModule } from './display-rules/display-rule.module';
 import { DecisionTableModule } from './decision-tables/decision-table.module';
