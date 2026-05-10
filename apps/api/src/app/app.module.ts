@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { KernelModule } from './kernel/kernel.module';
 
 /**
  * apps/api root module.
@@ -12,7 +13,7 @@ import { Module } from '@nestjs/common';
  * Subsequent modules land in a follow-on plan.
  */
 @Module({
-  imports: [],
+  imports: [KernelModule],
   controllers: [],
   providers: [],
 })
