@@ -14,6 +14,7 @@ import { WorkController } from './work/work.controller';
 import { WorkService } from './work/work.service';
 import { OfferingsController } from './offerings/offerings.controller';
 import { OfferingsService } from './offerings/offerings.service';
+import { GridModule } from './grid/grid.module';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -29,7 +30,7 @@ import { OfferingsService } from './offerings/offerings.service';
  *     [x] formula
  *     [x] computed
  *     [x] integration
- *     [ ] grid
+ *     [x] grid
  *   Service-only sub-directories:
  *     [x] events
  *     [x] automation
@@ -51,9 +52,9 @@ import { OfferingsService } from './offerings/offerings.service';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
+  imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, GridModule],
   controllers: [WorkController, OfferingsController],
   providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService, WorkService, OfferingsService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService, WorkService, OfferingsService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, GridModule, CollectionDataService, ModelRegistryService, WorkService, OfferingsService],
 })
 export class DataModule {}

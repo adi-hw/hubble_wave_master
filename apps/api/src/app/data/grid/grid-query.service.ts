@@ -18,7 +18,7 @@ import {
 import { DataSource, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
-import { ModelRegistryService } from '../../../../api/src/app/data/model-registry.service';
+import { ModelRegistryService } from '../model-registry.service';
 
 
 // =============================================================================
