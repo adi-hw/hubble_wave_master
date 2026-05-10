@@ -205,6 +205,7 @@ const MIGRATED_AREAS: ReadonlySet<string> = new Set([
   'metadata',
   'data',
   'automation',
+  'ava',
 ]);
 
 function isServiceDir(name: string): boolean {

@@ -181,13 +181,16 @@ const t = createSelfTest('authz-bypass-check');
 }
 
 // -----------------------------------------------------------------------
-// Test 3 — Planted bypass in svc-ava.
+// Test 3 — Planted bypass in svc-ava (post-migration: apps/api/ava).
 // -----------------------------------------------------------------------
 {
+  // svc-ava migrated to apps/api/src/app/ava/ in ARC-W1-ava (2026-05-10).
+  // Fixture path follows the scanner's MIGRATED_AREAS rule: ava is now
+  // walked at the apps/api home rather than the legacy apps/svc-ava path.
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
-      'apps/svc-ava/src/app/__selftest_fixture__/ava-bypass.service.ts',
+      'apps/api/src/app/ava/__selftest_fixture__/ava-bypass.service.ts',
     fixtureContent: BYPASS_FIXTURE_BODY,
   });
   t.assert(
