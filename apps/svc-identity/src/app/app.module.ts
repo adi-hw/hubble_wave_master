@@ -19,7 +19,7 @@ import { SettingsModule } from './config/config.module';
 import { AbacGuard } from '../../../api/src/app/identity/abac/abac.guard';
 import { UiModule } from './ui/ui.module';
 import { HealthController } from './health.controller';
-import { IamModule } from './iam/iam.module';
+import { IamModule } from '../../../api/src/app/identity/iam/iam.module';
 import { NavigationModule } from './navigation/navigation.module';
 import { GroupsModule } from './groups/groups.module';
 import { RolesModule } from '../../../api/src/app/identity/roles/roles.module';
