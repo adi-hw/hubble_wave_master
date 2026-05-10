@@ -8,6 +8,8 @@ import { AVAModule } from './ava/ava.module';
 import { FormulaModule } from './formula/formula.module';
 import { ComputedModule } from './computed/computed.module';
 import { IntegrationModule } from './integration/integration.module';
+import { CollectionDataService } from './collection-data.service';
+import { ModelRegistryService } from './model-registry.service';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -30,8 +32,8 @@ import { IntegrationModule } from './integration/integration.module';
  *     [ ] work
  *     [ ] offerings
  *   Top-level service files (mid-stream):
- *     [ ] collection-data.service + spec
- *     [ ] model-registry.service
+ *     [x] collection-data.service + spec
+ *     [x] model-registry.service
  *   Final top-level (controllers, data.service, app.module thin adapter):
  *     [ ] data.controller, health.controller, collection-data.controller
  *     [ ] data.service + spec
@@ -47,7 +49,7 @@ import { IntegrationModule } from './integration/integration.module';
 @Module({
   imports: [WorkflowModule, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
   controllers: [],
-  providers: [EventOutboxService, SyncTriggerClientService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule],
+  providers: [EventOutboxService, SyncTriggerClientService, CollectionDataService, ModelRegistryService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule, ValidationModule, AVAModule, FormulaModule, ComputedModule, IntegrationModule, CollectionDataService, ModelRegistryService],
 })
 export class DataModule {}

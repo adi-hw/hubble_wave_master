@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { RequestUser } from '@hubblewave/auth-guard';
-import { CollectionDataService, QueryOptions } from '../collection-data.service';
+import { CollectionDataService, QueryOptions } from '../../../../api/src/app/data/collection-data.service';
 
 const WORK_ITEMS_COLLECTION = 'work_items';
 const WORK_COMMENTS_COLLECTION = 'work_comments';

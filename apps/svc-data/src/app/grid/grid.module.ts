@@ -6,7 +6,7 @@ import { Module } from '@nestjs/common';
 import { AuthorizationModule } from '@hubblewave/authorization';
 import { GridController } from './grid.controller';
 import { GridQueryService } from './grid-query.service';
-import { ModelRegistryService } from '../model-registry.service';
+import { ModelRegistryService } from '../../../../api/src/app/data/model-registry.service';
 
 @Module({
   imports: [AuthorizationModule.forFeature()],

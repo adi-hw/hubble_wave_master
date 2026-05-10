@@ -1,8 +1,8 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { CollectionDataService } from './collection-data.service';
-import { ValidationService } from '../../../api/src/app/data/validation/validation.service';
-import { DefaultValueService } from '../../../api/src/app/data/defaults/default-value.service';
-import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
+import { ValidationService } from './validation/validation.service';
+import { DefaultValueService } from './defaults/default-value.service';
+import { EventOutboxService } from './events/event-outbox.service';
 
 /**
  * Chaos test for the audit-rollback contract on the svc-data CRUD path.

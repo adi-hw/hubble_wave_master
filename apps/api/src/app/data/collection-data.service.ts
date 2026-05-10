@@ -17,14 +17,14 @@ import {
 import { AuthorizationService } from '@hubblewave/authorization';
 import { RequestContext } from '@hubblewave/auth-guard';
 import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'typeorm';
-import { ValidationService } from '../../../api/src/app/data/validation/validation.service';
-import { DefaultValueService } from '../../../api/src/app/data/defaults/default-value.service';
-import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
-import { SyncTriggerClientService } from '../../../api/src/app/data/automation/sync-trigger-client.service';
-import { ComputedPropertyDispatcher } from '../../../api/src/app/data/computed/computed-property-dispatcher.service';
+import { ValidationService } from './validation/validation.service';
+import { DefaultValueService } from './defaults/default-value.service';
+import { EventOutboxService } from './events/event-outbox.service';
+import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
+import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
 import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
-import { PropertyValidationResult, ValidationContext } from '../../../api/src/app/data/validation/validation.types';
-import { DefaultValueContext } from '../../../api/src/app/data/defaults/default-value.types';
+import { PropertyValidationResult, ValidationContext } from './validation/validation.types';
+import { DefaultValueContext } from './defaults/default-value.types';
 
 // Local type for view sort configuration
 interface ViewSortConfig {
