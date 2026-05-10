@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { LLMService, LLMChatMessage } from './llm.service';
-import { VectorStoreService, SearchResult } from './vector-store.service';
+import {
+  VectorStoreService,
+  SearchResult,
+  VectorSearchPrincipal,
+} from './vector-store.service';
 
 export interface RAGContext {
   documents: SearchResult[];
@@ -28,6 +32,13 @@ export interface RAGOptions {
   systemPrompt?: string;
   temperature?: number;
   includeContext?: boolean;
+  /**
+   * F073 (W1 task 9): per-source authz callback. Wired by the API
+   * controller that initiates the RAG call (it has access to the
+   * AuthorizationService). When provided, the underlying vector
+   * search post-filters chunks to those the user can read.
+   */
+  authzCheck?: (sourceType: string, sourceId: string) => Promise<boolean>;
 }
 
 const DEFAULT_SYSTEM_PROMPT = `You are AVA, the AI Virtual Assistant for HubbleWave, an enterprise operations platform.
@@ -56,6 +67,7 @@ export class RAGService {
   async query(
     dataSource: DataSource,
     question: string,
+    principal: VectorSearchPrincipal,
     options: RAGOptions = {}
   ): Promise<RAGResponse> {
     const {
@@ -67,11 +79,13 @@ export class RAGService {
       includeContext = true,
     } = options;
 
-    // Step 1: Retrieve relevant documents
-    const documents = await this.vectorStoreService.search(dataSource, question, {
+    // Step 1: Retrieve relevant documents (F073 — principal threaded
+    // through; authzCheck if caller wired one).
+    const documents = await this.vectorStoreService.search(dataSource, question, principal, {
       limit: maxDocuments,
       threshold: similarityThreshold,
       sourceTypes,
+      authzCheck: options.authzCheck,
     });
 
     this.logger.debug(
@@ -115,6 +129,7 @@ export class RAGService {
   async *queryStream(
     dataSource: DataSource,
     question: string,
+    principal: VectorSearchPrincipal,
     options: RAGOptions = {}
   ): AsyncGenerator<{ type: 'chunk' | 'sources' | 'done'; data: unknown }> {
     const {
@@ -128,10 +143,11 @@ export class RAGService {
     // Try to retrieve documents, fall back to empty if vector store unavailable
     let documents: SearchResult[] = [];
     try {
-      documents = await this.vectorStoreService.search(dataSource, question, {
+      documents = await this.vectorStoreService.search(dataSource, question, principal, {
         limit: maxDocuments,
         threshold: similarityThreshold,
         sourceTypes,
+        authzCheck: options.authzCheck,
       });
     } catch (error) {
       this.logger.debug(`Vector search unavailable, proceeding without context: ${error}`);
@@ -170,6 +186,7 @@ export class RAGService {
   async chat(
     dataSource: DataSource,
     messages: LLMChatMessage[],
+    principal: VectorSearchPrincipal,
     options: RAGOptions = {}
   ): Promise<RAGResponse> {
     const {
@@ -193,10 +210,12 @@ export class RAGService {
     const documents = await this.vectorStoreService.search(
       dataSource,
       lastUserMessage.content,
+      principal,
       {
         limit: maxDocuments,
         threshold: similarityThreshold,
         sourceTypes,
+        authzCheck: options.authzCheck,
       }
     );
 
@@ -313,10 +332,11 @@ JSON Response:`;
     dataSource: DataSource,
     context: string,
     type: 'next_action' | 'related_content' | 'similar_issues',
+    principal: VectorSearchPrincipal,
     limit = 3
   ): Promise<string[]> {
     // First, find related documents
-    const documents = await this.vectorStoreService.search(dataSource, context, {
+    const documents = await this.vectorStoreService.search(dataSource, context, principal, {
       limit: 5,
       threshold: 0.5,
     });
