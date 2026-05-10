@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { MetricsService } from './metrics.service';
 import { IngestMetricsDto } from './metrics.dto';
-import { InstancesService } from '../../../../control-plane/src/app/instances/instances.service';
+import { InstancesService } from '../instances/instances.service';
 
 @Controller('metrics')
 export class MetricsController {

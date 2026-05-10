@@ -12,13 +12,13 @@ import { CustomersModule } from '../../../control-plane/src/app/customers/custom
 import { InstancesModule } from '../../../control-plane/src/app/instances';
 import { AuditModule } from '../../../control-plane/src/app/audit';
 import { TerraformModule } from '../../../control-plane/src/app/terraform';
-import { MetricsModule } from './metrics';
+import { MetricsModule } from '../../../control-plane/src/app/metrics';
 import { LicensesModule } from '../../../control-plane/src/app/licenses/licenses.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { SubscriptionsModule } from '../../../control-plane/src/app/subscriptions/subscriptions.module';
 import { HealthAggregatorModule } from '../../../control-plane/src/app/health-aggregator/health-aggregator.module';
 import { PacksModule } from '../../../control-plane/src/app/packs/packs.module';
-import { RecoveryModule } from './recovery/recovery.module';
-import { SettingsModule } from './settings';
+import { RecoveryModule } from '../../../control-plane/src/app/recovery/recovery.module';
+import { SettingsModule } from '../../../control-plane/src/app/settings';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditInterceptor } from '../../../control-plane/src/app/audit/audit.interceptor';
 

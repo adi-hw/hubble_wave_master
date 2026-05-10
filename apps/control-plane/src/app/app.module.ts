@@ -7,6 +7,10 @@ import { HealthAggregatorModule } from './health-aggregator/health-aggregator.mo
 import { PacksModule } from './packs/packs.module';
 import { InstancesModule } from './instances/instances.module';
 import { TerraformModule } from './terraform/terraform.module';
+import { RecoveryModule } from './recovery/recovery.module';
+import { SettingsModule } from './settings/settings.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 /**
  * ControlPlaneModule — canonical home for the platform's control plane
@@ -22,20 +26,20 @@ import { TerraformModule } from './terraform/terraform.module';
  *   Standard modules:
  *     [x] licenses (depends on audit+auth)
  *     [x] customers, health-aggregator, packs (single-dep on audit+auth) — all three done
- *     [ ] recovery, settings, subscriptions (single-dep)
+ *     [x] recovery, settings, subscriptions (single-dep on audit+auth)
  *   Infrastructure cyclic-core:
  *     [x] instances + terraform (atomic bundle)
  *   Final standard module:
- *     [ ] metrics (depends on instances)
+ *     [x] metrics (depends on instances)
  *   Final top-level (controller + service + app.module thin adapter):
  *     [ ] app.controller, app.service
  *     [ ] control-plane.module final composition
  *     [ ] svc-control-plane app.module thin adapter
  */
 @Module({
-  imports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule],
+  imports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule, RecoveryModule, SettingsModule, SubscriptionsModule, MetricsModule],
   controllers: [],
   providers: [],
-  exports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule],
+  exports: [AuditModule, AuthModule, LicensesModule, CustomersModule, HealthAggregatorModule, PacksModule, InstancesModule, TerraformModule, RecoveryModule, SettingsModule, SubscriptionsModule, MetricsModule],
 })
 export class ControlPlaneModule {}

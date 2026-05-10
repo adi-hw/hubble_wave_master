@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GlobalSettings } from '@hubblewave/control-plane-db';
 import { UpdateGlobalSettingsDto } from './settings.dto';
-import { AuditService } from '../../../../control-plane/src/app/audit/audit.service';
+import { AuditService } from '../audit/audit.service';
 
 const DEFAULT_SETTINGS = {
   platformName: 'HubbleWave Control Plane',
