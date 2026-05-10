@@ -101,6 +101,12 @@ const BANNED_PATTERNS: Array<{
       // spec; the strings are parsed by expr-eval and rejected by the
       // deny-list. Refs Plan §S5 W1.9 / Fix 6.
       'apps/svc-automation/src/app/runtime/script-sandbox.service.spec.ts',
+      // Safe-expression-evaluator RCE corpus (W1 task 8 / F027). Same
+      // rationale as script-sandbox: `eval(` and other RCE patterns
+      // appear AS STRING DATA in the corpus that the evaluator must
+      // reject. The spec asserts each string is rejected by the
+      // SafeExpressionEvaluator; JavaScript eval is never invoked.
+      'libs/automation/src/lib/safe-expression-evaluator.spec.ts',
       // Redis client EVAL command for atomic Lua scripts. The Lua source is a
       // hardcoded constant (release-the-lock-if-we-still-own-it pattern). No
       // user input flows into the script and Redis Lua is server-side
