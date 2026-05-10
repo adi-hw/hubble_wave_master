@@ -15,7 +15,7 @@ import { RolesGuard } from '../../../api/src/app/identity/auth/guards/roles.guar
 import { LoggingInterceptor } from '../../../api/src/app/identity/common/interceptors/logging.interceptor';
 import { ApiKeyGuard } from '../../../api/src/app/identity/auth/api-key/api-key.guard';
 import { AbacModule } from '../../../api/src/app/identity/abac/abac.module';
-import { SettingsModule } from './config/config.module';
+import { SettingsModule } from '../../../api/src/app/identity/config/config.module';
 import { AbacGuard } from '../../../api/src/app/identity/abac/abac.guard';
 import { UiModule } from '../../../api/src/app/identity/ui/ui.module';
 import { HealthController } from './health.controller';

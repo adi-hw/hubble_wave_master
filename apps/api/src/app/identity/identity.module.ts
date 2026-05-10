@@ -8,6 +8,7 @@ import { IamModule } from './iam/iam.module';
 import { OidcModule } from './oidc/oidc.module';
 import { PoliciesModule } from './policies/policies.module';
 import { UiModule } from './ui/ui.module';
+import { SettingsModule } from './config/config.module';
 
 /**
  * IdentityModule consolidates everything from apps/svc-identity into the
@@ -16,7 +17,7 @@ import { UiModule } from './ui/ui.module';
  *
  * Migration progress (per docs/superpowers/plans/2026-05-09-platform-w1-identity-migration.md):
  *   [x] common
- *   [ ] config
+ *   [x] config
  *   [x] email
  *   [x] auth
  *   [x] abac
@@ -39,9 +40,9 @@ import { UiModule } from './ui/ui.module';
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule],
+  imports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule],
   controllers: [],
   providers: [],
-  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule],
+  exports: [EmailModule, AuthModule, AbacModule, LdapModule, RolesModule, IamModule, OidcModule, PoliciesModule, UiModule, SettingsModule],
 })
 export class IdentityModule {}
