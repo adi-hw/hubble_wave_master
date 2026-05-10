@@ -10,6 +10,7 @@ import { AvaModule } from './ava/ava.module';
 import { ViewsModule } from './views/views.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { InstanceApiModule } from './instance-api/instance-api.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 /**
  * apps/api root module.
@@ -23,7 +24,7 @@ import { InstanceApiModule } from './instance-api/instance-api.module';
  * Subsequent modules land in a follow-on plan.
  */
 @Module({
-  imports: [KernelModule, DbModule, AuditModule, IdentityModule, MetadataModule, DataModule, AutomationModule, AvaModule, ViewsModule, NotificationsModule, InstanceApiModule],
+  imports: [KernelModule, DbModule, AuditModule, IdentityModule, MetadataModule, DataModule, AutomationModule, AvaModule, ViewsModule, NotificationsModule, InstanceApiModule, AnalyticsModule],
   controllers: [],
   providers: [],
 })
