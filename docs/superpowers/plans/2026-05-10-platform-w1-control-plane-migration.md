@@ -311,3 +311,71 @@ No issues found.
 ---
 
 **End of control-plane migration plan.**
+
+---
+
+## Status: Complete (2026-05-10)
+
+ARC-W1 control-plane migration complete. apps/control-plane/ is now a separate
+Nest app per spec §2, containing all 12 sub-modules + ControlPlaneModule.
+apps/svc-control-plane reduced to thin adapter.
+
+### Tasks executed
+
+| Task | Commit | Note |
+|---|---|---|
+| 1. Scaffold apps/control-plane Nest app | `d2c1b6f` | New project.json, tsconfig.*, jest, eslint, webpack, main.ts, empty ControlPlaneModule. Port 3100. Modeled on apps/api. |
+| 3. audit + auth cyclic-core bundle (atomic) | `b81bdee` | 17 files, foundational pair |
+| 4. licenses | `2a068bb` | Single-dep leaf (audit+auth) |
+| 5a. customers | `4632154` | Single-dep leaf |
+| 5b. health-aggregator | `5095198` | Single-dep leaf |
+| 5c. packs | `d25125b` | Single-dep leaf |
+| 6. instances + terraform cyclic-core bundle (atomic) | `05e8406` | 12 files, infra pair |
+| 7a-c. recovery, settings, subscriptions | `a40698f`, `aa37d03`, `c18024f` | Single-dep leaves |
+| 7d. metrics | `a77fcc7` | Depends on instances (Task 6) |
+| 7-cleanup. CRLF normalization | `ac2a465` | Line-ending fix-up |
+| 8. Final composition + thin adapter (Sonnet) | `7027a82` | Top-level move + ControlPlaneModule rewrite with full global wiring + thin adapter |
+| 9. Verification + tag (this commit) | (next) | Security allowlist entries for 4 apps/control-plane public/spawn paths |
+
+### Verification at tag
+
+| Check | Result |
+|---|---|
+| `authz:check` | PASS (1 deferred entry) |
+| `audit:check` | PASS |
+| `security:check` | PASS (4 new apps/control-plane allowlist entries added for auth, health-aggregator, packs.catalog controllers + terraform.executor spawn use) |
+| `service-boundary:check` | PASS (1 allowlisted: svc-workflow → svc-automation per §8) |
+| `deps:check` | PASS |
+| `dead-code:check` | PASS |
+| `selftest:scanners` | PASS (security 7, authz 7, service-boundary 12, dead-code 11, eslint-rules 14+7) |
+| nx build api / control-plane / svc-identity / svc-metadata / svc-data / svc-automation / svc-ava / svc-workflow / svc-control-plane | PASS (all 9 monolith-state apps) |
+
+**Tag:** `arc-w1-control-plane-complete`. Resolve with `git rev-parse arc-w1-control-plane-complete`.
+
+### Cumulative migration state
+
+| Service | Status | LoC |
+|---|---|---|
+| svc-identity | ✓ → apps/api/identity | ~17,200 |
+| svc-metadata | ✓ → apps/api/metadata | ~21,200 |
+| svc-data | ✓ → apps/api/data | ~17,700 |
+| svc-automation | ✓ → apps/api/automation | ~9,865 |
+| svc-ava | ✓ → apps/api/ava | ~8,731 |
+| svc-workflow | ✓ folded under apps/api/automation/workflow | ~3,592 |
+| **svc-control-plane** | **✓ → apps/control-plane (new Nest app)** | **~6,420** |
+| **Total** | **7 of 8 instance/control services** | **~84,708** |
+
+### Architectural milestones realized
+
+- apps/control-plane is now a real Nest app per spec §2 (first new app since apps/api was scaffolded in arc-w0)
+- Canon §18 control-plane carve-out is now architecturally enforced (the control plane lives in a separate app, not in apps/api)
+- Most complex W1 migration completed: 12 sub-modules + 2 cyclic-core bundles + new app scaffolding
+
+### Note on instance-plane scanner exclusion
+
+`apps/control-plane` is NOT in `MIGRATED_AREAS` (which is specifically for apps/api/src/app/<area>). The instance-plane authz scanner already excludes svc-control-plane via INSTANCE_SERVICES; after migration, apps/control-plane is naturally excluded too because it's not under apps/svc-* and not in MIGRATED_AREAS. Per canon §18, this is correct — the control plane uses its own auth model.
+
+### Next steps in W1
+
+- Fold-ins per spec §2: svc-view-engine, svc-insights, svc-notify, svc-instance-api
+- W1 final cutover: delete legacy svc-* directories (including svc-workflow + svc-control-plane), delete the now-redundant service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api + apps/control-plane, tag `arc-w1-complete`
