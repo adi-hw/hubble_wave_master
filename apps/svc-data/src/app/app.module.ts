@@ -41,7 +41,7 @@ import { ValidationModule } from '../../../api/src/app/data/validation/validatio
 import { DefaultsModule } from '../../../api/src/app/data/defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
 import { FormulaModule } from '../../../api/src/app/data/formula/formula.module';
-import { ComputedModule } from './computed/computed.module';
+import { ComputedModule } from '../../../api/src/app/data/computed/computed.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({

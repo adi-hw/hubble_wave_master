@@ -21,7 +21,7 @@ import { ValidationService } from '../../../api/src/app/data/validation/validati
 import { DefaultValueService } from '../../../api/src/app/data/defaults/default-value.service';
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
 import { SyncTriggerClientService } from '../../../api/src/app/data/automation/sync-trigger-client.service';
-import { ComputedPropertyDispatcher } from './computed/computed-property-dispatcher.service';
+import { ComputedPropertyDispatcher } from '../../../api/src/app/data/computed/computed-property-dispatcher.service';
 import { AUTOMATION_CODE_ALIASES } from '@hubblewave/shared-types';
 import { PropertyValidationResult, ValidationContext } from '../../../api/src/app/data/validation/validation.types';
 import { DefaultValueContext } from '../../../api/src/app/data/defaults/default-value.types';
