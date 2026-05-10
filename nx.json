@@ -2,10 +2,7 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "defaultBase": "master",
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals"
-    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [
       "default",
       "!{projectRoot}/.eslintrc.json",
@@ -46,7 +43,8 @@
         "apps/svc-data-e2e/**/*",
         "apps/svc-metadata-e2e/**/*",
         "apps/svc-ava-e2e/**/*",
-        "apps/svc-control-plane-e2e/**/*"
+        "apps/svc-control-plane-e2e/**/*",
+        "apps/api-e2e/**/*"
       ]
     },
     {
