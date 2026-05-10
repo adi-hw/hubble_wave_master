@@ -691,3 +691,65 @@ No issues found.
 ---
 
 **End of automation migration plan.**
+
+---
+
+## Status: Complete (2026-05-10)
+
+ARC-W1 automation migration complete. apps/api/src/app/automation/ now contains
+all 5 sub-directories (runtime, scheduling, sync-trigger, ava, rules) +
+AutomationHealthController + automation.module.ts (full composition).
+apps/svc-automation is reduced to a thin adapter (only `app.module.ts` +
+`__selftest_fixture__/`); legacy service stays runnable for parallel deployment
+until full W1 cutover.
+
+### Tasks executed
+
+| Task | Commit | Note |
+|---|---|---|
+| 1. Skeleton | `282f655` | Empty AutomationModule registered in apps/api AppModule |
+| 2. runtime (leaf, biggest 14 files) | `22bbfa9` | All 4 dependent sub-modules' import paths updated to point at apps/api during this commit |
+| 3. scheduling | `328d2ae` | 4-level-up runtime paths inside scheduling/ rewritten to sibling-relative |
+| 4. sync-trigger | `aac7bd3` | Same pattern as scheduling |
+| 5. ava+rules cyclic bundle (atomic) | `e510a44` | 5 files in single commit; sibling cycle imports preserved unchanged; runtime/scheduling 4-level-up paths corrected to siblings |
+| 6. Final composition + thin adapter | `6af73bc` | HealthController → AutomationHealthController (route `/automation/health`); `@hubblewave/automation` lib aliased on import as `AutomationLibModule` to avoid name collision |
+| 7. Verification + tag | `3df09fc` | + scanner allowlist entries for the 2 new apps/api/automation files (health controller + script-sandbox spec) |
+
+### Verification at tag
+
+| Check | Result |
+|---|---|
+| `authz:check` | PASS (1 deferred entry tracked) |
+| `audit:check` | PASS |
+| `security:check` | PASS (after Task 7 allowlist fixup) |
+| `service-boundary:check` | PASS |
+| `deps:check` | PASS |
+| `dead-code:check` | PASS |
+| `selftest:scanners` | PASS — security 7, authz 7, service-boundary 12, dead-code 11, eslint-rules 14+7 |
+| nx build api | PASS |
+| nx build svc-identity | PASS |
+| nx build svc-metadata | PASS |
+| nx build svc-data | PASS |
+| nx build svc-automation | PASS |
+| nx test api | PASS (283 tests) |
+
+**Tag:** `arc-w1-automation-complete` at HEAD `3df09fc`. 8 commits since `arc-reconciled-with-w1-security` (skeleton + 5 sub-module migrations + final composition + allowlist fixup).
+
+### Cumulative migration state
+
+| Service | Status | LoC |
+|---|---|---|
+| svc-identity | ✓ migrated to apps/api/identity | ~17,200 |
+| svc-metadata | ✓ migrated to apps/api/metadata | ~21,200 |
+| svc-data | ✓ migrated to apps/api/data | ~17,700 |
+| svc-automation | ✓ migrated to apps/api/automation | ~9,865 |
+| **Total** | **4 services** | **~65,965** |
+
+### Next steps in W1
+
+The remaining svc-* services need migration plans of similar shape:
+- svc-ava (~8,000 LoC; AVA runtime; F072+F074 proposal state machine overlap)
+- svc-workflow (~3,000 LoC; per canon §8 INVERT may merge with automation)
+- svc-control-plane (~6,000 LoC; multi-tenant by design; different shape)
+- Fold-ins: svc-view-engine, svc-insights, svc-notify, svc-instance-api
+- W1 final cutover: delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api, tag arc-w1-complete
