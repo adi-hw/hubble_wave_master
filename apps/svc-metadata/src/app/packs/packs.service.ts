@@ -45,7 +45,7 @@ import {
 import * as unzipper from 'unzipper';
 import { randomUUID } from 'crypto';
 import { PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './packs.dto';
-import { MetadataIngestService } from '../metadata/metadata-ingest.service';
+import { MetadataIngestService } from '../../../../api/src/app/metadata/metadata/metadata-ingest.service';
 import { AccessIngestService } from '../access/services/access-ingest.service';
 import { SearchIngestService } from '../search/search-ingest.service';
 import { AvaIngestService } from '../../../../api/src/app/metadata/ava/ava-ingest.service';

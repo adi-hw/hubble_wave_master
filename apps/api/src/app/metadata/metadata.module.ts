@@ -8,6 +8,7 @@ import { DisplayRuleModule } from './display-rules/display-rule.module';
 import { ViewModule } from './view/view.module';
 import { GuidedProcessModule } from './guided-processes/guided-process.module';
 import { NavigationMetadataModule } from './navigation/navigation.module';
+import { MetadataIngestService } from './metadata/metadata-ingest.service';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -60,6 +61,7 @@ import { NavigationMetadataModule } from './navigation/navigation.module';
   providers: [
     InsightsIngestService,
     AvaIngestService,
+    MetadataIngestService,
   ],
   exports: [
     ApplicationModule,
@@ -71,6 +73,7 @@ import { NavigationMetadataModule } from './navigation/navigation.module';
     NavigationMetadataModule,
     InsightsIngestService,
     AvaIngestService,
+    MetadataIngestService,
   ],
 })
 export class MetadataModule {}

@@ -11,7 +11,7 @@ import { AuthGuardModule, JwtAuthGuard } from '@hubblewave/auth-guard';
 import { PacksController } from './packs.controller';
 import { PacksService } from './packs.service';
 import { PackInstallGuard } from './pack-install.guard';
-import { MetadataIngestService } from '../metadata/metadata-ingest.service';
+import { MetadataIngestService } from '../../../../api/src/app/metadata/metadata/metadata-ingest.service';
 import { PackCatalogService } from './pack-catalog.service';
 import { AccessIngestService } from '../access/services/access-ingest.service';
 import { SearchIngestService } from '../search/search-ingest.service';
