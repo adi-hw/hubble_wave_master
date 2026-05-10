@@ -44,6 +44,8 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/svc-automation/src/app/health.controller.ts',
   'apps/svc-ava/src/app/health.controller.ts',
   'apps/svc-control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
+  // ARC-W1 post-migration path (apps/control-plane home — separate Nest app per spec §2).
+  'apps/control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
   'apps/svc-data/src/app/health.controller.ts',
   'apps/svc-identity/src/app/health.controller.ts',
   'apps/svc-insights/src/app/health.controller.ts',
@@ -71,6 +73,7 @@ const PUBLIC_ALLOWLIST = new Set([
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
   'apps/svc-control-plane/src/app/auth/auth.controller.ts',
+  'apps/control-plane/src/app/auth/auth.controller.ts',
   'apps/svc-identity/src/app/auth/auth.controller.ts',
   'apps/svc-identity/src/app/auth/email-verification.controller.ts',
   'apps/svc-identity/src/app/auth/magic-link.controller.ts',
@@ -92,6 +95,7 @@ const PUBLIC_ALLOWLIST = new Set([
   // Category 3: Public catalogs / unauthenticated render surfaces.
   // -------------------------------------------------------------------
   'apps/svc-control-plane/src/app/packs/packs.catalog.controller.ts',
+  'apps/control-plane/src/app/packs/packs.catalog.controller.ts',
   // theme read endpoints render on the unauthenticated login page; the
   // controller has @Public on individual GET routes only — POST/PUT/
   // DELETE remain auth-required (verified at theme.controller.ts).
@@ -156,6 +160,8 @@ const BANNED_PATTERNS: Array<{
     allowlist: new Set([
       'apps/svc-insights/src/app/backup/backup.service.ts',
       'apps/svc-control-plane/src/app/terraform/terraform.executor.ts',
+      // ARC-W1 post-migration path (apps/control-plane home).
+      'apps/control-plane/src/app/terraform/terraform.executor.ts',
     ]),
   },
 ];

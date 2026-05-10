@@ -32,7 +32,7 @@ export class AppService implements OnModuleInit, OnModuleDestroy {
       this.auditPruneHandle = setInterval(() => {
         this.auditService
           .purgeOlderThan(retentionDays)
-          .catch((err) => this.logger.warn(`Audit purge failed: ${err?.message || err}`));
+          .catch((err: unknown) => this.logger.warn(`Audit purge failed: ${(err as { message?: string })?.message || String(err)}`));
       }, 24 * 60 * 60 * 1000);
       this.logger.log(`Audit retention set to ${retentionDays} days`);
     } else {
