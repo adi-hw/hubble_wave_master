@@ -11,6 +11,7 @@ import { NavigationMetadataModule } from './navigation/navigation.module';
 import { MetadataIngestService } from './metadata/metadata-ingest.service';
 import { ConnectorsIngestService } from './connectors/connectors-ingest.service';
 import { DecisionTableModule } from './decision-tables/decision-table.module';
+import { WorkspaceModule } from './workspaces/workspace.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -59,6 +60,7 @@ import { DecisionTableModule } from './decision-tables/decision-table.module';
     GuidedProcessModule,
     NavigationMetadataModule,
     DecisionTableModule,
+    WorkspaceModule,
   ],
   controllers: [],
   providers: [
@@ -76,6 +78,7 @@ import { DecisionTableModule } from './decision-tables/decision-table.module';
     GuidedProcessModule,
     NavigationMetadataModule,
     DecisionTableModule,
+    WorkspaceModule,
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,
