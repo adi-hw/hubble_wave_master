@@ -10,6 +10,7 @@ import { GuidedProcessModule } from './guided-processes/guided-process.module';
 import { NavigationMetadataModule } from './navigation/navigation.module';
 import { MetadataIngestService } from './metadata/metadata-ingest.service';
 import { ConnectorsIngestService } from './connectors/connectors-ingest.service';
+import { DecisionTableModule } from './decision-tables/decision-table.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -57,6 +58,7 @@ import { ConnectorsIngestService } from './connectors/connectors-ingest.service'
     ViewModule,
     GuidedProcessModule,
     NavigationMetadataModule,
+    DecisionTableModule,
   ],
   controllers: [],
   providers: [
@@ -73,6 +75,7 @@ import { ConnectorsIngestService } from './connectors/connectors-ingest.service'
     ViewModule,
     GuidedProcessModule,
     NavigationMetadataModule,
+    DecisionTableModule,
     InsightsIngestService,
     AvaIngestService,
     MetadataIngestService,

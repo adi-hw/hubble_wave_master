@@ -45,7 +45,7 @@ import { LocalizationModule } from './localization/localization.module';
 import { ApplicationModule } from '../../../api/src/app/metadata/application/application.module';
 import { PublishImpactModule } from './publish-impact/publish-impact.module';
 import { DisplayRuleModule } from '../../../api/src/app/metadata/display-rules/display-rule.module';
-import { DecisionTableModule } from './decision-tables/decision-table.module';
+import { DecisionTableModule } from '../../../api/src/app/metadata/decision-tables/decision-table.module';
 import { GuidedProcessModule } from '../../../api/src/app/metadata/guided-processes/guided-process.module';
 import { WorkspaceModule } from './workspaces/workspace.module';
 import { ChangePackageModule } from './change-packages/change-package.module';
