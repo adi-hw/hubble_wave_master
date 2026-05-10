@@ -209,3 +209,50 @@ No issues found.
 ---
 
 **End of fold-ins migration plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Tagged `arc-w1-foldins-complete` at `716346e`.
+
+### What landed
+
+All 4 fold-in services were migrated into `apps/api/src/app/`:
+
+| Service | New home | Sub-modules | Thin-adapter LoC |
+|---|---|---|---|
+| svc-view-engine | `apps/api/src/app/views/` | view, navigation, transform | ~10 lines |
+| svc-notify | `apps/api/src/app/notifications/` | (flat, no sub-modules) | ~10 lines |
+| svc-instance-api | `apps/api/src/app/instance-api/` | identity, packs | ~10 lines |
+| svc-insights | `apps/api/src/app/analytics/` | alerts, audit-integrity, backup, dashboards, metrics | ~10 lines |
+
+Each `apps/svc-X/` directory now contains only `app.module.ts` (re-exporting the new module) plus any pre-existing `__selftest_fixture__/` directory.
+
+### Commits in this PR (chronological)
+
+1. Task 1 (svc-view-engine): skeleton → view/ → navigation/ → transform/ → top-level + adapter
+2. Task 2 (svc-notify): atomic single commit (flat module)
+3. Task 3 (svc-instance-api): skeleton → identity/ → packs/ → top-level + adapter
+4. Task 4 (svc-insights): skeleton → alerts/ → audit-integrity/ → backup/ → dashboards/ → metrics/ → top-level + adapter
+5. Scanner updates (final): `MIGRATED_AREAS` now includes `views`, `notifications`, `instance-api`, `analytics`. `KNOWN_BYPASSES` entry for `dashboards.service.ts` path-translated. Thin-adapter `KNOWN_VIOLATIONS` entries added for the 4 newly-thinned services.
+
+### Verification gate (Task 5)
+
+- All 6 scanners pass: `authz:check`, `audit:check`, `security:check`, `service-boundary:check`, `dead-code:check`, `deps:check`
+- All 4 scanner selftests pass: authz (7/7), service-boundary (12/12), security (7/7), dead-code (11/11) — **37/37 assertions**
+- Builds (production webpack): `api`, `control-plane`, `svc-identity`, `svc-metadata`, `svc-data`, `svc-automation`, `svc-ava`, `svc-workflow`, `svc-control-plane`, `svc-view-engine`, `svc-notify`, `svc-instance-api`, `svc-insights` — **13/13 green**
+- `nx test api` — 34 suites, **457 tests pass** (2 skipped, 0 failed)
+- All 4 svc-* directories reduced to `app.module.ts` (+ `__selftest_fixture__/` where present)
+- All 4 `apps/api/src/app/{views,analytics,notifications,instance-api}/` populated and module-wired
+
+### Cumulative Phase 1 state
+
+- **11 of 11 instance / control-plane services migrated** (svc-identity, svc-metadata, svc-data, svc-automation, svc-ava, svc-workflow, svc-control-plane, plus the 4 in this PR)
+- `apps/api` is now the consolidated instance monolith
+- `apps/control-plane` is the consolidated control-plane monolith
+- All `svc-*` directories are thin adapters maintained for graceful Phase-1 transition; will be removed in W1 final cutover
+
+### Next
+
+After PR #11 merges, Phase 1 is COMPLETE. Only W1 final cutover remains (delete `apps/svc-*` thin adapters; trim `nx.json` / CI matrix down to api + control-plane + worker + web; update `PLATFORM-ROADMAP.md` and `RESUME-CONTEXT.md` to mark Phase 1 done and Phase 2 (W2/W3) open).
