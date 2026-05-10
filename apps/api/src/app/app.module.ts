@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { KernelModule } from './kernel/kernel.module';
 import { DbModule } from './db/db.module';
 import { AuditModule } from './audit/audit.module';
+import { IdentityModule } from './identity/identity.module';
 
 /**
  * apps/api root module.
@@ -15,7 +16,7 @@ import { AuditModule } from './audit/audit.module';
  * Subsequent modules land in a follow-on plan.
  */
 @Module({
-  imports: [KernelModule, DbModule, AuditModule],
+  imports: [KernelModule, DbModule, AuditModule, IdentityModule],
   controllers: [],
   providers: [],
 })
