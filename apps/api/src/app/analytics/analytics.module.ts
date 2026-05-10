@@ -3,6 +3,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
 import { BackupModule } from './backup/backup.module';
 import { DashboardsModule } from './dashboards/dashboards.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 /**
  * AnalyticsModule consolidates svc-insights into apps/api per spec §2.
@@ -15,15 +16,15 @@ import { DashboardsModule } from './dashboards/dashboards.module';
  *   [x] audit-integrity
  *   [x] backup
  *   [x] dashboards
- *   [ ] metrics
+ *   [x] metrics
  *   [ ] analytics-health.controller (renamed from health.controller)
  *   [ ] analytics.module final composition
  *   [ ] svc-insights app.module thin adapter
  */
 @Module({
-  imports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule],
+  imports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule, MetricsModule],
   controllers: [],
   providers: [],
-  exports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule],
+  exports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule, MetricsModule],
 })
 export class AnalyticsModule {}
