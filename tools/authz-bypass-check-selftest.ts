@@ -4,11 +4,14 @@
  *
  * Asserts:
  *   1. Scanner exits 0 against current master (allowlist matches reality).
- *   2. Planted RequestContext+DataSource bypass in svc-insights fails.
- *   3. Planted bypass in svc-ava (was previously unscanned) fails.
- *   4. Planted bypass in svc-workflow (was previously unscanned) fails.
+ *   2. Planted RequestContext+DataSource bypass in apps/api/analytics
+ *      (formerly svc-insights) fails.
+ *   3. Planted bypass in apps/api/ava (formerly svc-ava) fails.
+ *   4. Planted bypass in apps/api/automation/workflow (formerly
+ *      svc-workflow, folded into automation per canon §8 INVERT) fails.
  *   5. RequestContext+DataSource WITH AuthorizationService is OK.
- *   6. svc-control-plane is INTENTIONALLY not scanned (canon §18 carve-out).
+ *   6. apps/control-plane is INTENTIONALLY not scanned (canon §18
+ *      carve-out — multi-tenant control plane has its own auth model).
  *
  * Per scanner-self-test.ts contract: framework helpers are duplicated
  * here.
@@ -164,29 +167,27 @@ const t = createSelfTest('authz-bypass-check');
 }
 
 // -----------------------------------------------------------------------
-// Test 2 — Planted bypass in svc-insights (was previously F146-tracked
-// but the scanner didn't flag it because it only scanned svc-data).
+// Test 2 — Planted bypass in apps/api/analytics (formerly svc-insights;
+// F146-tracked allowlist entry, but a NEW bypass elsewhere in the area
+// should still fail).
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
-      'apps/svc-insights/src/app/__selftest_fixture__/insights-bypass.service.ts',
+      'apps/api/src/app/analytics/__selftest_fixture__/analytics-bypass.service.ts',
     fixtureContent: BYPASS_FIXTURE_BODY,
   });
   t.assert(
     result.exitCode !== 0,
-    `bypass in svc-insights fails scanner (got exit ${result.exitCode})`,
+    `bypass in apps/api/analytics fails scanner (got exit ${result.exitCode})`,
   );
 }
 
 // -----------------------------------------------------------------------
-// Test 3 — Planted bypass in svc-ava (post-migration: apps/api/ava).
+// Test 3 — Planted bypass in apps/api/ava (formerly svc-ava).
 // -----------------------------------------------------------------------
 {
-  // svc-ava migrated to apps/api/src/app/ava/ in ARC-W1-ava (2026-05-10).
-  // Fixture path follows the scanner's MIGRATED_AREAS rule: ava is now
-  // walked at the apps/api home rather than the legacy apps/svc-ava path.
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
@@ -195,23 +196,24 @@ const t = createSelfTest('authz-bypass-check');
   });
   t.assert(
     result.exitCode !== 0,
-    `bypass in svc-ava fails scanner (got exit ${result.exitCode})`,
+    `bypass in apps/api/ava fails scanner (got exit ${result.exitCode})`,
   );
 }
 
 // -----------------------------------------------------------------------
-// Test 4 — Planted bypass in svc-workflow.
+// Test 4 — Planted bypass in apps/api/automation/workflow (formerly
+// svc-workflow, folded into automation per canon §8 INVERT).
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
-      'apps/svc-workflow/src/app/__selftest_fixture__/workflow-bypass.service.ts',
+      'apps/api/src/app/automation/workflow/__selftest_fixture__/workflow-bypass.service.ts',
     fixtureContent: BYPASS_FIXTURE_BODY,
   });
   t.assert(
     result.exitCode !== 0,
-    `bypass in svc-workflow fails scanner (got exit ${result.exitCode})`,
+    `bypass in apps/api/automation/workflow fails scanner (got exit ${result.exitCode})`,
   );
 }
 
@@ -223,7 +225,7 @@ const t = createSelfTest('authz-bypass-check');
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
-      'apps/svc-data/src/app/__selftest_fixture__/safe.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/safe.service.ts',
     fixtureContent: SAFE_FIXTURE_BODY,
   });
   t.assert(
@@ -233,19 +235,19 @@ const t = createSelfTest('authz-bypass-check');
 }
 
 // -----------------------------------------------------------------------
-// Test 6 — svc-control-plane is INTENTIONALLY not scanned (canon §18
+// Test 6 — apps/control-plane is INTENTIONALLY not scanned (canon §18
 // carves out the multi-tenant control plane).
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run authz:check',
     fixturePath:
-      'apps/svc-control-plane/src/app/__selftest_fixture__/cp-bypass.service.ts',
+      'apps/control-plane/src/app/__selftest_fixture__/cp-bypass.service.ts',
     fixtureContent: BYPASS_FIXTURE_BODY,
   });
   t.assert(
     result.exitCode === 0,
-    `svc-control-plane is excluded — bypass there does NOT fail scanner (got exit ${result.exitCode})`,
+    `apps/control-plane is excluded — bypass there does NOT fail scanner (got exit ${result.exitCode})`,
   );
 }
 

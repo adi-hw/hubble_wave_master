@@ -5,10 +5,11 @@ import { join, relative, resolve, dirname, sep } from 'path';
  * Static-analysis check for canon §3 (Platform, not application) and the
  * service-responsibility map in PART 2 §C of the architectural plan.
  *
- * Scans every TypeScript source file under apps/svc-XYZ/src/ and rejects any
- * import that crosses a service boundary directly. Cross-service collaboration
- * must go through libs/ (the shared surface). Same-service imports,
- * libs/ imports, and third-party packages are always allowed.
+ * Scans every TypeScript source file under apps/api/src/app/<area>/ and
+ * apps/svc-migrations/src/ (and any future top-level svc-* utility apps) and
+ * rejects any import that crosses a service boundary directly. Cross-service
+ * collaboration must go through libs/ (the shared surface). Same-service
+ * imports, libs/ imports, and third-party packages are always allowed.
  *
  * This enforces Fix 12 of the remediation plan: a service importing from
  * another service's source today silently passes every other gate, because no
@@ -39,54 +40,19 @@ const IGNORE_DIRS = new Set([
  * structural refactor (Plan Fix 24 — earn the service boundaries). Each entry
  * lists the importing file, the import path that crosses a boundary, and the
  * follow-up wave. New entries require explicit founder/architect approval.
+ *
+ * Currently empty after the W1 final cutover (arc-w1-complete). All thin
+ * adapters that previously held entries here have been deleted; the runtime
+ * service responsibilities now live entirely inside apps/api +
+ * apps/control-plane, neither of which crosses a service boundary by
+ * definition.
  */
 const KNOWN_VIOLATIONS: Array<{
   file: string;
   importPath: string;
   rationale: string;
   followUp: string;
-}> = [
-  {
-    file: 'apps/svc-workflow/src/app/app.module.ts',
-    importPath: '../../../api/src/app/automation/automation.module',
-    rationale:
-      'Canon §8 INVERT (commit 99487c4): automation and workflow merge into one engine. svc-workflow folded into apps/api/src/app/automation/workflow/ via arc-w1-workflow-complete. The thin adapter at svc-workflow imports AutomationModule (which includes the workflow sub-area) so svc-workflow continues serving workflow + automation endpoints during parallel deployment. The cross-service import here is the canonical realization of the §8 merger, not a violation.',
-    followUp:
-      'W1 final cutover — delete apps/svc-workflow entirely. The AutomationModule will serve workflow endpoints from apps/api alone.',
-  },
-  {
-    file: 'apps/svc-view-engine/src/app/app.module.ts',
-    importPath: '../../../api/src/app/views/views.module',
-    rationale:
-      'ARC-W1 Task 1: svc-view-engine folded into apps/api/src/app/views/ (ViewsModule). The thin adapter re-imports ViewsModule so svc-view-engine continues serving view engine endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
-    followUp:
-      'W1 final cutover — delete apps/svc-view-engine entirely. ViewsModule inside apps/api will serve all view engine endpoints.',
-  },
-  {
-    file: 'apps/svc-notify/src/app/app.module.ts',
-    importPath: '../../../api/src/app/notifications/notifications.module',
-    rationale:
-      'ARC-W1 Task 2: svc-notify folded into apps/api/src/app/notifications/ (NotificationsModule). The thin adapter re-imports NotificationsModule so svc-notify continues serving notification endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
-    followUp:
-      'W1 final cutover — delete apps/svc-notify entirely. NotificationsModule inside apps/api will serve all notification endpoints.',
-  },
-  {
-    file: 'apps/svc-instance-api/src/app/app.module.ts',
-    importPath: '../../../api/src/app/instance-api/instance-api.module',
-    rationale:
-      'ARC-W1 Task 3: svc-instance-api folded into apps/api/src/app/instance-api/ (InstanceApiModule). The thin adapter re-imports InstanceApiModule so svc-instance-api continues serving auth-flow and pack endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
-    followUp:
-      'W1 final cutover — delete apps/svc-instance-api entirely. InstanceApiModule inside apps/api will serve all instance-api endpoints.',
-  },
-  {
-    file: 'apps/svc-insights/src/app/app.module.ts',
-    importPath: '../../../api/src/app/analytics/analytics.module',
-    rationale:
-      'ARC-W1 Task 4: svc-insights folded into apps/api/src/app/analytics/ (AnalyticsModule). The thin adapter re-imports AnalyticsModule so svc-insights continues serving analytics endpoints during the parallel deployment window. This is the canonical thin-adapter pattern, not a service-boundary violation.',
-    followUp:
-      'W1 final cutover — delete apps/svc-insights entirely. AnalyticsModule inside apps/api will serve all analytics endpoints.',
-  },
-];
+}> = [];
 
 /**
  * Entity ownership map. Each entity is owned by exactly one service per the
@@ -225,23 +191,21 @@ function isKnownEntityViolation(file: string, entity: string): boolean {
  * Service-namespace recognition.
  *
  * Two kinds of paths count as "a service":
- *   1. `apps/svc-<name>/...` — legacy single-service apps (still used for
- *      services that haven't migrated to the modular monolith yet).
- *   2. `apps/api/src/app/<area>/...` — post-ARC-W1 home for migrated
- *      services. After the identity / metadata / data migrations, those
- *      services' source lives here; the legacy `apps/svc-X/src/app/` is
- *      a thin adapter (app.module.ts only).
+ *   1. `apps/svc-<name>/...` — standalone svc-* apps. Post-W1-cutover the
+ *      only surviving entry is `apps/svc-migrations` (a single-shot K8s
+ *      migration runner), but the regex is left general so future utility
+ *      services can plug in.
+ *   2. `apps/api/src/app/<area>/...` — service areas inside the instance
+ *      modular monolith. Each area maps 1:1 to a logical service identity
+ *      (`svc-<area>`) for ENTITY_OWNERSHIP lookups.
  *
- * `MIGRATED_AREAS` lists the area names that have moved into apps/api.
- * Update this set when a new service migrates (alongside removing its
- * apps/svc-X directory entry in the W1 final cutover).
- *
- * Identity wrapping: a file at `apps/api/src/app/<area>/...` is recognized
- * as service `svc-<area>` so the existing svc-* identity model and the
- * ENTITY_OWNERSHIP map (`svc-automation` etc.) work unchanged.
+ * `SERVICE_AREAS` lists the area names that are recognized as service
+ * surfaces under apps/api. Top-level apps/api directories not in this set
+ * (kernel, db, audit, app.module.ts) are treated as framework
+ * infrastructure and excluded from cross-service-boundary enforcement.
  */
 const SERVICE_DIR_RE = /^svc-[a-z0-9-]+$/;
-const MIGRATED_AREAS: ReadonlySet<string> = new Set([
+const SERVICE_AREAS: ReadonlySet<string> = new Set([
   'identity',
   'metadata',
   'data',
@@ -300,7 +264,7 @@ function toPosix(p: string): string {
  *
  * Recognizes both:
  *   - `apps/svc-<name>/...` (returns `svc-<name>`)
- *   - `apps/api/src/app/<area>/...` for areas in MIGRATED_AREAS
+ *   - `apps/api/src/app/<area>/...` for areas in SERVICE_AREAS
  *     (returns `svc-<area>` so ownership maps work unchanged)
  *
  * Top-level files under `apps/api/src/app/` that don't fall into a migrated
@@ -324,7 +288,7 @@ function serviceOf(absolutePath: string): string | null {
     segments[1] === 'src' &&
     segments[2] === 'app' &&
     segments.length >= 5 &&
-    MIGRATED_AREAS.has(segments[3])
+    SERVICE_AREAS.has(segments[3])
   ) {
     return `svc-${segments[3]}`;
   }
@@ -434,7 +398,7 @@ function isKnownViolation(file: string, importPath: string): boolean {
 /**
  * Returns every TS/TSX source file under a recognized service root:
  *   - apps/svc-<name>/src/...     (every directory matching SERVICE_DIR_RE)
- *   - apps/api/src/app/<area>/... (every area in MIGRATED_AREAS)
+ *   - apps/api/src/app/<area>/... (every area in SERVICE_AREAS)
  *
  * Top-level apps/api files (app.module.ts, kernel/, db/, audit/) are NOT
  * included — they're framework infrastructure, not service code.
@@ -462,7 +426,7 @@ function discoverScanFiles(): string[] {
 
   // Migrated apps/api/src/app/<area> roots.
   const apiAppDir = join(APPS_DIR, 'api', 'src', 'app');
-  for (const area of MIGRATED_AREAS) {
+  for (const area of SERVICE_AREAS) {
     const areaDir = join(apiAppDir, area);
     try {
       if (!statSync(areaDir).isDirectory()) continue;

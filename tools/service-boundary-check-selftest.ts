@@ -4,18 +4,19 @@
  *
  * Asserts:
  *   1. Scanner exits 0 against current master.
- *   2. Cross-service IMPORT (svc-data importing AutomationRule from
- *      @hubblewave/instance-db) fails — the import-topology rule.
+ *   2. Cross-service IMPORT (apps/api/data — logical service svc-data —
+ *      importing AutomationRule from @hubblewave/instance-db) fails —
+ *      the entity-ownership rule.
  *   3. String-table-name `getRepository('automation_rules')` from a
- *      non-owner service fails — the new write-bypass rule.
+ *      non-owner area fails — the write-bypass rule.
  *   4. Raw SQL `UPDATE automation_rules SET ...` from a non-owner
- *      service fails — the new write-bypass rule.
- *   5. svc-automation can do all of the above (it's the owner).
- *   6. svc-control-plane is allowed too (not a candidate; owned only by
- *      svc-automation per ENTITY_OWNERSHIP, but it's not an instance
- *      service either — entity rules apply only to instance services).
- *      Wait: actually the import-topology rule iterates ALL svc-* dirs.
- *      svc-control-plane is therefore restricted too. Verify both ways.
+ *      area fails — the write-bypass rule.
+ *   5. Raw SQL `INSERT INTO scheduled_jobs ...` from a non-owner area
+ *      fails (generalizes the rule across the ENTITY_OWNERSHIP map).
+ *   6. Owner area (apps/api/automation — logical service svc-automation)
+ *      can do all of the above on the tables it owns.
+ *   7. Word-boundary defense: 'automation_rules_extra' does NOT
+ *      false-positive against 'automation_rules'.
  *
  * Per scanner-self-test contract: framework helpers are duplicated.
  */
@@ -133,13 +134,14 @@ const t = createSelfTest('service-boundary-check');
 }
 
 // -----------------------------------------------------------------------
-// Test 2 — Cross-service IMPORT of AutomationRule from svc-data fails.
+// Test 2 — Cross-service IMPORT of AutomationRule from apps/api/data
+// (logical service svc-data) fails.
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-data/src/app/__selftest_fixture__/import-bypass.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/import-bypass.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { AutomationRule } from '@hubblewave/instance-db';
@@ -152,7 +154,7 @@ export class BadImportService {
   });
   t.assert(
     result.exitCode !== 0,
-    `cross-service AutomationRule import in svc-data fails scanner (got exit ${result.exitCode})`,
+    `cross-service AutomationRule import in apps/api/data fails scanner (got exit ${result.exitCode})`,
   );
   t.assert(
     /entity ownership/.test(result.stdout + result.stderr),
@@ -162,13 +164,13 @@ export class BadImportService {
 
 // -----------------------------------------------------------------------
 // Test 3 — String-table-name getRepository('automation_rules') in
-// svc-data fails (W0 task 5 new check).
+// apps/api/data (logical service svc-data) fails (W0 task 5 new check).
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-data/src/app/__selftest_fixture__/string-getrepo.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/string-getrepo.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -183,7 +185,7 @@ export class StringGetRepoService {
   });
   t.assert(
     result.exitCode !== 0,
-    `string-table-name getRepository('automation_rules') in svc-data fails (got exit ${result.exitCode})`,
+    `string-table-name getRepository('automation_rules') in apps/api/data fails (got exit ${result.exitCode})`,
   );
   t.assert(
     /string-getRepository/.test(result.stdout + result.stderr),
@@ -192,13 +194,13 @@ export class StringGetRepoService {
 }
 
 // -----------------------------------------------------------------------
-// Test 4 — Raw SQL UPDATE on automation_rules in svc-data fails.
+// Test 4 — Raw SQL UPDATE on automation_rules in apps/api/data fails.
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-data/src/app/__selftest_fixture__/raw-sql-update.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/raw-sql-update.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -213,7 +215,7 @@ export class RawSqlService {
   });
   t.assert(
     result.exitCode !== 0,
-    `raw SQL UPDATE on automation_rules in svc-data fails (got exit ${result.exitCode})`,
+    `raw SQL UPDATE on automation_rules in apps/api/data fails (got exit ${result.exitCode})`,
   );
   t.assert(
     /raw-sql-update/.test(result.stdout + result.stderr),
@@ -222,19 +224,20 @@ export class RawSqlService {
 }
 
 // -----------------------------------------------------------------------
-// Test 5 — Raw SQL INSERT on scheduled_jobs in svc-workflow fails.
-// (Different service + different table to verify rule generalizes.)
+// Test 5 — Raw SQL INSERT on scheduled_jobs from a non-owner area
+// (apps/api/data, logical service svc-data) fails. Different table than
+// Test 4 to verify the rule generalizes across the ENTITY_OWNERSHIP map.
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-workflow/src/app/__selftest_fixture__/raw-sql-insert.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/raw-sql-insert.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 @Injectable()
-export class WorkflowSneakService {
+export class DataSneakService {
   constructor(private ds: DataSource) {}
   async sneaky() {
     return this.ds.query("INSERT INTO scheduled_jobs (id, name) VALUES ($1, $2)", [1, 'x']);
@@ -244,18 +247,21 @@ export class WorkflowSneakService {
   });
   t.assert(
     result.exitCode !== 0,
-    `raw SQL INSERT on scheduled_jobs in svc-workflow fails (got exit ${result.exitCode})`,
+    `raw SQL INSERT on scheduled_jobs from non-owner area fails (got exit ${result.exitCode})`,
   );
 }
 
 // -----------------------------------------------------------------------
-// Test 6 — Owner service (svc-automation) can write to its own tables.
+// Test 6 — Owner service area (apps/api/automation, logical service
+// svc-automation) can write to its own tables. Per canon §8 INVERT
+// workflow is merged into automation, so this area owns automation_rules,
+// scheduled_jobs, and automation_execution_logs collectively.
 // -----------------------------------------------------------------------
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-automation/src/app/__selftest_fixture__/owner-write.service.ts',
+      'apps/api/src/app/automation/__selftest_fixture__/owner-write.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -273,7 +279,7 @@ export class OwnerOk {
   });
   t.assert(
     result.exitCode === 0,
-    `owner service (svc-automation) can write to its own tables (got exit ${result.exitCode})`,
+    `owner service area (apps/api/automation) can write to its own tables (got exit ${result.exitCode})`,
   );
 }
 
@@ -285,7 +291,7 @@ export class OwnerOk {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run service-boundary:check',
     fixturePath:
-      'apps/svc-data/src/app/__selftest_fixture__/word-boundary.service.ts',
+      'apps/api/src/app/data/__selftest_fixture__/word-boundary.service.ts',
     fixtureContent: `
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';

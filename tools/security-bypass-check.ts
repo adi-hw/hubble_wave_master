@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
 import { join, relative } from 'path';
 
 type Violation = {
@@ -40,30 +40,11 @@ const IGNORE_DIRS = new Set(['node_modules', 'dist', 'tmp', '.nx', '.git']);
 const PUBLIC_ALLOWLIST = new Set([
   // -------------------------------------------------------------------
   // Category 1: Health endpoints (k8s probes).
+  //   Per-area routes: /<area>/health for each sub-module of apps/api.
+  //   Identity keeps the canonical /health (HealthController).
+  //   apps/control-plane has its own /health-aggregator/health surface.
   // -------------------------------------------------------------------
-  'apps/svc-automation/src/app/health.controller.ts',
-  'apps/svc-ava/src/app/health.controller.ts',
-  'apps/svc-control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
-  // ARC-W1 post-migration path (apps/control-plane home — separate Nest app per spec §2).
   'apps/control-plane/src/app/health-aggregator/health-aggregator.controller.ts',
-  'apps/svc-data/src/app/health.controller.ts',
-  'apps/svc-identity/src/app/health.controller.ts',
-  'apps/svc-instance-api/src/app/health.controller.ts',
-  'apps/svc-metadata/src/app/health.controller.ts',
-  'apps/svc-notify/src/app/health.controller.ts',
-  'apps/svc-view-engine/src/app/health.controller.ts',
-  'apps/svc-workflow/src/app/health.controller.ts',
-  // ARC-W1 post-migration paths (apps/api). svc-data, svc-identity,
-  // svc-metadata, svc-automation, svc-ava, svc-view-engine, and svc-notify
-  // are now thin adapters; their controller files live at the apps/api
-  // locations below. Health controllers were renamed to disambiguate routes:
-  //   data:          /data/health          (DataHealthController)
-  //   metadata:      /metadata/health      (MetadataHealthController)
-  //   identity:      /health               (HealthController, unchanged)
-  //   automation:    /automation/health    (AutomationHealthController)
-  //   ava:           /ava/health           (AvaHealthController)
-  //   views:         /views/health         (ViewsHealthController)
-  //   notifications: /notifications/health (NotificationsHealthController)
   'apps/api/src/app/data/data-health.controller.ts',
   'apps/api/src/app/identity/health.controller.ts',
   'apps/api/src/app/metadata/metadata-health.controller.ts',
@@ -71,28 +52,14 @@ const PUBLIC_ALLOWLIST = new Set([
   'apps/api/src/app/ava/ava-health.controller.ts',
   'apps/api/src/app/views/views-health.controller.ts',
   'apps/api/src/app/notifications/notifications-health.controller.ts',
-  //   instance-api: /instance-api/health (InstanceApiHealthController)
   'apps/api/src/app/instance-api/instance-api-health.controller.ts',
-  //   analytics:    /analytics/health    (AnalyticsHealthController)
   'apps/api/src/app/analytics/analytics-health.controller.ts',
   // -------------------------------------------------------------------
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
-  'apps/svc-control-plane/src/app/auth/auth.controller.ts',
   'apps/control-plane/src/app/auth/auth.controller.ts',
-  'apps/svc-identity/src/app/auth/auth.controller.ts',
-  'apps/svc-identity/src/app/auth/email-verification.controller.ts',
-  'apps/svc-identity/src/app/auth/magic-link.controller.ts',
-  'apps/svc-identity/src/app/auth/password-reset.controller.ts',
-  'apps/svc-identity/src/app/auth/sso/sso-config.controller.ts',
-  'apps/svc-identity/src/app/auth/sso/sso.controller.ts',
-  'apps/svc-identity/src/app/oidc/oidc.controller.ts',
-  'apps/svc-instance-api/src/app/identity/auth/auth.controller.ts',
-  'apps/svc-instance-api/src/app/identity/auth/sso-config.controller.ts',
-  // ARC-W1 Task 3 post-migration paths (apps/api/instance-api/identity).
   'apps/api/src/app/instance-api/identity/auth/auth.controller.ts',
   'apps/api/src/app/instance-api/identity/auth/sso-config.controller.ts',
-  // ARC-W1 post-migration paths (apps/api/identity).
   'apps/api/src/app/identity/auth/auth.controller.ts',
   'apps/api/src/app/identity/auth/email-verification.controller.ts',
   'apps/api/src/app/identity/auth/magic-link.controller.ts',
@@ -103,22 +70,18 @@ const PUBLIC_ALLOWLIST = new Set([
   // -------------------------------------------------------------------
   // Category 3: Public catalogs / unauthenticated render surfaces.
   // -------------------------------------------------------------------
-  'apps/svc-control-plane/src/app/packs/packs.catalog.controller.ts',
   'apps/control-plane/src/app/packs/packs.catalog.controller.ts',
   // theme read endpoints render on the unauthenticated login page; the
   // controller has @Public on individual GET routes only — POST/PUT/
   // DELETE remain auth-required (verified at theme.controller.ts).
-  'apps/svc-metadata/src/app/theme/theme.controller.ts',
   'apps/api/src/app/metadata/theme/theme.controller.ts',
   // -------------------------------------------------------------------
   // Category 4: OAuth / OIDC integration callbacks (IdP-initiated).
   // -------------------------------------------------------------------
-  'apps/svc-data/src/app/integration/oauth2.controller.ts',
   'apps/api/src/app/data/integration/oauth2.controller.ts',
   // -------------------------------------------------------------------
   // Category 5: Auth handled by a dedicated guard (PackInstallGuard).
   // -------------------------------------------------------------------
-  'apps/svc-metadata/src/app/packs/packs.controller.ts',
   'apps/api/src/app/metadata/packs/packs.controller.ts',
 ]);
 
@@ -139,9 +102,6 @@ const BANNED_PATTERNS: Array<{
       // evaluateCondition / execute. JavaScript eval is never invoked by the
       // spec; the strings are parsed by expr-eval and rejected by the
       // deny-list. Refs Plan §S5 W1.9 / Fix 6.
-      'apps/svc-automation/src/app/runtime/script-sandbox.service.spec.ts',
-      // ARC-W1 post-migration path (apps/api/automation home). svc-automation
-      // is now a thin adapter; the spec lives at the apps/api location.
       'apps/api/src/app/automation/runtime/script-sandbox.service.spec.ts',
       // Safe-expression-evaluator RCE corpus (W1 task 8 / F027). Same
       // rationale as script-sandbox: `eval(` and other RCE patterns
@@ -153,12 +113,9 @@ const BANNED_PATTERNS: Array<{
       // hardcoded constant (release-the-lock-if-we-still-own-it pattern). No
       // user input flows into the script and Redis Lua is server-side
       // sandboxed. This is `client.eval(lua, ...)`, NOT JavaScript eval.
-      'apps/svc-ava/src/app/embedding.controller.ts',
-      // ARC-W1 post-migration path (apps/api/ava home).
       'apps/api/src/app/ava/embedding.controller.ts',
       // backup.service.ts uses client.eval() for the Redis distributed lock
-      // (same Lua-on-server-side pattern as ava embedding). ARC-W1 Task 4:
-      // migrated from svc-insights to apps/api/analytics.
+      // (same Lua-on-server-side pattern as ava embedding).
       'apps/api/src/app/analytics/backup/backup.service.ts',
     ]),
   },
@@ -172,18 +129,15 @@ const BANNED_PATTERNS: Array<{
     allowlist: new Set([
       // backup.service.ts uses spawn() exclusively for pg_dump and pg_restore.
       // These are approved infrastructure utilities; the command is hardcoded
-      // and no user input flows into args. ARC-W1 Task 4: migrated from
-      // svc-insights to apps/api/analytics.
+      // and no user input flows into args.
       'apps/api/src/app/analytics/backup/backup.service.ts',
-      'apps/svc-control-plane/src/app/terraform/terraform.executor.ts',
-      // ARC-W1 post-migration path (apps/control-plane home).
       'apps/control-plane/src/app/terraform/terraform.executor.ts',
     ]),
   },
 ];
 
 const AVA_URL_ALLOWLIST = new Set([
-  'apps/svc-ava/src/main.ts',
+  'apps/api/src/main.ts',
 ]);
 
 function walk(dir: string, files: string[] = []) {
@@ -212,7 +166,7 @@ function toRelative(filePath: string): string {
  * Detects whether a file actually uses `@Public()` as a decorator,
  * vs. referencing the symbol in comments / metadata reads.
  *
- * Files like `apps/svc-identity/src/app/abac/abac.guard.ts` reference
+ * Files like `apps/api/src/app/identity/abac/abac.guard.ts` reference
  * `@Public()` in JSDoc/explanatory comments without applying the
  * decorator. The naive `content.includes('@Public()')` check
  * false-positives those files.
@@ -313,7 +267,10 @@ function stripCommentsAndStrings(source: string): string {
 }
 
 function checkAvaExternalUrls(violations: Violation[]) {
-  const avaRoot = join(APP_ROOT, 'svc-ava', 'src');
+  const avaRoot = join(APP_ROOT, 'api', 'src', 'app', 'ava');
+  if (!existsSync(avaRoot)) {
+    return;
+  }
   const files = walk(avaRoot);
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
@@ -325,7 +282,7 @@ function checkAvaExternalUrls(violations: Violation[]) {
     if (!AVA_URL_ALLOWLIST.has(rel)) {
       violations.push({
         file: rel,
-        reason: 'External URLs in svc-ava require explicit allowlist',
+        reason: 'External URLs in apps/api/src/app/ava require explicit allowlist',
       });
     }
   }

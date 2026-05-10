@@ -133,7 +133,7 @@ const t = createSelfTest('security-bypass-check');
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run security:check',
-    fixturePath: 'apps/svc-data/src/app/__selftest_fixture__/sneaky.controller.ts',
+    fixturePath: 'apps/api/src/app/data/__selftest_fixture__/sneaky.controller.ts',
     fixtureContent: `
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '@hubblewave/auth-guard';
@@ -167,7 +167,7 @@ export class SneakyController {
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run security:check',
-    fixturePath: 'apps/svc-data/src/app/__selftest_fixture__/comment-ref.ts',
+    fixturePath: 'apps/api/src/app/data/__selftest_fixture__/comment-ref.ts',
     fixtureContent: `
 // This file references @Public() in comments only — it must NOT be
 // detected as actually applying the decorator.
@@ -192,7 +192,7 @@ export class CommentRefService {}
 {
   const result = runScannerOnFixture({
     scannerCommand: 'npm run security:check',
-    fixturePath: 'apps/svc-data/src/app/__selftest_fixture__/chained.controller.ts',
+    fixturePath: 'apps/api/src/app/data/__selftest_fixture__/chained.controller.ts',
     fixtureContent: `
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '@hubblewave/auth-guard';
