@@ -38,7 +38,7 @@ import { AVAModule } from './ava/ava.module';
 import { WorkflowModule } from '../../../api/src/app/data/workflow/workflow.module';
 
 import { ValidationModule } from './validation/validation.module';
-import { DefaultsModule } from './defaults/defaults.module';
+import { DefaultsModule } from '../../../api/src/app/data/defaults/defaults.module';
 import { GridModule } from './grid/grid.module';
 import { FormulaModule } from './formula/formula.module';
 import { ComputedModule } from './computed/computed.module';

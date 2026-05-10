@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { WorkflowModule } from './workflow/workflow.module';
 import { EventOutboxService } from './events/event-outbox.service';
 import { SyncTriggerClientService } from './automation/sync-trigger-client.service';
+import { DefaultsModule } from './defaults/defaults.module';
 
 /**
  * DataModule consolidates everything from apps/svc-data into the apps/api
@@ -11,7 +12,7 @@ import { SyncTriggerClientService } from './automation/sync-trigger-client.servi
  * Migration progress (per docs/superpowers/plans/2026-05-10-platform-w1-data-migration.md):
  *   Standard modules:
  *     [x] workflow
- *     [ ] defaults
+ *     [x] defaults
  *     [ ] validation
  *     [ ] ava
  *     [ ] formula
@@ -39,9 +40,9 @@ import { SyncTriggerClientService } from './automation/sync-trigger-client.servi
  *   wholesale to keep the legacy service serving the same endpoints
  */
 @Module({
-  imports: [WorkflowModule],
+  imports: [WorkflowModule, DefaultsModule],
   controllers: [],
   providers: [EventOutboxService, SyncTriggerClientService],
-  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService],
+  exports: [WorkflowModule, EventOutboxService, SyncTriggerClientService, DefaultsModule],
 })
 export class DataModule {}

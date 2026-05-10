@@ -1,7 +1,7 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { CollectionDataService } from './collection-data.service';
 import { ValidationService } from './validation/validation.service';
-import { DefaultValueService } from './defaults/default-value.service';
+import { DefaultValueService } from '../../../api/src/app/data/defaults/default-value.service';
 import { EventOutboxService } from '../../../api/src/app/data/events/event-outbox.service';
 
 /**
