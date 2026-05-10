@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AnalyticsModule as AnalyticsLibModule } from '@hubblewave/analytics';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuditIntegrityModule } from './audit-integrity/audit-integrity.module';
 import { BackupModule } from './backup/backup.module';
@@ -10,6 +11,10 @@ import { AnalyticsHealthController } from './analytics-health.controller';
  * AnalyticsModule consolidates svc-insights into apps/api per spec §2.
  * Sub-areas: alerts, audit-integrity, backup, dashboards, metrics.
  * Route prefix for health check: '/analytics/health'.
+ *
+ * AnalyticsLibModule (@hubblewave/analytics) provides the platform-level
+ * analytics event tracking and reporting infrastructure (AnalyticsService,
+ * ReportingService) consumed by the analytics sub-domains.
  *
  * Global infrastructure (ConfigModule, AuthGuardModule, GlobalGuardsModule,
  * InstanceDbModule, AuthorizationModule, ScheduleModule) is registered at
@@ -27,6 +32,7 @@ import { AnalyticsHealthController } from './analytics-health.controller';
  */
 @Module({
   imports: [
+    AnalyticsLibModule,
     AlertsModule,
     AuditIntegrityModule,
     BackupModule,
@@ -35,6 +41,6 @@ import { AnalyticsHealthController } from './analytics-health.controller';
   ],
   controllers: [AnalyticsHealthController],
   providers: [],
-  exports: [AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule, MetricsModule],
+  exports: [AnalyticsLibModule, AlertsModule, AuditIntegrityModule, BackupModule, DashboardsModule, MetricsModule],
 })
 export class AnalyticsModule {}
