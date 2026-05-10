@@ -346,3 +346,58 @@ No issues found.
 ---
 
 **End of ava migration plan.**
+
+---
+
+## Status: Complete (2026-05-10)
+
+ARC-W1 ava migration complete. apps/api/src/app/ava/ now contains all 4
+sub-areas (search, ava-tools, modelops, phase7) + 7 top-level controllers +
+AvaPreviewService + ava.module.ts (full composition). apps/svc-ava reduced
+to a thin adapter; legacy service stays runnable for parallel deployment.
+
+### Tasks executed
+
+| Task | Commit | Note |
+|---|---|---|
+| 1. Skeleton | `cf9b8e9` | Empty AvaModule registered in apps/api AppModule (after AutomationModule) |
+| 2. ava-tools | `09c49f9` | Smallest standalone leaf (3 files) |
+| 3. search | `70391fc` | Standalone leaf (10 files) |
+| 4. modelops | `6b7d6db` | 5 modules in flat dir; single move; all 5 registered together |
+| 5. phase7 | `09a03cc` | 11 standalone controllers + barrel; no module wrapper |
+| 6. Final composition + thin adapter | `2f25476` | HealthController → AvaHealthController (route `/ava/health`) |
+| 7. Scanner allowlists + MIGRATED_AREAS + selftest fixture path | `d5317ac` | PUBLIC_ALLOWLIST entries + 'ava' added to MIGRATED_AREAS in both scanners + Test 3 fixture path updated to apps/api/ava |
+
+### Verification at tag
+
+| Check | Result |
+|---|---|
+| `authz:check` | PASS |
+| `audit:check` | PASS |
+| `security:check` | PASS |
+| `service-boundary:check` | PASS |
+| `deps:check` | PASS |
+| `dead-code:check` | PASS |
+| `selftest:scanners` | PASS — security 7, authz 7, service-boundary 12, dead-code 11, eslint-rules 14+7 |
+| nx build api / svc-identity / svc-metadata / svc-data / svc-automation / svc-ava | PASS (all 6) |
+| nx test api | PASS |
+
+**Tag:** `arc-w1-ava-complete` at HEAD `d5317ac`. 8 commits since `arc-w1-automation-complete`.
+
+### Cumulative migration state
+
+| Service | Status | LoC |
+|---|---|---|
+| svc-identity | ✓ migrated to apps/api/identity | ~17,200 |
+| svc-metadata | ✓ migrated to apps/api/metadata | ~21,200 |
+| svc-data | ✓ migrated to apps/api/data | ~17,700 |
+| svc-automation | ✓ migrated to apps/api/automation | ~9,865 |
+| svc-ava | ✓ migrated to apps/api/ava | ~8,731 |
+| **Total** | **5 services** | **~74,696** |
+
+### Next steps in W1
+
+- svc-workflow (~3,000 LoC; per canon §8 INVERT may merge with apps/api/automation)
+- svc-control-plane (~6,000 LoC; multi-tenant by design — different shape)
+- Fold-ins: svc-view-engine, svc-insights, svc-notify, svc-instance-api
+- W1 final cutover: delete legacy svc-* directories, delete service-boundary scanner per canon §21 TRIM, route 100% traffic to apps/api, tag arc-w1-complete
