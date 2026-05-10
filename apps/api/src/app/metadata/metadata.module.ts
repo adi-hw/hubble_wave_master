@@ -3,6 +3,11 @@ import { ScriptModule } from './script/script.module';
 import { ApplicationModule } from './application/application.module';
 import { InsightsIngestService } from './insights/insights-ingest.service';
 import { AvaIngestService } from './ava/ava-ingest.service';
+import { ThemeModule } from './theme/theme.module';
+import { DisplayRuleModule } from './display-rules/display-rule.module';
+import { ViewModule } from './view/view.module';
+import { GuidedProcessModule } from './guided-processes/guided-process.module';
+import { NavigationMetadataModule } from './navigation/navigation.module';
 
 /**
  * MetadataModule consolidates everything from apps/svc-metadata into the
@@ -15,8 +20,8 @@ import { AvaIngestService } from './ava/ava-ingest.service';
  *   [ ] change-packages
  *   [ ] connectors
  *   [ ] decision-tables
- *   [ ] display-rules
- *   [ ] guided-processes
+ *   [x] display-rules
+ *   [x] guided-processes
  *   [x] insights
  *   [ ] localization
  *   [ ] metadata
@@ -25,8 +30,8 @@ import { AvaIngestService } from './ava/ava-ingest.service';
  *   [ ] property
  *   [x] script
  *   [ ] search
- *   [ ] theme
- *   [ ] view
+ *   [x] theme
+ *   [x] view
  *   [ ] workspaces
  *   [ ] access
  *   [ ] publish-impact
@@ -45,6 +50,11 @@ import { AvaIngestService } from './ava/ava-ingest.service';
   imports: [
     ApplicationModule,
     ScriptModule,
+    ThemeModule,
+    DisplayRuleModule,
+    ViewModule,
+    GuidedProcessModule,
+    NavigationMetadataModule,
   ],
   controllers: [],
   providers: [
@@ -54,6 +64,11 @@ import { AvaIngestService } from './ava/ava-ingest.service';
   exports: [
     ApplicationModule,
     ScriptModule,
+    ThemeModule,
+    DisplayRuleModule,
+    ViewModule,
+    GuidedProcessModule,
+    NavigationMetadataModule,
     InsightsIngestService,
     AvaIngestService,
   ],
