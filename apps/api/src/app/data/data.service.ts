@@ -4,8 +4,8 @@ import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/author
 import { RequestContext } from '@hubblewave/auth-guard';
 import { withAudit } from '@hubblewave/instance-db';
 import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
-import { ModelRegistryService } from '../../../api/src/app/data/model-registry.service';
-import { HierarchicalService } from '../../../api/src/app/data/formula/hierarchical.service';
+import { ModelRegistryService } from './model-registry.service';
+import { HierarchicalService } from './formula/hierarchical.service';
 
 
 @Injectable()

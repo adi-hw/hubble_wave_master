@@ -14,7 +14,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
-import { CollectionDataService, QueryOptions } from '../../../api/src/app/data/collection-data.service';
+import { CollectionDataService, QueryOptions } from './collection-data.service';
 
 // Query DTOs
 interface ListQueryDto {
