@@ -3,6 +3,21 @@ export type PropertyOperation = 'read' | 'write';
 
 export type MaskingStrategy = 'NONE' | 'PARTIAL' | 'FULL';
 
+/**
+ * Rule effect (canon §28.2/§28.3).
+ *
+ * `allow` rules contribute positive grants. Multiple matching allows UNION
+ * (most permissive read/write across them), with masking taking the
+ * MOST-restrictive strategy per §28.5.
+ *
+ * `deny` rules are absolute at their level: a single matching deny denies
+ * regardless of co-matching allows (§28.4 rule 1). At the field level a
+ * matching deny forces `canRead=false, canWrite=false, maskingStrategy='FULL'`.
+ * At the collection/record level a matching deny excludes the record from
+ * the visible set even when an allow would have included it.
+ */
+export type RuleEffect = 'allow' | 'deny';
+
 export interface PropertyMeta {
   code: string;
   label?: string;
@@ -42,6 +57,12 @@ export interface CollectionAccessRuleData {
   conditions?: AccessConditionData | null;
   priority: number;
   isActive: boolean;
+  /**
+   * Rule effect (canon §28.3). `allow` is the legacy default; `deny` rules
+   * deny matching records regardless of co-matching allows (§28.4 rule 1).
+   * The DB column has DEFAULT 'allow' so legacy rows round-trip unchanged.
+   */
+  effect: RuleEffect;
 }
 
 export interface PropertyAccessRuleData {
@@ -58,6 +79,12 @@ export interface PropertyAccessRuleData {
   priority: number;
   isActive: boolean;
   maskingStrategy?: MaskingStrategy;
+  /**
+   * Rule effect (canon §28.2). `allow` is the legacy default; `deny` rules
+   * force the field to canRead=false/canWrite=false/maskingStrategy='FULL'
+   * regardless of co-matching allows (§28.4 rule 1).
+   */
+  effect: RuleEffect;
 }
 
 // ============================================================================

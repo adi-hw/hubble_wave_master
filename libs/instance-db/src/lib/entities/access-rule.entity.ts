@@ -104,6 +104,19 @@ export class CollectionAccessRule {
   @Column({ name: 'can_delete', type: 'boolean', default: false })
   canDelete!: boolean;
 
+  /**
+   * Rule effect — canon §28.2/§28.3.
+   *
+   * `allow` rules contribute positive grants (UNION across matching rules);
+   * `deny` rules subtract from the visible set (INTERSECT — any matching
+   * deny on a record/field denies it regardless of co-matching allows).
+   *
+   * Migration `1930100000000-add-rule-effect.ts` defaults legacy rows to
+   * `'allow'` and enforces the closed set via a CHECK constraint.
+   */
+  @Column({ type: 'varchar', length: 10, default: 'allow' })
+  effect!: 'allow' | 'deny';
+
   // ─────────────────────────────────────────────────────────────────
   // Conditions (row-level filtering)
   // ─────────────────────────────────────────────────────────────────
@@ -213,6 +226,19 @@ export class PropertyAccessRule {
 
   @Column({ name: 'masking_strategy', type: 'varchar', length: 20, default: 'NONE' })
   maskingStrategy!: 'NONE' | 'PARTIAL' | 'FULL';
+
+  /**
+   * Rule effect — canon §28.2.
+   *
+   * `allow` rules grant read/write (subject to masking); `deny` rules force
+   * `canRead=false, canWrite=false` and treat the field as fully redacted at
+   * the §28.2 level-1 step regardless of any co-matching allow.
+   *
+   * Migration `1930100000000-add-rule-effect.ts` defaults legacy rows to
+   * `'allow'` and enforces the closed set via a CHECK constraint.
+   */
+  @Column({ type: 'varchar', length: 10, default: 'allow' })
+  effect!: 'allow' | 'deny';
 
   // ─────────────────────────────────────────────────────────────────
   // Conditions

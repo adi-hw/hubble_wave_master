@@ -25,7 +25,23 @@ export type OrPredicate = {
   branches: SafePredicate[][];
 };
 
-export type SafePredicate = LeafPredicate | OrPredicate;
+/**
+ * Negation predicate (F006, canon §28.4). Inverts the truth of `inner`.
+ *
+ * Emitted by the evaluator when a deny rule must subtract a set of rows
+ * from the visible set: `(allow_set) AND NOT (deny_set)`. The renderer
+ * wraps the inner SQL in `NOT (...)`. The inner predicates are AND-ed
+ * together within the negation (matching the leaf-list semantic used by
+ * each `OrPredicate.branches` branch); negation across multiple denies is
+ * achieved by composing them as an inner `OrPredicate` whose branches
+ * each describe one deny rule's conditions.
+ */
+export type NotPredicate = {
+  kind: 'not';
+  inner: SafePredicate[];
+};
+
+export type SafePredicate = LeafPredicate | OrPredicate | NotPredicate;
 
 type Condition = {
   equals?: Record<string, unknown>;
@@ -148,6 +164,14 @@ export class AbacService {
       );
     }
 
+    if (pred.kind === 'not') {
+      // F006: a `not` predicate must wrap a non-empty inner predicate list.
+      // An empty inner set would render as `NOT (TRUE)` (or be dropped), and
+      // either outcome is a fail-open footgun — refuse to produce SQL.
+      if (!Array.isArray(pred.inner) || pred.inner.length === 0) return false;
+      return pred.inner.every((p) => this.validatePredicate(p));
+    }
+
     // Validate field name is in whitelist or matches safe pattern
     if (!pred.field) return false;
 
@@ -223,6 +247,24 @@ export class AbacService {
       if (branchClauses.length > 0) {
         clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
       }
+      return;
+    }
+
+    if (pred.kind === 'not') {
+      // F006: render the inner predicates AND-ed together, then negate the
+      // whole thing. The inner set must produce at least one SQL clause; if
+      // it doesn't, refuse to emit `NOT ()` — that's fail-open territory
+      // (the SQL would either be invalid or, worse, parse as TRUE).
+      const innerClauses: string[] = [];
+      for (const inner of pred.inner) {
+        if (!this.validatePredicate(inner)) continue;
+        this.renderPredicate(inner, context, tableAlias, innerClauses, params, counter);
+      }
+      if (innerClauses.length === 0) {
+        return;
+      }
+      const innerSql = innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`;
+      clauses.push(`NOT (${innerSql})`);
       return;
     }
 
