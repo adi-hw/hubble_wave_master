@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RequestContext } from '@hubblewave/auth-guard';
-import { AuditLog, DashboardDefinition, DashboardScope } from '@hubblewave/instance-db';
+import { AuthorizationService } from '@hubblewave/authorization';
+import { AuditLog, CollectionDefinition, DashboardDefinition, DashboardScope } from '@hubblewave/instance-db';
 
 export type DashboardDefinitionInput = {
   code: string;
@@ -17,6 +18,8 @@ const ALLOWED_SCOPES: readonly DashboardScope[] = ['system', 'tenant', 'role', '
 const ALLOWED_METADATA_KEYS: readonly string[] = ['status', 'source', 'tags', 'owner', 'roles'] as const;
 const ALLOWED_METADATA_STATUSES: readonly string[] = ['draft', 'published', 'archived'] as const;
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 @Injectable()
 export class DashboardsService {
   constructor(
@@ -24,6 +27,9 @@ export class DashboardsService {
     private readonly dashboardRepo: Repository<DashboardDefinition>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
+    @InjectRepository(CollectionDefinition)
+    private readonly collectionRepo: Repository<CollectionDefinition>,
+    private readonly authz: AuthorizationService,
   ) {}
 
   async list(context: RequestContext): Promise<DashboardDefinition[]> {
@@ -31,7 +37,11 @@ export class DashboardsService {
       where: { isActive: true },
       order: { updatedAt: 'DESC' },
     });
-    return dashboards.filter((dashboard) => this.canRead(context, dashboard));
+    const visible = dashboards.filter((dashboard) => this.canRead(context, dashboard));
+    for (const dashboard of visible) {
+      dashboard.layout = await this.filterLayoutByCollectionAccess(context, dashboard.layout);
+    }
+    return visible;
   }
 
   async get(context: RequestContext, code: string): Promise<DashboardDefinition> {
@@ -42,6 +52,7 @@ export class DashboardsService {
     if (!this.canRead(context, dashboard)) {
       throw new ForbiddenException('Dashboard access denied');
     }
+    dashboard.layout = await this.filterLayoutByCollectionAccess(context, dashboard.layout);
     return dashboard;
   }
 
@@ -139,6 +150,108 @@ export class DashboardsService {
       return allowed.some((role) => userRoles.includes(role));
     }
     return false;
+  }
+
+  /**
+   * Per-widget collection-access filter (F146). The dashboard-level scope
+   * check (canRead) decides whether the viewer can see the dashboard at all;
+   * this method decides which widgets within an authorized dashboard the
+   * viewer can see. Widgets that reference a collection the viewer cannot
+   * read are silently dropped — partial dashboards beat broken dashboards,
+   * and this mirrors metrics.service.ts which already filters individual
+   * metric reads by collection access.
+   *
+   * Widget reference conventions supported (both shapes observed in the
+   * codebase / frontend):
+   *   - widget.collectionId (UUID): direct collection access check.
+   *   - widget.drilldown.collectionCode (code): resolved to id via the
+   *     CollectionDefinition repo, then access-checked.
+   *   - widget.collectionCode (code): same resolution path.
+   *
+   * Widgets with no recognizable collection reference (e.g. static text,
+   * dashboard-overview tiles, AVA chat panels) pass through unchanged so
+   * that a non-data widget cannot be accidentally dropped by this filter.
+   */
+  private async filterLayoutByCollectionAccess(
+    context: RequestContext,
+    layout: Record<string, unknown> | null | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (!layout || typeof layout !== 'object') {
+      return {};
+    }
+    const widgetsRaw = (layout as { widgets?: unknown }).widgets;
+    if (!Array.isArray(widgetsRaw)) {
+      return { ...layout };
+    }
+
+    // Admin bypass: skip per-widget checks. The dashboard-level canRead
+    // already cleared the admin; nothing further to do.
+    if (context.isAdmin) {
+      return { ...layout };
+    }
+
+    const filteredWidgets: unknown[] = [];
+    for (const widget of widgetsRaw) {
+      if (await this.widgetAuthorized(context, widget)) {
+        filteredWidgets.push(widget);
+      }
+    }
+
+    return { ...layout, widgets: filteredWidgets };
+  }
+
+  /**
+   * Decide whether a single widget passes the per-widget authz gate. A
+   * widget with no recognizable collection reference is treated as
+   * authorized (no collection to gate on). A widget whose collection
+   * reference cannot be resolved (unknown code, malformed id) is also
+   * dropped — fail closed.
+   */
+  private async widgetAuthorized(context: RequestContext, widget: unknown): Promise<boolean> {
+    if (!widget || typeof widget !== 'object') {
+      return true;
+    }
+    const w = widget as Record<string, unknown>;
+
+    const directId = typeof w.collectionId === 'string' && UUID_REGEX.test(w.collectionId.toLowerCase())
+      ? w.collectionId
+      : null;
+    if (directId) {
+      return this.authz.canAccessCollection(context, directId, 'read');
+    }
+
+    const codes: string[] = [];
+    if (typeof w.collectionCode === 'string' && w.collectionCode.length > 0) {
+      codes.push(w.collectionCode);
+    }
+    const drilldown = w.drilldown;
+    if (drilldown && typeof drilldown === 'object') {
+      const code = (drilldown as { collectionCode?: unknown }).collectionCode;
+      if (typeof code === 'string' && code.length > 0) {
+        codes.push(code);
+      }
+    }
+
+    if (codes.length === 0) {
+      // No recognizable collection reference; treat as a non-collection
+      // widget (e.g. static text, AVA chat) and let it through.
+      return true;
+    }
+
+    for (const code of codes) {
+      const collection = await this.collectionRepo.findOne({ where: { code } });
+      if (!collection) {
+        // Unresolved code → fail closed; the alternative is leaking the
+        // existence of a renamed/deleted collection by including the
+        // widget anyway.
+        return false;
+      }
+      const allowed = await this.authz.canAccessCollection(context, collection.id, 'read');
+      if (!allowed) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private readRoleList(metadata: Record<string, unknown> | null | undefined): string[] {

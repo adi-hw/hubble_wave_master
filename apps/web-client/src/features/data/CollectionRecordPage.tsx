@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { applyMask } from '../../lib/apply-mask';
 import { PermissionGate } from '../../auth/PermissionGate';
 import { viewApi, ResolvedView } from '../../services/viewApi';
 import { composeDisplay, type DisplayAction } from '../../lib/condition-evaluator';
@@ -859,6 +860,18 @@ export function CollectionRecordPage() {
                       {visibleProps.map((prop) => {
                         const policyState = fieldPolicyState[prop.code];
                         const detail = detailsByCode.get(prop.code);
+                        // F091 — Apply backend-instructed field-level
+                        // masking (PARTIAL / FULL). The backend has
+                        // already resolved canRead/canWrite above (the
+                        // hidden + readOnly bits in policyState);
+                        // maskingStrategy is the additional protection
+                        // for sensitive values the principal MAY see
+                        // but only partially. A masked field is also
+                        // forced read-only — a bullet-string cannot
+                        // be safely round-tripped through a save.
+                        const maskingStrategy =
+                          resolvedView?.fieldPermissions?.[prop.code]?.maskingStrategy ?? 'NONE';
+                        const isMasked = maskingStrategy !== 'NONE';
                         // Merge designer-set fieldDetails into the
                         // PropertyDefinition before render so
                         // labelOverride / placeholder / helpText /
@@ -873,7 +886,8 @@ export function CollectionRecordPage() {
                           isReadonly:
                             prop.isReadonly ||
                             policyState?.readOnly === true ||
-                            detail?.readOnly === true,
+                            detail?.readOnly === true ||
+                            isMasked,
                         };
                         const span = detail?.span ?? 1;
                         const spanClass =
@@ -885,11 +899,16 @@ export function CollectionRecordPage() {
                             ? 'md:col-span-2'
                             : '';
 
+                        const rawValue = currentValue(prop.code);
+                        const displayValue = isMasked
+                          ? applyMask(rawValue, maskingStrategy)
+                          : rawValue;
+
                         return (
                           <div key={prop.code} className={spanClass}>
                             <FieldRenderer
                               property={effectiveProperty}
-                              value={currentValue(prop.code)}
+                              value={displayValue}
                               editing={editing}
                               onChange={(value) => handleFieldChange(prop.code, value)}
                             />

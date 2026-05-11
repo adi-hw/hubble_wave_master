@@ -1,6 +1,8 @@
 // API Utilities for HubbleWave
 
 import { getStoredToken } from '../services/token';
+import { toast } from '../components/ui/Toast';
+import { FORBIDDEN_TOAST_MESSAGE } from '../services/api';
 
 const API_BASE = '/api';
 
@@ -74,6 +76,11 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       error = JSON.parse(errorText);
     } catch {
       error = { message: errorText || `HTTP ${response.status}` };
+    }
+    // F102: surface 403 Forbidden to the user via toast before throwing.
+    // The throw still propagates so callers may react; the toast is additive.
+    if (response.status === 403) {
+      toast.error(FORBIDDEN_TOAST_MESSAGE);
     }
     // API request failed - throw with details
     throw new Error(error.message || error.error || `HTTP ${response.status}`);
