@@ -188,45 +188,57 @@ export class AVAController {
       ...dto.context,
     };
 
-    // Get or create conversation
-    let conversationId = dto.conversationId;
-    let history: AVAMessage[] = [];
-
-    if (conversationId) {
-      history = await this.conversationMemory.getConversationHistory(
-        dataSource,
-        conversationId,
-        organizationId,
-        user.id,
-      );
-    } else {
-      const conversation = await this.conversationMemory.startConversation(
-        dataSource,
-        user.id,
-        organizationId,
-        context,
-      );
-      conversationId = conversation.id;
-    }
-
-    // Add user message to history
     const userMessage: AVAMessage = {
       role: 'user',
       content: dto.message,
       timestamp: new Date(),
     };
-    await this.conversationMemory.addMessage(
-      dataSource,
-      conversationId,
-      organizationId,
-      user.id,
-      userMessage,
+
+    // Transaction 1 (F052): get-or-create the conversation and persist the
+    // user message atomically. If either step fails, the conversation is
+    // either pre-existing and untouched, or never created — there is no
+    // intermediate state where the conversation exists with a dangling
+    // first user turn that was supposed to roll back.
+    const { conversationId, history } = await dataSource.transaction(
+      async (manager): Promise<{ conversationId: string; history: AVAMessage[] }> => {
+        let resolvedConversationId = dto.conversationId;
+        let resolvedHistory: AVAMessage[] = [];
+
+        if (resolvedConversationId) {
+          resolvedHistory = await this.conversationMemory.getConversationHistory(
+            manager,
+            resolvedConversationId,
+            organizationId,
+            user.id,
+          );
+        } else {
+          const conversation = await this.conversationMemory.startConversation(
+            manager,
+            user.id,
+            organizationId,
+            context,
+          );
+          resolvedConversationId = conversation.id;
+        }
+
+        await this.conversationMemory.addMessage(
+          manager,
+          resolvedConversationId,
+          organizationId,
+          user.id,
+          userMessage,
+        );
+
+        return { conversationId: resolvedConversationId, history: resolvedHistory };
+      },
     );
 
-    // Get AVA response
+    // LLM call runs OUTSIDE the transaction: it is a network round-trip
+    // (potentially many seconds), it cannot be rolled back, and holding a
+    // Postgres transaction open across it would pin a connection from the
+    // pool for the duration of the model response.
     const response = await this.avaService.chat(dataSource, dto.message, context, history);
 
-    // Add assistant message to history
     const assistantMessage: AVAMessage = {
       role: 'assistant',
       content: response.message,
@@ -235,13 +247,31 @@ export class AVAController {
       actions: response.suggestedActions,
       cards: response.cards,
     };
-    await this.conversationMemory.addMessage(
-      dataSource,
-      conversationId,
-      organizationId,
-      user.id,
-      assistantMessage,
-    );
+
+    // Transaction 2 (F052): persist the assistant message. If this fails
+    // (e.g. a DB blip after the LLM returned), the user message and
+    // conversation from Transaction 1 stay committed — the conversation is
+    // intact, just missing the assistant turn — and we log loudly with the
+    // conversationId so operators can correlate the lost reply.
+    try {
+      await dataSource.transaction(async (manager) => {
+        await this.conversationMemory.addMessage(
+          manager,
+          conversationId,
+          organizationId,
+          user.id,
+          assistantMessage,
+        );
+      });
+    } catch (err) {
+      this.logger.error(
+        `[F052] Assistant message persistence failed for conversationId=${conversationId}, userId=${user.id}, organizationId=${organizationId}: ${
+          (err as Error).message
+        }`,
+        (err as Error).stack,
+      );
+      throw err;
+    }
 
     return {
       conversationId,
@@ -274,26 +304,35 @@ export class AVAController {
       ...dto.context,
     };
 
-    // Get or create conversation
-    let conversationId = dto.conversationId;
-    let history: AVAMessage[] = [];
+    // Transaction 1 (F052): get-or-create the conversation atomically. If
+    // creation fails the SSE stream never starts and the exception
+    // propagates to Nest's exception filter, which returns a proper HTTP
+    // status — no SSE headers have been sent yet.
+    const { conversationId, history } = await dataSource.transaction(
+      async (manager): Promise<{ conversationId: string; history: AVAMessage[] }> => {
+        let resolvedConversationId = dto.conversationId;
+        let resolvedHistory: AVAMessage[] = [];
 
-    if (conversationId) {
-      history = await this.conversationMemory.getConversationHistory(
-        dataSource,
-        conversationId,
-        organizationId,
-        user.id,
-      );
-    } else {
-      const conversation = await this.conversationMemory.startConversation(
-        dataSource,
-        user.id,
-        organizationId,
-        context,
-      );
-      conversationId = conversation.id;
-    }
+        if (resolvedConversationId) {
+          resolvedHistory = await this.conversationMemory.getConversationHistory(
+            manager,
+            resolvedConversationId,
+            organizationId,
+            user.id,
+          );
+        } else {
+          const conversation = await this.conversationMemory.startConversation(
+            manager,
+            user.id,
+            organizationId,
+            context,
+          );
+          resolvedConversationId = conversation.id;
+        }
+
+        return { conversationId: resolvedConversationId, history: resolvedHistory };
+      },
+    );
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -307,6 +346,7 @@ export class AVAController {
     try {
       let fullMessage = '';
 
+      // LLM stream runs OUTSIDE any transaction (network IO, can't roll back).
       for await (const event of this.avaService.chatStream(
         dataSource,
         dto.message,
@@ -320,30 +360,46 @@ export class AVAController {
         }
       }
 
-      // Save messages to conversation history
-      await this.conversationMemory.addMessage(
-        dataSource,
-        conversationId,
-        organizationId,
-        user.id,
-        {
-          role: 'user',
-          content: dto.message,
-          timestamp: new Date(),
-        },
-      );
+      // Transaction 2 (F052): persist BOTH the user message and the
+      // assistant reply in a single transaction so the conversation can
+      // never end up with one message but not the other. If this fails
+      // after the LLM has already streamed to the client, log loudly with
+      // the conversationId so operators can correlate the lost turn.
+      try {
+        await dataSource.transaction(async (manager) => {
+          await this.conversationMemory.addMessage(
+            manager,
+            conversationId,
+            organizationId,
+            user.id,
+            {
+              role: 'user',
+              content: dto.message,
+              timestamp: new Date(),
+            },
+          );
 
-      await this.conversationMemory.addMessage(
-        dataSource,
-        conversationId,
-        organizationId,
-        user.id,
-        {
-          role: 'assistant',
-          content: fullMessage,
-          timestamp: new Date(),
-        },
-      );
+          await this.conversationMemory.addMessage(
+            manager,
+            conversationId,
+            organizationId,
+            user.id,
+            {
+              role: 'assistant',
+              content: fullMessage,
+              timestamp: new Date(),
+            },
+          );
+        });
+      } catch (err) {
+        this.logger.error(
+          `[F052] Streaming chat turn persistence failed for conversationId=${conversationId}, userId=${user.id}, organizationId=${organizationId}: ${
+            (err as Error).message
+          }`,
+          (err as Error).stack,
+        );
+        throw err;
+      }
 
       res.write('data: [DONE]\n\n');
       res.end();

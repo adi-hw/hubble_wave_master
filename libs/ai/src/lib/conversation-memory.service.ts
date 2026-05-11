@@ -1,12 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AVAConversation, AVAMessage as AVAMessageEntity } from '@hubblewave/instance-db';
 import { AVAMessage, AVAContext } from './ava.service';
 
 /**
  * Conversation Memory Service
  * Manages conversation history and context for AVA using normalized TypeORM entities
+ *
+ * Persistence-layer methods accept either a `DataSource` or a transactional
+ * `EntityManager` as their first argument. Passing an `EntityManager` lets the
+ * caller (e.g. the AVA chat controller in `apps/api`) batch multiple writes
+ * into a single transaction, so partial failures cannot leave a conversation
+ * with a dangling user turn and no assistant response (F052).
  */
+
+export type ConversationDb = DataSource | EntityManager;
 
 export interface Conversation {
   id: string;
@@ -44,30 +52,51 @@ export class ConversationMemoryService {
   private readonly MAX_CONVERSATIONS_PER_USER = 10;
 
   /**
+   * Resolve the EntityManager to use. When a transactional `EntityManager` is
+   * passed in, all repository operations run inside that transaction so they
+   * commit or roll back together with the caller's other writes. When a
+   * `DataSource` is passed in, operations use the default manager and each
+   * `save`/`delete` is its own auto-commit transaction.
+   */
+  private resolveManager(db: ConversationDb): EntityManager {
+    return db instanceof DataSource ? db.manager : db;
+  }
+
+  /**
+   * Whether the caller is participating in a caller-managed transaction.
+   * When true we MUST NOT mutate the in-memory cache: the transaction may
+   * still roll back, in which case the cache would diverge from the
+   * persisted row. The next read repopulates the cache from the database.
+   */
+  private isTransactional(db: ConversationDb): boolean {
+    return !(db instanceof DataSource);
+  }
+
+  /**
    * Get repository for AVAConversation entity
    */
-  private getConversationRepo(dataSource: DataSource): Repository<AVAConversation> {
-    return dataSource.getRepository(AVAConversation);
+  private getConversationRepo(db: ConversationDb): Repository<AVAConversation> {
+    return this.resolveManager(db).getRepository(AVAConversation);
   }
 
   /**
    * Get repository for AVAMessage entity
    */
-  private getMessageRepo(dataSource: DataSource): Repository<AVAMessageEntity> {
-    return dataSource.getRepository(AVAMessageEntity);
+  private getMessageRepo(db: ConversationDb): Repository<AVAMessageEntity> {
+    return this.resolveManager(db).getRepository(AVAMessageEntity);
   }
 
   /**
    * Start a new conversation
    */
   async startConversation(
-    dataSource: DataSource,
+    db: ConversationDb,
     userId: string,
     organizationId: string,
     context?: Partial<AVAContext>
   ): Promise<Conversation> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
     const now = new Date();
 
     const conversationEntity = conversationRepo.create({
@@ -95,8 +124,12 @@ export class ConversationMemoryService {
     };
 
     // Cache in memory keyed by id+org so cross-tenant cache lookups miss.
-    this.conversations.set(this.cacheKey(organizationId, saved.id), conversation);
-    this.pruneUserConversations(organizationId, userId);
+    // Skip cache mutation when running inside a caller-managed transaction:
+    // the row is not yet committed and the transaction may still roll back.
+    if (!this.isTransactional(db)) {
+      this.conversations.set(this.cacheKey(organizationId, saved.id), conversation);
+      this.pruneUserConversations(organizationId, userId);
+    }
 
     return conversation;
   }
@@ -105,14 +138,18 @@ export class ConversationMemoryService {
    * Get a conversation by ID with its messages
    */
   async getConversation(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
   ): Promise<Conversation | null> {
     this.requireOrganizationId(organizationId);
+    const transactional = this.isTransactional(db);
     const cacheKey = this.cacheKey(organizationId, conversationId);
-    if (this.conversations.has(cacheKey)) {
+    // Bypass cache inside a caller-managed transaction so the read sees
+    // any not-yet-committed writes the same transaction has issued and so
+    // a rolled-back write doesn't leak via a previously-cached snapshot.
+    if (!transactional && this.conversations.has(cacheKey)) {
       const cached = this.conversations.get(cacheKey)!;
       if (cached.userId !== userId) {
         return null;
@@ -120,8 +157,8 @@ export class ConversationMemoryService {
       return cached;
     }
 
-    const conversationRepo = this.getConversationRepo(dataSource);
-    const messageRepo = this.getMessageRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
+    const messageRepo = this.getMessageRepo(db);
 
     const conversationEntity = await conversationRepo.findOne({
       where: { id: conversationId, organizationId, userId },
@@ -159,7 +196,11 @@ export class ConversationMemoryService {
       metadata: conversationEntity.sessionMetadata,
     };
 
-    this.conversations.set(cacheKey, conversation);
+    // Only populate the cache from a committed read; otherwise an
+    // in-flight transactional snapshot could become the cached entry.
+    if (!transactional) {
+      this.conversations.set(cacheKey, conversation);
+    }
 
     return conversation;
   }
@@ -168,15 +209,15 @@ export class ConversationMemoryService {
    * Add a message to a conversation
    */
   async addMessage(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
     message: AVAMessage
   ): Promise<void> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
-    const messageRepo = this.getMessageRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
+    const messageRepo = this.getMessageRepo(db);
 
     // Verify the conversation exists and belongs to the (org, user) tuple
     // before any write. This is the single source of truth for "is this
@@ -212,7 +253,15 @@ export class ConversationMemoryService {
 
     await conversationRepo.save(conversationEntity);
 
-    // Update cache
+    // Update cache only when the write is auto-committed. Inside a
+    // caller-managed transaction the row is not yet committed and the
+    // transaction may still roll back — mutating the cache here would let
+    // the rolled-back message leak into later reads.
+    if (this.isTransactional(db)) {
+      this.conversations.delete(this.cacheKey(organizationId, conversationId));
+      return;
+    }
+
     const cacheKey = this.cacheKey(organizationId, conversationId);
     const cachedConversation = this.conversations.get(cacheKey);
     if (cachedConversation) {
@@ -236,14 +285,14 @@ export class ConversationMemoryService {
    * Get recent conversations for a user
    */
   async getUserConversations(
-    dataSource: DataSource,
+    db: ConversationDb,
     userId: string,
     organizationId: string,
     limit = 20
   ): Promise<ConversationSummary[]> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
-    const messageRepo = this.getMessageRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
+    const messageRepo = this.getMessageRepo(db);
 
     const conversations = await conversationRepo.find({
       where: { userId, organizationId },
@@ -278,14 +327,14 @@ export class ConversationMemoryService {
    * Get conversation history for context
    */
   async getConversationHistory(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
     limit = 10
   ): Promise<AVAMessage[]> {
     const conversation = await this.getConversation(
-      dataSource,
+      db,
       conversationId,
       organizationId,
       userId,
@@ -299,14 +348,14 @@ export class ConversationMemoryService {
    * Update conversation context
    */
   async updateContext(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
     context: Partial<AVAContext>
   ): Promise<void> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
 
     const conversationEntity = await conversationRepo.findOne({
       where: { id: conversationId, organizationId, userId },
@@ -338,14 +387,14 @@ export class ConversationMemoryService {
    * Delete a conversation and its messages
    */
   async deleteConversation(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
   ): Promise<void> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
-    const messageRepo = this.getMessageRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
+    const messageRepo = this.getMessageRepo(db);
 
     // Verify ownership and tenant scope before deletion. We do this at the
     // service so the cache invalidation and cascade match exactly one row.
@@ -370,13 +419,13 @@ export class ConversationMemoryService {
    * Clear all conversations for a user
    */
   async clearUserConversations(
-    dataSource: DataSource,
+    db: ConversationDb,
     userId: string,
     organizationId: string,
   ): Promise<number> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
-    const messageRepo = this.getMessageRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
+    const messageRepo = this.getMessageRepo(db);
 
     // Get user's conversations
     const conversations = await conversationRepo.find({
@@ -410,14 +459,14 @@ export class ConversationMemoryService {
    * Search conversations by content
    */
   async searchConversations(
-    dataSource: DataSource,
+    db: ConversationDb,
     userId: string,
     organizationId: string,
     query: string,
     limit = 10
   ): Promise<ConversationSummary[]> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
 
     // Search in conversation titles
     const conversations = await conversationRepo
@@ -446,13 +495,13 @@ export class ConversationMemoryService {
    * Mark conversation as completed
    */
   async completeConversation(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
   ): Promise<void> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
 
     await conversationRepo.update(
       { id: conversationId, organizationId, userId },
@@ -472,7 +521,7 @@ export class ConversationMemoryService {
    * Escalate conversation to a user
    */
   async escalateConversation(
-    dataSource: DataSource,
+    db: ConversationDb,
     conversationId: string,
     organizationId: string,
     userId: string,
@@ -480,7 +529,7 @@ export class ConversationMemoryService {
     reason: string
   ): Promise<void> {
     this.requireOrganizationId(organizationId);
-    const conversationRepo = this.getConversationRepo(dataSource);
+    const conversationRepo = this.getConversationRepo(db);
 
     await conversationRepo.update(
       { id: conversationId, organizationId, userId },
