@@ -232,6 +232,15 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
     setToasts([]);
   }, []);
 
+  // F102: register the module-level `toast` helper so non-React callers
+  // (axios interceptors, fetch wrappers) can surface notifications.
+  useEffect(() => {
+    setGlobalToast(addToast);
+    return () => {
+      setGlobalToast(() => '');
+    };
+  }, [addToast]);
+
   return (
     <ToastContext.Provider value={{ toasts, addToast, removeToast, updateToast, clearToasts }}>
       {children}

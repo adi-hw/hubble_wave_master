@@ -1,6 +1,16 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios';
 import { getStoredToken, setStoredToken, refreshAccessToken } from './token';
 import { hardRedirectToLogin } from './navigation';
+import { toast } from '../components/ui/Toast';
+
+/**
+ * F102: User-facing copy when the server rejects a request with HTTP 403.
+ * Single source of truth so the axios interceptor and the fetch wrapper
+ * surface identical wording. The error toast auto-dismisses after 6000ms
+ * (see Toast.tsx error variant).
+ */
+export const FORBIDDEN_TOAST_MESSAGE =
+  "You don't have permission to perform this action.";
 
 export interface ApiRequestConfig extends AxiosRequestConfig {
   _retry?: boolean;
@@ -112,6 +122,15 @@ export function createApiClient(baseURL: string): AxiosInstance {
           return Promise.reject(refreshError);
         }
       }
+
+      // F102: surface 403 Forbidden to the user. The interceptor runs
+      // outside the React tree, so use the module-level `toast` helper
+      // wired through `setGlobalToast` from <ToastProvider/>. The
+      // rejection still propagates — callers can react further if needed.
+      if (error.response?.status === 403) {
+        toast.error(FORBIDDEN_TOAST_MESSAGE);
+      }
+
       return Promise.reject(error);
     }
   );
