@@ -12,10 +12,10 @@ import {
   DatasetSnapshot,
 } from '@hubblewave/instance-db';
 import {
-  STORAGE_CLIENT,
   STORAGE_CONFIG,
   StorageClient,
   StorageConfig,
+  TENANT_SCOPED_STORAGE_CLIENT,
   buildStorageKey,
 } from '@hubblewave/storage';
 
@@ -43,7 +43,7 @@ export class TrainingProcessorService implements OnModuleInit, OnModuleDestroy {
     private readonly auditRepo: Repository<AuditLog>,
     @InjectRepository(AnalyticsEvent)
     private readonly analyticsRepo: Repository<AnalyticsEvent>,
-    @Inject(STORAGE_CLIENT)
+    @Inject(TENANT_SCOPED_STORAGE_CLIENT)
     private readonly storageClient: StorageClient,
     @Inject(STORAGE_CONFIG)
     private readonly storageConfig: StorageConfig,

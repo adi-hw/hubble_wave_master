@@ -9,7 +9,7 @@ import { BackupService } from './backup.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([AuditLog]),
-    StorageModule.forRoot(),
+    StorageModule.forTenantScope(),
     RedisModule.forRoot(),
   ],
   controllers: [BackupController],
