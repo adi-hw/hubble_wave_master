@@ -722,3 +722,259 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
     );
   });
 });
+
+describe('AuthorizationService — cache invalidation (F025)', () => {
+  // F025: AuthorizationService implements AccessRuleCacheInvalidationPort.
+  // The TypeORM subscriber publishes here whenever a CollectionAccessRule
+  // or PropertyAccessRule is written. Both methods must clear the
+  // matching cache key(s), tolerate stores that don't enumerate keys
+  // (memory fallback), and swallow errors (the write that triggered the
+  // invalidation has already committed — propagating would orphan the
+  // cache without fixing it).
+  //
+  // The cache stub here exposes only `get`/`set`/`del`, optionally `store`
+  // (legacy v4 surface) or `stores` (v5/v7 Keyv surface). Each test wires
+  // exactly what it asserts on.
+
+  type DelMock = jest.Mock<Promise<boolean>, [string]>;
+
+  interface CacheStub {
+    get: jest.Mock;
+    set: jest.Mock;
+    del: DelMock;
+    store?: {
+      keys?: jest.Mock<Promise<string[]>, []>;
+    };
+    stores?: Array<{
+      iterator?: () => AsyncIterableIterator<[string, unknown]>;
+    }>;
+  }
+
+  function buildCache(overrides: Partial<CacheStub> = {}): CacheStub {
+    return {
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn().mockResolvedValue(true),
+      ...overrides,
+    };
+  }
+
+  function buildServiceWithCache(cache: CacheStub | null): AuthorizationService {
+    const policyCompiler = new PolicyCompilerService();
+    return new AuthorizationService(
+      { find: jest.fn().mockResolvedValue([]) },
+      { find: jest.fn().mockResolvedValue([]) },
+      // Cast through unknown — Cache from cache-manager is a fully-formed
+      // interface and we only exercise the small subset the invalidation
+      // path touches (`del`, optional `store.keys`, optional `stores[].iterator`).
+      cache as unknown as ConstructorParameters<typeof AuthorizationService>[2],
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+  }
+
+  /**
+   * Build an async iterator over the provided keys, matching the
+   * Keyv-style `[key, value]` tuple shape that `cache.stores[0].iterator()`
+   * yields in cache-manager v5/v7.
+   */
+  function keyIterator(keys: string[]): () => AsyncIterableIterator<[string, unknown]> {
+    return () => {
+      let i = 0;
+      const iter: AsyncIterableIterator<[string, unknown]> = {
+        async next() {
+          if (i >= keys.length) {
+            return { value: undefined as unknown as [string, unknown], done: true };
+          }
+          const key = keys[i++];
+          return { value: [key, null] as [string, unknown], done: false };
+        },
+        [Symbol.asyncIterator](): AsyncIterableIterator<[string, unknown]> {
+          return iter;
+        },
+      };
+      return iter;
+    };
+  }
+
+  it('invalidateCollectionRules clears the exact unfiltered key', async () => {
+    const cache = buildCache();
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-1',
+      operation: 'insert',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-1');
+  });
+
+  it('invalidateCollectionRules clears per-user variants via legacy store.keys()', async () => {
+    const cache = buildCache({
+      store: {
+        keys: jest.fn().mockResolvedValue([
+          'auth:collection-rules:coll-1:userhash-A',
+          'auth:collection-rules:coll-1:userhash-B',
+          'auth:collection-rules:other:userhash-Z', // different collection — must NOT be cleared
+          'other:irrelevant',
+        ]),
+      },
+    });
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-1',
+      operation: 'update',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-1');
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-1:userhash-A');
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-1:userhash-B');
+    expect(cache.del).not.toHaveBeenCalledWith('auth:collection-rules:other:userhash-Z');
+    expect(cache.del).not.toHaveBeenCalledWith('other:irrelevant');
+  });
+
+  it('invalidateCollectionRules clears per-user variants via v5/v7 stores[].iterator()', async () => {
+    const cache = buildCache({
+      stores: [
+        {
+          iterator: keyIterator([
+            'auth:collection-rules:coll-2:userhash-1',
+            'auth:collection-rules:coll-2:userhash-2',
+            'auth:collection-rules:zzz:userhash-3',
+          ]),
+        },
+      ],
+    });
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-2',
+      operation: 'remove',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-2');
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-2:userhash-1');
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-2:userhash-2');
+    expect(cache.del).not.toHaveBeenCalledWith('auth:collection-rules:zzz:userhash-3');
+  });
+
+  it('memory-store fallback: when keys() and iterator() are both absent, only the exact key is deleted', async () => {
+    const cache = buildCache(); // no store.keys, no stores
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-3',
+      operation: 'insert',
+    });
+
+    // Per-user keys would expire via TTL — exact key is the load-bearing op.
+    expect(cache.del).toHaveBeenCalledTimes(1);
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-3');
+  });
+
+  it('invalidatePropertyRules clears the per-collection property-rule key', async () => {
+    const cache = buildCache();
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidatePropertyRules({
+      collectionId: 'coll-4',
+      operation: 'update',
+      propertyId: 'prop-X',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:property-rules:coll-4');
+    // Property invalidation does not currently use per-user variants.
+    expect(cache.del).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidatePropertyRules without collectionId logs and is a no-op (defensive)', async () => {
+    const cache = buildCache();
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidatePropertyRules({
+      collectionId: '',
+      operation: 'insert',
+      propertyId: 'prop-Y',
+    });
+
+    expect(cache.del).not.toHaveBeenCalled();
+  });
+
+  it('cache.del errors during invalidateCollectionRules are caught (no throw)', async () => {
+    const cache = buildCache({
+      del: jest.fn().mockRejectedValue(new Error('redis down')) as DelMock,
+    });
+    const service = buildServiceWithCache(cache);
+
+    await expect(
+      service.invalidateCollectionRules({
+        collectionId: 'coll-err',
+        operation: 'insert',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('cache.del errors during invalidatePropertyRules are caught (no throw)', async () => {
+    const cache = buildCache({
+      del: jest.fn().mockRejectedValue(new Error('redis down')) as DelMock,
+    });
+    const service = buildServiceWithCache(cache);
+
+    await expect(
+      service.invalidatePropertyRules({
+        collectionId: 'coll-err',
+        operation: 'remove',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('iterator() throwing degrades gracefully — exact key still cleared', async () => {
+    const cache = buildCache({
+      stores: [
+        {
+          iterator: () => {
+            throw new Error('iterator unavailable');
+          },
+        },
+      ],
+    });
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-iter-fail',
+      operation: 'insert',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-iter-fail');
+  });
+
+  it('store.keys() throwing degrades gracefully — exact key still cleared', async () => {
+    const cache = buildCache({
+      store: {
+        keys: jest.fn().mockRejectedValue(new Error('keys() broken')),
+      },
+    });
+    const service = buildServiceWithCache(cache);
+
+    await service.invalidateCollectionRules({
+      collectionId: 'coll-keys-fail',
+      operation: 'update',
+    });
+
+    expect(cache.del).toHaveBeenCalledWith('auth:collection-rules:coll-keys-fail');
+  });
+
+  it('no cache wired: both methods are no-ops without throwing', async () => {
+    const service = buildServiceWithCache(null);
+
+    await expect(
+      service.invalidateCollectionRules({ collectionId: 'c', operation: 'insert' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.invalidatePropertyRules({ collectionId: 'c', operation: 'remove' }),
+    ).resolves.toBeUndefined();
+  });
+});

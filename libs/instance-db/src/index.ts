@@ -12,6 +12,13 @@ export {
   IdentityCacheInvalidationSubscriber,
   IdentityCacheEventPublisher,
 } from './lib/subscribers/identity-cache-invalidation.subscriber';
+export { AccessRuleCacheInvalidationSubscriber } from './lib/subscribers/access-rule-cache-invalidation.subscriber';
+export type {
+  AccessRuleCacheInvalidationPublisher,
+  CollectionRuleChangeEvent as InstanceDbCollectionRuleChangeEvent,
+  PropertyRuleChangeEvent as InstanceDbPropertyRuleChangeEvent,
+  CacheInvalidationOperation as InstanceDbCacheInvalidationOperation,
+} from './lib/subscribers/access-rule-cache-invalidation.subscriber';
 export { RuntimeAnomalyService } from './lib/runtime-anomaly/runtime-anomaly.service';
 export type { RuntimeAnomalyEvent } from './lib/runtime-anomaly/runtime-anomaly.service';
 export { RuntimeAnomalyModule } from './lib/runtime-anomaly/runtime-anomaly.module';

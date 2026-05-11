@@ -4,6 +4,7 @@ import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { instanceEntities } from './entities/index';
 import { AuditLogSubscriber } from './subscribers/audit-log.subscriber';
 import { IdentityCacheInvalidationSubscriber } from './subscribers/identity-cache-invalidation.subscriber';
+import { AccessRuleCacheInvalidationSubscriber } from './subscribers/access-rule-cache-invalidation.subscriber';
 import { InstanceDbService } from './instance-db.service';
 import { AvaProposalService } from './ava-proposal/ava-proposal.service';
 
@@ -83,7 +84,16 @@ import { AvaProposalService } from './ava-proposal/ava-proposal.service';
           // W1.7: IdentityCacheInvalidationSubscriber publishes identity.*
           // events on UserRole/RolePermission/GroupRole/GroupMember changes
           // so permission caches invalidate immediately (~1s end-to-end).
-          subscribers: [AuditLogSubscriber, IdentityCacheInvalidationSubscriber],
+          // F025: AccessRuleCacheInvalidationSubscriber publishes
+          // collection/property-rule invalidations to AuthorizationService
+          // (port-bound) so the 5-min in-memory rule cache reflects
+          // CollectionAccessRule / PropertyAccessRule writes within one
+          // post-commit dispatch.
+          subscribers: [
+            AuditLogSubscriber,
+            IdentityCacheInvalidationSubscriber,
+            AccessRuleCacheInvalidationSubscriber,
+          ],
           logging: configService.get('DB_LOGGING', 'false') === 'true',
           ssl,
           // Connection pool settings
