@@ -262,3 +262,32 @@ No issues found.
 ---
 
 **End of F023 plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Implemented at `5dc1a03`.
+
+### What landed
+
+- `libs/authorization/src/lib/authorization.service.ts`:
+  - `CollectionAclRepo` inline interface: optional `findByCollectionAndUser` added
+  - `getCollectionRules` rewritten: takes optional `UserAccessContext`; uses SQL filter when both repo+user available; cache key includes principal hash
+  - New private `principalCacheKey` helper (stable hash of userId + sorted ids)
+  - 3 callers updated to pass user context: `canAccessCollection`, `getSafeRowLevelPredicatesForCollection`, `canAccessCollectionRecord`
+- `libs/authorization/src/lib/authorization.service.spec.ts`: 3 new tests covering SQL-filter wiring, stub fallback, and groupIds+teamIds combination
+
+### Verification
+
+- libs/authorization tests: **43/43 pass** (40 prior + 3 new)
+- apps/api tests: **469/469 pass** (no regressions)
+- All 6 architectural scanners green
+- apps/api production build green
+
+### Next
+
+- F005 — default-deny flip when no rule matches (high blast radius)
+- F006 — explicit deny rules in ACL model (entity migration + types + evaluation order)
+- F136 — search authz pre-filter (Typesense + vector engines need a restructured search abstraction)
+- Follow-up: same SQL-filter pattern for `getPropertyRules` (needs new repo method)
