@@ -4,7 +4,7 @@ import {
   AuthorizationService,
 } from './authorization.service';
 import { PolicyCompilerService } from './policy-compiler.service';
-import { CollectionAccessRuleData, PropertyAccessRuleData } from './types';
+import { CollectionAccessRuleData, PropertyAccessRuleData, PropertyMeta } from './types';
 
 type CollectionAclRepoStub = {
   find: jest.Mock<Promise<CollectionAccessRuleData[]>, [unknown]>;
@@ -365,5 +365,137 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
     );
 
     expect(predicates).toEqual([]);
+  });
+});
+
+describe('AuthorizationService — multi-rule field permissions (F024)', () => {
+  // F024: a user matching multiple field-level rules should get the UNION of
+  // permissions (any rule granting canRead → read allowed), not whichever
+  // rule sorted first. Masking takes the LEAST-restrictive value across
+  // matching rules (NONE < PARTIAL < FULL — user sees the most).
+
+  const ROLE_GUEST = '55555555-5555-5555-5555-555555555555';
+  const ROLE_MANAGER = '66666666-6666-6666-6666-666666666666';
+  const FIELD_SALARY: PropertyMeta = { code: 'salary' };
+
+  function buildFieldRule(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'field-rule',
+      propertyId: 'salary',
+      propertyCode: 'salary',
+      collectionId: COLLECTION_ID,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      ...overrides,
+    };
+  }
+
+  function buildMultiRoleContext(roles: string[]): RequestContext {
+    return {
+      userId: 'user-1',
+      roles,
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: roles },
+    } as unknown as RequestContext;
+  }
+
+  it('canRead is true if ANY matching rule grants read (union)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRule({ id: 'r-restrictive', roleId: ROLE_GUEST, priority: 1, canRead: false }),
+        buildFieldRule({ id: 'r-permissive', roleId: ROLE_MANAGER, priority: 10, canRead: true }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildMultiRoleContext([ROLE_GUEST, ROLE_MANAGER]),
+      COLLECTION_ID,
+      [FIELD_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+  });
+
+  it('canWrite is true if ANY matching rule grants write (union)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRule({ id: 'r-readonly', roleId: ROLE_GUEST, priority: 1, canWrite: false }),
+        buildFieldRule({ id: 'r-editor', roleId: ROLE_MANAGER, priority: 10, canWrite: true }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildMultiRoleContext([ROLE_GUEST, ROLE_MANAGER]),
+      COLLECTION_ID,
+      [FIELD_SALARY],
+    );
+
+    expect(authorized.canWrite).toBe(true);
+  });
+
+  it('maskingStrategy is LEAST-restrictive across matching rules (NONE wins over PARTIAL wins over FULL)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRule({ id: 'r-full-mask', roleId: ROLE_GUEST, priority: 1, maskingStrategy: 'FULL' }),
+        buildFieldRule({ id: 'r-partial-mask', roleId: ROLE_GUEST, priority: 2, maskingStrategy: 'PARTIAL' }),
+        buildFieldRule({ id: 'r-no-mask', roleId: ROLE_MANAGER, priority: 10, maskingStrategy: 'NONE' }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildMultiRoleContext([ROLE_GUEST, ROLE_MANAGER]),
+      COLLECTION_ID,
+      [FIELD_SALARY],
+    );
+
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('non-matching rules are ignored even when present', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        // ROLE_GUEST grants nothing — user does not have this role.
+        buildFieldRule({ id: 'r-irrelevant', roleId: ROLE_GUEST, canRead: false, canWrite: false, maskingStrategy: 'FULL' }),
+        buildFieldRule({ id: 'r-applies', roleId: ROLE_MANAGER, canRead: true, canWrite: true, maskingStrategy: 'NONE' }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildMultiRoleContext([ROLE_MANAGER]),
+      COLLECTION_ID,
+      [FIELD_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('falls back to default permissions when no rule matches', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRule({ id: 'r-other-role', roleId: ROLE_GUEST, canRead: false, canWrite: false }),
+      ],
+    });
+
+    // User has neither ROLE_GUEST nor ROLE_MANAGER — no rules match.
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildMultiRoleContext([ROLE_VIEWER]),
+      COLLECTION_ID,
+      [FIELD_SALARY],
+    );
+
+    // Current default — F005 will change this default to deny in a future PR.
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
   });
 });
