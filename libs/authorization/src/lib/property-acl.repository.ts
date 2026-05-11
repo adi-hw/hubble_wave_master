@@ -161,7 +161,15 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
   }
 
   /**
-   * Find access rules for properties in a collection applicable to a specific user
+   * Find access rules for properties in a collection applicable to a specific user.
+   *
+   * Canon §28.2 wildcard support: this query returns BOTH explicit field
+   * rules (`property_id = ANY(propertyIds)`) AND wildcard field rules
+   * (`wildcard_collection_id = :collectionId`). The DB XOR CHECK
+   * constraint guarantees each row is exactly one shape, never both.
+   * The evaluator distinguishes them by inspecting `propertyId` vs
+   * `wildcardCollectionId` and applies the §28.2 precedence matrix
+   * (explicit levels 1-2 fire before wildcard levels 3-4).
    */
   async findByCollectionProperties(
     collectionId: string,
@@ -170,36 +178,46 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
     roleIds: string[],
     groupIds: string[]
   ): Promise<PropertyAccessRuleData[]> {
-    if (propertyCodes.length === 0) {
-      return [];
+    // First, get property IDs from codes. Skipped when there are no
+    // property codes — but we still must fetch wildcard rules below,
+    // so an empty propertyCodes list is NOT an early-return.
+    let propertyIds: string[] = [];
+    let propertyCodeMap = new Map<string, string>();
+    if (propertyCodes.length > 0) {
+      const properties = await this.propertyRepo.find({
+        where: {
+          collectionId,
+          code: propertyCodes.length === 1 ? propertyCodes[0] : undefined,
+        },
+        select: ['id', 'code', 'collectionId'],
+      });
+
+      // Filter by codes if more than one
+      const filteredProperties =
+        propertyCodes.length === 1
+          ? properties
+          : properties.filter((p) => propertyCodes.includes(p.code));
+
+      if (filteredProperties.length > 0) {
+        propertyIds = filteredProperties.map((p) => p.id);
+        propertyCodeMap = new Map(filteredProperties.map((p) => [p.id, p.code]));
+      }
     }
 
-    // First, get property IDs from codes
-    const properties = await this.propertyRepo.find({
-      where: {
-        collectionId,
-        code: propertyCodes.length === 1 ? propertyCodes[0] : undefined,
-      },
-      select: ['id', 'code', 'collectionId'],
-    });
+    // Postgres `ANY(:propertyIds)` requires a non-empty array — use a
+    // sentinel zero-UUID when no property IDs were resolved so the
+    // explicit-field disjunct contributes no matches without blowing up
+    // the query. The wildcard disjunct still fires.
+    const safePropertyIds =
+      propertyIds.length > 0 ? propertyIds : ['00000000-0000-0000-0000-000000000000'];
 
-    // Filter by codes if more than one
-    const filteredProperties =
-      propertyCodes.length === 1
-        ? properties
-        : properties.filter((p) => propertyCodes.includes(p.code));
-
-    if (filteredProperties.length === 0) {
-      return [];
-    }
-
-    const propertyIds = filteredProperties.map((p) => p.id);
-    const propertyCodeMap = new Map(filteredProperties.map((p) => [p.id, p.code]));
-
-    // Query rules for these properties
+    // Query rules for these properties OR wildcard rules on this collection.
     const queryBuilder = this.ruleRepo
       .createQueryBuilder('rule')
-      .where('rule.property_id = ANY(:propertyIds)', { propertyIds })
+      .where(
+        '(rule.property_id = ANY(:propertyIds) OR rule.wildcard_collection_id = :collectionId)',
+        { propertyIds: safePropertyIds, collectionId }
+      )
       .andWhere('rule.is_active = :isActive', { isActive: true })
       .andWhere(
         '(' +
@@ -220,7 +238,10 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
 
     return rules.map((rule) => ({
       ...this.mapToData(rule),
-      propertyCode: propertyCodeMap.get(rule.propertyId),
+      // propertyCode is only meaningful for explicit-field rules; wildcard
+      // rules have propertyId=NULL so the lookup returns undefined, which
+      // the evaluator detects to route via wildcardCollectionId instead.
+      propertyCode: rule.propertyId ? propertyCodeMap.get(rule.propertyId) : undefined,
       collectionId,
     }));
   }
@@ -284,7 +305,14 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
       ? validateAccessCondition(data.conditions)
       : null;
     const rule = this.ruleRepo.create({
-      propertyId: data.propertyId,
+      // Canon §28.2 wildcard support: forward either the explicit
+      // `propertyId` (levels 1-2) or the `wildcardCollectionId` (levels
+      // 3-4). The DB CHECK constraint `CHK_property_access_rules_target_xor`
+      // rejects rows where both or neither are set, so the caller is
+      // responsible for picking one. We pass both through as-given rather
+      // than guessing.
+      propertyId: data.propertyId ?? null,
+      wildcardCollectionId: data.wildcardCollectionId ?? null,
       roleId: data.roleId ?? null,
       groupId: data.groupId ?? null,
       userId: data.userId ?? null,
@@ -430,10 +458,19 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
       groupIds
     );
 
-    // Group rules by property code
+    // Group rules by property code. Wildcard rules (propertyId IS NULL,
+    // canon §28.2 levels 3-4) have no per-property code; they belong to
+    // EVERY property of the collection, and the evaluator routes them by
+    // `wildcardCollectionId`. This helper is per-property-permission
+    // aggregation, so wildcard rules are skipped here — callers that
+    // need wildcard semantics consume rules directly via
+    // `findByCollectionProperties` and call the evaluator.
     const rulesByProperty = new Map<string, PropertyAccessRuleData[]>();
     for (const rule of rules) {
       const code = rule.propertyCode || rule.propertyId;
+      if (!code) {
+        continue;
+      }
       if (!rulesByProperty.has(code)) {
         rulesByProperty.set(code, []);
       }
@@ -511,7 +548,16 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
   private mapToData(rule: PropertyAccessRule): PropertyAccessRuleData {
     return {
       id: rule.id,
-      propertyId: rule.propertyId,
+      // Canon §28.2 wildcard support: propertyId is nullable since
+      // migration 1930200000000-add-property-access-rule-wildcards.ts.
+      // A wildcard rule has propertyId=NULL + wildcardCollectionId set,
+      // enforced by the DB XOR CHECK constraint.
+      propertyId: rule.propertyId ?? null,
+      // Canon §28.2 levels 3-4: wildcard field rules apply to every
+      // field of the referenced collection. Defensive ?? null covers
+      // the entity-without-field case in unit-test stubs; the DB column
+      // is nullable so the default is genuinely NULL for explicit rules.
+      wildcardCollectionId: rule.wildcardCollectionId ?? null,
       roleId: rule.roleId,
       groupId: rule.groupId,
       userId: rule.userId,

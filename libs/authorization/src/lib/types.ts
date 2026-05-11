@@ -67,9 +67,22 @@ export interface CollectionAccessRuleData {
 
 export interface PropertyAccessRuleData {
   id: string;
-  propertyId: string;
+  /**
+   * Explicit field-level rule target (canon §28.2 levels 1-2). Nullable
+   * because wildcard field rules (levels 3-4) carry `wildcardCollectionId`
+   * instead. The DB CHECK constraint enforces XOR: exactly one of
+   * (`propertyId`, `wildcardCollectionId`) is set.
+   */
+  propertyId?: string | null;
   propertyCode?: string;
   collectionId?: string;
+  /**
+   * Wildcard field-rule target (canon §28.2 levels 3-4). When set, the
+   * rule applies to EVERY field of the referenced collection. Mutually
+   * exclusive with `propertyId`. Evaluated between explicit field rules
+   * (levels 1-2) and collection-level fallback (levels 5-6+).
+   */
+  wildcardCollectionId?: string | null;
   roleId?: string | null;
   groupId?: string | null;
   userId?: string | null;

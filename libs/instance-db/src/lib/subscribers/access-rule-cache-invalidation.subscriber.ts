@@ -212,11 +212,34 @@ export class AccessRuleCacheInvalidationSubscriber
       return;
     }
 
-    // Property-rule path: the entity has `propertyId` but not the parent
-    // collectionId. Resolve via the QueryRunner's manager so the lookup
-    // is consistent with the same transaction's writes.
+    // Property-rule path: handles both explicit field rules (carrying
+    // `propertyId`) and wildcard field rules (carrying
+    // `wildcardCollectionId`, canon §28.2 levels 3-4). The DB XOR CHECK
+    // constraint guarantees each row is exactly one shape.
     if (target === PropertyAccessRule) {
       const rule = entity as Partial<PropertyAccessRule>;
+
+      // Wildcard rule: the entity carries `wildcardCollectionId` directly
+      // — no PropertyDefinition lookup needed.
+      if (rule.wildcardCollectionId) {
+        this.routeOrPublish(queryRunner, {
+          kind: 'property',
+          event: {
+            collectionId: rule.wildcardCollectionId,
+            operation,
+            // No specific propertyId — wildcard applies to every field
+            // of the collection. The invalidator handles this as a
+            // collection-wide property-rule invalidation.
+            propertyId: undefined,
+            ruleId: rule.id,
+          },
+        });
+        return;
+      }
+
+      // Explicit-field rule: the entity has `propertyId` but not the
+      // parent collectionId. Resolve via the QueryRunner's manager so
+      // the lookup is consistent with the same transaction's writes.
       if (!rule.propertyId) {
         return;
       }

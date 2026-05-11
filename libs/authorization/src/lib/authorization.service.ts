@@ -359,25 +359,51 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const propertyRules = await this.getPropertyRules(collectionId);
 
+    // Canon §28.2 wildcard support: split the fetched rules into two
+    // buckets once per collection, then per-field we filter the explicit
+    // bucket on the field's code/id. Wildcard rules apply to every field
+    // of `collectionId` so they pre-filter the same way for all fields.
+    //
+    // The XOR CHECK constraint on the DB guarantees each row is exactly
+    // one shape (propertyId set XOR wildcardCollectionId set), so the
+    // bucketing is unambiguous. A rule with `wildcardCollectionId !==
+    // collectionId` is silently irrelevant — the repository's query
+    // already filters by `wildcard_collection_id = :collectionId`, but
+    // we belt-and-suspenders here so a misbehaving stub repo cannot
+    // leak cross-collection wildcards into the evaluator.
+    const wildcardRules = propertyRules.filter(
+      (r) => r.wildcardCollectionId === collectionId,
+    );
+
     return fields.map((field) => {
-      const fieldRules = propertyRules.filter(
-        (r) => r.propertyCode === field.code || r.propertyId === field.code,
+      const explicitFieldRules = propertyRules.filter(
+        (r) =>
+          // Explicit-field rules carry propertyId/propertyCode. The DB
+          // XOR check guarantees these rules have wildcardCollectionId
+          // null/undefined.
+          !r.wildcardCollectionId &&
+          (r.propertyCode === field.code || r.propertyId === field.code),
       );
 
-      // Default permissions when no rule matches the user. F005 will flip
-      // these defaults to deny in a separate PR; today, fields are
-      // readable/writable by default with no masking.
-      let canRead = true;
-      let canWrite = !field.isSystem;
-      let maskingStrategy: MaskingStrategy = 'NONE';
-      let matched = false;
+      // Default permissions when no rule matches the user at any level.
+      // F005 will flip these defaults to deny in a separate PR; today
+      // levels 5-7 still resolve to allow via the existing fallback path.
+      const defaultRead = true;
+      const defaultWrite = !field.isSystem;
+      const defaultMask: MaskingStrategy = 'NONE';
 
-      // F006 / canon §28.2 level 1: any matching deny rule wins. The field
-      // collapses to canRead=false, canWrite=false, maskingStrategy='FULL'
-      // regardless of co-matching allows (§28.4 rule 1, "deny wins at the
-      // same specificity"). We scan denies first so a single deny on any
-      // priority short-circuits the allow-union pass.
-      for (const rule of fieldRules) {
+      // Canon §28.2 walks levels 1→7 and the first matching level decides.
+      // §28.4 rule 2: specificity ranks beat effect — wildcards NEVER
+      // override explicit field rules, regardless of which is allow vs
+      // deny. We therefore walk explicit rules (levels 1-2) first; only
+      // when no explicit rule matches the principal do we fall through
+      // to wildcards (levels 3-4).
+
+      // ── Level 1: explicit-field deny ─────────────────────────────────
+      // Any matching deny rule on the explicit field forces the field
+      // to canRead=false, canWrite=false, maskingStrategy='FULL'
+      // regardless of co-matching allows (§28.4 rule 1).
+      for (const rule of explicitFieldRules) {
         if (rule.effect !== 'deny') continue;
         if (!this.checkPropertyPrincipalMatch(rule, userContext)) continue;
         return {
@@ -388,51 +414,114 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
         };
       }
 
-      // F024 (allow lane) + canon §28.2 level 2 + canon §28.5: combine ALL
-      // matching allow rules instead of first-match-wins.
-      //   canRead = true if ANY matching allow grants read (UNION)
-      //   canWrite = true if ANY matching allow grants write (UNION)
-      //   maskingStrategy = MOST-restrictive value across matching allows
-      //                     (NONE < PARTIAL < FULL — user sees the LEAST,
-      //                     enforcing HIPAA's "minimum necessary"
-      //                     principle at the field level).
-      // The original F024 implementation picked the LEAST-restrictive mask;
-      // canon §28.5 inverts that — when two roles compose, the more
-      // restrictive role's intent must hold. The F024 union-of-grants
-      // behaviour for canRead/canWrite is preserved (multiple positive
-      // grants compose permissively); only masking severity flipped.
-      for (const rule of fieldRules) {
-        if (rule.effect === 'deny') continue;
-        if (!this.checkPropertyPrincipalMatch(rule, userContext)) {
-          continue;
-        }
-
-        if (!matched) {
-          // First matching rule: replace the defaults entirely. Without this
-          // reset, a single restrictive rule would be masked by the
-          // permissive defaults (canRead=true) and never tighten access.
-          canRead = rule.canRead;
-          canWrite = rule.canWrite;
-          maskingStrategy = rule.maskingStrategy ?? 'NONE';
-          matched = true;
-          continue;
-        }
-
-        canRead = canRead || rule.canRead;
-        canWrite = canWrite || rule.canWrite;
-        maskingStrategy = this.mostRestrictiveMask(
-          maskingStrategy,
-          rule.maskingStrategy ?? 'NONE',
-        );
+      // ── Level 2: explicit-field allow (UNION across matching) ───────
+      // Canon §28.2 level 2 + canon §28.5: combine ALL matching allow
+      // rules at this level.
+      //   canRead = UNION across matching allows (any-grants-wins)
+      //   canWrite = UNION across matching allows
+      //   maskingStrategy = MOST-restrictive value across matching
+      //                     allows (NONE < PARTIAL < FULL — user sees
+      //                     the LEAST data, enforcing HIPAA's "minimum
+      //                     necessary" principle at the field level).
+      const explicitAllowDecision = this.combineAllowRules(
+        explicitFieldRules,
+        userContext,
+      );
+      if (explicitAllowDecision) {
+        return {
+          ...field,
+          ...explicitAllowDecision,
+        };
       }
 
+      // ── Level 3: wildcard deny ──────────────────────────────────────
+      // A matching wildcard deny denies the field (same effect as level
+      // 1, just at the wildcard specificity rank).
+      for (const rule of wildcardRules) {
+        if (rule.effect !== 'deny') continue;
+        if (!this.checkPropertyPrincipalMatch(rule, userContext)) continue;
+        return {
+          ...field,
+          canRead: false,
+          canWrite: false,
+          maskingStrategy: 'FULL' as MaskingStrategy,
+        };
+      }
+
+      // ── Level 4: wildcard allow (UNION across matching) ─────────────
+      // Same combination semantics as level 2, scoped to wildcard rules.
+      const wildcardAllowDecision = this.combineAllowRules(
+        wildcardRules,
+        userContext,
+      );
+      if (wildcardAllowDecision) {
+        return {
+          ...field,
+          ...wildcardAllowDecision,
+        };
+      }
+
+      // ── Levels 5-7: collection-rule fallback / default-allow ────────
+      // F005 will flip levels 5-7 to defer to collection rules and then
+      // deny. Today, the default-allow path preserves the pre-§28
+      // contract: readable/writable by default with no masking when no
+      // field-scoped rule matched.
       return {
         ...field,
-        canRead,
-        canWrite,
-        maskingStrategy,
+        canRead: defaultRead,
+        canWrite: defaultWrite,
+        maskingStrategy: defaultMask,
       };
     });
+  }
+
+  /**
+   * Combine matching allow rules per canon §28.2 + §28.5. Returns a
+   * decision object when at least one rule matched the user, or `null`
+   * when no allow rule in the set matched (so the caller can fall
+   * through to the next precedence level).
+   *
+   * Combination rules:
+   *   - canRead/canWrite: UNION across matching allows (any-grants-wins)
+   *   - maskingStrategy: MOST-restrictive value across matching allows
+   *     (NONE < PARTIAL < FULL per §28.5)
+   *
+   * Deny rules in the input are skipped — callers handle deny rules
+   * at the same level before invoking this helper.
+   */
+  private combineAllowRules(
+    rules: PropertyAccessRuleData[],
+    user: UserAccessContext,
+  ): { canRead: boolean; canWrite: boolean; maskingStrategy: MaskingStrategy } | null {
+    let canRead = false;
+    let canWrite = false;
+    let maskingStrategy: MaskingStrategy = 'NONE';
+    let matched = false;
+
+    for (const rule of rules) {
+      if (rule.effect === 'deny') continue;
+      if (!this.checkPropertyPrincipalMatch(rule, user)) continue;
+
+      if (!matched) {
+        // First matching rule: replace the defaults entirely. Without
+        // this reset, a single restrictive rule would be masked by
+        // permissive defaults and never tighten access.
+        canRead = rule.canRead;
+        canWrite = rule.canWrite;
+        maskingStrategy = rule.maskingStrategy ?? 'NONE';
+        matched = true;
+        continue;
+      }
+
+      canRead = canRead || rule.canRead;
+      canWrite = canWrite || rule.canWrite;
+      maskingStrategy = this.mostRestrictiveMask(
+        maskingStrategy,
+        rule.maskingStrategy ?? 'NONE',
+      );
+    }
+
+    return matched ? { canRead, canWrite, maskingStrategy } : null;
   }
 
   /**

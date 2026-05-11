@@ -1469,3 +1469,389 @@ describe('AuthorizationService — masking direction (canon §28.5)', () => {
     expect(authorized.maskingStrategy).toBe('PARTIAL');
   });
 });
+
+describe('AuthorizationService — wildcard field rules (§28.2 levels 3-4)', () => {
+  // Canon §28.2 levels 3-4: a wildcard field rule (propertyId IS NULL,
+  // wildcardCollectionId = the collection) applies to EVERY field of
+  // that collection. The evaluator walks 1→7 and the first matching
+  // level decides:
+  //   1. Explicit-field deny
+  //   2. Explicit-field allow (UNION; most-restrictive masking)
+  //   3. Wildcard deny
+  //   4. Wildcard allow (UNION; most-restrictive masking)
+  //   5/6. Collection-level fallback (preserved until F005)
+  //
+  // §28.4 rule 2: specificity ranks beat effect — an explicit allow at
+  // level 2 fires BEFORE a wildcard deny at level 3 (and a wildcard
+  // allow at level 4 fires AFTER an explicit deny at level 1). The
+  // wildcard layer never overrides explicit field rules, regardless of
+  // which is allow vs deny.
+
+  const ROLE_W_WILDCARD = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const ROLE_W_EXPLICIT = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const ROLE_W_OTHER = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const FIELD_W_SALARY: PropertyMeta = { code: 'salary' };
+  const OTHER_COLLECTION_ID = '99999999-9999-9999-9999-999999999999';
+
+  function buildExplicitFieldRule(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-explicit',
+      propertyId: 'salary',
+      propertyCode: 'salary',
+      collectionId: COLLECTION_ID,
+      wildcardCollectionId: null,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildWildcardRule(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-wildcard',
+      propertyId: null,
+      propertyCode: undefined,
+      collectionId: COLLECTION_ID,
+      wildcardCollectionId: COLLECTION_ID,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildCtxW(roles: string[]): RequestContext {
+    return {
+      userId: 'user-1',
+      roles,
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: roles },
+    } as unknown as RequestContext;
+  }
+
+  it('1. wildcard allow only → field gets the wildcard allow (level 4 fires)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('2. wildcard deny only → field denied (level 3 fires)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-deny',
+          effect: 'deny',
+          roleId: ROLE_W_WILDCARD,
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('3. wildcard allow + explicit field allow → explicit wins (level 2 fires)', async () => {
+    // Level 2 (explicit allow) fires before level 4 (wildcard allow).
+    // The explicit rule's grant + masking define the outcome; the
+    // wildcard rule is never consulted.
+    const { service } = buildService({
+      propertyRules: [
+        buildExplicitFieldRule({
+          id: 'r-ex-allow',
+          effect: 'allow',
+          roleId: ROLE_W_EXPLICIT,
+          canRead: true,
+          canWrite: false,
+          maskingStrategy: 'NONE',
+        }),
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'PARTIAL',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_EXPLICIT, ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    // Explicit allow defines the outcome — write=false from explicit
+    // rule, mask=NONE from explicit rule. The wildcard's grants do NOT
+    // compose into the explicit decision (the levels are evaluated
+    // independently; first match wins).
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('4. wildcard allow + explicit field deny → explicit deny wins (level 1 fires before level 4)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildExplicitFieldRule({
+          id: 'r-ex-deny',
+          effect: 'deny',
+          roleId: ROLE_W_EXPLICIT,
+        }),
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_EXPLICIT, ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('5. wildcard deny + explicit field allow → explicit allow wins (§28.4 specificity beats effect)', async () => {
+    // §28.4 rule 2: specificity ranks beat effect. An explicit allow at
+    // level 2 fires BEFORE a wildcard deny at level 3. Wildcards never
+    // override explicit field rules regardless of which is allow vs deny.
+    const { service } = buildService({
+      propertyRules: [
+        buildExplicitFieldRule({
+          id: 'r-ex-allow',
+          effect: 'allow',
+          roleId: ROLE_W_EXPLICIT,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+        buildWildcardRule({
+          id: 'r-wc-deny',
+          effect: 'deny',
+          roleId: ROLE_W_WILDCARD,
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_EXPLICIT, ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('6. two wildcard rules: allow + deny → deny wins (level 3 fires before level 4)', async () => {
+    // Within the wildcard layer, level 3 (deny) is checked before level
+    // 4 (allow). Same precedence pattern as the explicit layer.
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+        buildWildcardRule({
+          id: 'r-wc-deny',
+          effect: 'deny',
+          roleId: ROLE_W_OTHER,
+        }),
+      ],
+    });
+
+    // User has BOTH roles; deny wins.
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD, ROLE_W_OTHER]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('7. wildcard allow PARTIAL + explicit field allow NONE → explicit wins with NONE (level 2 fires)', async () => {
+    // Explicit allow (level 2) defines the outcome — the wildcard's
+    // more-restrictive PARTIAL masking is irrelevant because the levels
+    // are evaluated independently.
+    const { service } = buildService({
+      propertyRules: [
+        buildExplicitFieldRule({
+          id: 'r-ex-allow',
+          effect: 'allow',
+          roleId: ROLE_W_EXPLICIT,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'PARTIAL',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_EXPLICIT, ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('8. wildcard allow PARTIAL only → field allowed with PARTIAL mask (level 4 fires; masking from the wildcard)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-allow',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'PARTIAL',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('PARTIAL');
+  });
+
+  it('9. two wildcard allows with different masks (PARTIAL + FULL) → most-restrictive (FULL) per §28.5', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-partial',
+          effect: 'allow',
+          roleId: ROLE_W_WILDCARD,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'PARTIAL',
+        }),
+        buildWildcardRule({
+          id: 'r-wc-full',
+          effect: 'allow',
+          roleId: ROLE_W_OTHER,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'FULL',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD, ROLE_W_OTHER]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    // Canon §28.5: most-restrictive masking wins — FULL beats PARTIAL.
+    // Read/write are UNION true.
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('10. wildcard rule for a DIFFERENT collection → does not apply to fields of THIS collection', async () => {
+    // The repository pre-filters by collectionId, but we belt-and-
+    // suspenders in the evaluator: a wildcard rule whose
+    // wildcardCollectionId !== this collection is silently irrelevant.
+    // Without the evaluator-side filter, a misbehaving stub repo could
+    // leak cross-collection wildcards into the field decision.
+    const { service } = buildService({
+      propertyRules: [
+        buildWildcardRule({
+          id: 'r-wc-other-coll',
+          effect: 'deny',
+          roleId: ROLE_W_WILDCARD,
+          // Wildcard scoped to a DIFFERENT collection.
+          wildcardCollectionId: OTHER_COLLECTION_ID,
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxW([ROLE_W_WILDCARD]),
+      COLLECTION_ID,
+      [FIELD_W_SALARY],
+    );
+
+    // Cross-collection wildcard is irrelevant — level 3 misses, level
+    // 4 misses, fall through to the default-allow path.
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+});
