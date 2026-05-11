@@ -1,7 +1,8 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import {
+  AccessRuleCacheInvalidationSubscriber,
   CollectionAccessRule,
   CollectionDefinition,
   PropertyAccessRule,
@@ -13,7 +14,11 @@ import {
   Group,
   User,
 } from '@hubblewave/instance-db';
-import { ACCESS_AUDIT_PORT } from '@hubblewave/authorization';
+import {
+  ACCESS_AUDIT_PORT,
+  ACCESS_RULE_CACHE_INVALIDATION_PORT,
+  AuthorizationService,
+} from '@hubblewave/authorization';
 import { AccessRuleService } from './services/access-rule.service';
 import { AccessAuditService } from './services/access-audit.service';
 import { BreakGlassService } from './services/break-glass.service';
@@ -52,6 +57,13 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
       provide: ACCESS_AUDIT_PORT,
       useExisting: AccessAuditService,
     },
+    // F025: bind AuthorizationService as the cache-invalidation port
+    // implementation. The TypeORM subscriber publishes to this port via
+    // the static `setPublisher` wiring done in `onModuleInit` below.
+    {
+      provide: ACCESS_RULE_CACHE_INVALIDATION_PORT,
+      useExisting: AuthorizationService,
+    },
   ],
   exports: [
     AccessRuleService,
@@ -61,7 +73,27 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
     CollectionAccessGuard,
     PropertyAccessInterceptor,
     ACCESS_AUDIT_PORT,
+    ACCESS_RULE_CACHE_INVALIDATION_PORT,
   ],
 })
-export class AccessModule {}
+export class AccessModule implements OnModuleInit {
+  private readonly logger = new Logger(AccessModule.name);
+
+  constructor(private readonly authorizationService: AuthorizationService) {}
+
+  /**
+   * F025: bind the cache-invalidation publisher into the TypeORM subscriber.
+   * Subscribers run outside Nest's DI graph (they are constructed when the
+   * data source initialises during bootstrap), so we hand them the
+   * resolved `AuthorizationService` explicitly once the Nest module
+   * graph is up. Mirrors `RolesModule.onModuleInit` for
+   * `IdentityCacheInvalidationSubscriber` (W1.7).
+   */
+  onModuleInit(): void {
+    AccessRuleCacheInvalidationSubscriber.setPublisher(this.authorizationService);
+    this.logger.log(
+      'F025: AccessRuleCacheInvalidationSubscriber publisher bound to AuthorizationService',
+    );
+  }
+}
 

@@ -16,6 +16,11 @@ import {
 import { AbacService, SafePredicate, LeafPredicate } from './abac.service';
 import { PolicyCompilerService } from './policy-compiler.service';
 import { ACCESS_AUDIT_PORT, type AccessAuditPort } from './audit-port';
+import type {
+  AccessRuleCacheInvalidationPort,
+  CollectionRuleChangeEvent,
+  PropertyRuleChangeEvent,
+} from './cache-invalidation.port';
 
 export interface RowLevelClause {
   clauses: string[];
@@ -57,7 +62,7 @@ interface CollectionDefinitionLookupRepo {
 }
 
 @Injectable()
-export class AuthorizationService {
+export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   private readonly logger = new Logger(AuthorizationService.name);
   private readonly CACHE_TTL = 300000; // 5 minutes
 
@@ -609,8 +614,199 @@ export class AuthorizationService {
   }
 
   // ============================================================================
+  // Public API — Cache invalidation (F025; AccessRuleCacheInvalidationPort)
+  //
+  // These methods are called by the TypeORM `AccessRuleCacheInvalidationSubscriber`
+  // in `libs/instance-db` whenever a CollectionAccessRule or PropertyAccessRule
+  // is inserted, updated, or removed. The subscriber publishes ONLY after the
+  // surrounding transaction commits (see F043 pattern), so by the time we get
+  // here the rule change has landed in the source of truth and the cache must
+  // be cleared promptly.
+  //
+  // Both methods are best-effort: cache failures are caught + logged. They
+  // MUST NEVER throw — the business write that triggered them has already
+  // committed; surfacing an error would just orphan a stale cache entry
+  // until TTL elapses without doing anything to fix it.
+  // ============================================================================
+
+  /**
+   * Invalidate every cached entry derived from collection-level rules for
+   * `event.collectionId`. Clears:
+   *   - the unfiltered key `auth:collection-rules:{cid}`
+   *   - every per-user variant `auth:collection-rules:{cid}:*`
+   *     (F023 pushdown stores one entry per principal hash)
+   *
+   * Option B (per-collection invalidation): when ANY rule on the
+   * collection changes we drop ALL cached entries for that collection
+   * regardless of which principal would have matched. Going finer-grained
+   * (only the affected principal's entry) is unsafe because a single
+   * rule's principal columns can become reachable by additional users
+   * (e.g. a role membership changing in another transaction) between the
+   * rule write and the next read.
+   */
+  async invalidateCollectionRules(event: CollectionRuleChangeEvent): Promise<void> {
+    if (!this.cache) {
+      // No cache wired (e.g. unit-test context) — nothing to invalidate.
+      return;
+    }
+    try {
+      await this.invalidateCollectionCacheKeys(event.collectionId);
+    } catch (err) {
+      this.logger.error(
+        `Cache invalidation failed for collection ${event.collectionId} ` +
+          `(operation=${event.operation}): ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
+  }
+
+  /**
+   * Invalidate the cached property-rule entry for `event.collectionId`.
+   * Property-rule cache keys are not per-user (no SQL pushdown today),
+   * so a single `del()` on `auth:property-rules:{cid}` is sufficient.
+   */
+  async invalidatePropertyRules(event: PropertyRuleChangeEvent): Promise<void> {
+    if (!this.cache) {
+      return;
+    }
+    if (!event.collectionId) {
+      // Defensive: the subscriber MUST resolve propertyId -> collectionId
+      // before emitting; without a collectionId we cannot build a cache
+      // key and there is nothing to do. Log so an upstream regression is
+      // visible rather than silently leaving stale data.
+      this.logger.warn(
+        `invalidatePropertyRules called without collectionId (propertyId=${event.propertyId ?? 'unknown'}, operation=${event.operation}); skipping`,
+      );
+      return;
+    }
+    try {
+      await this.cache.del(`auth:property-rules:${event.collectionId}`);
+    } catch (err) {
+      this.logger.error(
+        `Cache invalidation failed for property rules on collection ${event.collectionId} ` +
+          `(operation=${event.operation}, propertyId=${event.propertyId ?? 'unknown'}): ` +
+          `${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
+  }
+
+  // ============================================================================
   // Private Helpers
   // ============================================================================
+
+  /**
+   * Drop the unfiltered collection-rule cache entry plus every per-user
+   * F023 variant. The cache-manager v5/v7 API surface is small (Cache.del
+   * is the only guaranteed surface); enumerating keys requires reaching
+   * through `stores[].iterator()` (Keyv-backed) or a legacy `store.keys()`
+   * shape. We try the available enumeration path defensively and degrade
+   * to deleting only the exact key when the store does not expose one —
+   * the per-user variants will fall off via their 5-minute TTL on the
+   * memory-store fallback path.
+   */
+  private async invalidateCollectionCacheKeys(collectionId: string): Promise<void> {
+    if (!this.cache) return;
+    const exactKey = `auth:collection-rules:${collectionId}`;
+    const prefix = `${exactKey}:`;
+
+    // Always drop the exact key first — covers callers that never used the
+    // SQL pushdown path and is the path the memory-store fallback relies on.
+    await this.cache.del(exactKey);
+
+    // Best-effort enumeration of per-user variants. Two shapes are
+    // checked: legacy `cache.store.keys()` (cache-manager v4 and the
+    // canonical pattern in the F025 brief) and v5/v7 `cache.stores[i]`
+    // Keyv-backed iterators. Either returning, neither returning, or one
+    // throwing all degrade gracefully — exact-key delete above is the
+    // load-bearing guarantee.
+    const keys = await this.tryEnumerateKeys();
+    if (keys.length === 0) {
+      // Memory store has no enumeration; per-user variants will expire via TTL.
+      return;
+    }
+
+    const matching = keys.filter((k) => k.startsWith(prefix));
+    for (const key of matching) {
+      try {
+        await this.cache.del(key);
+      } catch (err) {
+        // Per-key delete failure is logged but does not abort the loop —
+        // the goal is to clear as many stale entries as we can.
+        this.logger.warn(
+          `Failed to del per-user cache key ${key}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Defensive key-enumeration probe. Tries the legacy `cache.store.keys()`
+   * surface first (cache-manager v4, Redis store via `keys *`) and falls
+   * back to the v5/v7 `cache.stores[].iterator()` Keyv pattern. Returns
+   * `[]` when neither is exposed — the caller must treat that as "store
+   * does not enumerate" and rely on TTL.
+   */
+  private async tryEnumerateKeys(): Promise<string[]> {
+    if (!this.cache) return [];
+    const cacheAny = this.cache as unknown as {
+      store?: { keys?: (pattern?: string) => Promise<string[]> | string[] };
+      stores?: Array<{
+        iterator?: () => AsyncIterator<[string, unknown]> | AsyncIterable<[string, unknown]>;
+      }>;
+    };
+
+    // Legacy `store.keys()` (cache-manager v4 / redis-store / the shape
+    // assumed by the F025 brief).
+    if (cacheAny.store?.keys && typeof cacheAny.store.keys === 'function') {
+      try {
+        const result = await cacheAny.store.keys();
+        return Array.isArray(result) ? result : [];
+      } catch (err) {
+        this.logger.warn(
+          `cache.store.keys() failed: ${(err as Error).message}`,
+        );
+        return [];
+      }
+    }
+
+    // v5/v7 Keyv-backed stores: each Keyv exposes an async iterator over
+    // [key, value] tuples (optional in the type but present on most
+    // backends). We iterate the first store and collect keys.
+    if (Array.isArray(cacheAny.stores) && cacheAny.stores.length > 0) {
+      const store = cacheAny.stores[0];
+      if (typeof store?.iterator === 'function') {
+        try {
+          const out: string[] = [];
+          const it = store.iterator();
+          const iterator: AsyncIterator<[string, unknown]> =
+            typeof (it as AsyncIterable<[string, unknown]>)[Symbol.asyncIterator] === 'function'
+              ? (it as AsyncIterable<[string, unknown]>)[Symbol.asyncIterator]()
+              : (it as AsyncIterator<[string, unknown]>);
+          // Bounded enumeration: stop at a hard ceiling so a misconfigured
+          // shared cache cannot trigger an unbounded scan from a single
+          // rule write.
+          const MAX_KEYS = 10000;
+          for (let i = 0; i < MAX_KEYS; i++) {
+            const step = await iterator.next();
+            if (step.done) break;
+            const [k] = step.value;
+            if (typeof k === 'string') {
+              out.push(k);
+            }
+          }
+          return out;
+        } catch (err) {
+          this.logger.warn(
+            `cache.stores[0].iterator() failed: ${(err as Error).message}`,
+          );
+          return [];
+        }
+      }
+    }
+
+    return [];
+  }
 
   /**
    * Resolve a (mutable) `tableName` to its (stable) `collectionId` UUID via
