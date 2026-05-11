@@ -352,3 +352,28 @@ No issues found.
 ---
 
 **End of F003 plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Implemented at `87d8f72`.
+
+### What landed
+
+- `libs/authorization/src/lib/authorization.service.ts::getSafeRowLevelPredicatesForCollection` rewritten per plan.
+- 4 new tests in `authorization.service.spec.ts` covering the F003 semantic.
+
+### Verification
+
+- libs/authorization tests: **24/24 pass** (20 existing + 4 new)
+- apps/api tests: **457/457 pass** (no regressions, 2 skipped unchanged)
+- All 6 architectural scanners green
+- apps/api production build green
+
+### Next
+
+- F004 + F005 (field-level default-deny + masking) — next W2 PR
+- F006 (deny rules in ACL model) — bigger conceptual change, separate PR
+- F021 (admin bypass audit) — separate PR
+- F023 / F024 / F091 / F102 / F136 / F146 — see PLATFORM-ROADMAP.md Phase 2 W2 table for full sequencing
