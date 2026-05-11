@@ -4,6 +4,10 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
+  IDENTITY_RESOLVER_PORT,
+  JWT_REVOCATION_PORT,
+} from '@hubblewave/auth-guard';
+import {
   AuthEvent,
   ApiKey,
   UserSession,
@@ -76,6 +80,8 @@ import { DeviceTrustService } from './device-trust.service';
 import { DeviceTrustController } from './device-trust.controller';
 import { BehavioralAnalyticsService } from './behavioral-analytics.service';
 import { BehavioralAnalyticsController } from './behavioral-analytics.controller';
+import { IdentityResolverAdapter } from './identity-resolver.adapter';
+import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 
 @Module({
   imports: [
@@ -192,6 +198,17 @@ import { BehavioralAnalyticsController } from './behavioral-analytics.controller
         };
       },
     },
+    // F013: bind JwtAuthGuard's IdentityResolverPort to the DB-backed
+    // adapter. Without this, the guard would fall back to JWT-embedded
+    // roles/permissions which can be stale by up to the access-token TTL.
+    IdentityResolverAdapter,
+    { provide: IDENTITY_RESOLVER_PORT, useExisting: IdentityResolverAdapter },
+    // F002: bind JwtAuthGuard's JwtRevocationPort to the Redis-backed
+    // adapter. The logout endpoint and admin "log me out everywhere"
+    // flows write to it; the guard checks it on every authenticated
+    // request to short-circuit revoked access tokens before their exp.
+    JwtRevocationAdapter,
+    { provide: JWT_REVOCATION_PORT, useExisting: JwtRevocationAdapter },
   ],
   exports: [
     AuthService,
@@ -212,6 +229,12 @@ import { BehavioralAnalyticsController } from './behavioral-analytics.controller
     DelegationService,
     DeviceTrustService,
     BehavioralAnalyticsService,
+    // Re-export the adapters + DI tokens so global guards bound at the
+    // IdentityModule level can resolve them.
+    IdentityResolverAdapter,
+    JwtRevocationAdapter,
+    IDENTITY_RESOLVER_PORT,
+    JWT_REVOCATION_PORT,
   ],
 })
 export class AuthModule {}

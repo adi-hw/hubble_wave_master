@@ -129,8 +129,12 @@ export class AuthController {
     @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response
   ) {
+    // F002: forward sessionId so AuthService can write the per-session
+    // revocation key — the live access token must stop working at logout,
+    // not at natural exp.
     const response = await this.authService.logout(
       req.user.userId,
+      req.user.sessionId,
       req.ip,
       req.headers['user-agent']
     );

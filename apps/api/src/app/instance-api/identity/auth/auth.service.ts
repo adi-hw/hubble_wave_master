@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenService } from './refresh-token.service';
 import { AuthEventsService } from './auth-events.service';
 import { PermissionResolverService } from './permission-resolver.service';
+import { RedisService } from '@hubblewave/redis';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +25,7 @@ export class AuthService {
     private readonly refreshTokenService: RefreshTokenService,
     private readonly authEventsService: AuthEventsService,
     private readonly permissionResolver: PermissionResolverService,
+    private readonly redis: RedisService,
   ) {}
 
   private async checkAccountLockout(user: User): Promise<void> {
@@ -186,8 +188,30 @@ export class AuthService {
     }
   }
 
-  async logout(userId: string, ipAddress?: string, userAgent?: string) {
+  /**
+   * F002: signature mirrors the canonical AuthService so the controller
+   * at `POST /identity/auth/logout` can forward the JWT's session_id
+   * straight through. Per-session revocation is written via RedisService
+   * directly (rather than reusing JwtRevocationAdapter from the canonical
+   * AuthModule, which is a separate Nest module not imported here), using
+   * the same key shape so a token revoked through either logout endpoint
+   * fails `JwtAuthGuard.isRevoked` check globally.
+   */
+  async logout(
+    userId: string,
+    sessionId: string | undefined,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
     await this.refreshTokenService.revokeAllUserTokens(userId);
+
+    if (sessionId) {
+      await this.redis.set(
+        `jwt:revoked:session:${sessionId}`,
+        String(Math.floor(Date.now() / 1000)),
+        24 * 60 * 60,
+      );
+    }
 
     await this.authEventsService.record({
       eventType: 'LOGOUT',
