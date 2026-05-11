@@ -61,38 +61,42 @@ function validateAccessCondition(
     }
   }
 
-  if (input.property !== undefined) {
-    if (typeof input.property !== 'string' || !SAFE_PROPERTY_NAME.test(input.property)) {
-      throw new BadRequestException(`Invalid property name in access condition: ${String(input.property)}`);
+  const property = input['property'];
+  if (property !== undefined) {
+    if (typeof property !== 'string' || !SAFE_PROPERTY_NAME.test(property)) {
+      throw new BadRequestException(`Invalid property name in access condition: ${String(property)}`);
     }
-    out.property = input.property;
+    out.property = property;
   }
 
-  if (input.operator !== undefined) {
-    if (typeof input.operator !== 'string' || !VALID_ACCESS_OPERATORS.has(input.operator as AccessOperator)) {
-      throw new BadRequestException(`Invalid operator in access condition: ${String(input.operator)}`);
+  const operator = input['operator'];
+  if (operator !== undefined) {
+    if (typeof operator !== 'string' || !VALID_ACCESS_OPERATORS.has(operator as AccessOperator)) {
+      throw new BadRequestException(`Invalid operator in access condition: ${String(operator)}`);
     }
-    out.operator = input.operator as AccessOperator;
+    out.operator = operator as AccessOperator;
   }
 
-  if (input.value !== undefined) {
-    out.value = sanitizeConditionValue(input.value);
+  if (input['value'] !== undefined) {
+    out.value = sanitizeConditionValue(input['value']);
   }
 
-  if (input.and !== undefined) {
-    if (!Array.isArray(input.and)) {
+  const andClauses = input['and'];
+  if (andClauses !== undefined) {
+    if (!Array.isArray(andClauses)) {
       throw new BadRequestException('and must be an array');
     }
-    out.and = input.and
+    out.and = andClauses
       .map((item) => validateAccessCondition(item, depth + 1))
       .filter((c): c is AccessConditionData => c !== null);
   }
 
-  if (input.or !== undefined) {
-    if (!Array.isArray(input.or)) {
+  const orClauses = input['or'];
+  if (orClauses !== undefined) {
+    if (!Array.isArray(orClauses)) {
       throw new BadRequestException('or must be an array');
     }
-    out.or = input.or
+    out.or = orClauses
       .map((item) => validateAccessCondition(item, depth + 1))
       .filter((c): c is AccessConditionData => c !== null);
   }
@@ -511,7 +515,13 @@ export class PropertyAclRepository implements PropertyAccessRuleRepository {
       conditions: rule.conditions as AccessConditionData | null,
       priority: rule.priority,
       isActive: rule.isActive,
-      maskingStrategy: 'NONE', // Default - can be extended with entity field
+      // F004: pass through the entity's maskingStrategy column (added by
+      // migration 1820000000000-access-policy-metadata.ts). Previously
+      // hardcoded to 'NONE', which silently downgraded customer-configured
+      // PARTIAL/FULL masking — a HIPAA blocker. Defensive ?? 'NONE' covers
+      // the entity-without-field case (only reachable in tests; the DB
+      // column is NOT NULL DEFAULT 'NONE').
+      maskingStrategy: rule.maskingStrategy ?? 'NONE',
     };
   }
 }

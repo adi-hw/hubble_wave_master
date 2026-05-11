@@ -1,0 +1,77 @@
+import type { Repository } from 'typeorm';
+import type { PropertyAccessRule, PropertyDefinition } from '@hubblewave/instance-db';
+import { PropertyAclRepository } from './property-acl.repository';
+import type { PropertyAccessRuleData } from './types';
+
+function buildEntity(overrides: Partial<PropertyAccessRule> = {}): PropertyAccessRule {
+  return {
+    id: 'rule-1',
+    propertyId: 'prop-1',
+    roleId: null,
+    groupId: null,
+    userId: null,
+    canRead: true,
+    canWrite: true,
+    maskingStrategy: 'NONE',
+    conditions: null,
+    priority: 100,
+    isActive: true,
+    createdBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ruleKey: null,
+    metadata: {},
+    ...overrides,
+  } as PropertyAccessRule;
+}
+
+function newRepo(): PropertyAclRepository {
+  const ruleRepo: Partial<Repository<PropertyAccessRule>> = {};
+  const propertyRepo: Partial<Repository<PropertyDefinition>> = {};
+  return new PropertyAclRepository(
+    ruleRepo as Repository<PropertyAccessRule>,
+    propertyRepo as Repository<PropertyDefinition>,
+  );
+}
+
+/**
+ * mapToData is private. Tests call it via the `any`-cast escape hatch so we
+ * can pin down the entity → DTO contract without spinning up a real TypeORM
+ * connection.
+ */
+function callMapToData(
+  repo: PropertyAclRepository,
+  entity: PropertyAccessRule,
+): PropertyAccessRuleData {
+  return (repo as unknown as { mapToData: (e: PropertyAccessRule) => PropertyAccessRuleData })
+    .mapToData(entity);
+}
+
+describe('PropertyAclRepository — mapToData (F004)', () => {
+  // F004: the entity declares masking_strategy (varchar(20) NOT NULL DEFAULT 'NONE')
+  // and migration 1820000000000-access-policy-metadata.ts adds the column to the
+  // DB. But mapToData previously hardcoded 'NONE', so customer-configured
+  // PARTIAL or FULL masking was silently downgraded to NONE — a HIPAA blocker.
+
+  it('preserves maskingStrategy "NONE" from entity to DTO', () => {
+    const dto = callMapToData(newRepo(), buildEntity({ maskingStrategy: 'NONE' }));
+    expect(dto.maskingStrategy).toBe('NONE');
+  });
+
+  it('preserves maskingStrategy "PARTIAL" from entity to DTO (F004)', () => {
+    const dto = callMapToData(newRepo(), buildEntity({ maskingStrategy: 'PARTIAL' }));
+    expect(dto.maskingStrategy).toBe('PARTIAL');
+  });
+
+  it('preserves maskingStrategy "FULL" from entity to DTO (F004)', () => {
+    const dto = callMapToData(newRepo(), buildEntity({ maskingStrategy: 'FULL' }));
+    expect(dto.maskingStrategy).toBe('FULL');
+  });
+
+  it('falls back to "NONE" if the entity value is undefined (defensive)', () => {
+    const entity = buildEntity();
+    delete (entity as unknown as Record<string, unknown>)['maskingStrategy'];
+    const dto = callMapToData(newRepo(), entity);
+    expect(dto.maskingStrategy).toBe('NONE');
+  });
+});
