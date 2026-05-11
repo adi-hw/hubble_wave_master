@@ -28,6 +28,19 @@ export const COLLECTION_DEFINITION_REPOSITORY = 'COLLECTION_DEFINITION_REPOSITOR
 
 interface CollectionAclRepo {
   find(options: { where: Record<string, unknown>; order?: Record<string, string> }): Promise<CollectionAccessRuleData[]>;
+  /**
+   * F023: when the repo can filter by principal in SQL, use this overload to
+   * avoid the fetch-all-then-JS-filter pattern. Returns the same shape as
+   * `find` but pre-filtered to rules whose principal matches the user
+   * (own userId, any of roleIds, any of groupIds, or the all-NULL
+   * "applies to everyone" rule).
+   */
+  findByCollectionAndUser?(
+    collectionId: string,
+    userId: string,
+    roleIds: string[],
+    groupIds: string[],
+  ): Promise<CollectionAccessRuleData[]>;
 }
 
 interface PropertyAclRepo {
@@ -94,9 +107,12 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(collectionId);
+    const rules = await this.getCollectionRules(collectionId, userContext);
 
     for (const rule of rules) {
+      // F023 defense: principal-filter happened in SQL when the repo
+      // supports it, but checkPrincipalMatch stays as a safety net for
+      // stub-only test repos and against a future repo-impl regression.
       if (!this.checkPrincipalMatch(rule, userContext)) {
         continue;
       }
@@ -145,7 +161,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(collectionId);
+    const rules = await this.getCollectionRules(collectionId, userContext);
 
     // F003: each matched rule contributes ONE branch. A user matching multiple
     // rules sees the UNION of records each rule grants — branches OR'd
@@ -413,7 +429,7 @@ export class AuthorizationService {
     }
 
     const userContext = this.buildUserContext(ctx);
-    const rules = await this.getCollectionRules(collectionId);
+    const rules = await this.getCollectionRules(collectionId, userContext);
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -644,14 +660,22 @@ export class AuthorizationService {
 
   private async getCollectionRules(
     collectionId: string,
+    user?: UserAccessContext,
   ): Promise<CollectionAccessRuleData[]> {
     if (!this.collectionAclRepo) {
       return [];
     }
 
-    // Canon §5: one instance per customer — no tenant scoping needed in the
-    // cache key. The process IS the tenant.
-    const cacheKey = `auth:collection-rules:${collectionId}`;
+    // F023: when the repo can filter by principal in SQL AND we have a user
+    // context, use the filtered path. Cache key includes a principal hash so
+    // per-user results don't poison entries across users. The unfiltered
+    // path (fallback) keeps the original per-collection cache key for
+    // backward-compat with test stubs that only implement find().
+    const useSqlFilter = !!(user && this.collectionAclRepo.findByCollectionAndUser);
+    const cacheKey = useSqlFilter
+      ? `auth:collection-rules:${collectionId}:${this.principalCacheKey(user!)}`
+      // Canon §5: one instance per customer — no tenant scoping needed.
+      : `auth:collection-rules:${collectionId}`;
 
     if (this.cache) {
       const cached = await this.cache.get<CollectionAccessRuleData[]>(cacheKey);
@@ -660,16 +684,35 @@ export class AuthorizationService {
       }
     }
 
-    const rules = await this.collectionAclRepo.find({
-      where: { collectionId, isActive: true },
-      order: { priority: 'ASC' },
-    });
+    const rules = useSqlFilter
+      ? await this.collectionAclRepo.findByCollectionAndUser!(
+          collectionId,
+          user!.userId,
+          user!.roleIds,
+          [...user!.groupIds, ...user!.teamIds],
+        )
+      : await this.collectionAclRepo.find({
+          where: { collectionId, isActive: true },
+          order: { priority: 'ASC' },
+        });
 
     if (this.cache) {
       await this.cache.set(cacheKey, rules, this.CACHE_TTL);
     }
 
     return rules;
+  }
+
+  /**
+   * Stable hash of a user's principal identity for use as a cache key
+   * component (F023). Sorts each id list before joining so two contexts
+   * with the same principals but different array order hash identically.
+   */
+  private principalCacheKey(user: UserAccessContext): string {
+    const roles = [...user.roleIds].sort().join(',');
+    const groups = [...user.groupIds].sort().join(',');
+    const teams = [...user.teamIds].sort().join(',');
+    return `${user.userId}|${roles}|${groups}|${teams}`;
   }
 
   private async getPropertyRules(
