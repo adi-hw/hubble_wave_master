@@ -240,3 +240,130 @@ describe('AuthorizationService — resolution failure modes', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('AuthorizationService — multi-rule row-level predicates (F003)', () => {
+  // F003: a user matching multiple row-level rules should see the UNION of
+  // records each rule grants, not the intersection. Predicates WITHIN one
+  // rule's conditions are still AND'd; predicates ACROSS rules are OR'd.
+
+  const ROLE_ANALYST = '33333333-3333-3333-3333-333333333333';
+  const TEAM_ALPHA = '44444444-4444-4444-4444-444444444444';
+
+  function buildMultiRuleContext(): RequestContext {
+    return {
+      userId: 'user-1',
+      roles: [ROLE_VIEWER, ROLE_ANALYST],
+      permissions: [],
+      isAdmin: false,
+      attributes: {
+        roleIds: [ROLE_VIEWER, ROLE_ANALYST],
+        groupIds: [TEAM_ALPHA],
+      },
+    } as unknown as RequestContext;
+  }
+
+  it('returns flat predicates when exactly one rule matches (single-rule AND semantic)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+      ],
+    });
+
+    const predicates = await service.getSafeRowLevelPredicatesForCollection(
+      buildMultiRuleContext(),
+      COLLECTION_ID,
+      'read',
+    );
+
+    expect(predicates).toHaveLength(1);
+    expect(predicates[0].kind).toBe('leaf');
+  });
+
+  it('wraps multi-rule predicates in a single or-branch (F003)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-own',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+        buildReadRule({
+          id: 'rule-team',
+          roleId: ROLE_ANALYST,
+          conditions: { property: 'team_id', operator: 'in', value: '@teams' },
+        }),
+      ],
+    });
+
+    const predicates = await service.getSafeRowLevelPredicatesForCollection(
+      buildMultiRuleContext(),
+      COLLECTION_ID,
+      'read',
+    );
+
+    expect(predicates).toHaveLength(1);
+    expect(predicates[0].kind).toBe('or');
+    if (predicates[0].kind === 'or') {
+      expect(predicates[0].branches).toHaveLength(2);
+    }
+  });
+
+  it('emits SQL with OR between branches, not AND, end-to-end (F003)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-own',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+        buildReadRule({
+          id: 'rule-team',
+          roleId: ROLE_ANALYST,
+          conditions: { property: 'team_id', operator: 'in', value: '@teams' },
+        }),
+      ],
+    });
+
+    const { clauses } = await service.buildCollectionRowLevelClause(
+      buildMultiRuleContext(),
+      COLLECTION_ID,
+      'read',
+      't',
+    );
+
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0]).toMatch(/\bOR\b/);
+    // The outer clause must be an OR, not an AND, of the two rules' branches.
+    // (Inner AND within a single branch's multi-property condition would still
+    // be valid; this assertion just guards against the top-level being AND.)
+    expect(clauses[0]).toContain('owner_id');
+    expect(clauses[0]).toContain('team_id');
+  });
+
+  it('returns [] when any matched rule grants unconditionally', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-restrictive',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+        buildReadRule({
+          id: 'rule-unconditional',
+          roleId: ROLE_ANALYST,
+          conditions: null,
+        }),
+      ],
+    });
+
+    const predicates = await service.getSafeRowLevelPredicatesForCollection(
+      buildMultiRuleContext(),
+      COLLECTION_ID,
+      'read',
+    );
+
+    expect(predicates).toEqual([]);
+  });
+});
