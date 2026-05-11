@@ -141,7 +141,16 @@ export class AuthorizationService {
 
     const userContext = this.buildUserContext(ctx);
     const rules = await this.getCollectionRules(collectionId);
-    const predicates: SafePredicate[] = [];
+
+    // F003: each matched rule contributes ONE branch. A user matching multiple
+    // rules sees the UNION of records each rule grants — branches OR'd
+    // together. Predicates WITHIN a single rule's conditions are still AND'd
+    // (the rule's "you can read records matching THIS specific condition").
+    //
+    // Flat-pushing across rules (as the previous implementation did) caused
+    // the caller's `clauses.forEach((c) => qb.andWhere(c))` to AND the rules
+    // together, returning the intersection rather than the union.
+    const branches: SafePredicate[][] = [];
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
@@ -152,17 +161,44 @@ export class AuthorizationService {
         continue;
       }
 
-      // Extract safe predicates from conditions
-      if (rule.conditions) {
-        const rulePredicates = this.extractSafePredicatesFromCondition(
-          rule.conditions,
-          userContext,
-        );
-        predicates.push(...rulePredicates);
+      if (!rule.conditions) {
+        // Unconditional grant — no row restriction wins over any conditional
+        // rule. Returning [] removes the WHERE filter, exposing all records
+        // the operation-level check already permitted.
+        return [];
+      }
+
+      const rulePredicates = this.extractSafePredicatesFromCondition(
+        rule.conditions,
+        userContext,
+      );
+      if (rulePredicates.length > 0) {
+        branches.push(rulePredicates);
       }
     }
 
-    return predicates;
+    if (branches.length === 0) {
+      // No matching rule contributed predicates. The operation-level gate
+      // (canAccessCollection / ensureCollectionAccess) is the caller's
+      // responsibility — this method returns [] for "no row filter to add."
+      return [];
+    }
+
+    if (branches.length === 1) {
+      // Single-rule case: emit predicates flat. The caller AND's them via
+      // .andWhere() which is the correct semantic for one rule's
+      // multi-predicate condition.
+      return branches[0];
+    }
+
+    // Multi-rule case (F003 fix): emit a single 'or' predicate whose branches
+    // each hold one rule's predicates. AbacService.renderPredicate (and
+    // buildPredicateClauseInternal as a fallback) produce
+    // `((A AND B) OR (C AND D))` SQL — the correct UNION semantic.
+    return [{
+      kind: 'or',
+      branches,
+    }];
   }
 
   /**
