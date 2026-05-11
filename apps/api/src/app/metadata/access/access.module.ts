@@ -13,6 +13,7 @@ import {
   Group,
   User,
 } from '@hubblewave/instance-db';
+import { ACCESS_AUDIT_PORT } from '@hubblewave/authorization';
 import { AccessRuleService } from './services/access-rule.service';
 import { AccessAuditService } from './services/access-audit.service';
 import { BreakGlassService } from './services/break-glass.service';
@@ -44,6 +45,13 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
     AccessIngestService,
     CollectionAccessGuard,
     PropertyAccessInterceptor,
+    // F021: bind AccessAuditService as the AccessAuditPort implementation
+    // so AuthorizationService (in libs/authorization) can emit admin-bypass
+    // audit rows via DI without depending on apps/api types.
+    {
+      provide: ACCESS_AUDIT_PORT,
+      useExisting: AccessAuditService,
+    },
   ],
   exports: [
     AccessRuleService,
@@ -52,6 +60,7 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
     AccessIngestService,
     CollectionAccessGuard,
     PropertyAccessInterceptor,
+    ACCESS_AUDIT_PORT,
   ],
 })
 export class AccessModule {}

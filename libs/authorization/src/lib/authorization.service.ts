@@ -15,6 +15,7 @@ import {
 } from './types';
 import { AbacService, SafePredicate, LeafPredicate } from './abac.service';
 import { PolicyCompilerService } from './policy-compiler.service';
+import { ACCESS_AUDIT_PORT, type AccessAuditPort } from './audit-port';
 
 export interface RowLevelClause {
   clauses: string[];
@@ -59,6 +60,8 @@ export class AuthorizationService {
     private readonly policyCompiler: PolicyCompilerService,
     @Optional() @Inject(COLLECTION_DEFINITION_REPOSITORY)
     private readonly collectionDefinitionRepo: CollectionDefinitionLookupRepo | null = null,
+    @Optional() @Inject(ACCESS_AUDIT_PORT)
+    private readonly accessAudit: AccessAuditPort | null = null,
   ) {}
 
   // ============================================================================
@@ -80,6 +83,7 @@ export class AuthorizationService {
   ): Promise<boolean> {
     // Admin bypass
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, collectionId, operation);
       return true;
     }
 
@@ -132,6 +136,7 @@ export class AuthorizationService {
   ): Promise<SafePredicate[]> {
     // Admin bypass - no row restrictions
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, collectionId, `${operation}:row-filter`);
       return [];
     }
 
@@ -213,6 +218,7 @@ export class AuthorizationService {
   ): Promise<RowLevelClause> {
     // Admin bypass
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, collectionId, `${operation}:row-clause`);
       return { clauses: [], params: {} };
     }
 
@@ -247,6 +253,7 @@ export class AuthorizationService {
   ): Promise<AuthorizedPropertyMeta[]> {
     // Admin bypass - full access
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, collectionId, 'fields:read');
       return fields.map((field) => ({
         ...field,
         canRead: true,
@@ -360,6 +367,9 @@ export class AuthorizationService {
   ): Promise<Record<string, unknown>> {
     // Admin bypass - no masking
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, 'record', 'mask', {
+        recordId: record['id'] != null ? String(record['id']) : null,
+      });
       return record;
     }
 
@@ -392,6 +402,9 @@ export class AuthorizationService {
   ): Promise<boolean> {
     // Admin bypass
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, collectionId, operation, {
+        recordId: record['id'] != null ? String(record['id']) : null,
+      });
       return true;
     }
 
@@ -446,6 +459,7 @@ export class AuthorizationService {
     operation: CollectionOperation,
   ): Promise<boolean> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, operation);
       return true;
     }
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
@@ -461,6 +475,7 @@ export class AuthorizationService {
     operation: CollectionOperation,
   ): Promise<void> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, operation);
       return;
     }
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
@@ -476,6 +491,7 @@ export class AuthorizationService {
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, `${operation}:row-filter`);
       return [];
     }
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
@@ -492,6 +508,7 @@ export class AuthorizationService {
     tableAlias = 't',
   ): Promise<RowLevelClause> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, `${operation}:row-clause`);
       return { clauses: [], params: {} };
     }
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
@@ -507,6 +524,7 @@ export class AuthorizationService {
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, 'fields:read');
       return fields.map((field) => ({
         ...field,
         canRead: true,
@@ -565,6 +583,9 @@ export class AuthorizationService {
     record: Record<string, unknown>,
   ): Promise<boolean> {
     if (ctx.isAdmin) {
+      this.auditAdminBypass(ctx, tableName, operation, {
+        recordId: record['id'] != null ? String(record['id']) : null,
+      });
       return true;
     }
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
@@ -757,6 +778,37 @@ export class AuthorizationService {
     return AuthorizationService.MASK_SEVERITY[a] <= AuthorizationService.MASK_SEVERITY[b]
       ? a
       : b;
+  }
+
+  /**
+   * F021: emit an audit row for an admin bypass site. Fire-and-forget —
+   * never throws. The port's implementation is expected to be best-effort
+   * (matches the AccessAuditService.logAccess posture); a failing write
+   * cannot regress the bypass return value (canon §10 audit must not
+   * compromise runtime correctness).
+   *
+   * Caller is responsible for only invoking this on admin paths — the
+   * helper does not re-check ctx.isAdmin.
+   */
+  private auditAdminBypass(
+    ctx: RequestContext,
+    resource: string,
+    action: string,
+    context?: Record<string, unknown>,
+  ): void {
+    if (!this.accessAudit) return;
+    try {
+      this.accessAudit.logAdminBypass({
+        userId: ctx.userId,
+        resource,
+        action,
+        context,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Admin bypass audit emit failed for user=${ctx.userId} resource=${resource} action=${action}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private checkOperationPermission(
