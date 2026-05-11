@@ -75,6 +75,7 @@ export class SearchQueryService {
         page: request.page || 1,
         hits: [],
         facet_counts: [],
+        pagination_approximate: false,
       };
     }
 
@@ -124,19 +125,22 @@ export class SearchQueryService {
 
     const trimmedHits = await this.trimUnauthorized(request.context, mergedHits, sources);
     const filteredCount = mergedHits.length - trimmedHits.length;
-    const facetCounts = this.resolveFacetCounts(
-      mode,
-      facets,
-      trimmedHits,
-      filteredCount,
-      response?.facet_counts || [],
-    );
+    const facetCounts = this.resolveFacetCounts(mode, facets, trimmedHits, filteredCount);
+    // F136-minimal: `out_of` collapses to the post-trim count so callers
+    // cannot infer the existence/volume of unauthorized records by diffing
+    // `found` against the lexical engine's corpus total. Pagination is now
+    // approximate — a page-size of N may return fewer than N rows when
+    // trimming occurs. `pagination_approximate` signals that the response
+    // shape is not strictly comparable across pages. The full fix (push
+    // authz into Typesense/vector queries so the engine never returns
+    // unauthorized rows in the first place) is tracked as F136-full.
     const result = {
       found: trimmedHits.length,
       out_of: trimmedHits.length,
       page: response?.page || request.page || 1,
       hits: trimmedHits,
       facet_counts: facetCounts,
+      pagination_approximate: filteredCount > 0,
     };
 
     await this.auditSearch(request, sources, {
@@ -360,18 +364,21 @@ export class SearchQueryService {
   }
 
   private resolveFacetCounts(
-    mode: SearchMode,
+    _mode: SearchMode,
     facets: FacetConfig[],
     hits: SearchHit[],
-    filteredCount: number,
-    typesenseFacetCounts: unknown[],
+    _filteredCount: number,
   ) {
     if (!facets.length) {
       return [];
     }
-    if (mode === 'lexical' && filteredCount === 0) {
-      return typesenseFacetCounts;
-    }
+    // F136-minimal: facet aggregates always count over the trimmed
+    // (authorized) hits for this page. The lexical engine reports facet
+    // counts across the entire corpus match-set, which leaks the
+    // existence of unauthorized records even when the current page
+    // trims zero. Recomputing from trimmedHits is page-local — less
+    // accurate but never a leak. The full fix (corpus-scoped facets
+    // with authz pushed into the engine) is tracked as F136-full.
     return this.buildFacetCounts(hits, facets);
   }
 
