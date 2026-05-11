@@ -188,6 +188,10 @@ RBAC + ABAC + row-level + field-level rules.
 There are no shortcuts.
 Ever.
 
+**Resolution model:** §28 specifies the operational semantics — precedence
+matrices, deny-wins, row-gating, masking direction, explainability,
+admin-bypass commitment. §9 is the principle; §28 is the contract.
+
 **Implementation status (post-W1.2 + W1.5 + W5.D):**
 - Global guard wiring (W1.2): EVERY NestJS service runs JwtAuthGuard +
   RolesGuard + PermissionsGuard via APP_GUARD providers. `@Roles()` /
@@ -586,6 +590,26 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-11 (W2 — Authorization Resolution Model): new §28
+  formalizing the authorization model. Publishes (a) the field-decision
+  precedence matrix (7 levels: field-explicit deny/allow → field-wildcard
+  deny/allow → collection deny/allow → default deny), (b) the
+  record-decision precedence matrix (3 levels), (c) the five hard
+  conflict-resolution rules (deny wins at same specificity; specificity
+  ranks beat effect; field overrides collection; missing policy = deny;
+  positive grants UNION, restrictions INTERSECT), (d) masking direction
+  (DENY > MASK > ALLOW; MAX of severity across matching rules — inverts
+  the pre-§28 helper which picked least-restrictive), (e) the row-gating
+  rule (record visibility gates field evaluation), (f) admin-bypass
+  commitment (no silent return-true; admin uses seed policies through
+  the same evaluator; F021 is the audit interim, removal is owed),
+  (g) explainability mandate (every decision returns provenance:
+  matched level + rule + principal + fallback chain), (h) performance
+  posture explicitly EXCLUDING pre-compiled permission graphs as
+  premature, (i) deferred items (application-layer scope, unified
+  policy table, materialized permissions). §28 is the contract; F006
+  and a follow-up wildcard-rules PR are the code that lands it.
+
 - 2026-05-10 (W1 — Stop-the-Bleeding): all 14 W1-owned audit findings
   closed (F011, F014, F027, F053, F073, F088, F089, F093, F111, F124,
   F125, F126, F127, F139, F141). 13 commits, 148 new W1-specific spec
@@ -682,6 +706,115 @@ The UI Builder achieves full feature parity with ServiceNow UI Builder: page com
 Eat-our-own-dog-food: every OOTB workspace shipped by HubbleWave is built via the same UI Builder customers use. If our own product can't be built on the customization layer, the layer isn't real.
 
 Spec reference: `docs/superpowers/specs/2026-05-09-platform-architecture-design.md` §4.1 Workspaces + UI Builder.
+
+---
+
+## 28. Authorization Resolution Model (canon §28 NEW, 2026-05-11)
+
+This section makes §9 ("Authorization Is Centralized") **operationally specific**. §9 says shortcuts are forbidden; §28 says exactly how rules combine, what wins, and what happens when no rule matches.
+
+### 28.1 Two evaluation surfaces
+
+The platform answers two distinct authorization questions, in this fixed order:
+
+1. **Record visibility** — "can user U perform operation O on a specific record R of collection C?" Evaluated against `CollectionAccessRule` rows (with row-conditions).
+2. **Field visibility** — "for a record the user can already see, what is the effect on field F?" Evaluated against `PropertyAccessRule` rows (which may themselves carry row-conditions).
+
+**Record visibility gates field evaluation.** If the record-level decision denies, field policies are NEVER consulted on that record. Field decisions are only meaningful on records that already passed record-level checks. This is a hard rule, not a performance optimization.
+
+### 28.2 Field-decision precedence (the canonical matrix)
+
+For each (user, field, record) tuple, the evaluator walks levels 1→7 and **the first matching level decides**:
+
+| Priority | Rule shape | Effect |
+|---------:|---|---|
+| 1 | Field-explicit rule matching principal, field, and (if present) row-condition | `deny` |
+| 2 | Field-explicit rule matching principal, field, and (if present) row-condition | `allow` |
+| 3 | Field-wildcard rule (propertyId IS NULL) matching principal and collection | `deny` |
+| 4 | Field-wildcard rule (propertyId IS NULL) matching principal and collection | `allow` |
+| 5 | Collection rule (CollectionAccessRule.canRead/etc.) matching principal | `deny` |
+| 6 | Collection rule matching principal | `allow` |
+| 7 | (none of the above matched) | `deny` |
+
+Within a level, **deny rules are evaluated before allow rules at the same level**. If multiple rules at the same level-and-effect match the user, the decision is unchanged (the effect is uniform across them).
+
+### 28.3 Record-decision precedence
+
+For each (user, operation, record) tuple, the evaluator walks levels 1→3:
+
+| Priority | Rule shape | Effect |
+|---------:|---|---|
+| 1 | Collection rule matching principal and row-condition (if any) | `deny` |
+| 2 | Collection rule matching principal and row-condition (if any) | `allow` |
+| 3 | (none matched) | `deny` |
+
+A user matching multiple `allow` rules at level 2 sees the **UNION** of those rules' row-conditions (`OR`-combined). A user matching any `deny` at level 1 sees no records the deny matches, regardless of allow rules. This is the §28.4 deny-wins rule applied at the row level.
+
+### 28.4 Conflict resolution — the five hard rules
+
+The platform makes these guarantees. They are not configuration; they are platform semantics:
+
+1. **Deny wins at the same specificity.** If two rules match a user at the same level and one is `deny`, the decision is `deny`.
+2. **Specificity ranks beat effect.** Wildcards never override explicit field rules (a wildcard allow does not unblock an explicit field deny; but a wildcard deny does not block an explicit field allow either — the explicit allow at level 2 fires first).
+3. **Field rules override collection rules.** A field-level allow on `salary` is sufficient even if the collection-level decision is more restrictive — provided record visibility (§28.1) is satisfied.
+4. **Missing policy = deny.** Level 7 (and level 3 for record decisions) is `deny`. There is no "default allow because nothing matched."
+5. **Positive grants UNION; restrictions INTERSECT.** When multiple rules at the SAME level all grant access, the grants combine (most permissive across read/write). When restrictions (`deny`, masking severity) co-apply, the most restrictive wins.
+
+### 28.5 Masking direction
+
+When a field's level-2 (or level-4) `allow` rule has a `maskingStrategy ∈ {NONE, PARTIAL, FULL}`, multiple matching allow rules combine by **MAX of severity**:
+
+- Severity ordering: `NONE` (0) < `PARTIAL` (1) < `FULL` (2)
+- Effective masking strategy = the highest severity across matching rules
+
+Rationale: roles compose conjunctively. A user with two roles — one that masks SSN partially, one that does not — sees the partial mask, not the unmasked value. The more restrictive role's intent must hold. This applies HIPAA's "minimum necessary" principle at the field level.
+
+**This is a deliberate inversion of the pre-§28 helper that picked least-restrictive masking.** Implementations from before this amendment landed used least-restrictive; F006 + the §28 landing migrates the helper to most-restrictive.
+
+The effective outcome of a field decision is one of three:
+
+- `ALLOW` — return the raw value
+- `MASK` (with strategy) — return the masked value via `maskCollectionRecord`
+- `DENY` — omit the field entirely from the response
+
+These three are first-class outcomes, not bolted-on layers.
+
+### 28.6 No silent admin bypass
+
+Admin-role users go through the same evaluator. They are not short-circuited to `return true`. Instead, the platform ships an `admin` policy at install time that grants broad allow rules across system collections. Customers who tighten admin access do so by editing those policies, not by changing the evaluator.
+
+**Implementation status (pre-§28 amendment):** F021 added an audit row on every admin bypass site. The bypass still exists. Removing the bypass and replacing with seed policies is owed to a follow-up wave; the canon now binds the destination.
+
+### 28.7 Explainability is mandatory
+
+Every authorization decision MUST be able to produce its provenance on request:
+
+```json
+{
+  "effect": "deny",
+  "matchedLevel": 3,
+  "matchedRuleId": "uuid",
+  "matchedPrincipal": "role-uuid",
+  "fallbackChain": ["level-1: no match", "level-2: no match", "level-3: deny matched"]
+}
+```
+
+The provenance object is attached to audit log rows (F021) and exposed via an `/authorization/explain` endpoint for admin tooling. The explainability output is part of the platform contract — auditors will ask "why did user X get access to record Y" and the platform must answer without engineer-level debugging.
+
+### 28.8 Performance posture
+
+- Caches are SQL-pushdown + rule-cache (F023, F025). Decisions stay sub-100ms at pilot scale.
+- **Compiled effective permission graphs (Cedar/OPA-style materialization) are NOT a §28 commitment.** They are a future option if measured cache pressure warrants them. Premature pre-compilation is explicitly excluded from this canon section.
+
+### 28.9 What §28 does NOT include (deferred)
+
+The following are committed in spirit but NOT bound by §28 today:
+
+- **Application-layer authorization scope** — packs are customization boundaries, not security boundaries. Adding cross-pack trust grants is W4/W5 work and gets its own canon amendment when it lands.
+- **Unified `security_policy` mega-table** — the two-table split (`CollectionAccessRule` + `PropertyAccessRule`) is canonical for now. Unification is only acceptable if real duplication emerges in the evaluator.
+- **Pre-computed materialized permissions** — see §28.8.
+
+Spec reference: this section + the in-flight remediation PRs (F003, F004, F005, F006, F021, F023, F024, F025) collectively implement §28. The remediation backlog tracks each.
 
 ---
 
