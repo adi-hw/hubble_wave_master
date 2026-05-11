@@ -219,3 +219,32 @@ No issues found.
 ---
 
 **End of F004 plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Implemented at `5ff14ca`.
+
+### What landed
+
+- `libs/authorization/src/lib/property-acl.repository.ts::mapToData` line 514 now reads `rule.maskingStrategy ?? 'NONE'` instead of hardcoded `'NONE'`.
+- Same file's `validateAccessCondition` helper converted from `input.X` to `input['X']` access on its `Record<string, unknown>` input — a latent strict-mode violation that surfaced once the new spec triggered source compilation.
+- New `libs/authorization/src/lib/property-acl.repository.spec.ts` covers NONE/PARTIAL/FULL passthrough + defensive undefined fallback.
+
+### Verification
+
+- libs/authorization tests: **33/33 pass** (29 existing + 4 new)
+- apps/api tests: **457/457 pass** (no regressions)
+- All 6 architectural scanners green
+- apps/api production build green
+
+### Next
+
+- F005 — default permissions flip to deny (big blast radius, needs migration plan)
+- F006 — explicit deny rules in ACL model
+- F021 — admin bypass audit row
+- F023 — push principal filter into SQL (perf)
+- F091/F102/F136/F146 — application-layer authz fixes
+
+See PLATFORM-ROADMAP.md Phase 2 W2 for full sequencing.
