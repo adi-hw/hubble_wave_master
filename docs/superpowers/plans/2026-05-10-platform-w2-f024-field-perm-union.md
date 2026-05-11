@@ -378,3 +378,32 @@ No issues found.
 ---
 
 **End of F024 plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Implemented at `ec22290`.
+
+### What landed
+
+- `libs/authorization/src/lib/authorization.service.ts`:
+  - `getAuthorizedFieldsForCollection` rewritten: first-match-with-break replaced by iterate-and-combine
+  - New private `leastRestrictiveMask` helper + static `MASK_SEVERITY` map (NONE=0, PARTIAL=1, FULL=2)
+- `libs/authorization/src/lib/authorization.service.spec.ts`: 5 new tests covering F024 multi-rule semantics
+
+### Verification
+
+- libs/authorization tests: **29/29 pass** (24 existing + 5 new)
+- apps/api tests: **457/457 pass** (2 skipped, 0 regressions)
+- All 6 architectural scanners green
+- apps/api production build green
+
+### Next
+
+- F005 — flip default permissions to deny (would affect every field with no matching rule)
+- F004 — verify masking is actually enforced end-to-end (the rule data has the strategy; need to ensure it's applied at read time)
+- F006 — explicit deny rules in ACL model (allows policies like "guest sees nothing even if a default rule grants")
+- F021 — admin bypass audit row (canon §10 compliance)
+- F023 — push collection-rule principal filter into SQL (perf, not correctness)
+- See PLATFORM-ROADMAP.md Phase 2 W2 for full sequencing
