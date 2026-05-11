@@ -631,3 +631,94 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
     expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => {
+  // F023: when the repo implements findByCollectionAndUser, the service
+  // pushes the principal filter into SQL. Test stubs that only implement
+  // find() fall back to per-collection fetch + JS filter.
+
+  function buildSqlFilteredRepo(rules: CollectionAccessRuleData[]) {
+    return {
+      find: jest.fn().mockResolvedValue(rules),
+      findByCollectionAndUser: jest.fn().mockResolvedValue(rules),
+    };
+  }
+
+  it('uses findByCollectionAndUser when the repo provides it', async () => {
+    const repo = buildSqlFilteredRepo([buildReadRule()]);
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      repo,
+      { find: jest.fn().mockResolvedValue([]) },
+      null,
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+
+    await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(repo.findByCollectionAndUser).toHaveBeenCalledTimes(1);
+    expect(repo.findByCollectionAndUser).toHaveBeenCalledWith(
+      COLLECTION_ID,
+      'user-1',
+      [ROLE_VIEWER],
+      [],
+    );
+    expect(repo.find).not.toHaveBeenCalled();
+  });
+
+  it('falls back to find when the repo lacks findByCollectionAndUser (stub compat)', async () => {
+    const stubRepo = { find: jest.fn().mockResolvedValue([buildReadRule()]) };
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      stubRepo,
+      { find: jest.fn().mockResolvedValue([]) },
+      null,
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+
+    await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(stubRepo.find).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes groupIds + teamIds combined to the SQL filter', async () => {
+    const repo = buildSqlFilteredRepo([]);
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      repo,
+      { find: jest.fn().mockResolvedValue([]) },
+      null,
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+
+    const ctx = {
+      userId: 'user-1',
+      roles: [ROLE_VIEWER],
+      permissions: [],
+      isAdmin: false,
+      attributes: {
+        roleIds: [ROLE_VIEWER],
+        groupIds: ['group-a'],
+        teamIds: ['team-b'],
+      },
+    } as unknown as RequestContext;
+
+    await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
+
+    expect(repo.findByCollectionAndUser).toHaveBeenCalledWith(
+      COLLECTION_ID,
+      'user-1',
+      [ROLE_VIEWER],
+      expect.arrayContaining(['group-a', 'team-b']),
+    );
+  });
+});
