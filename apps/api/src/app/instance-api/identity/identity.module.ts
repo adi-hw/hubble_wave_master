@@ -24,6 +24,7 @@ import { SsoConfigController } from './auth/sso-config.controller';
 import { RefreshTokenService } from './auth/refresh-token.service';
 import { AuthEventsService } from './auth/auth-events.service';
 import { PermissionResolverService } from './auth/permission-resolver.service';
+import { RedisModule } from '@hubblewave/redis';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { PermissionResolverService } from './auth/permission-resolver.service';
       GroupMember,
     ]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    RedisModule.forRoot(),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

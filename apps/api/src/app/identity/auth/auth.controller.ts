@@ -138,8 +138,13 @@ export class AuthController {
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
+    // F002: pass sessionId through so AuthService can write the
+    // per-session revocation key to Redis. Without it, only refresh
+    // tokens are revoked and the live access token keeps working until
+    // its natural exp.
     const response = await this.authService.logout(
       req.user.userId,
+      req.user.sessionId,
       req.ip,
       req.headers['user-agent'],
     );

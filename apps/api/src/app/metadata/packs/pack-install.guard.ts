@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '@hubblewave/auth-guard';
-import { lastValueFrom } from 'rxjs';
+import { isObservable, lastValueFrom } from 'rxjs';
 
 type PackAuthContext = {
   userId: string;
@@ -42,14 +42,21 @@ export class PackInstallGuard implements CanActivate {
       return true;
     }
 
-    const result = this.jwtAuthGuard.canActivate(context);
+    // JwtAuthGuard.canActivate returns Promise<boolean> after the
+    // F002/F013/F016 fix introduced async identity + revocation lookups.
+    // The widening for boolean / Observable preserves tolerance to the
+    // broader CanActivate contract, but the common path is a single await.
+    const result = this.jwtAuthGuard.canActivate(context) as
+      | boolean
+      | Promise<boolean>
+      | ReturnType<JwtAuthGuard['canActivate']>;
     if (typeof result === 'boolean') {
       return result;
     }
-    if (result && typeof (result as Promise<boolean>).then === 'function') {
-      return result as Promise<boolean>;
+    if (isObservable(result)) {
+      return lastValueFrom(result) as Promise<boolean>;
     }
-    return lastValueFrom(result);
+    return result;
   }
 
   private parseBearer(authHeader?: string): string | null {

@@ -14,6 +14,7 @@ import { SessionCacheService } from './session-cache.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 import { RedisService } from '@hubblewave/redis';
 import { User, PasswordHistory, AuthSettings } from '@hubblewave/instance-db';
+import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 
 const mockUserRepository = {
   findOne: jest.fn(),
@@ -87,6 +88,12 @@ const mockRedisService = {
   del: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockJwtRevocationAdapter = {
+  isRevoked: jest.fn().mockResolvedValue(false),
+  revokeSession: jest.fn().mockResolvedValue(undefined),
+  revokeAllUserTokens: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('AuthService', () => {
   let service: AuthService;
   let validPasswordHash: string;
@@ -113,6 +120,7 @@ describe('AuthService', () => {
         { provide: PasswordValidationService, useValue: mockPasswordValidationService },
         { provide: PermissionResolverService, useValue: mockPermissionResolver },
         { provide: RedisService, useValue: mockRedisService },
+        { provide: JwtRevocationAdapter, useValue: mockJwtRevocationAdapter },
       ],
     }).compile();
 
@@ -382,12 +390,28 @@ describe('AuthService', () => {
 
   describe('logout', () => {
     it('revokes all refresh tokens for the user and records the event', async () => {
-      await service.logout('user-123', '127.0.0.1', 'Jest Test');
+      await service.logout('user-123', undefined, '127.0.0.1', 'Jest Test');
 
       expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
       expect(mockAuthEventsService.record).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: 'LOGOUT', userId: 'user-123' }),
       );
+    });
+
+    it('revokes the live access-token session in Redis when sessionId is present (F002)', async () => {
+      await service.logout('user-123', 'sess-xyz', '127.0.0.1', 'Jest Test');
+
+      expect(mockJwtRevocationAdapter.revokeSession).toHaveBeenCalledWith('sess-xyz');
+      // Refresh-token revocation must still fire — the two are
+      // independent revocation surfaces.
+      expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
+    });
+
+    it('skips the access-token session revoke when no sessionId is on the JWT (F002)', async () => {
+      await service.logout('user-123', undefined, '127.0.0.1', 'Jest Test');
+
+      expect(mockJwtRevocationAdapter.revokeSession).not.toHaveBeenCalled();
+      expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
     });
   });
 });

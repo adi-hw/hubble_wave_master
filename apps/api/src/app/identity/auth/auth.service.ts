@@ -16,6 +16,7 @@ import { AuthEventsService } from './auth-events.service';
 import { PasswordValidationService } from './password-validation.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 import { RedisService } from '@hubblewave/redis';
+import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 
 /**
  * Per-user MFA verification rate limit: 5 attempts per 5 minutes.
@@ -76,6 +77,7 @@ export class AuthService {
     private readonly permissionResolver: PermissionResolverService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    private readonly jwtRevocationAdapter: JwtRevocationAdapter,
   ) {}
 
   /**
@@ -378,8 +380,24 @@ export class AuthService {
     }
   }
 
-  async logout(userId: string, ipAddress?: string, userAgent?: string) {
+  async logout(
+    userId: string,
+    sessionId: string | undefined,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    // Refresh-token revocation (existing behavior — required to stop
+    // the client from minting fresh access tokens after logout).
     await this.refreshTokenService.revokeAllUserTokens(userId);
+
+    // F002: revoke the live access token's session too. Without this,
+    // a captured access token would remain valid until exp even though
+    // the user clicked "log out". The Redis revocation key has a TTL
+    // longer than any reasonable access-token lifetime, so the check
+    // outlives every token it could invalidate.
+    if (sessionId) {
+      await this.jwtRevocationAdapter.revokeSession(sessionId);
+    }
 
     await this.authEventsService.record({
         eventType: 'LOGOUT',
