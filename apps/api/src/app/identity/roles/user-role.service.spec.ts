@@ -5,18 +5,30 @@ import {
   RolePermission,
   UserRole,
 } from '@hubblewave/instance-db';
+import type { QueryRunner } from 'typeorm';
 
 /**
  * The user-role assignment path writes a UserRole row, which fires the
  * TypeORM `@AfterInsert`/`@AfterUpdate`/`@AfterRemove` hooks. Those hooks
- * delegate to IdentityCacheInvalidationSubscriber, which publishes the
- * cross-service event. These tests exercise that subscriber directly —
- * driving it with synthetic InsertEvent/UpdateEvent/RemoveEvent objects so
- * we can prove the publish contract without a live database.
+ * delegate to IdentityCacheInvalidationSubscriber, which queues the
+ * cross-service event and publishes it from `afterTransactionCommit`
+ * (F043: publish-after-commit pattern). These tests exercise that
+ * subscriber directly — driving it with synthetic events so we can prove
+ * the publish contract without a live database.
+ *
+ * Non-transactional writes (where `queryRunner.isTransactionActive` is
+ * false) publish inline since no commit hook will fire to drain a queue
+ * in that case. The synthetic events here use that mode unless the test
+ * is specifically asserting the transactional path.
  */
 describe('IdentityCacheInvalidationSubscriber', () => {
   let subscriber: IdentityCacheInvalidationSubscriber;
   let publishCalls: Array<{ topic: string; payload: unknown }>;
+
+  // Non-transactional QueryRunner: writes publish inline.
+  const directQueryRunner = {
+    isTransactionActive: false,
+  } as unknown as QueryRunner;
 
   beforeEach(() => {
     publishCalls = [];
@@ -33,10 +45,14 @@ describe('IdentityCacheInvalidationSubscriber', () => {
   });
 
   function makeInsertEvent<T>(target: unknown, entity: T): never {
-    // Subscribers only read `entity` and `metadata.target` from the event;
+    // Subscribers read `entity`, `metadata.target`, and `queryRunner`;
     // a synthetic shape suffices and avoids constructing real TypeORM
     // EntityMetadata objects in unit tests.
-    return { entity, metadata: { target } } as unknown as never;
+    return {
+      entity,
+      metadata: { target },
+      queryRunner: directQueryRunner,
+    } as unknown as never;
   }
 
   it('publishes identity.user-role.changed when a UserRole is inserted', async () => {
@@ -63,6 +79,7 @@ describe('IdentityCacheInvalidationSubscriber', () => {
       entity: { userId: 'user-2', roleId: 'role-2' },
       databaseEntity: undefined,
       metadata: { target: UserRole },
+      queryRunner: directQueryRunner,
     } as never);
     await Promise.resolve();
     await Promise.resolve();
@@ -80,6 +97,7 @@ describe('IdentityCacheInvalidationSubscriber', () => {
       entity: undefined,
       databaseEntity: { userId: 'user-3', roleId: 'role-3' },
       metadata: { target: UserRole },
+      queryRunner: directQueryRunner,
     } as never);
     await Promise.resolve();
     await Promise.resolve();
