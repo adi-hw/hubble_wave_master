@@ -174,17 +174,44 @@ export class CollectionAccessRule {
 @Index(['roleId'])
 @Index(['groupId'])
 @Index(['userId'])
+@Index('IDX_property_access_rules_wildcard_collection_id', ['wildcardCollectionId'])
 export class PropertyAccessRule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  /** Property this rule applies to */
-  @Column({ name: 'property_id', type: 'uuid' })
-  propertyId!: string;
+  /**
+   * Property this rule applies to (explicit-field rule, canon §28.2 levels 1-2).
+   *
+   * Nullable since migration 1930200000000-add-property-access-rule-wildcards.ts
+   * (wildcard field rules). A NULL `property_id` indicates a wildcard rule —
+   * see `wildcardCollectionId` below. The DB CHECK constraint
+   * `CHK_property_access_rules_target_xor` enforces that exactly one of
+   * (`property_id`, `wildcard_collection_id`) is NOT NULL.
+   */
+  @Column({ name: 'property_id', type: 'uuid', nullable: true })
+  propertyId?: string | null;
 
-  @ManyToOne(() => PropertyDefinition, { onDelete: 'CASCADE' })
+  @ManyToOne(() => PropertyDefinition, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'property_id' })
-  property?: PropertyDefinition;
+  property?: PropertyDefinition | null;
+
+  /**
+   * Collection this wildcard rule applies to (wildcard field rule, canon
+   * §28.2 levels 3-4). When set, the rule applies to EVERY field of the
+   * referenced collection — distinct from a collection-level rule, which
+   * gates record visibility. Wildcard field rules gate field visibility
+   * at a level above the collection-rule fallback and below explicit
+   * field rules.
+   *
+   * Mutually exclusive with `propertyId` per the XOR CHECK constraint.
+   * Added by migration 1930200000000-add-property-access-rule-wildcards.ts.
+   */
+  @Column({ name: 'wildcard_collection_id', type: 'uuid', nullable: true })
+  wildcardCollectionId?: string | null;
+
+  @ManyToOne(() => CollectionDefinition, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'wildcard_collection_id' })
+  wildcardCollection?: CollectionDefinition | null;
 
   // ─────────────────────────────────────────────────────────────────
   // Scope (who does this rule apply to)

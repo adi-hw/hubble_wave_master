@@ -101,3 +101,48 @@ describe('PropertyAclRepository — mapToData effect column (F006)', () => {
     expect(dto.effect).toBe('allow');
   });
 });
+
+describe('PropertyAclRepository — mapToData wildcard columns (canon §28.2 levels 3-4)', () => {
+  // Migration 1930200000000-add-property-access-rule-wildcards.ts adds two
+  // related columns:
+  //   - property_id is now nullable (was NOT NULL)
+  //   - wildcard_collection_id is the new nullable uuid FK
+  // The DB XOR CHECK constraint guarantees exactly one of the two is set.
+  // mapToData must pass both through so the evaluator can route on them.
+
+  it('passes through propertyId=null for a wildcard rule', () => {
+    const dto = callMapToData(
+      newRepo(),
+      buildEntity({
+        propertyId: null,
+        wildcardCollectionId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      }),
+    );
+    expect(dto.propertyId).toBeNull();
+  });
+
+  it('passes through wildcardCollectionId="uuid-x" for a wildcard rule', () => {
+    const dto = callMapToData(
+      newRepo(),
+      buildEntity({
+        propertyId: null,
+        wildcardCollectionId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      }),
+    );
+    expect(dto.wildcardCollectionId).toBe('cccccccc-cccc-cccc-cccc-cccccccccccc');
+  });
+
+  it('passes through wildcardCollectionId=null for an explicit field rule (defensive default)', () => {
+    const dto = callMapToData(
+      newRepo(),
+      buildEntity({
+        propertyId: 'prop-1',
+        // Explicitly leave wildcardCollectionId undefined to exercise the
+        // defensive `?? null` fallback in mapToData. The DB column is
+        // genuinely nullable, but unit-test entities can omit the field.
+      }),
+    );
+    expect(dto.wildcardCollectionId).toBeNull();
+    expect(dto.propertyId).toBe('prop-1');
+  });
+});

@@ -439,8 +439,17 @@ export class AccessRuleService {
     const propertyIds = properties.map(p => p.id);
 
     // Filter rules to only those that match properties in this collection
-    // and match the user's principals
+    // and match the user's principals. Wildcard field rules (propertyId
+    // IS NULL, canon §28.2 levels 3-4) have no explicit property to
+    // match; this method's per-property aggregation does not consume
+    // them — the canonical `AuthorizationService.getAuthorizedFieldsForCollection`
+    // owns the level-3/4 evaluation. We skip wildcards here so the
+    // legacy callers of this method preserve their pre-§28 behaviour.
     const applicableRules = rules.filter(rule => {
+      // Skip wildcard rules — handled by the canonical evaluator.
+      if (!rule.propertyId) {
+        return false;
+      }
       // Check property belongs to this collection
       if (!propertyIds.includes(rule.propertyId)) {
         return false;

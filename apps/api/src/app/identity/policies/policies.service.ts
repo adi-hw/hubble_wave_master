@@ -62,16 +62,24 @@ export interface CollectionPolicyResponse {
 }
 
 /**
- * Aggregated policy response for property access rules
+ * Aggregated policy response for property access rules.
+ *
+ * Canon §28.2 wildcard support: a property access rule is EITHER
+ * explicit-field (`propertyId` set, levels 1-2) OR wildcard
+ * (`wildcardCollectionId` set, levels 3-4). The DB XOR CHECK constraint
+ * guarantees exactly one is set per row.
  */
 export interface PropertyPolicyResponse {
   id: string;
   type: 'property';
-  propertyId: string;
+  /** Set on explicit-field rules (canon §28.2 levels 1-2). NULL on wildcard rules. */
+  propertyId: string | null;
   propertyCode?: string;
   propertyName?: string;
   collectionId?: string;
   collectionCode?: string;
+  /** Set on wildcard field rules (canon §28.2 levels 3-4). NULL on explicit-field rules. */
+  wildcardCollectionId: string | null;
   scope: {
     roleId: string | null;
     roleName?: string | null;
@@ -408,17 +416,22 @@ export class PoliciesService {
   }
 
   /**
-   * Map property access rule entity to response
+   * Map property access rule entity to response. Canon §28.2: handles
+   * both explicit-field rules (propertyId set) and wildcard field rules
+   * (wildcardCollectionId set). The collectionId surfaced on the
+   * response comes from `property.collectionId` for explicit rules and
+   * from `wildcardCollectionId` for wildcard rules.
    */
   private mapPropertyRule(rule: PropertyAccessRule): PropertyPolicyResponse {
     return {
       id: rule.id,
       type: 'property',
-      propertyId: rule.propertyId,
+      propertyId: rule.propertyId ?? null,
       propertyCode: rule.property?.code,
       propertyName: rule.property?.name,
-      collectionId: rule.property?.collectionId,
-      collectionCode: rule.property?.collection?.code,
+      collectionId: rule.property?.collectionId ?? rule.wildcardCollectionId ?? undefined,
+      collectionCode: rule.property?.collection?.code ?? rule.wildcardCollection?.code,
+      wildcardCollectionId: rule.wildcardCollectionId ?? null,
       scope: {
         roleId: rule.roleId ?? null,
         roleName: rule.role?.name ?? null,
