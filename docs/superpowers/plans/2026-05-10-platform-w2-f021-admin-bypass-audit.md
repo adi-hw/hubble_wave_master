@@ -418,3 +418,31 @@ No issues found.
 ---
 
 **End of F021 plan.**
+
+---
+
+## Completion note (2026-05-10)
+
+**Status:** COMPLETE. Implemented at `38d5fcb`.
+
+### What landed
+
+- NEW `libs/authorization/src/lib/audit-port.ts`: `AccessAuditPort` interface, `AccessAuditEvent` type, `ACCESS_AUDIT_PORT` DI token
+- `libs/authorization/src/lib/authorization.service.ts`: 7th constructor arg (optional port); new private `auditAdminBypass` helper; 11 admin bypass sites instrumented
+- `libs/authorization/src/index.ts`: exports the new port symbols
+- `apps/api/src/app/metadata/access/services/access-audit.service.ts`: now `implements AccessAuditPort`; new `logAdminBypass` method writes to `AccessAuditLog` with `context.additionalData.adminBypass: true`
+- `apps/api/src/app/metadata/access/access.module.ts`: binds `AccessAuditService` to `ACCESS_AUDIT_PORT` via `useExisting`; exports the token
+
+### Verification
+
+- libs/authorization tests: **40/40 pass** (33 prior + 7 new F021)
+- apps/api tests: **469/469 pass** (no regressions)
+- All 6 scanners green
+- apps/api production build green
+
+### Next
+
+- F005 — default-deny flip (high blast radius; needs migration plan or per-collection flag)
+- F006 — explicit deny rules in ACL model (entity migration + types + evaluation order)
+- F023 — push principal filter into SQL (performance)
+- F136 — search authz pre-filter (Typesense + vector engines need a restructured search abstraction)
