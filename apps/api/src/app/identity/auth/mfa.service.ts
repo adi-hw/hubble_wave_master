@@ -6,7 +6,46 @@ import { MfaMethod } from '@hubblewave/instance-db';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
+import * as argon2 from 'argon2';
 import { EncryptionService } from '@hubblewave/shared-types';
+import { RedisService } from '@hubblewave/redis';
+
+/**
+ * Argon2id parameters for recovery codes (OWASP-recommended baseline).
+ *
+ * Recovery codes are short (8 hex characters), so a fast hash like SHA-256
+ * is brute-forceable offline. Argon2id resists GPU/ASIC attacks and is the
+ * canonical secret hash for HubbleWave (see W5.C dep registry).
+ */
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 65536, // 64 MB
+  timeCost: 3,       // 3 iterations
+  parallelism: 4,    // 4 threads
+  hashLength: 32,    // 256-bit output
+};
+
+/**
+ * TOTP step size in seconds (RFC 6238 default).
+ */
+const TOTP_STEP_SECONDS = 30;
+
+/**
+ * TOTP verification window: ±1 step from the current step. Allows for ~30s
+ * of clock drift on each side, giving a total validity span of 90 seconds.
+ *
+ * Replay detection (see verifyTotp) prevents a code captured during that
+ * window from being redeemed more than once.
+ */
+const TOTP_WINDOW = 1;
+
+/**
+ * Replay-cache TTL: covers the full validity span of any accepted TOTP code
+ * (step × (2×window + 1) = 30 × 3 = 90 seconds). Once the entry expires, the
+ * underlying TOTP code is no longer accepted by the verifier anyway, so the
+ * replay record can be reaped.
+ */
+const TOTP_REPLAY_TTL_SECONDS = TOTP_STEP_SECONDS * (2 * TOTP_WINDOW + 1);
 
 @Injectable()
 export class MfaService implements OnModuleInit {
@@ -16,10 +55,13 @@ export class MfaService implements OnModuleInit {
   constructor(
     @InjectRepository(MfaMethod) private readonly mfaMethodRepo: Repository<MfaMethod>,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
   ) {
-    // Configure TOTP settings
+    // Configure TOTP settings. window=1 tolerates ±30s of clock drift; the
+    // replay cache in verifyTotp prevents reuse within that span.
     authenticator.options = {
-      window: 1, // Allow 1 step before and after (30 seconds each)
+      step: TOTP_STEP_SECONDS,
+      window: TOTP_WINDOW,
     };
   }
 
@@ -114,11 +156,14 @@ export class MfaService implements OnModuleInit {
       recoveryCodes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
     }
 
-    // Hash recovery codes for storage
-    const hashedCodes = recoveryCodes.map(code =>
-      crypto.createHash('sha256').update(code).digest('hex')
+    // Hash recovery codes with argon2id for storage. Argon2 PHC strings embed
+    // their own salt+params, so each code gets a unique, slow-to-brute-force
+    // hash. The PHC format contains commas inside the parameter block, so the
+    // stored list is joined by newlines.
+    const hashedCodes = await Promise.all(
+      recoveryCodes.map((code) => argon2.hash(code, ARGON2_OPTIONS)),
     );
-    const hashedCodesString = hashedCodes.join(',');
+    const hashedCodesString = hashedCodes.join('\n');
 
     // Encrypt secret before storage
     const encryptedSecret = this.encryptSecret(secret);
@@ -184,6 +229,16 @@ export class MfaService implements OnModuleInit {
       return false;
     }
 
+    // Reject replays: a TOTP code accepted within the last validity span
+    // (step × (2×window + 1) seconds) cannot be redeemed a second time by
+    // the same user. Key is scoped per-user so the same code from a
+    // different user's authenticator is unaffected.
+    const replayKey = this.buildTotpReplayKey(userId, token);
+    if (await this.redisService.exists(replayKey)) {
+      this.logger.warn(`Rejected replayed TOTP code for user ${userId}`);
+      return false;
+    }
+
     // Decrypt secret for verification
     const decryptedSecret = this.decryptSecret(mfaMethod.secret);
 
@@ -193,6 +248,10 @@ export class MfaService implements OnModuleInit {
     });
 
     if (isValid) {
+      // Record the redeemed code in the replay cache before any downstream
+      // work, so a parallel request cannot redeem the same code.
+      await this.redisService.set(replayKey, '1', TOTP_REPLAY_TTL_SECONDS);
+
       // Update last used timestamp
       await mfaMethodRepo.update(mfaMethod.id, {
         lastUsedAt: new Date(),
@@ -200,6 +259,22 @@ export class MfaService implements OnModuleInit {
     }
 
     return isValid;
+  }
+
+  /**
+   * Build the per-user, per-code replay-cache key.
+   *
+   * The token is included in the key (not the value) so distinct codes do not
+   * collide, and so the cache scales linearly with the number of distinct
+   * codes a user redeems in the TTL window. The token is also passed through
+   * a SHA-256 digest before being placed in the key: that is purely
+   * defensive (avoid leaking the OTP if Redis is ever logged or
+   * dumped), not a substitute for argon2 — TOTPs are short-lived and the
+   * cache is in-memory only.
+   */
+  private buildTotpReplayKey(userId: string, token: string): string {
+    const tokenDigest = crypto.createHash('sha256').update(token).digest('hex');
+    return `mfa:totp:replay:${userId}:${tokenDigest}`;
   }
 
   async verifyRecoveryCode(userId: string, code: string): Promise<boolean> {
@@ -212,20 +287,35 @@ export class MfaService implements OnModuleInit {
       return false;
     }
 
-    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    const storedCodes = (mfaMethod.recoveryCodes || '').split(',').filter(Boolean);
-    const codeIndex = storedCodes.indexOf(codeHash);
+    // Recovery codes are stored as newline-delimited argon2id PHC strings.
+    // Each candidate is verified with argon2.verify; the first match wins.
+    const storedCodes = (mfaMethod.recoveryCodes || '').split('\n').filter(Boolean);
+    let matchedIndex = -1;
 
-    if (codeIndex === -1) {
+    for (let i = 0; i < storedCodes.length; i++) {
+      try {
+        if (await argon2.verify(storedCodes[i], code)) {
+          matchedIndex = i;
+          break;
+        }
+      } catch {
+        // A malformed stored entry should not block verification of the rest.
+        // The entry will be skipped; downstream regenerate-recovery-codes flow
+        // can replace it.
+        continue;
+      }
+    }
+
+    if (matchedIndex === -1) {
       return false;
     }
 
-    // Remove used recovery code
+    // One-time use: remove the matched code so it cannot be redeemed again.
     const updatedCodes = [...storedCodes];
-    updatedCodes.splice(codeIndex, 1);
+    updatedCodes.splice(matchedIndex, 1);
 
     await mfaMethodRepo.update(mfaMethod.id, {
-      recoveryCodes: updatedCodes.join(','),
+      recoveryCodes: updatedCodes.join('\n'),
     });
 
     return true;
