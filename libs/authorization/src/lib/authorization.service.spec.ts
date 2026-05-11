@@ -5,6 +5,7 @@ import {
 } from './authorization.service';
 import { PolicyCompilerService } from './policy-compiler.service';
 import { CollectionAccessRuleData, PropertyAccessRuleData, PropertyMeta } from './types';
+import type { AccessAuditPort } from './audit-port';
 
 type CollectionAclRepoStub = {
   find: jest.Mock<Promise<CollectionAccessRuleData[]>, [unknown]>;
@@ -497,5 +498,136 @@ describe('AuthorizationService — multi-rule field permissions (F024)', () => {
     expect(authorized.canRead).toBe(true);
     expect(authorized.canWrite).toBe(true);
     expect(authorized.maskingStrategy).toBe('NONE');
+  });
+});
+
+describe('AuthorizationService — admin bypass audit (F021)', () => {
+  // F021 (canon §10): every admin bypass in AuthorizationService MUST emit
+  // an audit row. The port is OPTIONAL — when unbound the lib falls back to
+  // silent bypass (preserves the "lib usable outside apps/api" property).
+
+  function buildAdminContext(): RequestContext {
+    return {
+      userId: 'admin-1',
+      roles: ['role-admin'],
+      permissions: [],
+      isAdmin: true,
+      attributes: { roleIds: ['role-admin'] },
+    } as unknown as RequestContext;
+  }
+
+  function buildServiceWithAudit(audit: AccessAuditPort | null): AuthorizationService {
+    const policyCompiler = new PolicyCompilerService();
+    const collectionAclRepo: CollectionAclRepoStub = {
+      find: jest.fn().mockResolvedValue([]),
+    };
+    const propertyAclRepo: PropertyAclRepoStub = {
+      find: jest.fn().mockResolvedValue([]),
+    };
+    return new AuthorizationService(
+      collectionAclRepo,
+      propertyAclRepo,
+      null,
+      null,
+      policyCompiler,
+      null,
+      audit,
+    );
+  }
+
+  it('canAccessCollection admin bypass calls the port', async () => {
+    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const service = buildServiceWithAudit(port);
+
+    const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(true);
+    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
+    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'admin-1',
+      resource: COLLECTION_ID,
+      action: 'read',
+    }));
+  });
+
+  it('canAccessCollectionRecord admin bypass calls the port with recordId in context', async () => {
+    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const service = buildServiceWithAudit(port);
+
+    const allowed = await service.canAccessCollectionRecord(
+      buildAdminContext(),
+      COLLECTION_ID,
+      'update',
+      { id: 'rec-42', name: 'x' },
+    );
+
+    expect(allowed).toBe(true);
+    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
+    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'admin-1',
+      resource: COLLECTION_ID,
+      action: 'update',
+      context: expect.objectContaining({ recordId: 'rec-42' }),
+    }));
+  });
+
+  it('getAuthorizedFieldsForCollection admin bypass calls the port with fields:read action', async () => {
+    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const service = buildServiceWithAudit(port);
+
+    await service.getAuthorizedFieldsForCollection(
+      buildAdminContext(),
+      COLLECTION_ID,
+      [{ code: 'name' }],
+    );
+
+    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
+    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'admin-1',
+      resource: COLLECTION_ID,
+      action: 'fields:read',
+    }));
+  });
+
+  it('buildCollectionRowLevelClause admin bypass calls the port with row-clause action', async () => {
+    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const service = buildServiceWithAudit(port);
+
+    await service.buildCollectionRowLevelClause(buildAdminContext(), COLLECTION_ID, 'read', 't');
+
+    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'admin-1',
+      resource: COLLECTION_ID,
+      action: 'read:row-clause',
+    }));
+  });
+
+  it('non-admin path does NOT call the port', async () => {
+    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const service = buildServiceWithAudit(port);
+
+    await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(port.logAdminBypass).not.toHaveBeenCalled();
+  });
+
+  it('port not bound: bypass still works (no port required)', async () => {
+    const service = buildServiceWithAudit(null);
+    const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
+    expect(allowed).toBe(true);
+  });
+
+  it('port write failure does NOT crash the bypass path', async () => {
+    const port: AccessAuditPort = {
+      logAdminBypass: jest.fn(() => {
+        throw new Error('audit DB down');
+      }),
+    };
+    const service = buildServiceWithAudit(port);
+
+    const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(true);
+    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
   });
 });

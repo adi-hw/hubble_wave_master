@@ -2,9 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccessAuditLog, AccessRuleAuditLog } from '@hubblewave/instance-db';
+import type { AccessAuditEvent, AccessAuditPort } from '@hubblewave/authorization';
 
 @Injectable()
-export class AccessAuditService {
+export class AccessAuditService implements AccessAuditPort {
   private readonly logger = new Logger(AccessAuditService.name);
 
   constructor(
@@ -13,6 +14,30 @@ export class AccessAuditService {
     @InjectRepository(AccessRuleAuditLog)
     private readonly ruleAuditRepo: Repository<AccessRuleAuditLog>,
   ) {}
+
+  /**
+   * F021: persist a row when an admin bypass short-circuits an authorization
+   * check. Fire-and-forget — save errors are logged but never thrown so a
+   * down audit table cannot regress the runtime decision (canon §10 audit
+   * must not compromise runtime correctness).
+   */
+  logAdminBypass(event: AccessAuditEvent): void {
+    const log = this.auditRepo.create({
+      userId: event.userId,
+      resource: event.resource,
+      action: event.action,
+      decision: 'ALLOW',
+      context: {
+        additionalData: {
+          adminBypass: true,
+          ...(event.context ?? {}),
+        },
+      },
+    });
+    this.auditRepo.save(log).catch((err) => {
+      this.logger.error('Failed to write admin bypass audit log', err);
+    });
+  }
 
   async logAccess(
     collectionId: string,
