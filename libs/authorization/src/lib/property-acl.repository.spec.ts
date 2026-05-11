@@ -21,6 +21,8 @@ function buildEntity(overrides: Partial<PropertyAccessRule> = {}): PropertyAcces
     updatedAt: new Date(),
     ruleKey: null,
     metadata: {},
+    // F006: legacy entity rows default to `allow` per migration backfill.
+    effect: 'allow',
     ...overrides,
   } as PropertyAccessRule;
 }
@@ -73,5 +75,29 @@ describe('PropertyAclRepository — mapToData (F004)', () => {
     delete (entity as unknown as Record<string, unknown>)['maskingStrategy'];
     const dto = callMapToData(newRepo(), entity);
     expect(dto.maskingStrategy).toBe('NONE');
+  });
+});
+
+describe('PropertyAclRepository — mapToData effect column (F006)', () => {
+  // F006: the entity declares `effect` (varchar(10) NOT NULL DEFAULT 'allow')
+  // and migration 1930100000000-add-rule-effect.ts adds the column to the
+  // DB. mapToData must pass the value through so canon §28.2 deny rules
+  // reach the evaluator unchanged.
+
+  it('passes through effect="allow" (default)', () => {
+    const dto = callMapToData(newRepo(), buildEntity({ effect: 'allow' }));
+    expect(dto.effect).toBe('allow');
+  });
+
+  it('passes through effect="deny" (F006)', () => {
+    const dto = callMapToData(newRepo(), buildEntity({ effect: 'deny' }));
+    expect(dto.effect).toBe('deny');
+  });
+
+  it('falls back to "allow" if the entity value is undefined (defensive)', () => {
+    const entity = buildEntity();
+    delete (entity as unknown as Record<string, unknown>)['effect'];
+    const dto = callMapToData(newRepo(), entity);
+    expect(dto.effect).toBe('allow');
   });
 });

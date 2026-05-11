@@ -49,6 +49,9 @@ function buildReadRule(overrides: Partial<CollectionAccessRuleData> = {}): Colle
     conditions: null,
     priority: 1,
     isActive: true,
+    // F006: default to `allow` so legacy tests preserve their pre-§28
+    // semantics; deny rules override per-test.
+    effect: 'allow',
     ...overrides,
   };
 }
@@ -369,11 +372,16 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
   });
 });
 
-describe('AuthorizationService — multi-rule field permissions (F024)', () => {
+describe('AuthorizationService — multi-rule field permissions (F024 + canon §28.5)', () => {
   // F024: a user matching multiple field-level rules should get the UNION of
   // permissions (any rule granting canRead → read allowed), not whichever
-  // rule sorted first. Masking takes the LEAST-restrictive value across
-  // matching rules (NONE < PARTIAL < FULL — user sees the most).
+  // rule sorted first.
+  //
+  // Canon §28.5 (F006 amendment) inverts the masking-direction half of F024:
+  // masking now takes the MOST-restrictive value across matching rules
+  // (NONE < PARTIAL < FULL — user sees the LEAST data, enforcing HIPAA
+  // minimum-necessary at the field level). The canRead/canWrite union
+  // behaviour is unchanged.
 
   const ROLE_GUEST = '55555555-5555-5555-5555-555555555555';
   const ROLE_MANAGER = '66666666-6666-6666-6666-666666666666';
@@ -394,6 +402,8 @@ describe('AuthorizationService — multi-rule field permissions (F024)', () => {
       priority: 1,
       isActive: true,
       maskingStrategy: 'NONE',
+      // F006: default to `allow`; deny rules override per-test.
+      effect: 'allow',
       ...overrides,
     };
   }
@@ -442,7 +452,12 @@ describe('AuthorizationService — multi-rule field permissions (F024)', () => {
     expect(authorized.canWrite).toBe(true);
   });
 
-  it('maskingStrategy is LEAST-restrictive across matching rules (NONE wins over PARTIAL wins over FULL)', async () => {
+  it('maskingStrategy is MOST-restrictive across matching rules (FULL wins over PARTIAL wins over NONE) — canon §28.5', async () => {
+    // Canon §28.5 inverts the pre-§28 F024 behaviour: roles compose
+    // conjunctively, so a user with three matching allow rules at
+    // NONE/PARTIAL/FULL severities sees the FULL mask. This enforces
+    // HIPAA's "minimum necessary" principle at the field level — the
+    // more restrictive role's intent must hold.
     const { service } = buildService({
       propertyRules: [
         buildFieldRule({ id: 'r-full-mask', roleId: ROLE_GUEST, priority: 1, maskingStrategy: 'FULL' }),
@@ -457,7 +472,7 @@ describe('AuthorizationService — multi-rule field permissions (F024)', () => {
       [FIELD_SALARY],
     );
 
-    expect(authorized.maskingStrategy).toBe('NONE');
+    expect(authorized.maskingStrategy).toBe('FULL');
   });
 
   it('non-matching rules are ignored even when present', async () => {
@@ -976,5 +991,481 @@ describe('AuthorizationService — cache invalidation (F025)', () => {
     await expect(
       service.invalidatePropertyRules({ collectionId: 'c', operation: 'remove' }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('AuthorizationService — collection deny rules (F006, canon §28.3/§28.4)', () => {
+  // F006 + canon §28.4 rule 1: a deny rule at the collection level wins
+  // outright against co-matching allows. Conditional denies scope to the
+  // records their conditions match; unconditional denies block the whole
+  // collection.
+
+  const ROLE_RESTRICTED = '77777777-7777-7777-7777-777777777777';
+
+  it('user matching only a deny rule is denied collection access (canon §28.4 rule 4 — missing allow = deny)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-deny-only',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: null,
+        }),
+      ],
+    });
+
+    const allowed = await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(false);
+  });
+
+  it('deny wins when both allow and deny match (canon §28.4 rule 1)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({ id: 'rule-allow', effect: 'allow', roleId: ROLE_VIEWER }),
+        buildReadRule({
+          id: 'rule-deny',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: null,
+        }),
+      ],
+    });
+
+    const allowed = await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(false);
+  });
+
+  it('two matching allows still grant access (existing F003 UNION behaviour preserved)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({ id: 'rule-a', effect: 'allow', roleId: ROLE_VIEWER }),
+        buildReadRule({ id: 'rule-b', effect: 'allow', roleId: ROLE_VIEWER }),
+      ],
+    });
+
+    const allowed = await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(true);
+  });
+
+  it('conditional deny does NOT block the collection-level operation check', async () => {
+    // A deny with row-conditions can only carve out specific records;
+    // canAccessCollection answers the operation-level question and
+    // ignores conditional denies (they're applied per-record).
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({ id: 'rule-allow', effect: 'allow', roleId: ROLE_VIEWER }),
+        buildReadRule({
+          id: 'rule-cond-deny',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+      ],
+    });
+
+    const allowed = await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(true);
+  });
+
+  it('canAccessCollectionRecord denies a record matching a conditional deny', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({ id: 'rule-allow', effect: 'allow', roleId: ROLE_VIEWER }),
+        buildReadRule({
+          id: 'rule-cond-deny',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+      ],
+    });
+
+    const denied = await service.canAccessCollectionRecord(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+      { id: 'rec-1', classification: 'secret' },
+    );
+    const allowed = await service.canAccessCollectionRecord(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+      { id: 'rec-2', classification: 'public' },
+    );
+
+    expect(denied).toBe(false);
+    expect(allowed).toBe(true);
+  });
+
+  it('unconditional deny without conditions denies the whole collection regardless of allow', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({ id: 'rule-allow', effect: 'allow', roleId: ROLE_VIEWER }),
+        buildReadRule({
+          id: 'rule-uncond-deny',
+          effect: 'deny',
+          roleId: ROLE_RESTRICTED,
+          conditions: null,
+        }),
+      ],
+    });
+
+    const ctx = buildContext({
+      roles: [ROLE_VIEWER, ROLE_RESTRICTED],
+      attributes: { roleIds: [ROLE_VIEWER, ROLE_RESTRICTED] },
+    });
+    const allowed = await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
+
+    expect(allowed).toBe(false);
+  });
+
+  it('getSafeRowLevelPredicatesForCollection composes (allow_or) AND NOT (deny_or)', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-allow-own',
+          effect: 'allow',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+        buildReadRule({
+          id: 'rule-deny-classified',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+      ],
+    });
+
+    const predicates = await service.getSafeRowLevelPredicatesForCollection(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+    );
+
+    // Two top-level predicates: the allow leaf (single rule, flat), and a `not`
+    // wrapping the deny's leaf. The renderer ANDs them.
+    expect(predicates).toHaveLength(2);
+    expect(predicates.find((p) => p.kind === 'not')).toBeDefined();
+  });
+
+  it('buildCollectionRowLevelClause emits both ALLOW and NOT branches when allow+deny rules match', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-allow-own',
+          effect: 'allow',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'owner_id', operator: 'equals', value: '@currentUser' },
+        }),
+        buildReadRule({
+          id: 'rule-deny-classified',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+      ],
+    });
+
+    const { clauses } = await service.buildCollectionRowLevelClause(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+      't',
+    );
+
+    // Caller AND's these clauses together — `(owner_id = X) AND NOT (classification = Y)`.
+    const joined = clauses.join(' AND ');
+    expect(joined).toContain('owner_id');
+    expect(joined).toMatch(/NOT \(.*classification.*\)/);
+  });
+
+  it('unconditional allow + conditional deny: caller still sees a NOT clause carving out denied rows', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-allow-all',
+          effect: 'allow',
+          roleId: ROLE_VIEWER,
+          conditions: null, // unconditional allow
+        }),
+        buildReadRule({
+          id: 'rule-deny-cond',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+      ],
+    });
+
+    const predicates = await service.getSafeRowLevelPredicatesForCollection(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+    );
+
+    // Allow lane contributes nothing (unconditional); deny lane emits the NOT.
+    expect(predicates).toHaveLength(1);
+    expect(predicates[0].kind).toBe('not');
+  });
+
+  it('two conditional deny rules combine as `NOT (or)` inside the WHERE clause', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'rule-allow-all',
+          effect: 'allow',
+          roleId: ROLE_VIEWER,
+          conditions: null,
+        }),
+        buildReadRule({
+          id: 'rule-deny-a',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'classification', operator: 'equals', value: 'secret' },
+        }),
+        buildReadRule({
+          id: 'rule-deny-b',
+          effect: 'deny',
+          roleId: ROLE_VIEWER,
+          conditions: { property: 'status', operator: 'equals', value: 'archived' },
+        }),
+      ],
+    });
+
+    const { clauses } = await service.buildCollectionRowLevelClause(
+      buildContext(),
+      COLLECTION_ID,
+      'read',
+      't',
+    );
+
+    const joined = clauses.join(' AND ');
+    // The NOT wraps an OR over the two deny rule conditions.
+    expect(joined).toMatch(/NOT \(.*OR.*\)/);
+    expect(joined).toContain('classification');
+    expect(joined).toContain('status');
+  });
+});
+
+describe('AuthorizationService — field deny rules (F006, canon §28.2)', () => {
+  // F006 + canon §28.2 level 1: a deny rule at the field level forces
+  // canRead=false, canWrite=false, maskingStrategy='FULL' regardless of
+  // co-matching allow rules.
+
+  const ROLE_DENIED = '88888888-8888-8888-8888-888888888888';
+  const ROLE_VIEWER_F = '99999999-9999-9999-9999-999999999999';
+  const FIELD_SSN: PropertyMeta = { code: 'ssn' };
+
+  function buildFieldRuleSsn(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-ssn',
+      propertyId: 'ssn',
+      propertyCode: 'ssn',
+      collectionId: COLLECTION_ID,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildCtx(roles: string[]): RequestContext {
+    return {
+      userId: 'user-1',
+      roles,
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: roles },
+    } as unknown as RequestContext;
+  }
+
+  it('field-explicit deny forces canRead=false, canWrite=false, maskingStrategy=FULL', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRuleSsn({ id: 'r-deny', effect: 'deny', roleId: ROLE_DENIED }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtx([ROLE_DENIED]),
+      COLLECTION_ID,
+      [FIELD_SSN],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('field-explicit deny wins over a co-matching allow (canon §28.4 rule 1)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRuleSsn({
+          id: 'r-allow',
+          effect: 'allow',
+          roleId: ROLE_VIEWER_F,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+        buildFieldRuleSsn({
+          id: 'r-deny',
+          effect: 'deny',
+          roleId: ROLE_DENIED,
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtx([ROLE_VIEWER_F, ROLE_DENIED]),
+      COLLECTION_ID,
+      [FIELD_SSN],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('allow-only on the field preserves existing F024 UNION behaviour', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRuleSsn({ id: 'r-a', effect: 'allow', roleId: ROLE_VIEWER_F, canRead: true, canWrite: false, maskingStrategy: 'PARTIAL' }),
+        buildFieldRuleSsn({ id: 'r-b', effect: 'allow', roleId: ROLE_VIEWER_F, canRead: false, canWrite: true, maskingStrategy: 'NONE' }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtx([ROLE_VIEWER_F]),
+      COLLECTION_ID,
+      [FIELD_SSN],
+    );
+
+    // Union of grants: canRead=true (from r-a), canWrite=true (from r-b).
+    // Most-restrictive mask (canon §28.5): PARTIAL beats NONE.
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('PARTIAL');
+  });
+
+  it('non-matching deny rule does NOT affect a field (deny scoped by principal)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildFieldRuleSsn({ id: 'r-deny-other-role', effect: 'deny', roleId: ROLE_DENIED }),
+        buildFieldRuleSsn({ id: 'r-allow', effect: 'allow', roleId: ROLE_VIEWER_F, canRead: true, canWrite: true, maskingStrategy: 'NONE' }),
+      ],
+    });
+
+    // User does NOT have ROLE_DENIED — the deny rule is irrelevant.
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtx([ROLE_VIEWER_F]),
+      COLLECTION_ID,
+      [FIELD_SSN],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+});
+
+describe('AuthorizationService — masking direction (canon §28.5)', () => {
+  // Canon §28.5 inverts the pre-§28 F024 helper: when multiple allow
+  // rules grant access to a field with different masking strategies, the
+  // MOST-restrictive strategy wins (FULL > PARTIAL > NONE).
+
+  const ROLE_M_A = '11111111-aaaa-aaaa-aaaa-111111111111';
+  const ROLE_M_B = '22222222-bbbb-bbbb-bbbb-222222222222';
+  const FIELD_SSN_M: PropertyMeta = { code: 'ssn' };
+
+  function buildField(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-ssn-m',
+      propertyId: 'ssn',
+      propertyCode: 'ssn',
+      collectionId: COLLECTION_ID,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildCtxM(roles: string[]): RequestContext {
+    return {
+      userId: 'user-1',
+      roles,
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: roles },
+    } as unknown as RequestContext;
+  }
+
+  it('three rules NONE+PARTIAL+FULL → result is FULL (was NONE under F024)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildField({ id: 'r1', roleId: ROLE_M_A, maskingStrategy: 'NONE' }),
+        buildField({ id: 'r2', roleId: ROLE_M_A, maskingStrategy: 'PARTIAL' }),
+        buildField({ id: 'r3', roleId: ROLE_M_B, maskingStrategy: 'FULL' }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxM([ROLE_M_A, ROLE_M_B]),
+      COLLECTION_ID,
+      [FIELD_SSN_M],
+    );
+
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('two rules PARTIAL+NONE → result is PARTIAL (was NONE under F024)', async () => {
+    const { service } = buildService({
+      propertyRules: [
+        buildField({ id: 'r1', roleId: ROLE_M_A, maskingStrategy: 'PARTIAL' }),
+        buildField({ id: 'r2', roleId: ROLE_M_B, maskingStrategy: 'NONE' }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxM([ROLE_M_A, ROLE_M_B]),
+      COLLECTION_ID,
+      [FIELD_SSN_M],
+    );
+
+    expect(authorized.maskingStrategy).toBe('PARTIAL');
+  });
+
+  it('single rule PARTIAL → still PARTIAL (no change in single-rule case)', async () => {
+    const { service } = buildService({
+      propertyRules: [buildField({ id: 'r1', roleId: ROLE_M_A, maskingStrategy: 'PARTIAL' })],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxM([ROLE_M_A]),
+      COLLECTION_ID,
+      [FIELD_SSN_M],
+    );
+
+    expect(authorized.maskingStrategy).toBe('PARTIAL');
   });
 });

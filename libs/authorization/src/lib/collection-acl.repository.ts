@@ -145,6 +145,10 @@ export class CollectionAclRepository implements CollectionAccessRuleRepository {
       conditions: data.conditions as Record<string, unknown> | null,
       priority: data.priority,
       isActive: data.isActive,
+      // F006: forward the caller's effect choice. The DB CHECK constraint
+      // enforces ('allow' | 'deny'); if the caller omits the field we let
+      // the column DEFAULT (`allow`) take over rather than guessing.
+      effect: data.effect ?? 'allow',
     });
 
     const saved = await this.ruleRepo.save(rule);
@@ -252,6 +256,12 @@ export class CollectionAclRepository implements CollectionAccessRuleRepository {
       conditions: rule.conditions as AccessConditionData | null,
       priority: rule.priority,
       isActive: rule.isActive,
+      // F006: pass through the entity's effect column (canon §28.3).
+      // Migration 1930100000000-add-rule-effect.ts adds it with DEFAULT
+      // 'allow' so legacy rows preserve their semantics; the ?? fallback
+      // covers the entity-without-field case in unit tests where the
+      // column wasn't materialized.
+      effect: rule.effect ?? 'allow',
     };
   }
 }

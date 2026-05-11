@@ -93,6 +93,14 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   /**
    * Check if user can access a collection for a given operation.
    * Returns true if access is allowed, false otherwise.
+   *
+   * F006 / canon §28.3 two-pass evaluation:
+   * 1. Walk all matching rules. Any UNCONDITIONAL deny matching the
+   *    operation → DENY (§28.4 rule 1, deny wins). Conditional denies do
+   *    not block collection-level access — their row-conditions can only
+   *    exclude specific records, not the whole collection.
+   * 2. Otherwise, allow rules UNION: any matching allow on the operation
+   *    grants access (§28.4 rule 5).
    */
   async canAccessCollection(
     ctx: RequestContext,
@@ -114,7 +122,22 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const rules = await this.getCollectionRules(collectionId, userContext);
 
+    // Pass 1: any UNCONDITIONAL deny that matches the principal and the
+    // operation flag wins outright (canon §28.4 rule 1). A conditional
+    // deny does NOT block the collection-level check — its row-conditions
+    // can only carve out specific records, evaluated by
+    // canAccessCollectionRecord / getSafeRowLevelPredicatesForCollection.
     for (const rule of rules) {
+      if (rule.effect !== 'deny') continue;
+      if (!this.checkPrincipalMatch(rule, userContext)) continue;
+      if (!this.checkOperationPermission(rule, operation)) continue;
+      if (rule.conditions) continue;
+      return false;
+    }
+
+    // Pass 2: union of allow rules. Any matching allow grants access.
+    for (const rule of rules) {
+      if (rule.effect === 'deny') continue;
       // F023 defense: principal-filter happened in SQL when the repo
       // supports it, but checkPrincipalMatch stays as a safety net for
       // stub-only test repos and against a future repo-impl regression.
@@ -149,6 +172,18 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   /**
    * Get safe row-level predicates for a collection operation.
    * These can be used to build parameterized WHERE clauses.
+   *
+   * F006 / canon §28.3 + §28.4:
+   * - Allow branches UNION (§28.4 rule 5). Multi-rule case wraps in `or`.
+   * - Deny branches INTERSECT-with-not (§28.4 rule 1, deny wins). Multi-
+   *   deny case wraps the deny set in `or` then negates the lot via `not`.
+   * - The composed output is `[allow_or_clause, NOT (deny_or_clause)]`,
+   *   AND'd by the renderer → `(allow_set) AND NOT (deny_set)`.
+   *
+   * Note: an unconditional deny is handled by canAccessCollection — it
+   * already denies the whole collection so this method is never reached.
+   * Defensively, an unconditional matching deny here still produces a
+   * `NOT (TRUE)` style predicate that excludes every row.
    */
   async getSafeRowLevelPredicatesForCollection(
     ctx: RequestContext,
@@ -168,63 +203,91 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const rules = await this.getCollectionRules(collectionId, userContext);
 
-    // F003: each matched rule contributes ONE branch. A user matching multiple
-    // rules sees the UNION of records each rule grants — branches OR'd
-    // together. Predicates WITHIN a single rule's conditions are still AND'd
-    // (the rule's "you can read records matching THIS specific condition").
-    //
-    // Flat-pushing across rules (as the previous implementation did) caused
-    // the caller's `clauses.forEach((c) => qb.andWhere(c))` to AND the rules
-    // together, returning the intersection rather than the union.
-    const branches: SafePredicate[][] = [];
+    // F003 + F006: separate matching rules into allow and deny lanes.
+    // Each lane's branches OR together; the lanes combine as
+    // `(allow_or) AND NOT (deny_or)` via the renderer's AND-of-clauses.
+    const allowBranches: SafePredicate[][] = [];
+    const denyBranches: SafePredicate[][] = [];
+    let hasUnconditionalAllow = false;
+    let hasUnconditionalDeny = false;
 
     for (const rule of rules) {
       if (!this.checkPrincipalMatch(rule, userContext)) {
         continue;
       }
-
       if (!this.checkOperationPermission(rule, operation)) {
         continue;
       }
 
+      const isDeny = rule.effect === 'deny';
       if (!rule.conditions) {
-        // Unconditional grant — no row restriction wins over any conditional
-        // rule. Returning [] removes the WHERE filter, exposing all records
-        // the operation-level check already permitted.
-        return [];
+        // Unconditional grant or block at the row level.
+        if (isDeny) {
+          hasUnconditionalDeny = true;
+        } else {
+          hasUnconditionalAllow = true;
+        }
+        continue;
       }
 
       const rulePredicates = this.extractSafePredicatesFromCondition(
         rule.conditions,
         userContext,
       );
-      if (rulePredicates.length > 0) {
-        branches.push(rulePredicates);
+      if (rulePredicates.length === 0) continue;
+
+      (isDeny ? denyBranches : allowBranches).push(rulePredicates);
+    }
+
+    // Unconditional deny at the row level is a contradiction caught earlier
+    // by canAccessCollection (which returns false and prevents this method
+    // being called for visible rows). If we somehow get here with one, fail
+    // closed: emit a predicate that never matches.
+    if (hasUnconditionalDeny) {
+      return [{
+        kind: 'leaf',
+        field: 'id',
+        operator: 'eq',
+        value: '00000000-0000-0000-0000-000000000000',
+      }];
+    }
+
+    const output: SafePredicate[] = [];
+
+    // Allow lane. If any unconditional allow matched, the allow lane is
+    // "all rows" — emit nothing for it (caller's WHERE stays unconstrained
+    // by allows). Otherwise wrap each conditional-allow rule's predicates
+    // as one branch of an `or`.
+    if (!hasUnconditionalAllow && allowBranches.length > 0) {
+      if (allowBranches.length === 1) {
+        // Single allow rule: emit predicates flat. The renderer AND's them.
+        output.push(...allowBranches[0]);
+      } else {
+        // Multi-rule allows (F003): `or` over branches.
+        output.push({ kind: 'or', branches: allowBranches });
       }
     }
 
-    if (branches.length === 0) {
-      // No matching rule contributed predicates. The operation-level gate
-      // (canAccessCollection / ensureCollectionAccess) is the caller's
-      // responsibility — this method returns [] for "no row filter to add."
-      return [];
+    // Deny lane. Wrap the deny rules in `not` so the renderer emits
+    // `NOT (...)`. The `not` body is an `or` over deny branches when
+    // multiple denies match, otherwise the single deny rule's leaves
+    // wrapped directly in `not`.
+    if (denyBranches.length > 0) {
+      if (denyBranches.length === 1) {
+        output.push({ kind: 'not', inner: denyBranches[0] });
+      } else {
+        output.push({
+          kind: 'not',
+          inner: [{ kind: 'or', branches: denyBranches }],
+        });
+      }
     }
 
-    if (branches.length === 1) {
-      // Single-rule case: emit predicates flat. The caller AND's them via
-      // .andWhere() which is the correct semantic for one rule's
-      // multi-predicate condition.
-      return branches[0];
-    }
-
-    // Multi-rule case (F003 fix): emit a single 'or' predicate whose branches
-    // each hold one rule's predicates. AbacService.renderPredicate (and
-    // buildPredicateClauseInternal as a fallback) produce
-    // `((A AND B) OR (C AND D))` SQL — the correct UNION semantic.
-    return [{
-      kind: 'or',
-      branches,
-    }];
+    // Special case: no allow lane (no allows matched at all) and no deny
+    // lane either. canAccessCollection would have already denied (no
+    // allows = no access), so this method's result is moot — return [].
+    // This matches the pre-F006 behaviour.
+    return output;
   }
 
   /**
@@ -309,16 +372,37 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
       let maskingStrategy: MaskingStrategy = 'NONE';
       let matched = false;
 
-      // F024: combine ALL matching rules instead of first-match-wins.
-      //   canRead = true if ANY matching rule grants read (union)
-      //   canWrite = true if ANY matching rule grants write (union)
-      //   maskingStrategy = LEAST-restrictive value across matching rules
-      //                     (NONE < PARTIAL < FULL — user sees the most)
-      // The previous implementation `break`d after the first matching rule,
-      // making the lowest-priority rule's values arbitrarily dominate even
-      // when other matching rules granted more. Same conceptual fix as F003
-      // at row level: multiple rules = union of permissions.
+      // F006 / canon §28.2 level 1: any matching deny rule wins. The field
+      // collapses to canRead=false, canWrite=false, maskingStrategy='FULL'
+      // regardless of co-matching allows (§28.4 rule 1, "deny wins at the
+      // same specificity"). We scan denies first so a single deny on any
+      // priority short-circuits the allow-union pass.
       for (const rule of fieldRules) {
+        if (rule.effect !== 'deny') continue;
+        if (!this.checkPropertyPrincipalMatch(rule, userContext)) continue;
+        return {
+          ...field,
+          canRead: false,
+          canWrite: false,
+          maskingStrategy: 'FULL' as MaskingStrategy,
+        };
+      }
+
+      // F024 (allow lane) + canon §28.2 level 2 + canon §28.5: combine ALL
+      // matching allow rules instead of first-match-wins.
+      //   canRead = true if ANY matching allow grants read (UNION)
+      //   canWrite = true if ANY matching allow grants write (UNION)
+      //   maskingStrategy = MOST-restrictive value across matching allows
+      //                     (NONE < PARTIAL < FULL — user sees the LEAST,
+      //                     enforcing HIPAA's "minimum necessary"
+      //                     principle at the field level).
+      // The original F024 implementation picked the LEAST-restrictive mask;
+      // canon §28.5 inverts that — when two roles compose, the more
+      // restrictive role's intent must hold. The F024 union-of-grants
+      // behaviour for canRead/canWrite is preserved (multiple positive
+      // grants compose permissively); only masking severity flipped.
+      for (const rule of fieldRules) {
+        if (rule.effect === 'deny') continue;
         if (!this.checkPropertyPrincipalMatch(rule, userContext)) {
           continue;
         }
@@ -336,7 +420,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
 
         canRead = canRead || rule.canRead;
         canWrite = canWrite || rule.canWrite;
-        maskingStrategy = this.leastRestrictiveMask(
+        maskingStrategy = this.mostRestrictiveMask(
           maskingStrategy,
           rule.maskingStrategy ?? 'NONE',
         );
@@ -414,6 +498,11 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   /**
    * Check if user can perform operation on a specific record in a collection.
    * Evaluates row-level conditions against the record data.
+   *
+   * F006 / canon §28.3 two-pass evaluation per record:
+   * 1. Any matching deny rule (principal + operation + conditions met by
+   *    this record) → DENY (§28.4 rule 1).
+   * 2. Otherwise, any matching allow rule grants access (§28.4 rule 5).
    */
   async canAccessCollectionRecord(
     ctx: RequestContext,
@@ -436,7 +525,25 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const rules = await this.getCollectionRules(collectionId, userContext);
 
+    // Pass 1 (canon §28.4 rule 1): a matching deny rule whose conditions
+    // are met by this record wins outright. Unconditional denies match
+    // every record.
     for (const rule of rules) {
+      if (rule.effect !== 'deny') continue;
+      if (!this.checkPrincipalMatch(rule, userContext)) continue;
+      if (!this.checkOperationPermission(rule, operation)) continue;
+
+      if (rule.conditions) {
+        const conditionMet = this.evaluateCondition(rule.conditions, record, userContext);
+        if (!conditionMet) continue;
+      }
+      return false;
+    }
+
+    // Pass 2: union of allow rules. Any matching allow on the record
+    // grants access.
+    for (const rule of rules) {
+      if (rule.effect === 'deny') continue;
       if (!this.checkPrincipalMatch(rule, userContext)) {
         continue;
       }
@@ -996,13 +1103,20 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   }
 
   /**
-   * Masking severity ordering for F024 multi-rule combination.
+   * Masking severity ordering for canon §28.5 multi-rule combination.
    * Higher number = more restrictive (more of the value hidden).
    *   NONE: 0 — full value shown
    *   PARTIAL: 1 — partial mask (e.g. last 4 of SSN)
    *   FULL: 2 — value entirely redacted
-   * The least-restrictive value across a user's matching rules wins, so
-   * the user sees the most data any single rule would grant them.
+   *
+   * Canon §28.5: the MOST-restrictive value across a user's matching
+   * allow rules wins. Roles compose conjunctively — a user with two roles
+   * (one masks SSN partially, one does not mask at all) sees the partial
+   * mask, not the unmasked value. This enforces HIPAA's "minimum
+   * necessary" principle at the field level.
+   *
+   * This inverts the pre-§28 F024 helper which picked least-restrictive.
+   * The flip is deliberate and the canon section documents the rationale.
    */
   private static readonly MASK_SEVERITY: Record<MaskingStrategy, number> = {
     NONE: 0,
@@ -1010,11 +1124,11 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     FULL: 2,
   };
 
-  private leastRestrictiveMask(
+  private mostRestrictiveMask(
     a: MaskingStrategy,
     b: MaskingStrategy,
   ): MaskingStrategy {
-    return AuthorizationService.MASK_SEVERITY[a] <= AuthorizationService.MASK_SEVERITY[b]
+    return AuthorizationService.MASK_SEVERITY[a] >= AuthorizationService.MASK_SEVERITY[b]
       ? a
       : b;
   }
@@ -1224,6 +1338,25 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
       if (branchClauses.length > 0) {
         clauses.push(branchClauses.length === 1 ? branchClauses[0] : `(${branchClauses.join(' OR ')})`);
       }
+      return;
+    }
+
+    if (pred.kind === 'not') {
+      // F006: render the inner set AND-ed and wrap in NOT(...). Refuse
+      // to emit `NOT ()` if every inner predicate dropped — that would
+      // either be invalid SQL or, with some renderers, parse as TRUE
+      // (fail-open). Dropping the whole NOT keeps the allow-set
+      // (intersected with nothing) as the visible window, which is the
+      // pre-§28 behaviour when no deny rules were present.
+      const innerClauses: string[] = [];
+      for (const inner of pred.inner) {
+        this.renderPredicateInternal(inner, ctx, tableAlias, innerClauses, params, counter);
+      }
+      if (innerClauses.length === 0) {
+        return;
+      }
+      const innerSql = innerClauses.length === 1 ? innerClauses[0] : `(${innerClauses.join(' AND ')})`;
+      clauses.push(`NOT (${innerSql})`);
       return;
     }
 
