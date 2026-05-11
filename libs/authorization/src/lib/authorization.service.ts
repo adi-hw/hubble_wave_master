@@ -273,22 +273,45 @@ export class AuthorizationService {
         (r) => r.propertyCode === field.code || r.propertyId === field.code,
       );
 
-      // Default: readable, writable unless system field
+      // Default permissions when no rule matches the user. F005 will flip
+      // these defaults to deny in a separate PR; today, fields are
+      // readable/writable by default with no masking.
       let canRead = true;
       let canWrite = !field.isSystem;
       let maskingStrategy: MaskingStrategy = 'NONE';
+      let matched = false;
 
-      // Apply matching rules (first match wins based on priority)
+      // F024: combine ALL matching rules instead of first-match-wins.
+      //   canRead = true if ANY matching rule grants read (union)
+      //   canWrite = true if ANY matching rule grants write (union)
+      //   maskingStrategy = LEAST-restrictive value across matching rules
+      //                     (NONE < PARTIAL < FULL — user sees the most)
+      // The previous implementation `break`d after the first matching rule,
+      // making the lowest-priority rule's values arbitrarily dominate even
+      // when other matching rules granted more. Same conceptual fix as F003
+      // at row level: multiple rules = union of permissions.
       for (const rule of fieldRules) {
         if (!this.checkPropertyPrincipalMatch(rule, userContext)) {
           continue;
         }
 
-        // Apply permissions from the matching rule
-        canRead = rule.canRead;
-        canWrite = rule.canWrite;
-        maskingStrategy = rule.maskingStrategy || 'NONE';
-        break;
+        if (!matched) {
+          // First matching rule: replace the defaults entirely. Without this
+          // reset, a single restrictive rule would be masked by the
+          // permissive defaults (canRead=true) and never tighten access.
+          canRead = rule.canRead;
+          canWrite = rule.canWrite;
+          maskingStrategy = rule.maskingStrategy ?? 'NONE';
+          matched = true;
+          continue;
+        }
+
+        canRead = canRead || rule.canRead;
+        canWrite = canWrite || rule.canWrite;
+        maskingStrategy = this.leastRestrictiveMask(
+          maskingStrategy,
+          rule.maskingStrategy ?? 'NONE',
+        );
       }
 
       return {
@@ -710,6 +733,30 @@ export class AuthorizationService {
     }
 
     return false;
+  }
+
+  /**
+   * Masking severity ordering for F024 multi-rule combination.
+   * Higher number = more restrictive (more of the value hidden).
+   *   NONE: 0 — full value shown
+   *   PARTIAL: 1 — partial mask (e.g. last 4 of SSN)
+   *   FULL: 2 — value entirely redacted
+   * The least-restrictive value across a user's matching rules wins, so
+   * the user sees the most data any single rule would grant them.
+   */
+  private static readonly MASK_SEVERITY: Record<MaskingStrategy, number> = {
+    NONE: 0,
+    PARTIAL: 1,
+    FULL: 2,
+  };
+
+  private leastRestrictiveMask(
+    a: MaskingStrategy,
+    b: MaskingStrategy,
+  ): MaskingStrategy {
+    return AuthorizationService.MASK_SEVERITY[a] <= AuthorizationService.MASK_SEVERITY[b]
+      ? a
+      : b;
   }
 
   private checkOperationPermission(
