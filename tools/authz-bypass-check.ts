@@ -62,14 +62,7 @@ const KNOWN_BYPASSES: ReadonlyArray<{
   file: string;
   reason: string;
   followUp: string;
-}> = [
-  {
-    file: 'apps/api/src/app/analytics/dashboards/dashboards.service.ts',
-    reason:
-      'Dashboard service reads layout content (widget references to collections) but does not enforce per-widget collection read access; widgets may reference collections the viewer cannot read. Audit finding F146; the scope check is owned by the dashboard read path which currently only checks dashboard-level scope (system/tenant/role/personal). Each widget call independently checks ABAC at the metrics layer (verified in metrics.service.ts:276-308) but the contract is ambient and easy to violate.',
-    followUp: 'W2 task — add per-widget authz at dashboard load time (F146).',
-  },
-];
+}> = [];
 
 const NEEDS_AUTHZ_PATTERNS = [
   /RequestContext/,
