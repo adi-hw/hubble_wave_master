@@ -8,7 +8,7 @@ import { ModelRegistryService } from './model-registry.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([ModelArtifact, DatasetSnapshot, AuditLog]),
-    StorageModule.forRoot(),
+    StorageModule.forTenantScope(),
   ],
   controllers: [ModelRegistryController],
   providers: [ModelRegistryService],

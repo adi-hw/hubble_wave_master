@@ -8,10 +8,10 @@ import {
   ModelArtifact,
 } from '@hubblewave/instance-db';
 import {
-  STORAGE_CLIENT,
   STORAGE_CONFIG,
   StorageClient,
   StorageConfig,
+  TENANT_SCOPED_STORAGE_CLIENT,
   buildStorageKey,
 } from '@hubblewave/storage';
 import { ModelArtifactRegister, ModelArtifactRequest, ModelArtifactUpdate } from './model-registry.types';
@@ -27,7 +27,7 @@ export class ModelRegistryService implements OnModuleInit {
     private readonly snapshotRepo: Repository<DatasetSnapshot>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
-    @Inject(STORAGE_CLIENT)
+    @Inject(TENANT_SCOPED_STORAGE_CLIENT)
     private readonly storageClient: StorageClient,
     @Inject(STORAGE_CONFIG)
     private readonly storageConfig: StorageConfig,

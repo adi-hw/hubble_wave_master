@@ -10,10 +10,10 @@ import { RedisService } from '@hubblewave/redis';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import {
-  STORAGE_CLIENT,
   STORAGE_CONFIG,
   StorageClient,
   StorageConfig,
+  TENANT_SCOPED_STORAGE_CLIENT,
 } from '@hubblewave/storage';
 import {
   createTypesenseClient,
@@ -41,7 +41,7 @@ export class BackupService implements OnModuleInit {
     private readonly dataSource: DataSource,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
-    @Inject(STORAGE_CLIENT)
+    @Inject(TENANT_SCOPED_STORAGE_CLIENT)
     private readonly storageClient: StorageClient,
     @Inject(STORAGE_CONFIG)
     private readonly storageConfig: StorageConfig,

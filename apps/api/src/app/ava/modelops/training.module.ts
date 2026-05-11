@@ -23,7 +23,7 @@ import { TrainingProcessorService } from './training-processor.service';
       AuditLog,
       AnalyticsEvent,
     ]),
-    StorageModule.forRoot(),
+    StorageModule.forTenantScope(),
   ],
   controllers: [TrainingController],
   providers: [ModelTrainingService, TrainingProcessorService],
