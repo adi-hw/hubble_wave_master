@@ -1,5 +1,5 @@
 import { Injectable, Inject, Optional, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import {
@@ -115,7 +115,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    *    grants access (§28.4 rule 5).
    */
   async canAccessCollection(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
@@ -157,7 +157,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * compliance reviewer is asking for.
    */
   async explainCollectionAccess(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<DecisionProvenance> {
@@ -195,7 +195,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * `["level-1: no match", "level-2: no match", "level-3: default deny"]`.
    */
   private async evaluateCollectionAccess(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
     opts: { asNonAdmin?: boolean } = {},
@@ -303,7 +303,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Ensure user has access to a collection, throwing ForbiddenException if not.
    */
   async ensureCollectionAccess(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<void> {
@@ -332,7 +332,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * `NOT (TRUE)` style predicate that excludes every row.
    */
   async getSafeRowLevelPredicatesForCollection(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
@@ -441,7 +441,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Returns parameterized WHERE clause components.
    */
   async buildCollectionRowLevelClause(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
     tableAlias = 't',
@@ -477,7 +477,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Get authorized fields for a collection with read/write permissions and masking strategies.
    */
   async getAuthorizedFieldsForCollection(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -535,7 +535,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * collection Y, and why?".
    */
   async explainFieldAccess(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     field: PropertyMeta,
   ): Promise<FieldDecisionProvenance> {
@@ -894,7 +894,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Filter fields to only those readable by the user, scoped to a collection.
    */
   async filterReadableFieldsForCollection(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -906,7 +906,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Filter fields to only those writable by the user, scoped to a collection.
    */
   async filterWritableFieldsForCollection(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -921,7 +921,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * identifier. Provided alongside the *Collection variants for symmetry.
    */
   async maskCollectionRecord(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     record: Record<string, unknown>,
     fields: AuthorizedPropertyMeta[],
   ): Promise<Record<string, unknown>> {
@@ -960,7 +960,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * 2. Otherwise, any matching allow rule grants access (§28.4 rule 5).
    */
   async canAccessCollectionRecord(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionId: string,
     operation: CollectionOperation,
     record: Record<string, unknown>,
@@ -1037,7 +1037,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * `tableName` is mutable; `collectionId` is stable. Resolution failures throw.
    */
   async canAccessTable(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
@@ -1053,7 +1053,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `ensureCollectionAccess(ctx, collectionId, operation)` instead.
    */
   async ensureTableAccess(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     operation: CollectionOperation,
   ): Promise<void> {
@@ -1069,7 +1069,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation)` instead.
    */
   async getSafeRowLevelPredicates(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
@@ -1085,7 +1085,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `buildCollectionRowLevelClause(ctx, collectionId, operation, tableAlias)` instead.
    */
   async buildRowLevelClause(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     operation: CollectionOperation,
     tableAlias = 't',
@@ -1102,7 +1102,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `getAuthorizedFieldsForCollection(ctx, collectionId, fields)` instead.
    */
   async getAuthorizedFields(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -1123,7 +1123,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `filterReadableFieldsForCollection(ctx, collectionId, fields)` instead.
    */
   async filterReadableFields(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -1135,7 +1135,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `filterWritableFieldsForCollection(ctx, collectionId, fields)` instead.
    */
   async filterWritableFields(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
@@ -1148,7 +1148,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * The `tableName` argument is unused — masking is driven entirely by `fields`.
    */
   async maskRecord(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     _tableName: string,
     record: Record<string, unknown>,
     fields: AuthorizedPropertyMeta[],
@@ -1160,7 +1160,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * @deprecated Use `canAccessCollectionRecord(ctx, collectionId, operation, record)` instead.
    */
   async canAccessRecord(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableName: string,
     operation: CollectionOperation,
     record: Record<string, unknown>,
@@ -1399,7 +1399,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     return definition.id;
   }
 
-  private buildUserContext(ctx: RequestContext): UserAccessContext {
+  private buildUserContext(ctx: UserRequestContext): UserAccessContext {
     const attributes = ctx.attributes || {};
 
     return {
@@ -1646,7 +1646,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * helper does not re-check ctx.isAdmin.
    */
   private auditAdminBypass(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     resource: string,
     action: string,
     context?: Record<string, unknown>,
@@ -1783,7 +1783,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    */
   private resolvePredicateValue(
     pred: LeafPredicate,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
   ): string | string[] | number | boolean | null | undefined {
     if (!pred.contextRef) {
       return pred.value ?? null;
@@ -1804,7 +1804,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
 
   private buildPredicateClauseInternal(
     predicates: SafePredicate[],
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableAlias: string,
   ): RowLevelClause {
     const clauses: string[] = [];
@@ -1820,7 +1820,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
 
   private renderPredicateInternal(
     pred: SafePredicate,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     tableAlias: string,
     clauses: string[],
     params: Record<string, unknown>,

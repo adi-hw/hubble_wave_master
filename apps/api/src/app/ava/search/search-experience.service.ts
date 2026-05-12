@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { SearchExperience, SearchScope } from '@hubblewave/instance-db';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 
 @Injectable()
 export class SearchExperienceService {
@@ -11,7 +11,7 @@ export class SearchExperienceService {
     private readonly experienceRepo: Repository<SearchExperience>,
   ) {}
 
-  async listForContext(context: RequestContext): Promise<SearchExperience[]> {
+  async listForContext(context: UserRequestContext): Promise<SearchExperience[]> {
     const roles = Array.isArray(context.roles) ? context.roles.filter(Boolean) : [];
     const groups = this.resolveGroups(context);
     const userId = context.userId;
@@ -32,7 +32,7 @@ export class SearchExperienceService {
     return this.experienceRepo.find({ where, order: { createdAt: 'DESC' } });
   }
 
-  private resolveGroups(context: RequestContext): string[] {
+  private resolveGroups(context: UserRequestContext): string[] {
     const raw = context.attributes?.groups;
     if (Array.isArray(raw)) {
       return raw.map((value) => String(value)).filter(Boolean);

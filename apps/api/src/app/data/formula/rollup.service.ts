@@ -9,7 +9,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface RollupConfig {
@@ -47,7 +47,7 @@ export class RollupService {
   }
 
   /**
-   * Calculate a rollup value for a record. The caller's RequestContext is used
+   * Calculate a rollup value for a record. The caller's UserRequestContext is used
    * to enforce row- and field-level access on the source collection. If the
    * caller cannot read the aggregate field, the rollup returns 0 (count) or
    * null (other aggregations) without exposing protected values.
@@ -56,7 +56,7 @@ export class RollupService {
     collectionCode: string,
     recordId: string,
     config: RollupConfig,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
   ): Promise<RollupResult> {
     try {
       // Field-level access on source collection: required for any aggregation
@@ -116,7 +116,7 @@ export class RollupService {
    * Get related records for rollup calculation, filtered by RLS for the caller.
    */
   private async getRelatedRecords(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     recordId: string,
     relationProperty: string,
     sourceCollection: string
@@ -162,7 +162,7 @@ export class RollupService {
    * Check whether the caller can read a specific property on a collection.
    */
   private async isFieldReadable(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     sourceCollection: string,
     sourceProperty: string,
   ): Promise<boolean> {

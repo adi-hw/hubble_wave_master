@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import {
   AuditLog,
   CollectionDefinition,
@@ -45,7 +45,8 @@ describe('SearchQueryService — F136 count-leak fix', () => {
   // to simulate "user can read N of M corpus rows".
   let allowedSourceIds: string[];
 
-  const ctx = (): RequestContext => ({
+  const ctx = (): UserRequestContext => ({
+    kind: 'user',
     userId: 'user-1',
     roles: ['member'],
     permissions: [],

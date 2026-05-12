@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -27,6 +28,7 @@ import {
 } from '@hubblewave/authorization';
 import {
   RefreshToken,
+  ServicePrincipal,
   type RefreshTokenRevokedReason,
 } from '@hubblewave/instance-db';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
@@ -77,10 +79,18 @@ const ISSUER_PREFIX = 'hubblewave-';
 
 /**
  * Default audience per canon §29.3 (human tokens). Service-to-service
- * tokens use `svc-{target}` and are minted by canon §29.7 work, not by
- * this service.
+ * tokens use `svc-{target}` per canon §29.7 — see
+ * `issueServiceToken` below.
  */
 const DEFAULT_AUDIENCE = 'hubblewave-instance';
+
+/**
+ * Service-token TTL per canon §29.4 — 5 minutes, fixed, no instance
+ * override. Stale service permissions are addressed by rotating the
+ * `service_principals` row + waiting at most 5 minutes for in-flight
+ * tokens to expire, NOT by stretching TTL.
+ */
+const SERVICE_TOKEN_TTL_SECONDS = 300;
 
 /**
  * `TokenIssuerService` — single mint point for HubbleWave access tokens per
@@ -135,6 +145,8 @@ export class TokenIssuerService implements OnModuleInit {
     private readonly configService: ConfigService,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
+    @InjectRepository(ServicePrincipal)
+    private readonly servicePrincipalRepo: Repository<ServicePrincipal>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly sessionRevoker: JwtRevocationAdapter,
@@ -214,6 +226,82 @@ export class TokenIssuerService implements OnModuleInit {
       permissions: identity.permissions,
       is_admin: identity.isAdmin,
       username: identity.userId, // overridden by callers that have a real display name
+    };
+
+    const token = await this.keySigning.sign(payload);
+    return { token, expiresIn: ttl };
+  }
+
+  /**
+   * Mint a HubbleWave service-to-service token per canon §29.7.
+   *
+   * Looks up the calling service in `service_principals`, validates the
+   * requested audience is in `allowed_audiences`, and emits an ES256
+   * JWT with `sub: service:<id>`, `aud: <audience>`, the principal's
+   * `allowed_scopes` copied into the `scope` claim, and a fresh
+   * `session_id` (every mint is its own session — service tokens do
+   * not share session identity with prior mints).
+   *
+   * Service tokens deliberately OMIT the `token_version` claim per
+   * canon §29.6 — services have no user identity, no `security_stamp`,
+   * and no cross-cutting kill-switch through that mechanism. Killing
+   * a service identity is done by flipping `active = false` on the
+   * principal row, after which no new tokens mint; in-flight tokens
+   * expire within `SERVICE_TOKEN_TTL_SECONDS` (5 minutes per canon
+   * §29.4).
+   *
+   * @throws UnauthorizedException when the principal is absent or
+   *   inactive — both surface the same generic message so the mint
+   *   endpoint does not leak which case applies.
+   * @throws ForbiddenException when the requested audience is not in
+   *   the principal's `allowed_audiences`.
+   */
+  async issueServiceToken(params: {
+    serviceId: string;
+    audience: string;
+    instanceId?: string;
+  }): Promise<{ token: string; expiresIn: number }> {
+    if (!params.serviceId) {
+      throw new UnauthorizedException('Unknown or inactive service principal');
+    }
+    if (!params.audience) {
+      throw new ForbiddenException('Audience is required');
+    }
+
+    const principal = await this.servicePrincipalRepo.findOne({
+      where: { serviceId: params.serviceId, active: true },
+    });
+    if (!principal) {
+      throw new UnauthorizedException('Unknown or inactive service principal');
+    }
+
+    if (!principal.allowedAudiences.includes(params.audience)) {
+      throw new ForbiddenException(
+        `Service ${params.serviceId} is not allowed to call audience ${params.audience}`,
+      );
+    }
+
+    const instanceId = params.instanceId || this.resolveInstanceId();
+    const now = Math.floor(Date.now() / 1000);
+    const ttl = SERVICE_TOKEN_TTL_SECONDS;
+
+    const payload: Record<string, unknown> = {
+      iss: `${ISSUER_PREFIX}${instanceId}`,
+      aud: params.audience,
+      sub: `service:${params.serviceId}`,
+      iat: now,
+      exp: now + ttl,
+      instance_id: instanceId,
+      // Canon §29.7 — every service token gets a fresh session id per
+      // mint. Service tokens do NOT share session identity with the
+      // mint request that produced them; session_id is purely an
+      // operational correlation handle for the audit log.
+      session_id: randomUUID(),
+      // Canon §29.7 — scopes copied verbatim from the principal.
+      // The receiving service authorizes the call against these.
+      scope: principal.allowedScopes,
+      // NO token_version. Service tokens have no security_stamp per
+      // canon §29.6 — services have no user identity.
     };
 
     const token = await this.keySigning.sign(payload);

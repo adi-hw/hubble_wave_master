@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { AVAAction, AVAContext } from '@hubblewave/ai';
 import { AVAGovernanceService } from '@hubblewave/ai';
 import { CollectionDefinition } from '@hubblewave/instance-db';
@@ -9,7 +9,7 @@ import { CollectionDefinition } from '@hubblewave/instance-db';
 export type AvaPreviewRequest = {
   action: AVAAction;
   context: AVAContext;
-  requestContext: RequestContext;
+  requestContext: UserRequestContext;
   userMessage?: string;
   avaResponse?: string;
   conversationId?: string;
@@ -103,7 +103,7 @@ export class AvaPreviewService {
   private async loadRecord(
     collectionCode: string,
     recordId: string,
-    requestContext: RequestContext,
+    requestContext: UserRequestContext,
   ): Promise<Record<string, unknown>> {
     const collectionRepo = this.dataSource.getRepository(CollectionDefinition);
     const definition = await collectionRepo.findOne({
@@ -135,7 +135,7 @@ export class AvaPreviewService {
   }
 
   private async ensureAccess(
-    context: RequestContext,
+    context: UserRequestContext,
     collectionCode: string,
     operation: 'create' | 'update',
   ) {

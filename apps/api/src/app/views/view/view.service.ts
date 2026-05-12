@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AuthorizationService, PropertyMeta } from '@hubblewave/authorization';
-import type { RequestContext } from '@hubblewave/auth-guard';
+import type { UserRequestContext } from '@hubblewave/auth-guard';
 import {
   CollectionDefinition,
   DisplayRule,
@@ -48,7 +48,7 @@ export class ViewService {
   async resolveView(
     input: ViewResolveInput,
     context: ViewContext,
-    authContext: RequestContext
+    authContext: UserRequestContext
   ): Promise<ResolvedView> {
     this.validateResolveInput(input);
     const definitions = await this.findDefinitions(input);
@@ -297,7 +297,7 @@ export class ViewService {
 
   private async resolveFieldPermissions(
     input: ViewResolveInput,
-    ctx: RequestContext
+    ctx: UserRequestContext
   ): Promise<Record<string, FieldPermission>> {
     if (!input.collection) {
       return {};

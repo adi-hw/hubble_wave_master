@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { AuditLog, CollectionDefinition, SearchExperience, SearchSource } from '@hubblewave/instance-db';
 import { buildSearchParams, FacetConfig, FilterCondition } from '@hubblewave/search-typesense';
 import { SearchEmbeddingService } from './search-embedding.service';
@@ -19,7 +19,7 @@ type SearchHit = {
 
 export type SearchQueryRequest = {
   q: string;
-  context: RequestContext;
+  context: UserRequestContext;
   experienceCode?: string;
   sourceCodes?: string[];
   page?: number;
@@ -404,7 +404,7 @@ export class SearchQueryService {
   }
 
   private async trimUnauthorized(
-    context: RequestContext,
+    context: UserRequestContext,
     hits: SearchHit[],
     sources: SearchSource[],
   ) {

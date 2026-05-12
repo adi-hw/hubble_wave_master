@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { RequestUser } from '@hubblewave/auth-guard';
+import { RequestUser, UserRequestContext } from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from '../collection-data.service';
 
 const WORK_ITEMS_COLLECTION = 'work_items';
@@ -84,8 +84,9 @@ export class WorkService {
     return updated.record;
   }
 
-  private buildContext(user: RequestUser) {
+  private buildContext(user: RequestUser): UserRequestContext {
     return {
+      kind: 'user',
       userId: user.id,
       roles: user.roles,
       permissions: user.permissions,

@@ -18,7 +18,7 @@ import {
   RolesGuard,
   PermissionsGuard,
   Roles,
-  type RequestContext,
+  type UserRequestContext,
 } from '@hubblewave/auth-guard';
 import { ExplainCollectionDto, ExplainFieldDto } from './dto/explain.dto';
 
@@ -87,13 +87,13 @@ export class ExplainController {
 
   /**
    * Resolve the target user's live identity via the IdentityResolverPort
-   * and shape it as a `RequestContext` suitable for the authorization
+   * and shape it as a `UserRequestContext` suitable for the authorization
    * evaluator. Returns NotFoundException for both missing users and
    * non-active users so an admin probing for a UUID cannot distinguish
    * the two cases (defensive — avoid leaking "this user exists but is
    * suspended").
    */
-  private async buildTargetContext(userId: string): Promise<RequestContext> {
+  private async buildTargetContext(userId: string): Promise<UserRequestContext> {
     const identity = await this.identityResolver.resolveIdentity(userId);
     if (!identity || identity.status !== 'active') {
       throw new NotFoundException(
@@ -101,6 +101,7 @@ export class ExplainController {
       );
     }
     return {
+      kind: 'user',
       userId: identity.userId,
       roles: identity.roles,
       permissions: identity.permissions,

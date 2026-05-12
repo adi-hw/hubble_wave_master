@@ -9,7 +9,7 @@ import {
   RuntimeAnomalyService,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import {
   ActionExecutionResult,
   AutomationAction,
@@ -1026,7 +1026,8 @@ export class AutomationRuntimeService {
     // visibility. Human-triggered events are filtered through the
     // authorization service so condition evaluators never read fields the
     // actor cannot legitimately see.
-    const ctx: RequestContext = {
+    const ctx: UserRequestContext = {
+      kind: 'user',
       userId: userId ?? '00000000-0000-0000-0000-000000000000',
       roles: [],
       permissions: [],

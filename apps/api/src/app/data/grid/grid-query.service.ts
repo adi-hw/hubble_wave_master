@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from '../model-registry.service';
 
 
@@ -131,7 +131,7 @@ export class GridQueryService {
   // ---------------------------------------------------------------------------
 
   async query<T = unknown>(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     request: GridQueryRequest,
   ): Promise<GridQueryResponse<T>> {
     const { collection, startRow, endRow, sorting, filters, globalFilter } = request;
@@ -230,7 +230,7 @@ export class GridQueryService {
   // COUNT
   // ---------------------------------------------------------------------------
 
-  async count(ctx: RequestContext, request: GridCountRequest): Promise<number> {
+  async count(ctx: UserRequestContext, request: GridCountRequest): Promise<number> {
     const { collection, filters, globalFilter } = request;
 
     // Get table metadata
@@ -280,7 +280,7 @@ export class GridQueryService {
    * `query`, so non-readable rows are excluded from the math.
    */
   async aggregate(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     request: {
       collection: string;
       column?: string;
@@ -356,7 +356,7 @@ export class GridQueryService {
   // ---------------------------------------------------------------------------
 
   async queryGrouped<T = unknown>(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     request: GridQueryRequest,
   ): Promise<GridQueryResponse<T>> {
     const { collection, grouping, filters, globalFilter, startRow, endRow } = request;
@@ -599,7 +599,7 @@ export class GridQueryService {
    */
   private async buildReferenceJoins(
     qb: SelectQueryBuilder<ObjectLiteral>,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     readableFields: unknown[],
   ): Promise<void> {
     for (const f of readableFields as Array<ReferencePropertyInfo>) {
@@ -845,7 +845,7 @@ export class GridQueryService {
   }
 
   private async getFilteredCount(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     request: GridQueryRequest,
   ): Promise<number> {
     return this.count(ctx, {
@@ -909,7 +909,7 @@ export class GridQueryService {
     throw new BadRequestException('Unsupported storage path');
   }
 
-  private buildAbacParams(ctx: RequestContext): Record<string, unknown> {
+  private buildAbacParams(ctx: UserRequestContext): Record<string, unknown> {
     return {
       userId: ctx.userId,
       roles: ctx.roles,

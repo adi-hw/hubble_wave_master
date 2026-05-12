@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthorizationService, AuthorizedPropertyMeta } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { withAudit } from '@hubblewave/instance-db';
 import { ListRecordsDto, PAGINATION_CONSTANTS, BULK_OPERATION_CONSTANTS } from '@hubblewave/shared-types';
 import { ModelRegistryService } from './model-registry.service';
@@ -101,7 +101,7 @@ export class DataService {
     throw new BadRequestException('Unsupported storage path');
   }
 
-  private buildAbacParams(ctx: RequestContext) {
+  private buildAbacParams(ctx: UserRequestContext) {
     return {
       userId: ctx.userId,
       roles: ctx.roles,
@@ -111,7 +111,7 @@ export class DataService {
   }
 
   // List records with pagination
-  async list(ctx: RequestContext, collectionCode: string, query?: ListRecordsDto) {
+  async list(ctx: UserRequestContext, collectionCode: string, query?: ListRecordsDto) {
     const page = query?.page ?? PAGINATION_CONSTANTS.DEFAULT_PAGE;
     const limit = Math.min(
       query?.limit ?? PAGINATION_CONSTANTS.DEFAULT_PAGE_SIZE,
@@ -183,7 +183,7 @@ export class DataService {
   }
 
   // Get single record
-  async getOne(ctx: RequestContext, collectionCode: string, id: string) {
+  async getOne(ctx: UserRequestContext, collectionCode: string, id: string) {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
@@ -222,7 +222,7 @@ export class DataService {
   }
 
   // Create record
-  async create(ctx: RequestContext, collectionCode: string, payload: Record<string, any>) {
+  async create(ctx: UserRequestContext, collectionCode: string, payload: Record<string, any>) {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'create');
 
@@ -306,7 +306,7 @@ export class DataService {
   }
 
   // Update record
-  async update(ctx: RequestContext, collectionCode: string, id: string, payload: Record<string, any>) {
+  async update(ctx: UserRequestContext, collectionCode: string, id: string, payload: Record<string, any>) {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'update');
 
@@ -406,7 +406,7 @@ export class DataService {
   }
 
   // Delete record
-  async delete(ctx: RequestContext, collectionCode: string, id: string) {
+  async delete(ctx: UserRequestContext, collectionCode: string, id: string) {
     const model = await this.modelRegistry.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'delete');
 
@@ -450,7 +450,7 @@ export class DataService {
 
   // Bulk update multiple records
   async bulkUpdate(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     ids: (string | number)[],
     payload: Record<string, any>
@@ -539,7 +539,7 @@ export class DataService {
   }
 
   // Bulk delete multiple records
-  async bulkDelete(ctx: RequestContext, collectionCode: string, ids: (string | number)[]) {
+  async bulkDelete(ctx: UserRequestContext, collectionCode: string, ids: (string | number)[]) {
     if (!ids.length) {
       throw new BadRequestException('No IDs provided for bulk delete');
     }

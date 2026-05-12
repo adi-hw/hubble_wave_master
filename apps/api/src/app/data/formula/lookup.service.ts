@@ -9,7 +9,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface LookupConfig {
@@ -45,7 +45,7 @@ export class LookupService {
   }
 
   /**
-   * Resolve a lookup value for a record. The caller's RequestContext is used to
+   * Resolve a lookup value for a record. The caller's UserRequestContext is used to
    * enforce row- and field-level access on the source collection. If the caller
    * cannot read the source field or referenced row, null is returned for that
    * value (fail-closed).
@@ -55,7 +55,7 @@ export class LookupService {
     recordId: string,
     referenceValue: unknown,
     config: LookupConfig,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
   ): Promise<LookupResult> {
     try {
       if (referenceValue === null || referenceValue === undefined) {
@@ -116,7 +116,7 @@ export class LookupService {
    * Get a single lookup value from the source collection, applying RLS.
    */
   private async getLookupValue(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     sourceCollection: string,
     recordId: string,
     sourceProperty: string
@@ -167,7 +167,7 @@ export class LookupService {
    * Check whether the caller can read a specific property on a collection.
    */
   private async isFieldReadable(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     sourceCollection: string,
     sourceProperty: string,
   ): Promise<boolean> {
@@ -194,7 +194,7 @@ export class LookupService {
       propertyCode: string;
       config: LookupConfig;
     }>,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
   ): Promise<Record<string, unknown>> {
     const results: Record<string, unknown> = {};
 

@@ -13,7 +13,7 @@ import {
   SearchResult,
   SYSTEM_VECTOR_SEARCH_CONTEXT,
 } from './vector-store.service';
-import type { RequestContext } from '@hubblewave/auth-guard';
+import type { UserRequestContext } from '@hubblewave/auth-guard';
 import type { DataSource } from 'typeorm';
 
 describe('VectorStoreService.search — F073 principal + authzCheck', () => {
@@ -37,8 +37,9 @@ describe('VectorStoreService.search — F073 principal + authzCheck', () => {
     } as unknown as DataSource;
   }
 
-  function buildUserContext(userId: string): RequestContext {
+  function buildUserContext(userId: string): UserRequestContext {
     return {
+      kind: 'user',
       userId,
       roles: [],
       permissions: [],

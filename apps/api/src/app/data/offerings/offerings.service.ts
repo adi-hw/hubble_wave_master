@@ -155,6 +155,7 @@ export class OfferingsService {
 
   private buildContext(user: RequestUser) {
     return {
+      kind: 'user' as const,
       userId: user.id,
       roles: user.roles,
       permissions: user.permissions,

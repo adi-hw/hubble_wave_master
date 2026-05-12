@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { AuditLog, CollectionDefinition, DashboardDefinition, DashboardScope } from '@hubblewave/instance-db';
 
@@ -32,7 +32,7 @@ export class DashboardsService {
     private readonly authz: AuthorizationService,
   ) {}
 
-  async list(context: RequestContext): Promise<DashboardDefinition[]> {
+  async list(context: UserRequestContext): Promise<DashboardDefinition[]> {
     const dashboards = await this.dashboardRepo.find({
       where: { isActive: true },
       order: { updatedAt: 'DESC' },
@@ -44,7 +44,7 @@ export class DashboardsService {
     return visible;
   }
 
-  async get(context: RequestContext, code: string): Promise<DashboardDefinition> {
+  async get(context: UserRequestContext, code: string): Promise<DashboardDefinition> {
     const dashboard = await this.dashboardRepo.findOne({ where: { code, isActive: true } });
     if (!dashboard) {
       throw new NotFoundException(`Dashboard ${code} not found`);
@@ -56,7 +56,7 @@ export class DashboardsService {
     return dashboard;
   }
 
-  async create(context: RequestContext, input: DashboardDefinitionInput): Promise<DashboardDefinition> {
+  async create(context: UserRequestContext, input: DashboardDefinitionInput): Promise<DashboardDefinition> {
     this.assertAdmin(context);
     const payload = this.normalizeInput(input, true);
 
@@ -87,7 +87,7 @@ export class DashboardsService {
   }
 
   async update(
-    context: RequestContext,
+    context: UserRequestContext,
     code: string,
     input: Partial<DashboardDefinitionInput>,
   ): Promise<DashboardDefinition> {
@@ -130,7 +130,7 @@ export class DashboardsService {
    * enforces tenant isolation at the database level, so this only filters by
    * intra-tenant scope (system/tenant/role/personal).
    */
-  private canRead(context: RequestContext, dashboard: DashboardDefinition): boolean {
+  private canRead(context: UserRequestContext, dashboard: DashboardDefinition): boolean {
     const scope = dashboard.scope || 'tenant';
     if (scope === 'system' || scope === 'tenant') {
       return true;
@@ -173,7 +173,7 @@ export class DashboardsService {
    * that a non-data widget cannot be accidentally dropped by this filter.
    */
   private async filterLayoutByCollectionAccess(
-    context: RequestContext,
+    context: UserRequestContext,
     layout: Record<string, unknown> | null | undefined,
   ): Promise<Record<string, unknown>> {
     if (!layout || typeof layout !== 'object') {
@@ -207,7 +207,7 @@ export class DashboardsService {
    * reference cannot be resolved (unknown code, malformed id) is also
    * dropped — fail closed.
    */
-  private async widgetAuthorized(context: RequestContext, widget: unknown): Promise<boolean> {
+  private async widgetAuthorized(context: UserRequestContext, widget: unknown): Promise<boolean> {
     if (!widget || typeof widget !== 'object') {
       return true;
     }
@@ -345,7 +345,7 @@ export class DashboardsService {
     };
   }
 
-  private assertAdmin(context: RequestContext): void {
+  private assertAdmin(context: UserRequestContext): void {
     if (!context.isAdmin) {
       throw new ForbiddenException('Admin role is required to manage dashboards');
     }

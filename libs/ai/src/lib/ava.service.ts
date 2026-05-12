@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { LLMChatMessage, LLMService } from './llm.service';
 import { RAGService } from './rag.service';
 import { InstanceContextService } from './instance-context.service';
@@ -16,8 +16,9 @@ import { UpgradeAssistantService } from './upgrade-assistant.service';
  * separately) and wire authzCheck — until then, the synthesised
  * context audit-logs the user but doesn't filter results.
  */
-function avaContextToRequestContext(ctx: { userId: string }): RequestContext {
+function avaContextToRequestContext(ctx: { userId: string }): UserRequestContext {
   return {
+    kind: 'user',
     userId: ctx.userId,
     roles: [],
     permissions: [],

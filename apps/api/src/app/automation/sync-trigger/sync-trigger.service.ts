@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { AutomationRuntimeService } from '../runtime/automation-runtime.service';
 import {
   ExecuteSyncTriggerRequestDto,
@@ -11,7 +11,7 @@ const SYNC_TRIGGER_TIMEOUT_MS = 5000;
 /**
  * Adapter between the HTTP DTO surface and the runtime's
  * `executeSyncTrigger()` method. Resolves the user identity from the
- * propagated JWT-derived RequestContext, applies the hard server-side
+ * propagated JWT-derived UserRequestContext, applies the hard server-side
  * timeout, and translates the runtime's structured result back to the
  * wire DTO.
  *
@@ -31,7 +31,7 @@ export class SyncTriggerService {
 
   async execute(
     request: ExecuteSyncTriggerRequestDto,
-    ctx: RequestContext,
+    ctx: UserRequestContext,
   ): Promise<ExecuteSyncTriggerResponseDto> {
     const userContext = {
       id: ctx.userId,

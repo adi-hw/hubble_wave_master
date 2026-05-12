@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DashboardsService } from './dashboards.service';
 import type { AuthorizationService } from '@hubblewave/authorization';
 import type { CollectionOperation } from '@hubblewave/authorization';
-import type { RequestContext } from '@hubblewave/auth-guard';
+import type { UserRequestContext } from '@hubblewave/auth-guard';
 import type { CollectionDefinition, DashboardDefinition } from '@hubblewave/instance-db';
 
 /**
@@ -16,19 +16,19 @@ import type { CollectionDefinition, DashboardDefinition } from '@hubblewave/inst
  * filter philosophy in metrics.service.ts.
  */
 
-const PRINCIPAL: RequestContext = {
+const PRINCIPAL: UserRequestContext = {
   userId: 'u-viewer',
   roles: ['operator'],
   permissions: [],
   isAdmin: false,
-} as unknown as RequestContext;
+} as unknown as UserRequestContext;
 
-const ADMIN: RequestContext = {
+const ADMIN: UserRequestContext = {
   userId: 'u-admin',
   roles: ['admin'],
   permissions: [],
   isAdmin: true,
-} as unknown as RequestContext;
+} as unknown as UserRequestContext;
 
 const COLLECTIONS: Record<string, CollectionDefinition> = {
   work_orders: { id: '11111111-1111-4111-8111-111111111111', code: 'work_orders' } as unknown as CollectionDefinition,
@@ -51,7 +51,7 @@ const buildService = (options: {
   const allowed = options.allowedCollectionIds ?? new Set<string>();
   const authz = {
     canAccessCollection: jest.fn(
-      async (_ctx: RequestContext, collectionId: string, _op: CollectionOperation) => allowed.has(collectionId),
+      async (_ctx: UserRequestContext, collectionId: string, _op: CollectionOperation) => allowed.has(collectionId),
     ),
   } as jest.Mocked<Pick<AuthorizationService, 'canAccessCollection'>>;
 
