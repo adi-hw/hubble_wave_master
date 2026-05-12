@@ -57,6 +57,10 @@ function buildActiveIdentity(overrides: Partial<ResolvedIdentity> = {}): Resolve
     permissions: [],
     isAdmin: false,
     status: 'active',
+    // canon §29.6 — fixture default for the cross-cutting kill-switch.
+    // Specific tests override when they need to assert token_version
+    // mismatch behavior.
+    securityStamp: 'stamp-test-default',
     ...overrides,
   };
 }

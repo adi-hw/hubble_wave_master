@@ -86,6 +86,32 @@ export class User {
   @Column({ name: 'must_change_password', type: 'boolean', default: false })
   mustChangePassword!: boolean;
 
+  /**
+   * Cross-cutting token kill-switch per canon §29.6.
+   *
+   * Emitted in every JWT as the `token_version` claim. `JwtAuthGuard` and
+   * `JwtStrategy` reject tokens whose `token_version` does not match the
+   * current DB value, so bumping this column invalidates ALL access tokens
+   * for the user globally.
+   *
+   * Bump triggers (canon §29.6):
+   *   - password change
+   *   - MFA disable
+   *   - admin force-logout
+   *   - account suspend
+   *
+   * Independent of `JwtRevocationPort` (per-session) and refresh-token
+   * family revocation (per-family). The stamp is the only mechanism that
+   * survives a fresh access-token mint by an attacker who controls the
+   * password.
+   */
+  @Column({
+    name: 'security_stamp',
+    type: 'uuid',
+    default: () => 'gen_random_uuid()',
+  })
+  securityStamp!: string;
+
   // ─────────────────────────────────────────────────────────────────
   // Status
   // ─────────────────────────────────────────────────────────────────

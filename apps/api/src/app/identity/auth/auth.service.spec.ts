@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
@@ -15,6 +14,7 @@ import { PermissionResolverService } from '../roles/permission-resolver.service'
 import { RedisService } from '@hubblewave/redis';
 import { User, PasswordHistory, AuthSettings } from '@hubblewave/instance-db';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
+import { TokenIssuerService } from './token-issuer.service';
 
 const mockUserRepository = {
   findOne: jest.fn(),
@@ -35,10 +35,10 @@ const mockAuthSettingsRepository = {
   findOne: jest.fn(),
 };
 
-const mockJwtService = {
-  sign: jest.fn(),
-  signAsync: jest.fn(),
-  verifyAsync: jest.fn(),
+const mockTokenIssuer = {
+  issueAccessToken: jest.fn(),
+  generateSessionId: jest.fn(() => 'sess-test-uuid'),
+  getAccessTokenTtlSeconds: jest.fn(() => 600),
 };
 
 const mockConfigService = {
@@ -112,7 +112,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: mockUserRepository },
         { provide: getRepositoryToken(PasswordHistory), useValue: mockPasswordHistoryRepository },
         { provide: getRepositoryToken(AuthSettings), useValue: mockAuthSettingsRepository },
-        { provide: JwtService, useValue: mockJwtService },
+        { provide: TokenIssuerService, useValue: mockTokenIssuer },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: RefreshTokenService, useValue: mockRefreshTokenService },
         { provide: MfaService, useValue: mockMfaService },
@@ -150,7 +150,10 @@ describe('AuthService', () => {
       mockAuthSettingsRepository.findOne.mockResolvedValue(null);
       mockUserRepository.findOne.mockResolvedValue(baseUser());
       mockMfaService.isMfaEnabled.mockResolvedValue(false);
-      mockJwtService.sign.mockReturnValue('mock-access-token');
+      mockTokenIssuer.issueAccessToken.mockResolvedValue({
+        token: 'mock-access-token',
+        expiresIn: 600,
+      });
       mockRefreshTokenService.createRefreshToken.mockResolvedValue({
         token: 'mock-refresh-token',
         entity: { id: 'token-id' },
@@ -206,7 +209,7 @@ describe('AuthService', () => {
       expect(result).toEqual(
         expect.objectContaining({ mfaRequired: true }),
       );
-      expect(mockJwtService.sign).not.toHaveBeenCalled();
+      expect(mockTokenIssuer.issueAccessToken).not.toHaveBeenCalled();
     });
 
     it('completes login when a valid TOTP token is provided', async () => {
@@ -214,7 +217,10 @@ describe('AuthService', () => {
       mockUserRepository.findOne.mockResolvedValue(baseUser());
       mockMfaService.isMfaEnabled.mockResolvedValue(true);
       mockMfaService.verifyTotp.mockResolvedValue(true);
-      mockJwtService.sign.mockReturnValue('mock-access-token');
+      mockTokenIssuer.issueAccessToken.mockResolvedValue({
+        token: 'mock-access-token',
+        expiresIn: 600,
+      });
       mockRefreshTokenService.createRefreshToken.mockResolvedValue({
         token: 'mock-refresh-token',
         entity: { id: 'token-id' },
@@ -312,6 +318,25 @@ describe('AuthService', () => {
       expect(mockPasswordHistoryRepository.insert).toHaveBeenCalled();
     });
 
+    it('bumps security_stamp on password change (canon §29.6 kill-switch)', async () => {
+      mockPasswordValidationService.validatePassword.mockResolvedValue({ valid: true, errors: [] });
+
+      const result = await service.changePassword(userId, 'TestPassword123!', 'NewPassword456!');
+
+      expect(result.success).toBe(true);
+      // The update call must contain BOTH the new passwordHash AND a
+      // fresh securityStamp — bumping the stamp is what makes every
+      // outstanding access token fail verification immediately.
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          passwordHash: expect.any(String),
+          passwordChangedAt: expect.any(Date),
+          securityStamp: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        }),
+      );
+    });
+
     it('throws when the current password is incorrect', async () => {
       await expect(
         service.changePassword(userId, 'WrongPassword!', 'NewPassword456!'),
@@ -350,7 +375,10 @@ describe('AuthService', () => {
         token: 'new-refresh-token',
         entity: { id: 'new-token-id' },
       });
-      mockJwtService.sign.mockReturnValue('new-access-token');
+      mockTokenIssuer.issueAccessToken.mockResolvedValue({
+        token: 'new-access-token',
+        expiresIn: 600,
+      });
 
       const result = await service.refreshAccessToken('old-refresh-token', undefined, '127.0.0.1', 'Jest Test');
 

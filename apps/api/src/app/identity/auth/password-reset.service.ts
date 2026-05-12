@@ -123,9 +123,15 @@ export class PasswordResetService {
     // Hash with OWASP-recommended parameters
     const hashed = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
+    // canon §29.6 — password reset is a security event; bump
+    // security_stamp so every outstanding access token for the user
+    // fails verification immediately. The refresh-token revoke below
+    // is parallel defense in depth (kills the issue path), the stamp
+    // bump kills the existing-token-still-valid path.
     await this.usersRepo.update(resetToken.userId, {
       passwordHash: hashed,
       passwordChangedAt: new Date(),
+      securityStamp: crypto.randomUUID(),
     });
 
     // Revoke all refresh tokens for security (force re-login)

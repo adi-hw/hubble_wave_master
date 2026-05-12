@@ -1,6 +1,5 @@
 import { Injectable, UnauthorizedException, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +16,7 @@ import { PasswordValidationService } from './password-validation.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 import { RedisService } from '@hubblewave/redis';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
+import { TokenIssuerService } from './token-issuer.service';
 
 /**
  * Per-user MFA verification rate limit: 5 attempts per 5 minutes.
@@ -69,28 +69,15 @@ export class AuthService {
     private readonly authSettingsRepo: Repository<AuthSettings>,
     @InjectRepository(PasswordHistory)
     private readonly passwordHistoryRepo: Repository<PasswordHistory>,
-    private readonly jwtService: JwtService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly mfaService: MfaService,
     private readonly authEventsService: AuthEventsService,
     private readonly passwordValidationService: PasswordValidationService,
     private readonly permissionResolver: PermissionResolverService,
     private readonly redisService: RedisService,
-    private readonly configService: ConfigService,
     private readonly jwtRevocationAdapter: JwtRevocationAdapter,
+    private readonly tokenIssuer: TokenIssuerService,
   ) {}
-
-  /**
-   * Build JWT sign options with audience + issuer claims so issued tokens match
-   * what JwtStrategy verifies. Reads JWT_AUDIENCE / JWT_ISSUER from config with
-   * platform-canonical defaults.
-   */
-  private buildJwtSignOptions(): JwtSignOptions {
-    return {
-      audience: this.configService.get<string>('JWT_AUDIENCE') || 'hubblewave-instance',
-      issuer: this.configService.get<string>('JWT_ISSUER') || 'hubblewave-identity',
-    };
-  }
 
   /**
    * Per-user MFA brute-force guard. Increments a Redis counter on every failed
@@ -331,16 +318,15 @@ export class AuthService {
       // 7. Resolve Roles
       const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
 
-      // 8. Generate Token
-      const payload = {
-        sub: user.id,
-        username: user.displayName || user.email,
-        roles: roleNames,
-        permissions: Array.from(permissions),
-        is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
-      };
-      
-      const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
+      // 8. Generate Token (canon §29.3 — claims contract enforced by
+      //    TokenIssuerService; the user's current security_stamp is
+      //    fetched from IdentityResolverPort and embedded as token_version
+      //    so a stamp bump kills this token immediately).
+      const sessionId = randomUUID();
+      const { token: accessToken } = await this.tokenIssuer.issueAccessToken({
+        userId: user.id,
+        sessionId,
+      });
 
       const { token: refreshToken } =
         await this.refreshTokenService.createRefreshToken(user.id, ipAddress, userAgent);
@@ -428,16 +414,14 @@ export class AuthService {
     // Resolve roles and permissions
     const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
 
-    // Generate JWT payload
-    const payload = {
-      sub: user.id,
-      username: user.displayName || user.email,
-      roles: roleNames,
-      permissions: Array.from(permissions),
-      is_admin: roleNames.includes('admin') || roleNames.includes('super_admin'),
-    };
-
-    const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
+    // Generate token via TokenIssuerService — same canon §29.3 contract
+    // as the password-login path, so SSO callers get the same claims +
+    // signing key + TTL bounds.
+    const sessionId = randomUUID();
+    const { token: accessToken, expiresIn } = await this.tokenIssuer.issueAccessToken({
+      userId: user.id,
+      sessionId,
+    });
 
     const { token: refreshToken } = await this.refreshTokenService.createRefreshToken(
       user.id,
@@ -453,9 +437,6 @@ export class AuthService {
       ipAddress,
       userAgent,
     });
-
-    // Calculate expiry (15 minutes from JWT config)
-    const expiresIn = 15 * 60; // 15 minutes in seconds
 
     return {
       accessToken,
@@ -514,9 +495,13 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
     
-    // 4. Resolve Roles
-    const { roleNames, permissions } = await this.resolveRolesAndPermissionsForUser(user.id);
-    
+    // 4. Resolve Roles + fresh permissions are no longer minted into the
+    //    token payload — TokenIssuerService reads them straight from
+    //    IdentityResolverPort. We still call resolveRolesAndPermissionsForUser
+    //    here so a future refresh-time policy gate (e.g. "user role
+    //    changed enough to require re-auth") has the snapshot in hand.
+    await this.resolveRolesAndPermissionsForUser(user.id);
+
     // 5. Rotate Token (pass the verified user id so the rotation path
     //    cross-checks the token owner against the caller this handler has
     //    already resolved, in addition to the cookie-side validation above).
@@ -531,28 +516,27 @@ export class AuthService {
         throw new UnauthorizedException('Failed to rotate refresh token');
     }
 
-    // 6. Generate New Access Token
-    const payload = {
-        sub: user.id,
-        username: user.displayName || user.email,
-        roles: roleNames,
-        permissions: Array.from(permissions),
-        is_admin: roleNames.includes('admin'),
-      };
-      const accessToken = this.jwtService.sign(payload, this.buildJwtSignOptions());
+    // 6. Generate New Access Token via TokenIssuerService — same canon
+    //    §29.3 claims contract as login + SSO. Fresh sessionId per token
+    //    rotation so revocation surfaces stay granular.
+    const sessionId = randomUUID();
+    const { token: accessToken } = await this.tokenIssuer.issueAccessToken({
+      userId: user.id,
+      sessionId,
+    });
 
-      await this.authEventsService.record({
-        eventType: 'REFRESH_SUCCESS',
-        success: true,
-        userId: user.id,
-        ipAddress: ipAddress,
-        userAgent,
-      });
+    await this.authEventsService.record({
+      eventType: 'REFRESH_SUCCESS',
+      success: true,
+      userId: user.id,
+      ipAddress: ipAddress,
+      userAgent,
+    });
 
-      return {
-        accessToken,
-        refreshToken: rotated.token,
-      };
+    return {
+      accessToken,
+      refreshToken: rotated.token,
+    };
   }
 
   /**
@@ -628,9 +612,14 @@ export class AuthService {
       settings?.passwordHistoryCount ?? 5
     );
 
+    // canon §29.6 — bump security_stamp on password change so every
+    // outstanding access token for this user is rejected on next
+    // verification. The kill-switch is independent of the refresh-token
+    // revocation; both run for defense in depth.
     await this.userRepo.update(user.id, {
       passwordHash: newPasswordHash,
       passwordChangedAt: new Date(),
+      securityStamp: randomUUID(),
     });
 
     await this.authEventsService.record({
@@ -696,9 +685,13 @@ export class AuthService {
       settings?.passwordHistoryCount ?? 5
     );
 
+    // canon §29.6 — bump security_stamp on password change. Verifiers
+    // compare token_version to the user's live stamp; a mismatch
+    // rejects every outstanding access token for this user globally.
     await this.userRepo.update(userId, {
       passwordHash: newPasswordHash,
       passwordChangedAt: new Date(),
+      securityStamp: randomUUID(),
     });
 
     await this.authEventsService.record({

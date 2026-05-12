@@ -65,6 +65,7 @@ describe('IdentityResolverAdapter', () => {
       permissions: ['p1'],
       isAdmin: false,
       status: 'active',
+      securityStamp: 'stamp-cached-1',
     };
     const redis = buildRedisMock(cached);
     const repo = buildUserRepoMock(null);
@@ -77,12 +78,13 @@ describe('IdentityResolverAdapter', () => {
     expect((repo as unknown as { findOne: jest.Mock }).findOne).not.toHaveBeenCalled();
   });
 
-  it('falls through to the DB and seeds the cache on a miss', async () => {
+  it('falls through to the DB and seeds the cache on a miss (includes securityStamp)', async () => {
     const redis = buildRedisMock();
     const repo = buildUserRepoMock({
       id: 'u-1',
       status: 'active',
       isAdmin: false,
+      securityStamp: 'stamp-from-db-9',
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], ['records.read']);
     const adapter = new IdentityResolverAdapter(repo, perms, redis);
@@ -94,12 +96,31 @@ describe('IdentityResolverAdapter', () => {
       permissions: ['records.read'],
       isAdmin: false,
       status: 'active',
+      securityStamp: 'stamp-from-db-9',
     });
     expect((redis as unknown as { setJson: jest.Mock }).setJson).toHaveBeenCalledWith(
       'authz:identity:u-1',
-      expect.objectContaining({ userId: 'u-1' }),
+      expect.objectContaining({
+        userId: 'u-1',
+        securityStamp: 'stamp-from-db-9',
+      }),
       60,
     );
+  });
+
+  it('returns the user current securityStamp value (canon §29.6)', async () => {
+    const redis = buildRedisMock();
+    const repo = buildUserRepoMock({
+      id: 'u-1',
+      status: 'active',
+      isAdmin: false,
+      securityStamp: 'stamp-fresh-100',
+    } as Partial<User>);
+    const perms = buildPermResolverMock(['user'], []);
+    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+
+    const result = await adapter.resolveIdentity('u-1');
+    expect(result?.securityStamp).toBe('stamp-fresh-100');
   });
 
   it('flags isAdmin when the user holds an admin role', async () => {

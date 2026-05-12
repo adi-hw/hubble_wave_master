@@ -1,4 +1,4 @@
-import { DynamicModule, Module, Provider } from '@nestjs/common';
+import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KEY_SIGNING_SERVICE } from '@hubblewave/auth-guard';
 import { KeyMetadata } from '@hubblewave/instance-db';
@@ -31,6 +31,7 @@ import { AwsKmsEs256KeySigningService } from './aws-kms-es256.key-signing.servic
  * the throw on misconfiguration happens at factory invocation, before
  * Nest constructs the module graph.
  */
+@Global()
 @Module({})
 export class KeySigningModule {
   static forRoot(): DynamicModule {
