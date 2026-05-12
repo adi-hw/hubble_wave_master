@@ -2326,3 +2326,376 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     expect(authorized.maskingStrategy).toBe('NONE');
   });
 });
+
+describe('AuthorizationService — explainability (§28.7)', () => {
+  // Canon §28.7: every authorization decision MUST be able to produce its
+  // provenance. The tests below cover both `explainCollectionAccess` and
+  // `explainFieldAccess` across the level-1..level-7 matrix the
+  // implementation surfaces.
+
+  const COLLECTION_ID_E = '11111111-1111-1111-1111-111111111111';
+  const ROLE_E = '22222222-2222-2222-2222-222222222222';
+  const ROLE_E_OTHER = '33333333-3333-3333-3333-333333333333';
+  const RULE_ID_1 = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const RULE_ID_2 = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const RULE_ID_3 = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const FIELD_E: PropertyMeta = { code: 'phi_field' };
+
+  function buildCtxE(overrides: Partial<RequestContext> = {}): RequestContext {
+    return {
+      userId: 'user-1',
+      roles: [ROLE_E],
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: [ROLE_E] },
+      ...overrides,
+    };
+  }
+
+  function buildCollRule(overrides: Partial<CollectionAccessRuleData> = {}): CollectionAccessRuleData {
+    return {
+      id: RULE_ID_1,
+      collectionId: COLLECTION_ID_E,
+      name: 'r',
+      description: null,
+      roleId: ROLE_E,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canCreate: false,
+      canUpdate: false,
+      canDelete: false,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildExplicitFieldRule(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: RULE_ID_1,
+      propertyId: 'phi_field',
+      propertyCode: 'phi_field',
+      collectionId: COLLECTION_ID_E,
+      wildcardCollectionId: null,
+      roleId: ROLE_E,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildWildcardFieldRule(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: RULE_ID_2,
+      propertyId: null,
+      propertyCode: undefined,
+      collectionId: COLLECTION_ID_E,
+      wildcardCollectionId: COLLECTION_ID_E,
+      roleId: ROLE_E,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  describe('explainCollectionAccess', () => {
+    it('1. matching allow rule → matchedLevel=2, matchedRuleId=<rule>, matchedPrincipal=<role>', async () => {
+      const { service } = buildService({
+        collectionRules: [
+          buildCollRule({ id: RULE_ID_1, roleId: ROLE_E, canRead: true, effect: 'allow' }),
+        ],
+      });
+
+      const prov = await service.explainCollectionAccess(
+        buildCtxE(),
+        COLLECTION_ID_E,
+        'read',
+      );
+
+      expect(prov.effect).toBe('allow');
+      expect(prov.matchedLevel).toBe(2);
+      expect(prov.matchedRuleId).toBe(RULE_ID_1);
+      expect(prov.matchedPrincipal).toBe(ROLE_E);
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        `level-2: allow matched (rule: ${RULE_ID_1})`,
+      ]);
+    });
+
+    it('2. matching deny rule → matchedLevel=1, matchedRuleId=<rule>, matchedPrincipal=<role>', async () => {
+      const { service } = buildService({
+        collectionRules: [
+          buildCollRule({ id: RULE_ID_1, roleId: ROLE_E, canRead: true, effect: 'deny' }),
+        ],
+      });
+
+      const prov = await service.explainCollectionAccess(
+        buildCtxE(),
+        COLLECTION_ID_E,
+        'read',
+      );
+
+      expect(prov.effect).toBe('deny');
+      expect(prov.matchedLevel).toBe(1);
+      expect(prov.matchedRuleId).toBe(RULE_ID_1);
+      expect(prov.matchedPrincipal).toBe(ROLE_E);
+      expect(prov.fallbackChain).toEqual([
+        `level-1: deny matched (rule: ${RULE_ID_1})`,
+      ]);
+    });
+
+    it('3. no matching rule → matchedLevel=3, matchedRuleId=null, full fallback chain', async () => {
+      // Rules exist but target a different role; the principal won't match.
+      const { service } = buildService({
+        collectionRules: [
+          buildCollRule({ id: RULE_ID_1, roleId: ROLE_E_OTHER, canRead: true }),
+        ],
+      });
+
+      const prov = await service.explainCollectionAccess(
+        buildCtxE(),
+        COLLECTION_ID_E,
+        'read',
+      );
+
+      expect(prov.effect).toBe('deny');
+      expect(prov.matchedLevel).toBe(3);
+      expect(prov.matchedRuleId).toBeNull();
+      expect(prov.matchedPrincipal).toBeNull();
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        'level-2: no match',
+        'level-3: default deny',
+      ]);
+    });
+
+    it('4. multiple allow rules → first-by-priority wins matchedRuleId; chain shows single level-2 match', async () => {
+      // Both rules grant read; the repo orders ASC by priority so RULE_ID_1
+      // (priority=1) wins attribution over RULE_ID_2 (priority=2). The
+      // fallback chain captures the matching level only once — the
+      // evaluator returns on first hit.
+      const { service } = buildService({
+        collectionRules: [
+          buildCollRule({ id: RULE_ID_1, roleId: ROLE_E, canRead: true, priority: 1 }),
+          buildCollRule({ id: RULE_ID_2, roleId: ROLE_E, canRead: true, priority: 2 }),
+        ],
+      });
+
+      const prov = await service.explainCollectionAccess(
+        buildCtxE(),
+        COLLECTION_ID_E,
+        'read',
+      );
+
+      expect(prov.effect).toBe('allow');
+      expect(prov.matchedLevel).toBe(2);
+      expect(prov.matchedRuleId).toBe(RULE_ID_1);
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        `level-2: allow matched (rule: ${RULE_ID_1})`,
+      ]);
+    });
+  });
+
+  describe('explainFieldAccess', () => {
+    it('5. explicit field allow (mask=NONE) → matchedLevel=2, effect=allow, mask=NONE', async () => {
+      const { service } = buildService({
+        propertyRules: [
+          buildExplicitFieldRule({
+            id: RULE_ID_1,
+            roleId: ROLE_E,
+            canRead: true,
+            canWrite: true,
+            maskingStrategy: 'NONE',
+            effect: 'allow',
+          }),
+        ],
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('allow');
+      expect(prov.matchedLevel).toBe(2);
+      expect(prov.matchedRuleId).toBe(RULE_ID_1);
+      expect(prov.matchedPrincipal).toBe(ROLE_E);
+      expect(prov.maskingStrategy).toBe('NONE');
+      expect(prov.fallbackChain).toContain('level-1: no match');
+      expect(prov.fallbackChain).toContain(`level-2: allow matched (rule: ${RULE_ID_1})`);
+    });
+
+    it('6. explicit field allow with PARTIAL mask → effect=mask, maskingStrategy=PARTIAL', async () => {
+      const { service } = buildService({
+        propertyRules: [
+          buildExplicitFieldRule({
+            id: RULE_ID_1,
+            roleId: ROLE_E,
+            canRead: true,
+            maskingStrategy: 'PARTIAL',
+            effect: 'allow',
+          }),
+        ],
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('mask');
+      expect(prov.matchedLevel).toBe(2);
+      expect(prov.matchedRuleId).toBe(RULE_ID_1);
+      expect(prov.maskingStrategy).toBe('PARTIAL');
+    });
+
+    it('7. wildcard field deny → matchedLevel=3, effect=deny, maskingStrategy=FULL', async () => {
+      const { service } = buildService({
+        propertyRules: [
+          buildWildcardFieldRule({
+            id: RULE_ID_2,
+            roleId: ROLE_E,
+            effect: 'deny',
+          }),
+        ],
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('deny');
+      expect(prov.matchedLevel).toBe(3);
+      expect(prov.matchedRuleId).toBe(RULE_ID_2);
+      expect(prov.matchedPrincipal).toBe(ROLE_E);
+      expect(prov.maskingStrategy).toBe('FULL');
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        'level-2: no match',
+        `level-3: deny matched (rule: ${RULE_ID_2})`,
+      ]);
+    });
+
+    it('8. no rule + secureFieldsByDefault=true → matchedLevel=7, effect=deny, all 4 explicit/wildcard "no match" + level-7', async () => {
+      const { service } = buildService({
+        collectionFlags: { [COLLECTION_ID_E]: { secureFieldsByDefault: true } },
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('deny');
+      expect(prov.matchedLevel).toBe(7);
+      expect(prov.matchedRuleId).toBeNull();
+      expect(prov.matchedPrincipal).toBeNull();
+      expect(prov.maskingStrategy).toBe('FULL');
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        'level-2: no match',
+        'level-3: no match',
+        'level-4: no match',
+        'level-7: default deny (secureFieldsByDefault=true)',
+      ]);
+    });
+
+    it('9. no rule + secureFieldsByDefault=false → matchedLevel=7, effect=allow, fallback notes legacy default-allow', async () => {
+      const { service } = buildService({
+        collectionFlags: { [COLLECTION_ID_E]: { secureFieldsByDefault: false } },
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('allow');
+      expect(prov.matchedLevel).toBe(7);
+      expect(prov.matchedRuleId).toBeNull();
+      expect(prov.maskingStrategy).toBe('NONE');
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        'level-2: no match',
+        'level-3: no match',
+        'level-4: no match',
+        'level-7: default allow (legacy default; F005-pending)',
+      ]);
+    });
+
+    it('10. two matching allow rules with different masks → matchedRuleId reflects which mask won §28.5', async () => {
+      // RULE_ID_1 grants NONE; RULE_ID_3 grants PARTIAL. §28.5 takes the
+      // MOST-restrictive mask → PARTIAL wins, attribution goes to
+      // RULE_ID_3 because its mask is what the user actually sees.
+      const { service } = buildService({
+        propertyRules: [
+          buildExplicitFieldRule({
+            id: RULE_ID_1,
+            roleId: ROLE_E,
+            canRead: true,
+            canWrite: true,
+            maskingStrategy: 'NONE',
+            effect: 'allow',
+            priority: 1,
+          }),
+          buildExplicitFieldRule({
+            id: RULE_ID_3,
+            roleId: ROLE_E,
+            canRead: true,
+            canWrite: true,
+            maskingStrategy: 'PARTIAL',
+            effect: 'allow',
+            priority: 2,
+          }),
+        ],
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('mask');
+      expect(prov.matchedLevel).toBe(2);
+      // PARTIAL beat NONE → RULE_ID_3 wins attribution.
+      expect(prov.matchedRuleId).toBe(RULE_ID_3);
+      expect(prov.maskingStrategy).toBe('PARTIAL');
+    });
+
+    it('11. most-restrictive masking provenance: fallback chain shows level-2 matched with the winning rule', async () => {
+      // Two allow rules both grant access; one drops mask to FULL.
+      // Provenance attributes to the FULL rule and effect is `deny`
+      // because mask=FULL collapses to a deny outcome.
+      const { service } = buildService({
+        propertyRules: [
+          buildExplicitFieldRule({
+            id: RULE_ID_1,
+            roleId: ROLE_E,
+            maskingStrategy: 'PARTIAL',
+            effect: 'allow',
+            priority: 1,
+          }),
+          buildExplicitFieldRule({
+            id: RULE_ID_3,
+            roleId: ROLE_E,
+            maskingStrategy: 'FULL',
+            effect: 'allow',
+            priority: 2,
+          }),
+        ],
+      });
+
+      const prov = await service.explainFieldAccess(buildCtxE(), COLLECTION_ID_E, FIELD_E);
+
+      expect(prov.effect).toBe('deny'); // FULL mask collapses to deny effect
+      expect(prov.matchedLevel).toBe(2);
+      expect(prov.matchedRuleId).toBe(RULE_ID_3);
+      expect(prov.maskingStrategy).toBe('FULL');
+      expect(prov.fallbackChain).toEqual([
+        'level-1: no match',
+        `level-2: allow matched (rule: ${RULE_ID_3})`,
+      ]);
+    });
+  });
+});

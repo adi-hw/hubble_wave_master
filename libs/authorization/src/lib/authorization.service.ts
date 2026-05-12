@@ -21,6 +21,10 @@ import type {
   CollectionRuleChangeEvent,
   PropertyRuleChangeEvent,
 } from './cache-invalidation.port';
+import type {
+  DecisionProvenance,
+  FieldDecisionProvenance,
+} from './provenance';
 
 export interface RowLevelClause {
   clauses: string[];
@@ -115,50 +119,184 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
-    // Admin bypass
+    // Admin bypass — short-circuits before the evaluator.
     if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, collectionId, operation);
+      // §28.7: emit the would-be provenance alongside the audit row so
+      // forensics can answer "what would the policy have decided had the
+      // admin bypass not fired". Only when the audit port is bound (avoids
+      // the work in non-audited unit tests).
+      // TODO replacement note: §28.6 removes the silent admin bypass and
+      // replaces it with full evaluation against seeded admin policies.
+      // When that lands, this branch goes away and the wouldBeProvenance
+      // computation becomes the real provenance.
+      const wouldBe = this.accessAudit
+        ? await this.evaluateCollectionAccess(ctx, collectionId, operation, { asNonAdmin: true })
+        : null;
+      this.auditAdminBypass(
+        ctx,
+        collectionId,
+        operation,
+        wouldBe ? { wouldBeProvenance: wouldBe.provenance } : undefined,
+      );
       return true;
     }
 
-    // If no repository configured, deny by default (secure)
+    const { allowed } = await this.evaluateCollectionAccess(ctx, collectionId, operation);
+    return allowed;
+  }
+
+  /**
+   * §28.7 — return the provenance for a collection-level decision without
+   * making it. Used by the `/authorization/explain` admin endpoint to
+   * answer "what would user X see for collection Y / operation Z".
+   *
+   * Always emits the provenance shape committed in §28.7. The `effect`
+   * field carries the SAME boolean as `canAccessCollection` would have
+   * returned. For an admin caller, the provenance describes the non-admin
+   * decision (forensic posture) — the admin bypass is not the answer the
+   * compliance reviewer is asking for.
+   */
+  async explainCollectionAccess(
+    ctx: RequestContext,
+    collectionId: string,
+    operation: CollectionOperation,
+  ): Promise<DecisionProvenance> {
+    const { provenance } = await this.evaluateCollectionAccess(ctx, collectionId, operation, {
+      asNonAdmin: true,
+    });
+    return provenance;
+  }
+
+  /**
+   * Core collection-access evaluator. Returns both the boolean decision
+   * and the §28.7 provenance shape that describes how it was reached.
+   *
+   * `opts.asNonAdmin` forces non-admin evaluation regardless of
+   * `ctx.isAdmin`. Used by:
+   *   - `explainCollectionAccess` (the admin asks "what would user X see")
+   *   - `canAccessCollection` admin-bypass branch (forensic wouldBe shape)
+   *
+   * F006 / canon §28.3 two-pass evaluation:
+   * 1. Walk all matching rules. Any UNCONDITIONAL deny matching the
+   *    operation → DENY (§28.4 rule 1, deny wins). Conditional denies do
+   *    not block collection-level access — their row-conditions can only
+   *    exclude specific records, not the whole collection.
+   * 2. Otherwise, allow rules UNION: any matching allow on the operation
+   *    grants access (§28.4 rule 5).
+   *
+   * Provenance contract (§28.7):
+   *   - Level 1: a `deny` collection rule matched principal + operation.
+   *   - Level 2: an `allow` collection rule matched principal + operation.
+   *   - Level 3: no rule matched (default deny).
+   *
+   * `fallbackChain` accumulates one entry per level CHECKED before the
+   * match. A level-2 allow produces `["level-1: no match", "level-2:
+   * allow matched (rule: ...)"]`. A level-3 default deny produces
+   * `["level-1: no match", "level-2: no match", "level-3: default deny"]`.
+   */
+  private async evaluateCollectionAccess(
+    ctx: RequestContext,
+    collectionId: string,
+    operation: CollectionOperation,
+    opts: { asNonAdmin?: boolean } = {},
+  ): Promise<{ allowed: boolean; provenance: DecisionProvenance }> {
+    // If no repository configured, deny by default (secure). Provenance
+    // describes this as a level-3 default deny because no rules were
+    // even reachable for inspection.
     if (!this.collectionAclRepo) {
-      this.logger.warn(`No collection access rule repository configured - denying access to collection ${collectionId}`);
-      return false;
+      if (!opts.asNonAdmin) {
+        this.logger.warn(`No collection access rule repository configured - denying access to collection ${collectionId}`);
+      }
+      return {
+        allowed: false,
+        provenance: {
+          effect: 'deny',
+          matchedLevel: 3,
+          matchedRuleId: null,
+          matchedPrincipal: null,
+          fallbackChain: ['level-1: no match', 'level-2: no match', 'level-3: default deny'],
+        },
+      };
     }
 
     const userContext = this.buildUserContext(ctx);
     const rules = await this.getCollectionRules(collectionId, userContext);
 
-    // Pass 1: any UNCONDITIONAL deny that matches the principal and the
-    // operation flag wins outright (canon §28.4 rule 1). A conditional
-    // deny does NOT block the collection-level check — its row-conditions
-    // can only carve out specific records, evaluated by
-    // canAccessCollectionRecord / getSafeRowLevelPredicatesForCollection.
+    const fallbackChain: string[] = [];
+
+    // Pass 1 / level 1: any UNCONDITIONAL deny that matches the principal
+    // and the operation flag wins outright (canon §28.4 rule 1). A
+    // conditional deny does NOT block the collection-level check — its
+    // row-conditions can only carve out specific records.
+    let level1DenyRule: CollectionAccessRuleData | null = null;
     for (const rule of rules) {
       if (rule.effect !== 'deny') continue;
       if (!this.checkPrincipalMatch(rule, userContext)) continue;
       if (!this.checkOperationPermission(rule, operation)) continue;
       if (rule.conditions) continue;
-      return false;
+      level1DenyRule = rule;
+      break;
     }
 
-    // Pass 2: union of allow rules. Any matching allow grants access.
+    if (level1DenyRule) {
+      fallbackChain.push(`level-1: deny matched (rule: ${level1DenyRule.id})`);
+      return {
+        allowed: false,
+        provenance: {
+          effect: 'deny',
+          matchedLevel: 1,
+          matchedRuleId: level1DenyRule.id,
+          matchedPrincipal: this.resolveMatchedPrincipal(level1DenyRule),
+          fallbackChain,
+        },
+      };
+    }
+    fallbackChain.push('level-1: no match');
+
+    // Pass 2 / level 2: union of allow rules. First matching allow on the
+    // operation grants access; the first-by-priority rule "wins" the
+    // provenance (deterministic — the repo orders by priority ASC).
     for (const rule of rules) {
       if (rule.effect === 'deny') continue;
-      // F023 defense: principal-filter happened in SQL when the repo
-      // supports it, but checkPrincipalMatch stays as a safety net for
-      // stub-only test repos and against a future repo-impl regression.
-      if (!this.checkPrincipalMatch(rule, userContext)) {
-        continue;
-      }
+      if (!this.checkPrincipalMatch(rule, userContext)) continue;
+      if (!this.checkOperationPermission(rule, operation)) continue;
 
-      if (this.checkOperationPermission(rule, operation)) {
-        return true;
-      }
+      fallbackChain.push(`level-2: allow matched (rule: ${rule.id})`);
+      return {
+        allowed: true,
+        provenance: {
+          effect: 'allow',
+          matchedLevel: 2,
+          matchedRuleId: rule.id,
+          matchedPrincipal: this.resolveMatchedPrincipal(rule),
+          fallbackChain,
+        },
+      };
     }
+    fallbackChain.push('level-2: no match');
 
-    return false;
+    // Level 3: no rule matched. Default deny per §28.4.
+    fallbackChain.push('level-3: default deny');
+    return {
+      allowed: false,
+      provenance: {
+        effect: 'deny',
+        matchedLevel: 3,
+        matchedRuleId: null,
+        matchedPrincipal: null,
+        fallbackChain,
+      },
+    };
+  }
+
+  /**
+   * Resolve the principal identifier for §28.7 provenance. Returns the
+   * first non-null principal column on the rule (matches the precedence
+   * the evaluator uses in `checkPrincipalMatch`). `null` when the rule
+   * applied to "everyone" (all principal columns NULL).
+   */
+  private resolveMatchedPrincipal(rule: CollectionAccessRuleData | PropertyAccessRuleData): string | null {
+    return rule.userId ?? rule.roleId ?? rule.groupId ?? null;
   }
 
   /**
@@ -367,140 +505,288 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const propertyRules = await this.getPropertyRules(collectionId);
 
-    // Canon §28.2 level 7 (F005): per-collection default-deny flag. If
-    // the collection opts in by setting `secureFieldsByDefault=true`, a
-    // field that no explicit (levels 1-2) or wildcard (levels 3-4) rule
-    // matched resolves to canRead=false, canWrite=false, mask='FULL'.
-    // When `false` (the DB default), the evaluator preserves the pre-§28
-    // default-allow path for backward compatibility with existing
-    // customer packs. Fetched once per call and cached for CACHE_TTL.
+    // Canon §28.2 level 7 (F005): per-collection default-deny flag.
     const collectionFlag = await this.lookupCollectionFlag(collectionId);
     const defaultDeny = collectionFlag?.secureFieldsByDefault === true;
 
     // Canon §28.2 wildcard support: split the fetched rules into two
-    // buckets once per collection, then per-field we filter the explicit
-    // bucket on the field's code/id. Wildcard rules apply to every field
-    // of `collectionId` so they pre-filter the same way for all fields.
-    //
-    // The XOR CHECK constraint on the DB guarantees each row is exactly
-    // one shape (propertyId set XOR wildcardCollectionId set), so the
-    // bucketing is unambiguous. A rule with `wildcardCollectionId !==
-    // collectionId` is silently irrelevant — the repository's query
-    // already filters by `wildcard_collection_id = :collectionId`, but
-    // we belt-and-suspenders here so a misbehaving stub repo cannot
-    // leak cross-collection wildcards into the evaluator.
+    // buckets once per collection. Wildcard rules apply to every field
+    // of `collectionId`, explicit rules filter per-field.
     const wildcardRules = propertyRules.filter(
       (r) => r.wildcardCollectionId === collectionId,
     );
 
     return fields.map((field) => {
-      const explicitFieldRules = propertyRules.filter(
-        (r) =>
-          // Explicit-field rules carry propertyId/propertyCode. The DB
-          // XOR check guarantees these rules have wildcardCollectionId
-          // null/undefined.
-          !r.wildcardCollectionId &&
-          (r.propertyCode === field.code || r.propertyId === field.code),
-      );
-
-      // Canon §28.2 walks levels 1→7 and the first matching level decides.
-      // §28.4 rule 2: specificity ranks beat effect — wildcards NEVER
-      // override explicit field rules, regardless of which is allow vs
-      // deny. We therefore walk explicit rules (levels 1-2) first; only
-      // when no explicit rule matches the principal do we fall through
-      // to wildcards (levels 3-4).
-
-      // ── Level 1: explicit-field deny ─────────────────────────────────
-      // Any matching deny rule on the explicit field forces the field
-      // to canRead=false, canWrite=false, maskingStrategy='FULL'
-      // regardless of co-matching allows (§28.4 rule 1).
-      for (const rule of explicitFieldRules) {
-        if (rule.effect !== 'deny') continue;
-        if (!this.checkPropertyPrincipalMatch(rule, userContext)) continue;
-        return {
-          ...field,
-          canRead: false,
-          canWrite: false,
-          maskingStrategy: 'FULL' as MaskingStrategy,
-        };
-      }
-
-      // ── Level 2: explicit-field allow (UNION across matching) ───────
-      // Canon §28.2 level 2 + canon §28.5: combine ALL matching allow
-      // rules at this level.
-      //   canRead = UNION across matching allows (any-grants-wins)
-      //   canWrite = UNION across matching allows
-      //   maskingStrategy = MOST-restrictive value across matching
-      //                     allows (NONE < PARTIAL < FULL — user sees
-      //                     the LEAST data, enforcing HIPAA's "minimum
-      //                     necessary" principle at the field level).
-      const explicitAllowDecision = this.combineAllowRules(
-        explicitFieldRules,
-        userContext,
-      );
-      if (explicitAllowDecision) {
-        return {
-          ...field,
-          ...explicitAllowDecision,
-        };
-      }
-
-      // ── Level 3: wildcard deny ──────────────────────────────────────
-      // A matching wildcard deny denies the field (same effect as level
-      // 1, just at the wildcard specificity rank).
-      for (const rule of wildcardRules) {
-        if (rule.effect !== 'deny') continue;
-        if (!this.checkPropertyPrincipalMatch(rule, userContext)) continue;
-        return {
-          ...field,
-          canRead: false,
-          canWrite: false,
-          maskingStrategy: 'FULL' as MaskingStrategy,
-        };
-      }
-
-      // ── Level 4: wildcard allow (UNION across matching) ─────────────
-      // Same combination semantics as level 2, scoped to wildcard rules.
-      const wildcardAllowDecision = this.combineAllowRules(
+      const { authorized } = this.evaluateFieldDecision(
+        field,
+        propertyRules,
         wildcardRules,
         userContext,
+        defaultDeny,
       );
-      if (wildcardAllowDecision) {
-        return {
-          ...field,
-          ...wildcardAllowDecision,
-        };
-      }
+      return authorized;
+    });
+  }
 
-      // ── Level 7: default-deny fallback (canon §28.2 + §28.4) ────────
-      // F005 / canon §28.2 level 7: when no explicit (levels 1-2) or
-      // wildcard (levels 3-4) rule matched, the collection's
-      // `secureFieldsByDefault` flag decides. `true` → deny per canon
-      // §28.4 ("missing policy = deny"). `false` → preserve the
-      // pre-§28 default-allow contract.
-      //
-      // Levels 5-6 (collection-rule-as-field-fallback) are intentionally
-      // not implemented here — collection-level rules gate
-      // `canAccessCollection` but do not automatically grant field
-      // access. That separation is preserved.
-      if (defaultDeny) {
-        return {
+  /**
+   * §28.7 — return the field-level provenance for a single field without
+   * running the full collection authorization pipeline. Useful for
+   * compliance reviewers asking "what would user X see for column F on
+   * collection Y, and why?".
+   */
+  async explainFieldAccess(
+    ctx: RequestContext,
+    collectionId: string,
+    field: PropertyMeta,
+  ): Promise<FieldDecisionProvenance> {
+    // If no property repo, the evaluator's default path produces the
+    // legacy default-allow shape. Surface that as provenance so callers
+    // can tell the difference between "no rules configured" and "rules
+    // exist but didn't match".
+    if (!this.propertyAclRepo) {
+      return {
+        effect: field.isSystem ? 'allow' : 'allow',
+        matchedLevel: 7,
+        matchedRuleId: null,
+        matchedPrincipal: null,
+        fallbackChain: [
+          'level-1: no match',
+          'level-2: no match',
+          'level-3: no match',
+          'level-4: no match',
+          'level-7: default allow (no property repository configured)',
+        ],
+        maskingStrategy: 'NONE',
+      };
+    }
+
+    const userContext = this.buildUserContext(ctx);
+    const propertyRules = await this.getPropertyRules(collectionId);
+    const collectionFlag = await this.lookupCollectionFlag(collectionId);
+    const defaultDeny = collectionFlag?.secureFieldsByDefault === true;
+    const wildcardRules = propertyRules.filter(
+      (r) => r.wildcardCollectionId === collectionId,
+    );
+
+    const { provenance } = this.evaluateFieldDecision(
+      field,
+      propertyRules,
+      wildcardRules,
+      userContext,
+      defaultDeny,
+    );
+    return provenance;
+  }
+
+  /**
+   * Core field-access evaluator. Walks canon §28.2 levels 1→7 and returns
+   * both the AuthorizedPropertyMeta result and the §28.7 provenance shape.
+   *
+   * Walks the SAME path as the pre-§28.7 inline logic — provenance is
+   * computed alongside the decision in a single pass.
+   *
+   * Provenance contract (§28.7):
+   *   1 — explicit field-rule deny matched (canRead=false, canWrite=false, mask=FULL)
+   *   2 — explicit field-rule allow matched (decision = combined allows; effect mirrors mask)
+   *   3 — wildcard field-rule deny matched (same as level 1)
+   *   4 — wildcard field-rule allow matched (decision = combined wildcard allows)
+   *   5 — collection-rule deny (placeholder; not fired today)
+   *   6 — collection-rule allow (placeholder; not fired today)
+   *   7 — no rule matched; `secureFieldsByDefault` decides
+   */
+  private evaluateFieldDecision(
+    field: PropertyMeta,
+    propertyRules: PropertyAccessRuleData[],
+    wildcardRules: PropertyAccessRuleData[],
+    user: UserAccessContext,
+    defaultDeny: boolean,
+  ): { authorized: AuthorizedPropertyMeta; provenance: FieldDecisionProvenance } {
+    const explicitFieldRules = propertyRules.filter(
+      (r) =>
+        // Explicit-field rules carry propertyId/propertyCode. The DB
+        // XOR check guarantees these rules have wildcardCollectionId
+        // null/undefined.
+        !r.wildcardCollectionId &&
+        (r.propertyCode === field.code || r.propertyId === field.code),
+    );
+
+    const fallbackChain: string[] = [];
+
+    // ── Level 1: explicit-field deny ─────────────────────────────────
+    for (const rule of explicitFieldRules) {
+      if (rule.effect !== 'deny') continue;
+      if (!this.checkPropertyPrincipalMatch(rule, user)) continue;
+      fallbackChain.push(`level-1: deny matched (rule: ${rule.id})`);
+      return {
+        authorized: {
           ...field,
           canRead: false,
           canWrite: false,
           maskingStrategy: 'FULL' as MaskingStrategy,
-        };
-      }
+        },
+        provenance: {
+          effect: 'deny',
+          matchedLevel: 1,
+          matchedRuleId: rule.id,
+          matchedPrincipal: this.resolveMatchedPrincipal(rule),
+          fallbackChain,
+          maskingStrategy: 'FULL',
+        },
+      };
+    }
+    fallbackChain.push('level-1: no match');
 
-      // secureFieldsByDefault === false: legacy default-allow path
-      // preserved so existing collections behave as they did pre-§28.
+    // ── Level 2: explicit-field allow (UNION across matching) ───────
+    // Canon §28.2 level 2 + canon §28.5: combine ALL matching allow
+    // rules. canRead/canWrite UNION across matching allows;
+    // maskingStrategy is the MOST-restrictive value (HIPAA "minimum
+    // necessary" at the field level).
+    const explicitCombined = this.combineAllowRulesWithProvenance(
+      explicitFieldRules,
+      user,
+    );
+    if (explicitCombined) {
+      fallbackChain.push(
+        `level-2: allow matched (rule: ${explicitCombined.matchedRuleId})`,
+      );
       return {
+        authorized: {
+          ...field,
+          canRead: explicitCombined.canRead,
+          canWrite: explicitCombined.canWrite,
+          maskingStrategy: explicitCombined.maskingStrategy,
+        },
+        provenance: {
+          effect: this.fieldEffectFromMask(
+            explicitCombined.canRead,
+            explicitCombined.maskingStrategy,
+          ),
+          matchedLevel: 2,
+          matchedRuleId: explicitCombined.matchedRuleId,
+          matchedPrincipal: explicitCombined.matchedPrincipal,
+          fallbackChain,
+          maskingStrategy: explicitCombined.maskingStrategy,
+        },
+      };
+    }
+    fallbackChain.push('level-2: no match');
+
+    // ── Level 3: wildcard deny ──────────────────────────────────────
+    for (const rule of wildcardRules) {
+      if (rule.effect !== 'deny') continue;
+      if (!this.checkPropertyPrincipalMatch(rule, user)) continue;
+      fallbackChain.push(`level-3: deny matched (rule: ${rule.id})`);
+      return {
+        authorized: {
+          ...field,
+          canRead: false,
+          canWrite: false,
+          maskingStrategy: 'FULL' as MaskingStrategy,
+        },
+        provenance: {
+          effect: 'deny',
+          matchedLevel: 3,
+          matchedRuleId: rule.id,
+          matchedPrincipal: this.resolveMatchedPrincipal(rule),
+          fallbackChain,
+          maskingStrategy: 'FULL',
+        },
+      };
+    }
+    fallbackChain.push('level-3: no match');
+
+    // ── Level 4: wildcard allow (UNION across matching) ─────────────
+    const wildcardCombined = this.combineAllowRulesWithProvenance(
+      wildcardRules,
+      user,
+    );
+    if (wildcardCombined) {
+      fallbackChain.push(
+        `level-4: allow matched (rule: ${wildcardCombined.matchedRuleId})`,
+      );
+      return {
+        authorized: {
+          ...field,
+          canRead: wildcardCombined.canRead,
+          canWrite: wildcardCombined.canWrite,
+          maskingStrategy: wildcardCombined.maskingStrategy,
+        },
+        provenance: {
+          effect: this.fieldEffectFromMask(
+            wildcardCombined.canRead,
+            wildcardCombined.maskingStrategy,
+          ),
+          matchedLevel: 4,
+          matchedRuleId: wildcardCombined.matchedRuleId,
+          matchedPrincipal: wildcardCombined.matchedPrincipal,
+          fallbackChain,
+          maskingStrategy: wildcardCombined.maskingStrategy,
+        },
+      };
+    }
+    fallbackChain.push('level-4: no match');
+
+    // ── Levels 5-6 (placeholders) ───────────────────────────────────
+    // Collection-rule-as-field-fallback is reserved by canon §28.2 but
+    // not implemented in the field evaluator today — collection-level
+    // rules gate `canAccessCollection` but do not automatically grant
+    // field access. Documented in provenance.ts; not surfaced in
+    // fallbackChain because the levels never fire.
+
+    // ── Level 7: default fallback (canon §28.2 + §28.4) ─────────────
+    if (defaultDeny) {
+      fallbackChain.push('level-7: default deny (secureFieldsByDefault=true)');
+      return {
+        authorized: {
+          ...field,
+          canRead: false,
+          canWrite: false,
+          maskingStrategy: 'FULL' as MaskingStrategy,
+        },
+        provenance: {
+          effect: 'deny',
+          matchedLevel: 7,
+          matchedRuleId: null,
+          matchedPrincipal: null,
+          fallbackChain,
+          maskingStrategy: 'FULL',
+        },
+      };
+    }
+
+    // secureFieldsByDefault === false: legacy default-allow path.
+    fallbackChain.push('level-7: default allow (legacy default; F005-pending)');
+    return {
+      authorized: {
         ...field,
         canRead: true,
         canWrite: !field.isSystem,
         maskingStrategy: 'NONE' as MaskingStrategy,
-      };
-    });
+      },
+      provenance: {
+        effect: 'allow',
+        matchedLevel: 7,
+        matchedRuleId: null,
+        matchedPrincipal: null,
+        fallbackChain,
+        maskingStrategy: 'NONE',
+      },
+    };
+  }
+
+  /**
+   * Derive the §28.7 field effect from the combined (canRead, mask) result.
+   * NONE → 'allow', PARTIAL → 'mask', FULL → 'deny'. canRead=false also
+   * collapses to 'deny' regardless of mask (defensive — should not occur
+   * in normal combination output).
+   */
+  private fieldEffectFromMask(
+    canRead: boolean,
+    mask: MaskingStrategy,
+  ): 'allow' | 'deny' | 'mask' {
+    if (!canRead || mask === 'FULL') return 'deny';
+    if (mask === 'PARTIAL') return 'mask';
+    return 'allow';
   }
 
   /**
@@ -517,14 +803,47 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Deny rules in the input are skipped — callers handle deny rules
    * at the same level before invoking this helper.
    */
-  private combineAllowRules(
+  /**
+   * §28.5 + §28.7 — combine matching allow rules into a single decision
+   * with provenance attribution. Returns `null` when no allow rule in the
+   * input set matched the user (caller falls through to the next level).
+   *
+   * Combination rules:
+   *   - canRead/canWrite: UNION across matching allows (any-grants-wins)
+   *   - maskingStrategy: MOST-restrictive value across matching allows
+   *     (NONE < PARTIAL < FULL per §28.5 — user sees the LEAST data,
+   *     enforcing HIPAA's "minimum necessary" principle).
+   *
+   * When multiple allow rules combine, `matchedRuleId` is set to the rule
+   * whose mask "won" the §28.5 MOST-restrictive comparison. If multiple
+   * rules tie at the same mask severity, the last rule encountered in
+   * priority order wins the attribution — deterministic and stable for
+   * forensics.
+   *
+   * Deny rules in the input are skipped — callers handle deny rules
+   * at the same level before invoking this helper.
+   *
+   * When multiple allow rules combine, `matchedRuleId` is set to the rule
+   * whose mask "won" the §28.5 MOST-restrictive comparison. If multiple
+   * rules tie at the same mask severity, the last rule encountered in
+   * priority order wins the attribution — deterministic and stable for
+   * forensics.
+   */
+  private combineAllowRulesWithProvenance(
     rules: PropertyAccessRuleData[],
     user: UserAccessContext,
-  ): { canRead: boolean; canWrite: boolean; maskingStrategy: MaskingStrategy } | null {
+  ): {
+    canRead: boolean;
+    canWrite: boolean;
+    maskingStrategy: MaskingStrategy;
+    matchedRuleId: string;
+    matchedPrincipal: string | null;
+  } | null {
     let canRead = false;
     let canWrite = false;
     let maskingStrategy: MaskingStrategy = 'NONE';
     let matched = false;
+    let attributionRule: PropertyAccessRuleData | null = null;
 
     for (const rule of rules) {
       if (rule.effect === 'deny') continue;
@@ -538,18 +857,37 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
         canWrite = rule.canWrite;
         maskingStrategy = rule.maskingStrategy ?? 'NONE';
         matched = true;
+        attributionRule = rule;
         continue;
       }
 
       canRead = canRead || rule.canRead;
       canWrite = canWrite || rule.canWrite;
-      maskingStrategy = this.mostRestrictiveMask(
-        maskingStrategy,
-        rule.maskingStrategy ?? 'NONE',
-      );
+      const ruleMask = rule.maskingStrategy ?? 'NONE';
+      const newMask = this.mostRestrictiveMask(maskingStrategy, ruleMask);
+      if (
+        newMask !== maskingStrategy ||
+        (newMask === ruleMask &&
+          AuthorizationService.MASK_SEVERITY[newMask] >=
+            AuthorizationService.MASK_SEVERITY[maskingStrategy])
+      ) {
+        // This rule either pushed the mask more restrictive, or matched
+        // the current severity — attribute the provenance to it so the
+        // explain endpoint surfaces the rule the user can actually point
+        // at in a compliance review.
+        attributionRule = rule;
+      }
+      maskingStrategy = newMask;
     }
 
-    return matched ? { canRead, canWrite, maskingStrategy } : null;
+    if (!matched || !attributionRule) return null;
+    return {
+      canRead,
+      canWrite,
+      maskingStrategy,
+      matchedRuleId: attributionRule.id,
+      matchedPrincipal: this.resolveMatchedPrincipal(attributionRule),
+    };
   }
 
   /**

@@ -25,6 +25,7 @@ import { BreakGlassService } from './services/break-glass.service';
 import { AccessIngestService } from './services/access-ingest.service';
 import { CollectionAccessGuard } from './guards/collection-access.guard';
 import { PropertyAccessInterceptor } from './interceptors/property-access.interceptor';
+import { ExplainController } from './explain.controller';
 
 @Global()
 @Module({
@@ -43,6 +44,12 @@ import { PropertyAccessInterceptor } from './interceptors/property-access.interc
     ]),
     CacheModule.register(),
   ],
+  // §28.7: explain endpoint exposed via ExplainController. The controller
+  // depends on the AuthorizationService (already injected from the
+  // authorization lib) and the IdentityResolverPort (bound in AuthModule
+  // and exported as a global token, so it resolves without extra imports
+  // when the auth stack is up).
+  controllers: [ExplainController],
   providers: [
     AccessRuleService,
     AccessAuditService,

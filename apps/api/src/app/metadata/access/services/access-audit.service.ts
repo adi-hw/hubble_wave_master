@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccessAuditLog, AccessRuleAuditLog } from '@hubblewave/instance-db';
-import type { AccessAuditEvent, AccessAuditPort } from '@hubblewave/authorization';
+import type {
+  AccessAuditEvent,
+  AccessAuditPort,
+  DecisionProvenance,
+  FieldDecisionProvenance,
+} from '@hubblewave/authorization';
 
 @Injectable()
 export class AccessAuditService implements AccessAuditPort {
@@ -20,8 +25,14 @@ export class AccessAuditService implements AccessAuditPort {
    * check. Fire-and-forget — save errors are logged but never thrown so a
    * down audit table cannot regress the runtime decision (canon §10 audit
    * must not compromise runtime correctness).
+   *
+   * §28.7: when the caller supplies `event.context.wouldBeProvenance`, the
+   * shape is persisted into `context.additionalData.provenance` so forensic
+   * queries can answer "what would the policy have decided had the admin
+   * bypass not fired".
    */
   logAdminBypass(event: AccessAuditEvent): void {
+    const { wouldBeProvenance, ...rest } = event.context ?? {};
     const log = this.auditRepo.create({
       userId: event.userId,
       resource: event.resource,
@@ -30,7 +41,8 @@ export class AccessAuditService implements AccessAuditPort {
       context: {
         additionalData: {
           adminBypass: true,
-          ...(event.context ?? {}),
+          ...rest,
+          ...(wouldBeProvenance ? { provenance: wouldBeProvenance } : {}),
         },
       },
     });
@@ -39,12 +51,33 @@ export class AccessAuditService implements AccessAuditPort {
     });
   }
 
+  /**
+   * F021 — write an audit row for an authorization decision (allow or
+   * deny) made on the non-admin path.
+   *
+   * §28.7: when the caller supplies `details.provenance`, the shape is
+   * persisted into `context.additionalData.provenance` so compliance
+   * reviewers can reconstruct "which level fired, which rule matched, and
+   * the fallback chain" directly from the audit log without re-running the
+   * evaluator.
+   */
   async logAccess(
     collectionId: string,
     userId: string,
     operation: string,
     accessGranted: boolean,
-    details: any,
+    details: {
+      sessionId?: string;
+      recordId?: string | null;
+      propertyCode?: string | null;
+      denialReason?: string | null;
+      justification?: string | null;
+      trace?: string | null;
+      ipAddress?: string;
+      userAgent?: string;
+      provenance?: DecisionProvenance | FieldDecisionProvenance;
+      [key: string]: unknown;
+    },
   ): Promise<void> {
     const log = this.auditRepo.create({
       userId,
@@ -61,6 +94,7 @@ export class AccessAuditService implements AccessAuditPort {
           breakGlassSessionId: details.sessionId || null,
           breakGlassJustification: details.justification || null,
           trace: details.trace || null,
+          ...(details.provenance ? { provenance: details.provenance } : {}),
         }
       },
     });
