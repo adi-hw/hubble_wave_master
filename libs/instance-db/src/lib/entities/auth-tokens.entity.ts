@@ -135,7 +135,8 @@ export type RefreshTokenRevokedReason =
   | 'logout'
   | 'password_change'
   | 'admin_revoke'
-  | 'family_expired';
+  | 'family_expired'
+  | 'logout_all_devices';
 
 /**
  * RefreshToken entity — canon §29.5 single-use rotation with family chains.
@@ -244,7 +245,14 @@ export class RefreshToken {
 
   /**
    * Constrained by the migration CHECK to one of: 'reuse_detected',
-   * 'logout', 'password_change', 'admin_revoke', 'family_expired'.
+   * 'logout', 'password_change', 'admin_revoke', 'family_expired',
+   * 'logout_all_devices'.
+   *
+   * `logout` is the per-device sign-out (canon §29.6.1); the global
+   * kill-switch invoked via `POST /auth/logout-all-devices` writes
+   * `logout_all_devices` so the operational record distinguishes the
+   * two surfaces. Pair with the user's `security_stamp` bump (§29.6)
+   * to invalidate all in-flight access tokens on the global path.
    */
   @Column({ name: 'revoked_reason', type: 'text', nullable: true })
   revokedReason?: RefreshTokenRevokedReason | null;

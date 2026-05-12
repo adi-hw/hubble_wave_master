@@ -1,8 +1,8 @@
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MfaMethod } from '@hubblewave/instance-db';
+import { MfaMethod, User } from '@hubblewave/instance-db';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
@@ -54,6 +54,7 @@ export class MfaService implements OnModuleInit {
 
   constructor(
     @InjectRepository(MfaMethod) private readonly mfaMethodRepo: Repository<MfaMethod>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {
@@ -63,6 +64,28 @@ export class MfaService implements OnModuleInit {
       step: TOTP_STEP_SECONDS,
       window: TOTP_WINDOW,
     };
+  }
+
+  /**
+   * Canon §29.6 — bump `security_stamp` on MFA security events
+   * (enrollment, disable, recovery-code regeneration). Verifiers
+   * compare the JWT's `token_version` to the live stamp; mismatch →
+   * 401, every in-flight access token invalidated globally.
+   *
+   * Callers MUST run this inside the same transaction as the MFA
+   * write so both happen or neither does (canon §10 audit-in
+   * -transaction; the stamp bump is the security-relevant write that
+   * makes the MFA change effective immediately rather than after the
+   * next access-token TTL roll).
+   */
+  private async bumpSecurityStamp(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<void> {
+    await manager.getRepository(User).update(
+      { id: userId },
+      { securityStamp: crypto.randomUUID() },
+    );
   }
 
   onModuleInit() {
@@ -131,12 +154,11 @@ export class MfaService implements OnModuleInit {
   }
 
   async enrollTotp(userId: string, appName: string = 'HubbleWave Platform'): Promise<{ secret: string; qrCode: string; recoveryCodes: string[] }> {
-    const mfaMethodRepo = this.mfaMethodRepo;
     // Generate a secret
     const secret = authenticator.generateSecret();
 
     // Check if user already has TOTP enabled
-    const existing = await mfaMethodRepo.findOne({
+    const existing = await this.mfaMethodRepo.findOne({
       where: { userId, type: 'TOTP' },
     });
 
@@ -168,30 +190,38 @@ export class MfaService implements OnModuleInit {
     // Encrypt secret before storage
     const encryptedSecret = this.encryptSecret(secret);
 
-    // Save or update MFA method (not verified yet)
-    if (existing) {
-      await mfaMethodRepo.update(existing.id, {
-        secret: encryptedSecret,
-        recoveryCodes: hashedCodesString,
-        verified: false,
-      });
-    } else {
-      await mfaMethodRepo.save({
-        userId,
-        type: 'TOTP',
-        secret: encryptedSecret,
-        recoveryCodes: hashedCodesString,
-        enabled: false,
-        verified: false,
-      });
-    }
+    // Canon §29.6 + §10 — MFA enrollment is a security event. Save the
+    // MFA method AND bump `security_stamp` in ONE transaction so the
+    // two writes commit or roll back together. The stamp bump
+    // invalidates every in-flight access token for the user; on the
+    // next request the verifier sees `token_version` mismatch and
+    // forces a fresh token mint that reflects the new MFA state.
+    await this.dataSource.transaction(async (manager) => {
+      const mfaMethodRepo = manager.getRepository(MfaMethod);
+      if (existing) {
+        await mfaMethodRepo.update(existing.id, {
+          secret: encryptedSecret,
+          recoveryCodes: hashedCodesString,
+          verified: false,
+        });
+      } else {
+        await mfaMethodRepo.save({
+          userId,
+          type: 'TOTP',
+          secret: encryptedSecret,
+          recoveryCodes: hashedCodesString,
+          enabled: false,
+          verified: false,
+        });
+      }
+      await this.bumpSecurityStamp(manager, userId);
+    });
 
     return { secret, qrCode, recoveryCodes };
   }
 
   async verifyTotpEnrollment(userId: string, token: string): Promise<boolean> {
-    const mfaMethodRepo = this.mfaMethodRepo;
-    const mfaMethod = await mfaMethodRepo.findOne({
+    const mfaMethod = await this.mfaMethodRepo.findOne({
       where: { userId, type: 'TOTP' },
     });
 
@@ -208,11 +238,18 @@ export class MfaService implements OnModuleInit {
     });
 
     if (isValid) {
-      // Mark as verified and enabled
-      await mfaMethodRepo.update(mfaMethod.id, {
-        verified: true,
-        enabled: true,
-        lastUsedAt: new Date(),
+      // Canon §29.6 + §10 — completing MFA enrollment is the moment
+      // MFA actually protects the account. Mark the method as enabled
+      // AND bump `security_stamp` in ONE transaction so every existing
+      // access token is invalidated; the next token mint carries the
+      // new stamp value with MFA in effect.
+      await this.dataSource.transaction(async (manager) => {
+        await manager.getRepository(MfaMethod).update(mfaMethod.id, {
+          verified: true,
+          enabled: true,
+          lastUsedAt: new Date(),
+        });
+        await this.bumpSecurityStamp(manager, userId);
       });
     }
 
@@ -331,8 +368,16 @@ export class MfaService implements OnModuleInit {
   }
 
   async disableMfa(userId: string): Promise<void> {
-    const mfaMethodRepo = this.mfaMethodRepo;
-    await mfaMethodRepo.delete({ userId });
+    // Canon §29.6 + §10 — disabling MFA is a security event. Delete
+    // the MFA method AND bump `security_stamp` in ONE transaction.
+    // The stamp bump invalidates every in-flight access token so that
+    // the user (or an attacker who already had a session) cannot
+    // continue authenticating against the now-weaker credential
+    // surface without re-authenticating against it explicitly.
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(MfaMethod).delete({ userId });
+      await this.bumpSecurityStamp(manager, userId);
+    });
   }
 
   async getMfaStatus(userId: string): Promise<{ enabled: boolean; type?: string }> {

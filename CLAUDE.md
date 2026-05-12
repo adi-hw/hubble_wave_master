@@ -590,6 +590,33 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-12 (canon §29 PR-C2 — logout-all-devices + security_stamp
+  bump triggers + §29.6.1 amendment):
+  • §29.6 amended with the exclusive list of `security_stamp` bump
+    events (8 entries). Adds an explicit negative statement that
+    per-device `POST /auth/logout` does NOT bump the stamp — that's
+    the global kill-switch, not the ordinary sign-out.
+  • §29.6.1 added distinguishing the two logout endpoints:
+    `POST /auth/logout` (per-device, `revoked_reason='logout'`, no
+    stamp bump) and `POST /auth/logout-all-devices` (global,
+    `revoked_reason='logout_all_devices'`, bumps stamp, emits
+    high-severity audit event).
+  • §29.5 `revoked_reason` enum extended with `'logout_all_devices'`
+    so the operational table distinguishes the global kill-switch
+    from per-device sign-out. Migration
+    `1930700000000-extend-refresh-token-revoked-reason.ts` updates
+    the CHECK constraint.
+  • `SecurityAuditEventKind` (libs/authorization audit port) gained
+    `'logout_all_devices'`.
+  Code lands in this PR: new `AuthService.logoutAllDevices(userId)`
+  transactional method (revoke all families + bump stamp + high
+  -severity audit), new `POST /auth/logout-all-devices` endpoint
+  (204 No Content), MFA stamp bumps wired into `enrollTotp` +
+  `verifyTotpEnrollment` + `disableMfa`, suspendUser / deactivateUser
+  / deleteUser stamp bumps in `users.service.ts`. Password reset stamp
+  bump was already wired by PR-B and verified by tests in this PR.
+  Refs PR-C2 (PR #33).
+
 - 2026-05-12 (canon §29 PR-C — Refresh token family + rotation + reuse
   detection): closes audit finding F001. Refines the §29.5 schema
   ahead of code landing — replaces the draft field set with the
@@ -963,7 +990,7 @@ refresh_tokens (
   replaced_by_token_id   text NULL,           -- FK to token_hash of successor in family
   revoked_reason         text NULL            -- enum: 'reuse_detected' | 'logout' |
                                               -- 'password_change' | 'admin_revoke' |
-                                              -- 'family_expired'
+                                              -- 'family_expired' | 'logout_all_devices'
 )
 ```
 
@@ -990,16 +1017,42 @@ Rotation rules:
 
 ### 29.6 `security_stamp` / token_version
 
-Every user carries a `security_stamp` column (`uuid` regenerated on security events):
+Every user carries a `security_stamp` column (`uuid` regenerated on security events). The list of bump events is **exclusive** — only these events bump the stamp:
 
-- Password change → bump stamp.
-- MFA disable → bump stamp.
-- Admin force-logout → bump stamp.
-- Account suspend → bump stamp.
+1. **`POST /auth/logout-all-devices`** — the global kill-switch endpoint (see §29.6.1).
+2. **Password change** — `POST /auth/change-password` (authenticated) and `POST /auth/change-password-expired` (re-auth flow).
+3. **Password reset** — `POST /auth/password-reset` after the reset token is consumed.
+4. **MFA enrollment** — the moment a verified TOTP method is marked enabled (`verifyTotpEnrollment` success).
+5. **MFA disable** — `disableMfa` clearing the MFA method row.
+6. **MFA reset / regenerate recovery codes** — wherever a future endpoint lands; same posture as enrollment.
+7. **Admin-forced session revocation** — admin endpoint that calls `AuthService.logoutAllDevices(targetUserId)` on the user's behalf.
+8. **Account status change to a non-active state** — `'suspended'`, `'inactive'`, `'deleted'`, `'compromised'`. Wherever the platform mutates `user.status` away from `'active'`, the same write must bump `securityStamp`.
+
+Per-device logout (`POST /auth/logout`) does NOT bump `security_stamp`. Bumping the stamp invalidates every access token across every device — that's the global kill-switch, not the ordinary sign-out.
 
 Every JWT carries the user's `security_stamp` value at issuance time in the `token_version` claim. Verifiers (`JwtAuthGuard`, `JwtStrategy`) compare to the current DB value; mismatch → reject with `Token version stale`. Closes the "old session still works after password change" gap.
 
 `security_stamp` is the cross-cutting kill-switch — independent of `JwtRevocationPort` (which is per-session) and refresh-token family revocation (which is per-family). Bumping stamp invalidates ALL tokens for the user globally.
+
+### 29.6.1 Logout semantics — two endpoints
+
+The platform exposes two distinct logout surfaces. They are operationally different and carry different revocation reasons in the audit trail:
+
+**`POST /auth/logout`** (per-device):
+
+- Revokes the current refresh-token family (`revoked_reason = 'logout'`).
+- Revokes the current session via `JwtRevocationPort` (so the in-flight access token also fails on its next request).
+- Clears the refresh cookie on the calling device.
+- Does NOT bump `security_stamp`.
+- Other devices the user is signed in to are unaffected.
+
+**`POST /auth/logout-all-devices`** (global kill-switch):
+
+- Revokes ALL of the user's active refresh-token families with `revoked_reason = 'logout_all_devices'`. The dedicated reason code distinguishes the global revocation from the per-device sign-out in the operational table — forensic queries can filter explicitly.
+- Bumps `security_stamp` — every in-flight access token across every device becomes invalid on next verification (§29.6 stamp comparison).
+- Writes a high-severity audit event via `AccessAuditPort.logSecurityEvent` with `kind: 'logout_all_devices'` and `severity: 'high'`.
+- Forces full re-authentication everywhere, including the device that called the endpoint.
+- Response is 204 No Content. No tokens issued in the response body.
 
 ### 29.7 Service-to-service authentication (closes F022)
 

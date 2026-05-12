@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import * as argon2 from 'argon2';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import { MfaService } from './mfa.service';
-import { MfaMethod } from '@hubblewave/instance-db';
+import { MfaMethod, User } from '@hubblewave/instance-db';
 import { RedisService } from '@hubblewave/redis';
 
 const mockMfaMethodRepository = {
@@ -16,6 +17,23 @@ const mockMfaMethodRepository = {
   update: jest.fn(),
   delete: jest.fn(),
 };
+
+const mockUserRepository = {
+  update: jest.fn().mockResolvedValue({ affected: 1 }),
+};
+
+const mockDataSource = {
+  transaction: jest.fn(async (cb: (manager: EntityManager) => unknown) => {
+    const manager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === MfaMethod) return mockMfaMethodRepository;
+        if (entity === User) return mockUserRepository;
+        return mockMfaMethodRepository;
+      }),
+    } as unknown as EntityManager;
+    return cb(manager);
+  }),
+} as unknown as DataSource;
 
 const mockConfigService = {
   get: jest.fn((key: string, defaultValue?: string) => {
@@ -67,10 +85,15 @@ describe('MfaService', () => {
     jest.clearAllMocks();
     redisMock = createRedisMock();
 
+    mockUserRepository.update.mockReset();
+    mockUserRepository.update.mockResolvedValue({ affected: 1 });
+    (mockDataSource.transaction as jest.Mock).mockClear();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MfaService,
         { provide: getRepositoryToken(MfaMethod), useValue: mockMfaMethodRepository },
+        { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: RedisService, useValue: redisMock },
       ],
@@ -141,6 +164,22 @@ describe('MfaService', () => {
         expect(stored.startsWith('$argon2id$')).toBe(true);
       }
     });
+
+    it('bumps security_stamp in the same transaction as the MFA write (canon §29.6)', async () => {
+      mockMfaMethodRepository.findOne.mockResolvedValue(null);
+      mockMfaMethodRepository.save.mockResolvedValue({ id: 'mfa-123', userId: 'user-123' });
+
+      await service.enrollTotp('user-123');
+
+      // The transactional path MUST be taken — one transaction wraps
+      // both the MFA write and the security_stamp bump.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(1);
+      // User repo update for securityStamp fires with a fresh uuid.
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        { id: 'user-123' },
+        { securityStamp: expect.stringMatching(/^[0-9a-f-]{36}$/i) },
+      );
+    });
   });
 
   describe('verifyTotpEnrollment', () => {
@@ -190,6 +229,48 @@ describe('MfaService', () => {
       const result = await service.verifyTotpEnrollment('user-123', '123456');
 
       expect(result).toBe(false);
+    });
+
+    it('bumps security_stamp after successful enrollment verification (canon §29.6)', async () => {
+      const secret = authenticator.generateSecret();
+      const validToken = authenticator.generate(secret);
+
+      mockMfaMethodRepository.findOne.mockResolvedValue({
+        id: 'mfa-123',
+        userId: 'user-123',
+        type: 'TOTP',
+        secret,
+        verified: false,
+        enabled: false,
+      });
+
+      await service.verifyTotpEnrollment('user-123', validToken);
+
+      // Transaction wraps both the MFA enable AND the stamp bump.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(1);
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        { id: 'user-123' },
+        { securityStamp: expect.stringMatching(/^[0-9a-f-]{36}$/i) },
+      );
+    });
+
+    it('does NOT bump security_stamp on invalid enrollment token', async () => {
+      const secret = authenticator.generateSecret();
+
+      mockMfaMethodRepository.findOne.mockResolvedValue({
+        id: 'mfa-123',
+        userId: 'user-123',
+        type: 'TOTP',
+        secret,
+        verified: false,
+        enabled: false,
+      });
+
+      await service.verifyTotpEnrollment('user-123', '000000');
+
+      // No stamp bump on failure — MFA never went live.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(0);
+      expect(mockUserRepository.update).not.toHaveBeenCalled();
     });
   });
 
@@ -455,6 +536,19 @@ describe('MfaService', () => {
       await service.disableMfa('user-123');
 
       expect(mockMfaMethodRepository.delete).toHaveBeenCalledWith({ userId: 'user-123' });
+    });
+
+    it('bumps security_stamp in the same transaction as the MFA delete (canon §29.6)', async () => {
+      mockMfaMethodRepository.delete.mockResolvedValue({ affected: 1 });
+
+      await service.disableMfa('user-123');
+
+      // One transaction wraps the delete + stamp bump.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(1);
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        { id: 'user-123' },
+        { securityStamp: expect.stringMatching(/^[0-9a-f-]{36}$/i) },
+      );
     });
   });
 
