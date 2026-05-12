@@ -88,6 +88,16 @@ export {
 export type { LoginAttemptResult } from './auth-tokens.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Signing Key Registry (canon §29.2)
+// ─────────────────────────────────────────────────────────────────
+export { KeyMetadata } from './key-metadata.entity';
+export type {
+  KeyProvider,
+  KeyAlgorithm,
+  KeyState,
+} from './key-metadata.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // Theme
 // ─────────────────────────────────────────────────────────────────
 export {
@@ -618,6 +628,7 @@ import {
   SAMLAuthState,
   LoginAttempt,
 } from './auth-tokens.entity';
+import { KeyMetadata } from './key-metadata.entity';
 import { ThemeDefinition, UserThemePreference, InstanceBranding } from './theme.entity';
 import { UserPreference } from './user-preference.entity';
 import { ModuleEntity, ModuleSecurity } from './module.entity';
@@ -869,6 +880,9 @@ export const instanceEntities = [
   MfaMethod,
   SAMLAuthState,
   LoginAttempt,
+
+  // Signing Key Registry (canon §29.2)
+  KeyMetadata,
 
   // UI & Forms
   ThemeDefinition,

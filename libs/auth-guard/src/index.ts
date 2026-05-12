@@ -15,3 +15,5 @@ export * from './lib/maintenance-mode.interceptor';
 export * from './lib/maintenance-mode.module';
 export * from './lib/require-approved-proposal.decorator';
 export * from './lib/require-approved-proposal.guard';
+export * from './lib/key-signing/key-signing.service';
+export * from './lib/key-signing/kid';
