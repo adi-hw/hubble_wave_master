@@ -54,11 +54,19 @@ interface PropertyAclRepo {
 
 /**
  * Minimal repository contract used to translate a `tableName` (mutable label)
- * into the stable `collectionId` UUID. Any repository whose entity exposes
- * `id` and `tableName` columns can satisfy this interface.
+ * into the stable `collectionId` UUID, and to look up per-collection
+ * authorization flags (canon §28.2 level 7, F005) by `id`. Any repository
+ * whose entity exposes `id`, `tableName`, and `secureFieldsByDefault`
+ * columns can satisfy this interface.
+ *
+ * `secureFieldsByDefault` is optional on the return type — test stubs
+ * that pre-date F005 may omit it. The production `CollectionDefinition`
+ * repo (TypeORM) returns it as a `boolean` (DB default `false`).
  */
 interface CollectionDefinitionLookupRepo {
-  findOne(options: { where: { tableName: string } }): Promise<{ id: string } | null>;
+  findOne(
+    options: { where: { tableName: string } | { id: string } },
+  ): Promise<{ id: string; secureFieldsByDefault?: boolean } | null>;
 }
 
 @Injectable()
@@ -359,6 +367,16 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     const userContext = this.buildUserContext(ctx);
     const propertyRules = await this.getPropertyRules(collectionId);
 
+    // Canon §28.2 level 7 (F005): per-collection default-deny flag. If
+    // the collection opts in by setting `secureFieldsByDefault=true`, a
+    // field that no explicit (levels 1-2) or wildcard (levels 3-4) rule
+    // matched resolves to canRead=false, canWrite=false, mask='FULL'.
+    // When `false` (the DB default), the evaluator preserves the pre-§28
+    // default-allow path for backward compatibility with existing
+    // customer packs. Fetched once per call and cached for CACHE_TTL.
+    const collectionFlag = await this.lookupCollectionFlag(collectionId);
+    const defaultDeny = collectionFlag?.secureFieldsByDefault === true;
+
     // Canon §28.2 wildcard support: split the fetched rules into two
     // buckets once per collection, then per-field we filter the explicit
     // bucket on the field's code/id. Wildcard rules apply to every field
@@ -384,13 +402,6 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
           !r.wildcardCollectionId &&
           (r.propertyCode === field.code || r.propertyId === field.code),
       );
-
-      // Default permissions when no rule matches the user at any level.
-      // F005 will flip these defaults to deny in a separate PR; today
-      // levels 5-7 still resolve to allow via the existing fallback path.
-      const defaultRead = true;
-      const defaultWrite = !field.isSystem;
-      const defaultMask: MaskingStrategy = 'NONE';
 
       // Canon §28.2 walks levels 1→7 and the first matching level decides.
       // §28.4 rule 2: specificity ranks beat effect — wildcards NEVER
@@ -461,16 +472,33 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
         };
       }
 
-      // ── Levels 5-7: collection-rule fallback / default-allow ────────
-      // F005 will flip levels 5-7 to defer to collection rules and then
-      // deny. Today, the default-allow path preserves the pre-§28
-      // contract: readable/writable by default with no masking when no
-      // field-scoped rule matched.
+      // ── Level 7: default-deny fallback (canon §28.2 + §28.4) ────────
+      // F005 / canon §28.2 level 7: when no explicit (levels 1-2) or
+      // wildcard (levels 3-4) rule matched, the collection's
+      // `secureFieldsByDefault` flag decides. `true` → deny per canon
+      // §28.4 ("missing policy = deny"). `false` → preserve the
+      // pre-§28 default-allow contract.
+      //
+      // Levels 5-6 (collection-rule-as-field-fallback) are intentionally
+      // not implemented here — collection-level rules gate
+      // `canAccessCollection` but do not automatically grant field
+      // access. That separation is preserved.
+      if (defaultDeny) {
+        return {
+          ...field,
+          canRead: false,
+          canWrite: false,
+          maskingStrategy: 'FULL' as MaskingStrategy,
+        };
+      }
+
+      // secureFieldsByDefault === false: legacy default-allow path
+      // preserved so existing collections behave as they did pre-§28.
       return {
         ...field,
-        canRead: defaultRead,
-        canWrite: defaultWrite,
-        maskingStrategy: defaultMask,
+        canRead: true,
+        canWrite: !field.isSystem,
+        maskingStrategy: 'NONE' as MaskingStrategy,
       };
     });
   }
@@ -1133,6 +1161,53 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     }
 
     return rules;
+  }
+
+  /**
+   * Look up the per-collection authorization flags (canon §28.2 level 7,
+   * F005). Cached for CACHE_TTL — collection-definition writes are rare
+   * admin actions and TTL expiry (5 min) is acceptable per the F005
+   * brief; the F025 rule-cache invalidation port intentionally does NOT
+   * cover collection_definition writes.
+   *
+   * Returns `null` when:
+   *   - the repo is not wired (test stub context), OR
+   *   - no row exists for `collectionId` (deleted / misconfigured).
+   * Callers MUST treat null as "no flag opt-in" (legacy default-allow)
+   * — failing closed here would break every collection whose definition
+   * row hasn't yet been seeded, which is not the F005 contract.
+   */
+  private async lookupCollectionFlag(
+    collectionId: string,
+  ): Promise<{ secureFieldsByDefault: boolean } | null> {
+    if (!this.collectionDefinitionRepo) {
+      return null;
+    }
+
+    const cacheKey = `auth:collection-flag:${collectionId}`;
+    if (this.cache) {
+      const cached = await this.cache.get<{ secureFieldsByDefault: boolean }>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const definition = await this.collectionDefinitionRepo.findOne({
+      where: { id: collectionId },
+    });
+    if (!definition) {
+      return null;
+    }
+
+    const flag = {
+      secureFieldsByDefault: definition.secureFieldsByDefault === true,
+    };
+
+    if (this.cache) {
+      await this.cache.set(cacheKey, flag, this.CACHE_TTL);
+    }
+
+    return flag;
   }
 
   private checkPrincipalMatch(

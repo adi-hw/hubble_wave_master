@@ -16,7 +16,7 @@ type PropertyAclRepoStub = {
 };
 
 type CollectionDefinitionRepoStub = {
-  findOne: jest.Mock<Promise<{ id: string } | null>, [unknown]>;
+  findOne: jest.Mock<Promise<{ id: string; secureFieldsByDefault?: boolean } | null>, [unknown]>;
 };
 
 const COLLECTION_ID = '11111111-1111-1111-1111-111111111111';
@@ -60,6 +60,12 @@ function buildService(opts: {
   collectionRules?: CollectionAccessRuleData[];
   propertyRules?: PropertyAccessRuleData[];
   tableNameToId?: Record<string, string>;
+  // F005: per-collection-id flags. Keyed by collectionId UUID; values
+  // are the row's `secureFieldsByDefault` setting. Absence is treated
+  // as "no row exists" (lookup returns null → evaluator defaults to
+  // false → legacy default-allow). Explicit `false` is treated as
+  // "row exists, opt-out".
+  collectionFlags?: Record<string, { secureFieldsByDefault: boolean }>;
 } = {}): {
   service: AuthorizationService;
   collectionAclRepo: CollectionAclRepoStub;
@@ -73,11 +79,29 @@ function buildService(opts: {
     find: jest.fn().mockResolvedValue(opts.propertyRules ?? []),
   };
   const collectionDefinitionRepo: CollectionDefinitionRepoStub = {
-    findOne: jest.fn().mockImplementation(({ where }: { where: { tableName: string } }) => {
-      const map = opts.tableNameToId ?? {};
-      const id = map[where.tableName];
-      return Promise.resolve(id ? { id } : null);
-    }),
+    findOne: jest.fn().mockImplementation(
+      ({ where }: { where: { tableName?: string; id?: string } }) => {
+        // tableName lookup (deprecated *Table wrappers)
+        if (typeof where.tableName === 'string') {
+          const map = opts.tableNameToId ?? {};
+          const id = map[where.tableName];
+          return Promise.resolve(id ? { id } : null);
+        }
+        // id lookup (F005 — secureFieldsByDefault flag check)
+        if (typeof where.id === 'string') {
+          const flags = opts.collectionFlags ?? {};
+          const row = flags[where.id];
+          if (!row) {
+            return Promise.resolve(null);
+          }
+          return Promise.resolve({
+            id: where.id,
+            secureFieldsByDefault: row.secureFieldsByDefault,
+          });
+        }
+        return Promise.resolve(null);
+      },
+    ),
   };
 
   const policyCompiler = new PolicyCompilerService();
@@ -495,7 +519,12 @@ describe('AuthorizationService — multi-rule field permissions (F024 + canon §
     expect(authorized.maskingStrategy).toBe('NONE');
   });
 
-  it('falls back to default permissions when no rule matches', async () => {
+  it('falls back to LEGACY default permissions when no rule matches and secureFieldsByDefault=false', async () => {
+    // This test is the F024 default-allow fallback path. After F005
+    // (canon §28.2 level 7), default-allow is the LEGACY behaviour
+    // preserved only when the collection's `secureFieldsByDefault`
+    // flag is false. The default-deny case is covered in the
+    // "secureFieldsByDefault flag" describe block below.
     const { service } = buildService({
       propertyRules: [
         buildFieldRule({ id: 'r-other-role', roleId: ROLE_GUEST, canRead: false, canWrite: false }),
@@ -503,13 +532,17 @@ describe('AuthorizationService — multi-rule field permissions (F024 + canon §
     });
 
     // User has neither ROLE_GUEST nor ROLE_MANAGER — no rules match.
+    // The default CollectionDefinitionRepoStub returns null for unknown
+    // ids, which the evaluator treats as "no flag opt-in" → legacy
+    // default-allow.
     const [authorized] = await service.getAuthorizedFieldsForCollection(
       buildMultiRoleContext([ROLE_VIEWER]),
       COLLECTION_ID,
       [FIELD_SALARY],
     );
 
-    // Current default — F005 will change this default to deny in a future PR.
+    // Legacy default — NOT canon §28.2 level 7. Default-deny is the
+    // §28-aligned behaviour, opted into per-collection via the flag.
     expect(authorized.canRead).toBe(true);
     expect(authorized.canWrite).toBe(true);
     expect(authorized.maskingStrategy).toBe('NONE');
@@ -1852,6 +1885,444 @@ describe('AuthorizationService — wildcard field rules (§28.2 levels 3-4)', ()
     // 4 misses, fall through to the default-allow path.
     expect(authorized.canRead).toBe(true);
     expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+});
+
+describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 level 7)', () => {
+  // F005 / canon §28.2 level 7: per-collection default-deny flag on
+  // CollectionDefinition. When `secureFieldsByDefault=true`, a field
+  // that no explicit (levels 1-2) or wildcard (levels 3-4) rule matched
+  // resolves to canRead=false, canWrite=false, mask='FULL'. When false
+  // (DB default), the evaluator preserves the legacy default-allow
+  // behaviour to keep existing customer packs working on rollout.
+  //
+  // The flag is per-collection — not per-tenant — so it works
+  // unchanged in single-tenant and pooled (RLS) deployment modes
+  // (canon §5 SOFTEN).
+
+  const ROLE_F005 = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const ROLE_F005_OTHER = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  const FIELD_NOTES: PropertyMeta = { code: 'notes' };
+
+  function buildFieldRuleNotes(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-notes',
+      propertyId: 'notes',
+      propertyCode: 'notes',
+      collectionId: COLLECTION_ID,
+      wildcardCollectionId: null,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildWildcardRuleNotes(overrides: Partial<PropertyAccessRuleData> = {}): PropertyAccessRuleData {
+    return {
+      id: 'rule-wc-notes',
+      propertyId: null,
+      propertyCode: undefined,
+      collectionId: COLLECTION_ID,
+      wildcardCollectionId: COLLECTION_ID,
+      roleId: null,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 1,
+      isActive: true,
+      maskingStrategy: 'NONE',
+      effect: 'allow',
+      ...overrides,
+    };
+  }
+
+  function buildCtxF(roles: string[]): RequestContext {
+    return {
+      userId: 'user-1',
+      roles,
+      permissions: [],
+      isAdmin: false,
+      attributes: { roleIds: roles },
+    } as unknown as RequestContext;
+  }
+
+  it('1. secureFieldsByDefault=false, no field rules → legacy default-allow preserved', async () => {
+    // Existing collections on rollout: flag is `false` so the evaluator
+    // returns canRead=true, canWrite=!isSystem, mask='NONE' just as it
+    // did before F005.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: false },
+      },
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('2. secureFieldsByDefault=true, no field rules → canon §28.2 level 7 default-deny', async () => {
+    // The opt-in path: customer flips the flag on this collection and
+    // a field with no matching rule resolves to canRead=false,
+    // canWrite=false, mask='FULL' — the canon §28.4 "missing policy =
+    // deny" behaviour.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: true },
+      },
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('3. secureFieldsByDefault=true + explicit field allow rule → allow wins (level 2 fires before level 7)', async () => {
+    // §28.2: levels are walked 1→7 and the first match decides. An
+    // explicit allow at level 2 fires BEFORE the level-7 default-deny
+    // — the flag only affects the no-rule-matched fallback.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: true },
+      },
+      propertyRules: [
+        buildFieldRuleNotes({
+          id: 'r-allow-explicit',
+          effect: 'allow',
+          roleId: ROLE_F005,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('4. secureFieldsByDefault=true + wildcard allow rule → allow wins (level 4 fires before level 7)', async () => {
+    // Wildcards (levels 3-4) fire before the default-deny fallback at
+    // level 7. A wildcard allow on the collection still grants access
+    // even when the flag is on.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: true },
+      },
+      propertyRules: [
+        buildWildcardRuleNotes({
+          id: 'r-allow-wildcard',
+          effect: 'allow',
+          roleId: ROLE_F005,
+          canRead: true,
+          canWrite: true,
+          maskingStrategy: 'NONE',
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('5. secureFieldsByDefault=true + explicit field deny rule → deny applies (level 1 fires)', async () => {
+    // Explicit deny at level 1 already produces the same canRead=false,
+    // canWrite=false, mask='FULL' outcome as level-7 default-deny.
+    // Verify the path is taken from level 1 (rule-matched), not level
+    // 7 (no-rule-matched), so behaviour is consistent whether or not
+    // the flag is set.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: true },
+      },
+      propertyRules: [
+        buildFieldRuleNotes({
+          id: 'r-deny-explicit',
+          effect: 'deny',
+          roleId: ROLE_F005,
+        }),
+      ],
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(false);
+    expect(authorized.canWrite).toBe(false);
+    expect(authorized.maskingStrategy).toBe('FULL');
+  });
+
+  it('6. collectionDefinitionRepo returns null → defaults to false (legacy default-allow), no exception', async () => {
+    // Defensive: a collection_definitions row may not yet exist (test
+    // fixtures, partially-seeded environments). The lookup helper
+    // returns null, the evaluator treats null as "no flag opt-in",
+    // and default-allow is preserved. Failing closed here would break
+    // every collection that hasn't yet had a definition row written.
+    const { service } = buildService({
+      // Intentionally empty — no row for COLLECTION_ID.
+      collectionFlags: {},
+    });
+
+    await expect(
+      service.getAuthorizedFieldsForCollection(
+        buildCtxF([ROLE_F005]),
+        COLLECTION_ID,
+        [FIELD_NOTES],
+      ),
+    ).resolves.toBeDefined();
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('7. collectionDefinitionRepo is null (no repo wired) → defaults to false, no exception', async () => {
+    // Test-stub context: AuthorizationService is constructed without a
+    // CollectionDefinition repo. The lookup helper short-circuits to
+    // null and the evaluator falls through to default-allow without
+    // hitting the missing repo.
+    const policyCompiler = new PolicyCompilerService();
+    const propertyAclRepo: PropertyAclRepoStub = {
+      find: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AuthorizationService(
+      { find: jest.fn().mockResolvedValue([]) },
+      propertyAclRepo,
+      null,
+      null,
+      policyCompiler,
+      null, // intentionally no CollectionDefinition repo
+    );
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
+  });
+
+  it('8a. flag is cached under auth:collection-flag:{id} after first lookup', async () => {
+    // Cache hit on second call: the lookup helper writes to
+    // `auth:collection-flag:{collectionId}` on first read and returns
+    // the cached value on subsequent reads within CACHE_TTL.
+    const cacheStore = new Map<string, unknown>();
+    const cache = {
+      get: jest.fn(async (k: string) => cacheStore.get(k)),
+      set: jest.fn(async (k: string, v: unknown) => {
+        cacheStore.set(k, v);
+        return undefined;
+      }),
+      del: jest.fn(async (k: string) => {
+        cacheStore.delete(k);
+        return true;
+      }),
+    };
+
+    const collectionDefinitionRepo: CollectionDefinitionRepoStub = {
+      findOne: jest.fn().mockImplementation(({ where }: { where: { id?: string } }) => {
+        if (where.id === COLLECTION_ID) {
+          return Promise.resolve({ id: COLLECTION_ID, secureFieldsByDefault: true });
+        }
+        return Promise.resolve(null);
+      }),
+    };
+
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      { find: jest.fn().mockResolvedValue([]) },
+      { find: jest.fn().mockResolvedValue([]) },
+      cache as unknown as ConstructorParameters<typeof AuthorizationService>[2],
+      null,
+      policyCompiler,
+      collectionDefinitionRepo,
+    );
+
+    // First call: misses cache, calls repo, sets cache.
+    const [first] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+    expect(first.canRead).toBe(false);
+    expect(collectionDefinitionRepo.findOne).toHaveBeenCalledTimes(1);
+    expect(cache.set).toHaveBeenCalledWith(
+      'auth:collection-flag:' + COLLECTION_ID,
+      { secureFieldsByDefault: true },
+      expect.any(Number),
+    );
+
+    // Second call: hits cache, repo not called again.
+    const [second] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+    expect(second.canRead).toBe(false);
+    expect(collectionDefinitionRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('8b. clearing the cache key surfaces the new flag value on next lookup', async () => {
+    // Flag flip + manual cache invalidation: simulate an admin
+    // toggling secureFieldsByDefault from false to true. The F025
+    // rule-cache invalidation port does NOT cover collection_definition
+    // writes (canon §13 + F005 brief: TTL expiry is the canonical
+    // path), but operators / tests can `cache.del('auth:collection-
+    // flag:{id}')` to force-refresh. Verify that mechanic works.
+    const cacheStore = new Map<string, unknown>();
+    const cache = {
+      get: jest.fn(async (k: string) => cacheStore.get(k)),
+      set: jest.fn(async (k: string, v: unknown) => {
+        cacheStore.set(k, v);
+        return undefined;
+      }),
+      del: jest.fn(async (k: string) => {
+        cacheStore.delete(k);
+        return true;
+      }),
+    };
+
+    let currentFlag = false;
+    const collectionDefinitionRepo: CollectionDefinitionRepoStub = {
+      findOne: jest.fn().mockImplementation(({ where }: { where: { id?: string } }) => {
+        if (where.id === COLLECTION_ID) {
+          return Promise.resolve({ id: COLLECTION_ID, secureFieldsByDefault: currentFlag });
+        }
+        return Promise.resolve(null);
+      }),
+    };
+
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      { find: jest.fn().mockResolvedValue([]) },
+      { find: jest.fn().mockResolvedValue([]) },
+      cache as unknown as ConstructorParameters<typeof AuthorizationService>[2],
+      null,
+      policyCompiler,
+      collectionDefinitionRepo,
+    );
+
+    // First lookup: flag=false → default-allow.
+    const [first] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005_OTHER]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+    expect(first.canRead).toBe(true);
+
+    // Flip the flag in the "database" and invalidate the cache key.
+    currentFlag = true;
+    await cache.del('auth:collection-flag:' + COLLECTION_ID);
+
+    // Second lookup: cache miss → re-reads the flag, now true.
+    const [second] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005_OTHER]),
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+    expect(second.canRead).toBe(false);
+    expect(second.canWrite).toBe(false);
+    expect(second.maskingStrategy).toBe('FULL');
+  });
+
+  it('9. admin bypass short-circuits before the flag lookup (canon §28.6 preserved)', async () => {
+    // Admins still bypass at the top of getAuthorizedFieldsForCollection.
+    // The flag lookup is never reached, so even a secureFieldsByDefault=
+    // true collection is fully readable/writable for admins, and the
+    // collectionDefinitionRepo is never queried for this call.
+    const { service, collectionDefinitionRepo } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: true },
+      },
+    });
+
+    const adminCtx: RequestContext = {
+      userId: 'admin-1',
+      roles: ['role-admin'],
+      permissions: [],
+      isAdmin: true,
+      attributes: { roleIds: ['role-admin'] },
+    };
+    const [adminAuthorized] = await service.getAuthorizedFieldsForCollection(
+      adminCtx,
+      COLLECTION_ID,
+      [FIELD_NOTES],
+    );
+    expect(adminAuthorized.canRead).toBe(true);
+    expect(adminAuthorized.canWrite).toBe(true);
+    expect(adminAuthorized.maskingStrategy).toBe('NONE');
+    // Flag lookup never fired for the admin path.
+    expect(collectionDefinitionRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('10. isSystem field with secureFieldsByDefault=false retains its legacy canWrite=false default', async () => {
+    // Regression guard: the legacy default-allow path computed
+    // canWrite as !field.isSystem. The F005 path preserves that when
+    // the flag is false.
+    const { service } = buildService({
+      collectionFlags: {
+        [COLLECTION_ID]: { secureFieldsByDefault: false },
+      },
+    });
+
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
+      buildCtxF([ROLE_F005]),
+      COLLECTION_ID,
+      [{ code: 'system_field', isSystem: true } as PropertyMeta],
+    );
+
+    expect(authorized.canRead).toBe(true);
+    // isSystem=true → canWrite=false even in default-allow mode.
+    expect(authorized.canWrite).toBe(false);
     expect(authorized.maskingStrategy).toBe('NONE');
   });
 });
