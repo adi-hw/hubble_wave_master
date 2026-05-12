@@ -30,6 +30,7 @@ interface CachedIdentity {
   permissions: string[];
   isAdmin: boolean;
   status: string;
+  securityStamp: string;
 }
 
 /**
@@ -89,6 +90,8 @@ export class IdentityResolverAdapter implements IdentityResolverPort {
       permissions: permissionCodes,
       isAdmin,
       status: user.status,
+      // canon §29.6 — the kill-switch the guard compares to `token_version`.
+      securityStamp: user.securityStamp,
     };
 
     // setJson swallows errors internally — a Redis outage degrades to a

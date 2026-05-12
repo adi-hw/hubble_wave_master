@@ -49,6 +49,13 @@ export interface ResolvedIdentity {
    * port stays decoupled from `UserStatus` in `@hubblewave/instance-db`.
    */
   status: 'active' | 'inactive' | 'suspended' | string;
+  /**
+   * Cross-cutting token kill-switch per canon §29.6. JWT verifiers
+   * compare to the `token_version` claim; mismatch rejects the token with
+   * `Token version stale`. Bumped on password change, MFA disable, admin
+   * force-logout, and account suspend.
+   */
+  securityStamp: string;
 }
 
 /** Nest DI token for binding the port implementation. */

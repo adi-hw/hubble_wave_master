@@ -16,11 +16,12 @@ import {
   HttpStatus,
   Inject,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'crypto';
 import { MagicLinkService } from './magic-link.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { AuthEventsService } from './auth-events.service';
 import { Public } from './decorators/public.decorator';
+import { TokenIssuerService } from './token-issuer.service';
 
 interface RequestWithUser {
   ip?: string;
@@ -38,7 +39,7 @@ interface EmailServiceInterface {
 export class MagicLinkController {
   constructor(
     private readonly magicLinkService: MagicLinkService,
-    private readonly jwtService: JwtService,
+    private readonly tokenIssuer: TokenIssuerService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly authEventsService: AuthEventsService,
     @Inject('EMAIL_SERVICE') private readonly emailService: EmailServiceInterface,
@@ -91,14 +92,14 @@ export class MagicLinkController {
       req.headers['user-agent'],
     );
 
-    // Generate tokens
-    const payload = {
-      sub: result.user.id,
-      username: result.user.displayName || result.user.email,
-      email: result.user.email,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
+    // Generate tokens via TokenIssuerService — same canon §29.3 claims
+    // contract (including security_stamp → token_version) as every other
+    // identity flow.
+    const sessionId = randomUUID();
+    const { token: accessToken } = await this.tokenIssuer.issueAccessToken({
+      userId: result.user.id,
+      sessionId,
+    });
     const refreshToken = await this.refreshTokenService.createRefreshToken(
       result.user.id,
       req.ip,

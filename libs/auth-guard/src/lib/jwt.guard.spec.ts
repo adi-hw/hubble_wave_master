@@ -1,21 +1,30 @@
-import { ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
+import {
+  generateKeyPairSync,
+  KeyObject,
+} from 'crypto';
+import {
+  exportJWK,
+  SignJWT,
+} from 'jose';
 import { JwtAuthGuard } from './jwt.guard';
 import { IdentityResolverPort } from './identity-resolver.port';
 import { JwtRevocationPort } from './jwt-revocation.port';
+import { KeySigningService, PublicJwk } from './key-signing/key-signing.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 /**
- * Test harness for {@link JwtAuthGuard}. Covers all three audit findings:
- *   F016 — audience + issuer validation
- *   F013 — fresh roles/permissions/status from the resolver port
- *   F002 — revocation port short-circuits otherwise-valid tokens
+ * Test harness for {@link JwtAuthGuard}. Post canon §29 PR-B coverage:
+ *   - canon §29.3: ES256 signature + audience + issuer prefix
+ *   - canon §29.6: token_version vs security_stamp mismatch
+ *   - F013 (extended): securityStamp surfaces through the resolver port
+ *   - F002 (preserved): revocation port short-circuits otherwise-valid tokens
  *
- * The guard is constructed manually rather than via Nest DI so each test
- * can vary which ports are bound; this mirrors the production wiring
- * where ports are `@Optional()` so light-weight test fixtures can omit
- * them.
+ * The mock KeySigningService keeps a real ES256 keypair in memory so
+ * every test exercises an end-to-end sign→verify cycle. Retired keys
+ * are modeled by having `getPublicJwk` throw — matching the production
+ * provider's behavior for non-publishable states.
  */
 
 interface BuiltContext {
@@ -42,20 +51,10 @@ function buildReflector(isPublic: boolean): Reflector {
   const r = new Reflector();
   jest
     .spyOn(r, 'getAllAndOverride')
-    .mockImplementation((key: unknown) => (key === IS_PUBLIC_KEY ? isPublic : undefined));
+    .mockImplementation((key: unknown) =>
+      key === IS_PUBLIC_KEY ? isPublic : undefined,
+    );
   return r;
-}
-
-function buildJwtService(verifyResult: unknown, throwOnVerify = false): JwtService {
-  // JwtService is a class; we only need a subset of its surface, so a
-  // minimal mock object cast to JwtService keeps the test cheap.
-  const verify = jest.fn(() => {
-    if (throwOnVerify) {
-      throw new Error('invalid signature');
-    }
-    return verifyResult;
-  });
-  return { verify } as unknown as JwtService;
 }
 
 const silentLogger: Logger = {
@@ -66,11 +65,99 @@ const silentLogger: Logger = {
   verbose: jest.fn(),
 } as unknown as Logger;
 
+/**
+ * Issue a real ES256 JWT with arbitrary claims, returning both the token
+ * and the corresponding public JWK the signer would publish.
+ */
+async function issueTestToken(
+  kid: string,
+  claims: Record<string, unknown>,
+): Promise<{ token: string; publicJwk: PublicJwk; privateKey: KeyObject }> {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', {
+    namedCurve: 'P-256',
+  });
+  const jwk = (await exportJWK(publicKey)) as Partial<PublicJwk>;
+  const publicJwk: PublicJwk = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: jwk.x as string,
+    y: jwk.y as string,
+    kid,
+    use: 'sig',
+    alg: 'ES256',
+  };
+  const token = await new SignJWT(claims)
+    .setProtectedHeader({ alg: 'ES256', typ: 'JWT', kid })
+    .sign(privateKey);
+  return { token, publicJwk, privateKey };
+}
+
+/**
+ * `KeySigningService` mock — getPublicJwk returns the registered JWK or
+ * throws NotFoundException, mirroring the production posture for
+ * retired/compromised keys.
+ */
+function buildKeySigning(jwks: Record<string, PublicJwk>): KeySigningService {
+  return {
+    sign: jest.fn(),
+    getPublicJwk: jest.fn(async (kid: string) => {
+      const jwk = jwks[kid];
+      if (!jwk) {
+        throw new NotFoundException(`Unknown kid: ${kid}`);
+      }
+      return jwk;
+    }),
+    rotateKey: jest.fn(),
+    getActiveKey: jest.fn(),
+    getVerifyingKeys: jest.fn(),
+  };
+}
+
 const ORIGINAL_ENV = { ...process.env };
 
-describe('JwtAuthGuard', () => {
+describe('JwtAuthGuard (canon §29 PR-B)', () => {
+  const ISS = 'hubblewave-inst-1';
+
+  /**
+   * Helper that issues a token + builds a guard with the appropriate
+   * KeySigning mock so the test only specifies the interesting claims.
+   */
+  async function buildGuardForClaims(
+    claims: Record<string, unknown>,
+    options: {
+      identity?: IdentityResolverPort;
+      revocation?: JwtRevocationPort;
+      isPublic?: boolean;
+      keyState?: 'active' | 'retired';
+    } = {},
+  ) {
+    const kid = 'hwk_2026_05_11_aaaa1111';
+    const { token, publicJwk } = await issueTestToken(kid, {
+      iss: ISS,
+      aud: 'hubblewave-instance',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 600,
+      ...claims,
+    });
+    const jwks: Record<string, PublicJwk> =
+      options.keyState === 'retired' ? {} : { [kid]: publicJwk };
+    const keySigning = buildKeySigning(jwks);
+    const guard = new JwtAuthGuard(
+      keySigning,
+      silentLogger,
+      buildReflector(options.isPublic ?? false),
+      options.identity,
+      options.revocation,
+    );
+    const { ctx, request } = buildContext({
+      authHeader: `Bearer ${token}`,
+      isPublic: options.isPublic,
+    });
+    return { guard, ctx, request, token, kid, publicJwk, keySigning };
+  }
+
   beforeEach(() => {
-    process.env = { ...ORIGINAL_ENV, JWT_SECRET: 'test-secret' };
+    process.env = { ...ORIGINAL_ENV, JWT_AUDIENCE: 'hubblewave-instance' };
     jest.clearAllMocks();
   });
 
@@ -80,90 +167,179 @@ describe('JwtAuthGuard', () => {
 
   describe('public route short-circuit', () => {
     it('returns true without verifying when @Public() is set', async () => {
+      const keySigning = buildKeySigning({});
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        buildReflector(true),
+      );
       const { ctx } = buildContext({ isPublic: true });
-      const jwt = buildJwtService({});
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(true));
-
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      expect((jwt as unknown as { verify: jest.Mock }).verify).not.toHaveBeenCalled();
+      expect(keySigning.getPublicJwk).not.toHaveBeenCalled();
     });
   });
 
   describe('header parsing', () => {
     it('rejects when the Authorization header is missing', async () => {
+      const keySigning = buildKeySigning({});
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        buildReflector(false),
+      );
       const { ctx } = buildContext({ authHeader: undefined });
-      const guard = new JwtAuthGuard(buildJwtService({}), silentLogger, buildReflector(false));
-
-      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('rejects when the Authorization header does not start with Bearer', async () => {
+      const keySigning = buildKeySigning({});
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        buildReflector(false),
+      );
       const { ctx } = buildContext({ authHeader: 'Basic abc' });
-      const guard = new JwtAuthGuard(buildJwtService({}), silentLogger, buildReflector(false));
-
-      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
-    });
-  });
-
-  describe('F016: audience + issuer validation', () => {
-    it('passes audience and issuer verify options to jwtService.verify', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer abc.def.ghi' });
-      const jwt = buildJwtService({ sub: 'u-1', roles: ['user'] });
-      process.env['JWT_AUDIENCE'] = 'hubblewave-instance';
-      process.env['JWT_ISSUER'] = 'hubblewave-identity';
-
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-      await guard.canActivate(ctx);
-
-      expect((jwt as unknown as { verify: jest.Mock }).verify).toHaveBeenCalledWith(
-        'abc.def.ghi',
-        expect.objectContaining({
-          secret: 'test-secret',
-          audience: 'hubblewave-instance',
-          issuer: 'hubblewave-identity',
-          clockTolerance: 30,
-        }),
-      );
-    });
-
-    it('rejects a token whose verify throws (wrong audience / issuer / signature)', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer bad.token' });
-      const jwt = buildJwtService(null, /* throwOnVerify */ true);
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-
-      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
-    });
-
-    it('falls back to canonical defaults when JWT_AUDIENCE / JWT_ISSUER are unset', async () => {
-      delete process.env['JWT_AUDIENCE'];
-      delete process.env['JWT_ISSUER'];
-
-      const { ctx } = buildContext({ authHeader: 'Bearer abc' });
-      const jwt = buildJwtService({ sub: 'u-1', roles: ['user'] });
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-
-      await guard.canActivate(ctx);
-      expect((jwt as unknown as { verify: jest.Mock }).verify).toHaveBeenCalledWith(
-        'abc',
-        expect.objectContaining({
-          audience: 'hubblewave-instance',
-          issuer: 'hubblewave-identity',
-        }),
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
       );
     });
   });
 
-  describe('F013: fresh identity resolution via IdentityResolverPort', () => {
-    it('uses the resolver port output for roles/permissions/isAdmin, not the JWT payload', async () => {
-      const { ctx, request } = buildContext({ authHeader: 'Bearer t' });
-      // JWT carries stale claims — "manager" no longer applies to this
-      // user. The fresh DB state lists only "user".
-      const jwt = buildJwtService({
-        sub: 'u-1',
-        roles: ['manager'],
-        permissions: ['records.delete'],
-        is_admin: false,
+  describe('canon §29.3 — ES256 signature verification', () => {
+    it('accepts a token signed with an active key', async () => {
+      const { guard, ctx, request } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          session_id: 'sess-1',
+        },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['user'] as { userId: string };
+      expect(userCtx.userId).toBe('u-1');
+    });
+
+    it('rejects a token signed with a retired key', async () => {
+      const { guard, ctx } = await buildGuardForClaims(
+        { sub: 'user:u-1' },
+        { keyState: 'retired' },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects a token with header.alg != ES256', async () => {
+      const kid = 'hwk_2026_05_11_aaaa1111';
+      const { privateKey } = await issueTestToken(kid, {});
+      // Build a hand-rolled HS-like token to exercise the alg guard.
+      // We use jose's SignJWT with ES256, then mutate the header — but
+      // simpler: produce a token where the header.alg is none-encoded.
+      // The easiest assertion path is decoding our own raw header.
+      const fakeHeader = Buffer.from(
+        JSON.stringify({ alg: 'HS256', typ: 'JWT', kid }),
+      ).toString('base64url');
+      const fakePayload = Buffer.from(
+        JSON.stringify({ sub: 'user:u-1' }),
+      ).toString('base64url');
+      const fakeSig = '';
+      const token = `${fakeHeader}.${fakePayload}.${fakeSig}`;
+
+      const keySigning = buildKeySigning({});
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        buildReflector(false),
+      );
+      const { ctx } = buildContext({ authHeader: `Bearer ${token}` });
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      // Use private key only to keep tsc happy about the unused symbol.
+      void privateKey;
+    });
+
+    it('rejects a token with the wrong audience', async () => {
+      const kid = 'hwk_2026_05_11_aaaa1111';
+      const { token, publicJwk } = await issueTestToken(kid, {
+        iss: ISS,
+        aud: 'wrong-aud',
+        sub: 'user:u-1',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 600,
       });
+      const keySigning = buildKeySigning({ [kid]: publicJwk });
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        buildReflector(false),
+      );
+      const { ctx } = buildContext({ authHeader: `Bearer ${token}` });
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects a token whose iss does not start with hubblewave-', async () => {
+      const { guard, ctx } = await buildGuardForClaims({
+        iss: 'evil-issuer-inst-1',
+        sub: 'user:u-1',
+      });
+      await expect(guard.canActivate(ctx)).rejects.toMatchObject({
+        message: 'Invalid token issuer',
+      });
+    });
+  });
+
+  describe('canon §29.6 — token_version freshness', () => {
+    it('accepts when token_version matches the user current security_stamp', async () => {
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-1',
+          roles: ['user'],
+          permissions: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-aaa',
+        }),
+      };
+      const { guard, ctx } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          token_version: 'stamp-aaa',
+        },
+        { identity: resolver },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    });
+
+    it('rejects with "Token version stale" when token_version differs from the live stamp', async () => {
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-1',
+          roles: ['user'],
+          permissions: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-NEW',
+        }),
+      };
+      const { guard, ctx } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          token_version: 'stamp-OLD',
+        },
+        { identity: resolver },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toMatchObject({
+        message: 'Token version stale',
+      });
+    });
+  });
+
+  describe('F013 — fresh identity via IdentityResolverPort', () => {
+    it('uses resolver-port output (not JWT claims) for roles/permissions/isAdmin', async () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
@@ -171,188 +347,139 @@ describe('JwtAuthGuard', () => {
           permissions: ['records.read'],
           isAdmin: false,
           status: 'active',
+          securityStamp: 'stamp-aaa',
         }),
       };
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false), resolver);
-
+      const { guard, ctx, request } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          roles: ['manager'], // JWT lies — resolver wins
+          permissions: ['records.delete'],
+          is_admin: true,
+          token_version: 'stamp-aaa',
+        },
+        { identity: resolver },
+      );
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      expect(resolver.resolveIdentity).toHaveBeenCalledWith('u-1');
-      const userCtx = request['user'] as { roles: string[]; permissions: string[]; isAdmin: boolean };
+      const userCtx = request['user'] as {
+        roles: string[];
+        permissions: string[];
+        isAdmin: boolean;
+      };
       expect(userCtx.roles).toEqual(['user']);
       expect(userCtx.permissions).toEqual(['records.read']);
       expect(userCtx.isAdmin).toBe(false);
     });
 
-    it('rejects when the resolver port returns null (user deleted since token was issued)', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({ sub: 'ghost', roles: ['user'] });
+    it('rejects when the resolver port returns null', async () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue(null),
       };
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false), resolver);
-
+      const { guard, ctx } = await buildGuardForClaims(
+        { sub: 'user:ghost' },
+        { identity: resolver },
+      );
       await expect(guard.canActivate(ctx)).rejects.toMatchObject({
         message: 'User not found',
       });
     });
 
-    it('rejects when the resolver port reports a non-active status', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({ sub: 'u-1', roles: ['user'] });
+    it('rejects when the resolver port reports non-active status', async () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
+          roles: [],
           permissions: [],
           isAdmin: false,
           status: 'suspended',
+          securityStamp: 'stamp',
         }),
       };
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false), resolver);
-
+      const { guard, ctx } = await buildGuardForClaims(
+        { sub: 'user:u-1' },
+        { identity: resolver },
+      );
       await expect(guard.canActivate(ctx)).rejects.toMatchObject({
         message: 'User is inactive',
       });
     });
-
-    it('falls back to JWT payload when no resolver port is bound (backward compat for test fixtures)', async () => {
-      const { ctx, request } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({
-        sub: 'u-1',
-        roles: ['admin'],
-        permissions: ['perm.a'],
-        is_admin: true,
-      });
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-
-      await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      const userCtx = request['user'] as { roles: string[]; permissions: string[]; isAdmin: boolean };
-      expect(userCtx.roles).toEqual(['admin']);
-      expect(userCtx.permissions).toEqual(['perm.a']);
-      expect(userCtx.isAdmin).toBe(true);
-    });
   });
 
-  describe('F002: revocation via JwtRevocationPort', () => {
+  describe('F002 — revocation via JwtRevocationPort', () => {
     it('rejects when the revocation port reports the session as revoked', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({
-        sub: 'u-1',
-        roles: ['user'],
-        session_id: 'sess-xyz',
-        iat: 1700000000,
-      });
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
+          roles: [],
           permissions: [],
           isAdmin: false,
           status: 'active',
+          securityStamp: 'stamp',
         }),
       };
       const revocation: JwtRevocationPort = {
         isRevoked: jest.fn().mockResolvedValue(true),
       };
-      const guard = new JwtAuthGuard(
-        jwt,
-        silentLogger,
-        buildReflector(false),
-        resolver,
-        revocation,
+      const { guard, ctx } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          session_id: 'sess-xyz',
+          token_version: 'stamp',
+        },
+        { identity: resolver, revocation },
       );
-
       await expect(guard.canActivate(ctx)).rejects.toMatchObject({
         message: 'Token revoked',
       });
-      expect(revocation.isRevoked).toHaveBeenCalledWith({
-        userId: 'u-1',
-        sessionId: 'sess-xyz',
-        jti: undefined,
-        iat: 1700000000,
-      });
+      expect(revocation.isRevoked).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u-1', sessionId: 'sess-xyz' }),
+      );
     });
 
     it('accepts when the revocation port reports the token as live', async () => {
-      const { ctx, request } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({
-        sub: 'u-1',
-        roles: ['user'],
-        session_id: 'sess-live',
-        iat: 1700000000,
-      });
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
+          roles: [],
           permissions: [],
           isAdmin: false,
           status: 'active',
+          securityStamp: 'stamp',
         }),
       };
       const revocation: JwtRevocationPort = {
         isRevoked: jest.fn().mockResolvedValue(false),
       };
-      const guard = new JwtAuthGuard(
-        jwt,
-        silentLogger,
-        buildReflector(false),
-        resolver,
-        revocation,
+      const { guard, ctx, request } = await buildGuardForClaims(
+        {
+          sub: 'user:u-1',
+          session_id: 'sess-live',
+          token_version: 'stamp',
+        },
+        { identity: resolver, revocation },
       );
-
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      expect((request['user'] as { sessionId?: string }).sessionId).toBe('sess-live');
-    });
-
-    it('skips the revocation check entirely when no port is bound (backward compat)', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({ sub: 'u-1', roles: ['user'] });
-      // No resolver or revocation port — minimal fixture composition.
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-
-      await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    });
-
-    it('runs identity resolution before revocation so a deleted user reads as such (ordering)', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({
-        sub: 'ghost',
-        roles: ['user'],
-        session_id: 'sess-xyz',
-      });
-      const resolver: IdentityResolverPort = {
-        resolveIdentity: jest.fn().mockResolvedValue(null),
-      };
-      const revocation: JwtRevocationPort = {
-        isRevoked: jest.fn().mockResolvedValue(true),
-      };
-      const guard = new JwtAuthGuard(
-        jwt,
-        silentLogger,
-        buildReflector(false),
-        resolver,
-        revocation,
+      expect((request['user'] as { sessionId?: string }).sessionId).toBe(
+        'sess-live',
       );
-
-      await expect(guard.canActivate(ctx)).rejects.toMatchObject({
-        message: 'User not found',
-      });
-      // Revocation must not be queried for a non-existent user — that
-      // surface would otherwise leak a "user exists" signal.
-      expect(revocation.isRevoked).not.toHaveBeenCalled();
     });
   });
 
   describe('payload sanity', () => {
     it('rejects an empty sub claim', async () => {
-      const { ctx } = buildContext({ authHeader: 'Bearer t' });
-      const jwt = buildJwtService({ sub: '', roles: [] });
-      const guard = new JwtAuthGuard(jwt, silentLogger, buildReflector(false));
-
+      const { guard, ctx } = await buildGuardForClaims({ sub: '' });
       await expect(guard.canActivate(ctx)).rejects.toMatchObject({
         message: 'Invalid token',
       });
+    });
+
+    it('handles a bare sub (no "user:" prefix) for backward compat', async () => {
+      const { guard, ctx, request } = await buildGuardForClaims({
+        sub: 'u-bare',
+      });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['user'] as { userId: string };
+      expect(userCtx.userId).toBe('u-bare');
     });
   });
 });

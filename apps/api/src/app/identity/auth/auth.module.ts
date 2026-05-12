@@ -84,6 +84,7 @@ import { IdentityResolverAdapter } from './identity-resolver.adapter';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 import { KeySigningModule } from './key-signing/key-signing.module';
 import { JwksController } from './jwks.controller';
+import { TokenIssuerService } from './token-issuer.service';
 
 @Module({
   imports: [
@@ -119,20 +120,33 @@ import { JwksController } from './jwks.controller';
     RolesModule,
     PassportModule,
     RedisModule.forRoot(),
+    // JwtModule remains registered for transitional reasons — passport
+    // and other downstream code that depends on `@nestjs/jwt` types still
+    // resolve through this module. Per canon §29 PR-B the platform no
+    // longer uses HS256 signing or JwtService.sign(); every token is
+    // minted via TokenIssuerService (ES256, KMS-backed). The legacy
+    // JWT_SECRET env var is accepted but unused — a warning is logged at
+    // startup so operators can clean it up. PR-D drops the JwtModule
+    // dependency entirely once no consumer still pulls JwtService.
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {
+        const logger = new Logger('AuthModule');
         const jwtSecret = configService.get<string>('JWT_SECRET');
-
-        if (!jwtSecret) {
-          throw new Error(
-            'JWT_SECRET environment variable must be set. ' +
-            'Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
+        if (jwtSecret) {
+          logger.warn(
+            'JWT_SECRET is set but unused — token signing migrated to ' +
+              'KMS-backed ES256 per canon §29 PR-A. Remove JWT_SECRET ' +
+              'once you have confirmed no client still relies on HS256 ' +
+              'tokens.',
           );
         }
-
+        // Provide a placeholder secret so JwtModule construction does
+        // not throw. The secret is not used by any code path post-§29
+        // PR-B; if it were, jwtVerify with the KMS public key would
+        // reject the token before this secret was even consulted.
         return {
-          secret: jwtSecret,
+          secret: jwtSecret || 'unused-post-canon-§29-pr-b',
           signOptions: { expiresIn: '15m' },
         };
       },
@@ -215,6 +229,10 @@ import { JwksController } from './jwks.controller';
     // request to short-circuit revoked access tokens before their exp.
     JwtRevocationAdapter,
     { provide: JWT_REVOCATION_PORT, useExisting: JwtRevocationAdapter },
+    // canon §29 PR-B: single mint point for HubbleWave access tokens.
+    // Wraps KeySigningService (ES256) and embeds canon §29.3 claims
+    // including the per-user security_stamp → token_version kill-switch.
+    TokenIssuerService,
   ],
   exports: [
     AuthService,
@@ -241,6 +259,10 @@ import { JwksController } from './jwks.controller';
     JwtRevocationAdapter,
     IDENTITY_RESOLVER_PORT,
     JWT_REVOCATION_PORT,
+    // Export TokenIssuerService so SSO callbacks + the instance-api
+    // legacy duplicate (which lives in a sibling module) can mint
+    // tokens through the same canon §29.3 contract.
+    TokenIssuerService,
   ],
 })
 export class AuthModule {}
