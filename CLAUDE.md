@@ -622,10 +622,16 @@ Past amendments (most recent first):
     scope vocabulary `<collection>:<action>`.
   • Performance posture explicitly EXCLUDES in-memory signing key
     caches and envelope-key patterns; HSM is the cryptographic root.
+  • Signing provider interface (§29.9): `KeySigningService` abstracts
+    `AwsKmsEs256KeySigningService` (production) and
+    `LocalEs256KeySigningService` (dev). Both produce ES256 over
+    identical claims, kid, JWKS surface. HS256 is forbidden
+    everywhere; LocalStack is NOT the default dev path. Production
+    startup fails fast if `JWT_KEY_PROVIDER !== 'aws-kms'`.
   Code lands as a 4-PR chain after this amendment: (1) key_metadata
-  infra + JWKS publication, (2) token claims + security_stamp,
-  (3) refresh family schema + rotation, (4) service principals +
-  service-token issuance.
+  infra + KeySigningService interface + both providers + JWKS
+  publication, (2) token claims + security_stamp, (3) refresh family
+  schema + rotation, (4) service principals + service-token issuance.
 
 - 2026-05-11 (W2 — Authorization Resolution Model): new §28
   formalizing the authorization model. Publishes (a) the field-decision
@@ -1015,7 +1021,61 @@ KMS signing is ~50–100ms per call. At pilot scale (low-mid hundreds of token i
 
 If measured signing latency becomes a problem post-pilot, the canonical optimization is provisioning higher KMS request quotas, not an in-memory cache.
 
-### 29.9 What §29 does NOT include (deferred)
+### 29.9 Signing provider interface + dev/prod symmetry
+
+§29.1 binds production to AWS KMS as the private-key custodian. Dev MUST NOT diverge from that contract in a way that trains the codebase on the wrong primitive. Specifically:
+
+- **HS256 is forbidden everywhere.** No symmetric-key dev path. The codebase must never carry HS256 code that "works in dev" — that path becomes an attack surface in production.
+- **LocalStack is NOT the default dev path.** Its KMS emulation has subtle behavioral differences from real KMS that we do not want to bake into local development expectations.
+- **Both prod and dev sign with ES256 over the same JWT format**, identical claims, identical `kid`/`key_metadata` lifecycle, identical verification semantics. The ONLY difference between environments is the custodian of the private key.
+
+The platform exposes one interface:
+
+```typescript
+interface KeySigningService {
+  sign(payload: JwtPayload, kid: string): Promise<string>;
+  getPublicJwk(kid: string): Promise<JsonWebKey>;
+  rotateKey(): Promise<KeyMetadata>;
+  getActiveKey(): Promise<KeyMetadata>;
+  getVerifyingKeys(): Promise<KeyMetadata[]>;  // returns active + retiring
+}
+```
+
+Two implementations:
+
+| Implementation | Private key custody | When used |
+|---|---|---|
+| `AwsKmsEs256KeySigningService` | AWS KMS HSM | **REQUIRED** for `NODE_ENV === 'production'` |
+| `LocalEs256KeySigningService` | `.dev/keys/` file or dev-only DB row | non-production environments only |
+
+Both produce ES256 signatures, both expose the same `kid`/lifecycle/JWKS surface. The local provider differs only in WHERE the private key lives.
+
+#### Configuration
+
+```
+JWT_KEY_PROVIDER=aws-kms | local-es256
+```
+
+#### Hard guard at startup
+
+```typescript
+if (process.env.NODE_ENV === 'production' && process.env.JWT_KEY_PROVIDER !== 'aws-kms') {
+  throw new Error('Production requires aws-kms JWT key provider');
+}
+```
+
+Production startup MUST fail fast if `JWT_KEY_PROVIDER !== 'aws-kms'`. No fallback. No "warn but continue."
+
+#### Local key storage requirements
+
+- Generated ES256 keypair persists across restarts (otherwise dev tokens become invalid every reload — false-positive failure mode in tests)
+- Storage path: `.dev/keys/` directory (must be gitignored) OR a dev-only DB table that is NOT included in production migrations
+- File permissions: `0600` (owner-read/write only); the local provider refuses to start if the file is group/other-readable
+- Never committed to source control
+
+This is binding: ship `local-es256` for dev, ship `aws-kms` for production. The signing provider interface enforces the contract — application code calls `KeySigningService.sign(...)` and is environment-agnostic.
+
+### 29.10 What §29 does NOT include (deferred)
 
 - **mTLS service mesh** — defense-in-depth layer; not the primary authentication mechanism.
 - **HSM provider migration tooling** — KMS is the only provider supported today. Vault Transit / GCP KMS are future options if pricing or sovereignty pressure requires.
