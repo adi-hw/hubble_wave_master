@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, Not } from 'typeorm';
+import { IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { RefreshToken } from '@hubblewave/instance-db';
 
 export interface DeviceInfo {
@@ -13,11 +13,15 @@ export interface DeviceInfo {
 }
 
 export interface SessionInfo {
+  /** session_id from the refresh-token family (canon §29.5). */
   id: string;
   deviceType: 'desktop' | 'mobile' | 'tablet';
   browser: string;
   os: string;
+  /** Always 'Unknown' — IP is hashed on the operational row per canon §29.5. */
   ipAddress: string;
+  /** User-supplied device label or UA-derived display string. */
+  deviceLabel?: string | null;
   location?: string;
   lastActive: Date;
   isCurrent: boolean;
@@ -25,8 +29,20 @@ export interface SessionInfo {
 }
 
 /**
- * Session service - manages user sessions via refresh tokens
- * Each refresh token represents an active session
+ * Session service — exposes active refresh-token families to the user
+ * (canon §29.5).
+ *
+ * In the §29.5 model, a "session" is a refresh-token family identified
+ * by `session_id`. Each rotation produces a new row in the family but
+ * carries the same `session_id`, so the user sees one session per
+ * device-login regardless of how many rotations have happened.
+ *
+ * Plaintext IP and User-Agent are NOT stored on the operational row.
+ * The session list shows `device_label` (the user-friendly string the
+ * client supplied or that was UA-parsed at issue time) and best-effort
+ * browser/OS extracted from the same source. For forensic IP/UA
+ * details, see `AccessAuditLog` entries written by
+ * `AccessAuditPort.logSecurityEvent`.
  */
 @Injectable()
 export class SessionService {
@@ -36,7 +52,10 @@ export class SessionService {
   ) {}
 
   /**
-   * Parse user agent string to extract device information
+   * Parse a User-Agent string into a device-info object. Used at issue
+   * time (via `parseDeviceLabelFromUserAgent`) and at display time for
+   * the session list. Cheap heuristic — keeps the lib free of a
+   * full UA-parsing dependency.
    */
   parseUserAgent(userAgent?: string): DeviceInfo {
     if (!userAgent) {
@@ -47,7 +66,6 @@ export class SessionService {
       };
     }
 
-    // Simple user agent parsing without external dependency
     const ua = userAgent.toLowerCase();
 
     // Determine device type — check tablet patterns BEFORE mobile because
@@ -59,7 +77,6 @@ export class SessionService {
       deviceType = 'mobile';
     }
 
-    // Parse browser
     let browserName = 'Unknown';
     let browserVersion = '';
     if (/edg\//i.test(ua)) {
@@ -82,7 +99,6 @@ export class SessionService {
       browserName = 'Internet Explorer';
     }
 
-    // Parse OS
     let osName = 'Unknown';
     let osVersion = '';
     if (/windows nt 10/i.test(ua)) {
@@ -91,14 +107,10 @@ export class SessionService {
     } else if (/windows nt/i.test(ua)) {
       osName = 'Windows';
     } else if (/android/i.test(ua)) {
-      // Android must be checked before Linux because Android UAs
-      // contain "Linux" (e.g., "Mozilla/5.0 (Linux; Android 13; ...)").
       osName = 'Android';
       const match = ua.match(/android (\d+)/);
       if (match) osVersion = match[1];
     } else if (/iphone|ipad|ipod/i.test(ua)) {
-      // iOS must be checked before macOS because iPhone/iPad UAs contain
-      // "Mac OS X" (e.g., "iPad; CPU OS 17_0 like Mac OS X").
       osName = 'iOS';
       const match = ua.match(/os (\d+)/);
       if (match) osVersion = match[1];
@@ -120,134 +132,166 @@ export class SessionService {
   }
 
   /**
-   * Get all active sessions for a user
+   * List every active session for the user, deduplicated by `session_id`
+   * (so multiple rotations in the same family show as one row). The
+   * current session is marked when `currentSessionId` matches.
    */
   async getActiveSessionsForUser(
     userId: string,
-    currentTokenId?: string,
+    currentSessionId?: string,
   ): Promise<SessionInfo[]> {
     const tokens = await this.refreshTokenRepo.find({
       where: {
         userId,
-        isRevoked: false,
+        revokedAt: IsNull(),
         expiresAt: MoreThan(new Date()),
       },
       order: { createdAt: 'DESC' },
     });
 
-    return tokens.map((token) => {
-      const deviceInfo = this.parseUserAgent(token.userAgent || undefined);
+    // Deduplicate by session_id — show one row per family, keyed off the
+    // most recent rotation (descending order from the query). Map
+    // preserves insertion order.
+    const bySession = new Map<string, RefreshToken>();
+    for (const token of tokens) {
+      if (!bySession.has(token.sessionId)) {
+        bySession.set(token.sessionId, token);
+      }
+    }
 
-      return {
-        id: token.id,
-        deviceType: deviceInfo.deviceType,
-        browser: deviceInfo.browserName
-          ? `${deviceInfo.browserName}${deviceInfo.browserVersion ? ` ${deviceInfo.browserVersion}` : ''}`
-          : 'Unknown Browser',
-        os: deviceInfo.osName
-          ? `${deviceInfo.osName}${deviceInfo.osVersion ? ` ${deviceInfo.osVersion}` : ''}`
-          : 'Unknown OS',
-        ipAddress: token.ipAddress || 'Unknown',
-        lastActive: token.createdAt, // Could be enhanced with last-used tracking
-        isCurrent: token.id === currentTokenId,
-        createdAt: token.createdAt,
-      };
-    });
+    return Array.from(bySession.values()).map((token) =>
+      this.toSessionInfo(token, currentSessionId),
+    );
   }
 
   /**
-   * Revoke a specific session
+   * Revoke a specific session (refresh-token family). Used by the
+   * "log this device out" surface. Canon §29.5 reason 'admin_revoke'
+   * — captures user-initiated revocation as a deliberate action.
    */
   async revokeSession(sessionId: string, userId: string): Promise<boolean> {
     const result = await this.refreshTokenRepo.update(
-      { id: sessionId, userId },
+      { sessionId, userId, revokedAt: IsNull() },
       {
-        isRevoked: true,
         revokedAt: new Date(),
-        revokedReason: 'USER_REVOKED',
+        revokedReason: 'admin_revoke',
       },
     );
     return (result.affected ?? 0) > 0;
   }
 
   /**
-   * Revoke all sessions for a user except the current one
+   * Revoke every active session for the user EXCEPT the one whose
+   * `session_id` matches `currentSessionId`. "Log me out from every
+   * other device."
    */
   async revokeAllOtherSessions(
     userId: string,
-    currentTokenId?: string,
+    currentSessionId?: string,
   ): Promise<number> {
-    const query: any = {
+    const where: Parameters<typeof this.refreshTokenRepo.update>[0] = {
       userId,
-      isRevoked: false,
+      revokedAt: IsNull(),
     };
 
-    if (currentTokenId) {
-      query.id = Not(currentTokenId);
+    if (currentSessionId) {
+      // TypeORM Not() on a single column lets us exclude the current
+      // session from the bulk revoke.
+      (where as Record<string, unknown>)['sessionId'] = Not(currentSessionId);
     }
 
-    const result = await this.refreshTokenRepo.update(query, {
-      isRevoked: true,
+    const result = await this.refreshTokenRepo.update(where, {
       revokedAt: new Date(),
-      revokedReason: 'USER_REVOKED_ALL_OTHERS',
+      revokedReason: 'admin_revoke',
     });
 
     return result.affected ?? 0;
   }
 
   /**
-   * Revoke all sessions for a user (including current)
+   * Revoke every active session for the user, including the current one.
+   * "Log me out everywhere."
    */
   async revokeAllSessionsForUser(userId: string): Promise<number> {
     const result = await this.refreshTokenRepo.update(
-      { userId, isRevoked: false },
+      { userId, revokedAt: IsNull() },
       {
-        isRevoked: true,
         revokedAt: new Date(),
-        revokedReason: 'USER_LOGOUT_ALL',
+        revokedReason: 'admin_revoke',
       },
     );
     return result.affected ?? 0;
   }
 
   /**
-   * Get session by ID
+   * Fetch a single session by its `session_id`. Returns the most recent
+   * rotation as the representative row.
    */
-  async getSessionById(sessionId: string, userId: string): Promise<SessionInfo | null> {
+  async getSessionById(
+    sessionId: string,
+    userId: string,
+  ): Promise<SessionInfo | null> {
     const token = await this.refreshTokenRepo.findOne({
-      where: { id: sessionId, userId },
+      where: { sessionId, userId },
+      order: { createdAt: 'DESC' },
     });
 
     if (!token) return null;
-
-    const deviceInfo = this.parseUserAgent(token.userAgent || undefined);
-
-    return {
-      id: token.id,
-      deviceType: deviceInfo.deviceType,
-      browser: deviceInfo.browserName
-        ? `${deviceInfo.browserName}${deviceInfo.browserVersion ? ` ${deviceInfo.browserVersion}` : ''}`
-        : 'Unknown Browser',
-      os: deviceInfo.osName
-        ? `${deviceInfo.osName}${deviceInfo.osVersion ? ` ${deviceInfo.osVersion}` : ''}`
-        : 'Unknown OS',
-      ipAddress: token.ipAddress || 'Unknown',
-      lastActive: token.createdAt,
-      isCurrent: false,
-      createdAt: token.createdAt,
-    };
+    return this.toSessionInfo(token);
   }
 
   /**
-   * Count active sessions for a user
+   * Count active sessions (distinct `session_id` values with at least
+   * one un-revoked row).
    */
   async countActiveSessions(userId: string): Promise<number> {
-    return this.refreshTokenRepo.count({
-      where: {
-        userId,
-        isRevoked: false,
-        expiresAt: MoreThan(new Date()),
-      },
-    });
+    const result = await this.refreshTokenRepo
+      .createQueryBuilder('rt')
+      .select('COUNT(DISTINCT rt.session_id)', 'count')
+      .where('rt.user_id = :userId', { userId })
+      .andWhere('rt.revoked_at IS NULL')
+      .andWhere('rt.expires_at > :now', { now: new Date() })
+      .getRawOne<{ count: string }>();
+    return Number(result?.count ?? 0);
+  }
+
+  private toSessionInfo(
+    token: RefreshToken,
+    currentSessionId?: string,
+  ): SessionInfo {
+    // Best-effort browser/OS extraction from the device label. The
+    // operational table no longer carries a raw UA — only its hash + a
+    // pre-parsed label. Splitting "Chrome on Mac" into ('Chrome', 'Mac')
+    // is the cheapest reconstruction.
+    const label = token.deviceLabel ?? null;
+    let browser = 'Unknown Browser';
+    let os = 'Unknown OS';
+    if (label) {
+      const match = label.match(/^(.*) on (.*)$/);
+      if (match) {
+        browser = match[1];
+        os = match[2];
+      } else {
+        browser = label;
+      }
+    }
+
+    const deviceType: 'desktop' | 'mobile' | 'tablet' = /iphone|ipod|android|mobile/i.test(label ?? '')
+      ? 'mobile'
+      : /ipad|tablet/i.test(label ?? '')
+        ? 'tablet'
+        : 'desktop';
+
+    return {
+      id: token.sessionId,
+      deviceType,
+      browser,
+      os,
+      ipAddress: 'Unknown',
+      deviceLabel: label,
+      lastActive: token.lastUsedAt ?? token.createdAt,
+      isCurrent: token.sessionId === currentSessionId,
+      createdAt: token.createdAt,
+    };
   }
 }

@@ -7,6 +7,7 @@ import type {
   AccessAuditPort,
   DecisionProvenance,
   FieldDecisionProvenance,
+  SecurityAuditEvent,
 } from '@hubblewave/authorization';
 
 @Injectable()
@@ -48,6 +49,42 @@ export class AccessAuditService implements AccessAuditPort {
     });
     this.auditRepo.save(log).catch((err) => {
       this.logger.error('Failed to write admin bypass audit log', err);
+    });
+  }
+
+  /**
+   * canon §29.5: persist a high-severity security event that is NOT an
+   * authorization short-circuit (e.g. refresh-token reuse). Written to the
+   * same `AccessAuditLog` surface as admin bypasses with
+   * `decision = 'HIGH_SEVERITY'` so SIEM queries can filter on the
+   * distinguishing value.
+   *
+   * Plaintext IP / User-Agent values from the caller flow straight into
+   * the audit row — canon §29.5 explicitly carves this table out from the
+   * "hashes only" rule that governs the operational `refresh_tokens`
+   * table, because the audit log has stricter retention and access
+   * controls. Operators forensically investigating a reuse case need the
+   * plaintext attribution.
+   *
+   * Same fire-and-forget posture as `logAdminBypass` — a down audit table
+   * must not regress runtime correctness.
+   */
+  logSecurityEvent(event: SecurityAuditEvent): void {
+    const log = this.auditRepo.create({
+      userId: event.userId,
+      resource: 'security_event',
+      action: event.kind,
+      decision: 'HIGH_SEVERITY',
+      context: {
+        additionalData: {
+          kind: event.kind,
+          severity: event.severity,
+          ...(event.context ?? {}),
+        },
+      },
+    });
+    this.auditRepo.save(log).catch((err) => {
+      this.logger.error('Failed to write security event audit log', err);
     });
   }
 

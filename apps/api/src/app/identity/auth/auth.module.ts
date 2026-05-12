@@ -44,7 +44,6 @@ import { LdapService } from '../ldap/ldap.service';
 import { LdapModule } from '../ldap/ldap.module';
 
 import { PasswordPolicyController } from './password-policy.controller';
-import { RefreshTokenService } from './refresh-token.service';
 import { MfaService } from './mfa.service';
 import { MfaController } from './mfa.controller';
 import { PasswordResetService } from './password-reset.service';
@@ -184,7 +183,6 @@ import { TokenIssuerService } from './token-issuer.service';
     AuthService,
     JwtStrategy,
     LdapService,
-    RefreshTokenService,
     MfaService,
     PasswordResetService,
     EmailVerificationService,

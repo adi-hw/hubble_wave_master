@@ -9,7 +9,13 @@ export type {
   FieldDecisionEffect,
 } from './lib/provenance';
 export { AbacService, SafePredicate, LeafPredicate, OrPredicate, NotPredicate } from './lib/abac.service';
-export type { AccessAuditPort, AccessAuditEvent } from './lib/audit-port';
+export type {
+  AccessAuditPort,
+  AccessAuditEvent,
+  SecurityAuditEvent,
+  SecurityAuditEventKind,
+  SecurityAuditSeverity,
+} from './lib/audit-port';
 export { ACCESS_AUDIT_PORT } from './lib/audit-port';
 export type {
   AccessRuleCacheInvalidationPort,

@@ -85,7 +85,7 @@ export {
   SAMLAuthState,
   LoginAttempt,
 } from './auth-tokens.entity';
-export type { LoginAttemptResult } from './auth-tokens.entity';
+export type { LoginAttemptResult, RefreshTokenRevokedReason } from './auth-tokens.entity';
 
 // ─────────────────────────────────────────────────────────────────
 // Signing Key Registry (canon §29.2)

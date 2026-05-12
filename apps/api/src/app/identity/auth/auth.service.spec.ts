@@ -5,7 +5,6 @@ import { UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 
 import { AuthService } from './auth.service';
-import { RefreshTokenService } from './refresh-token.service';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
 import { PasswordValidationService } from './password-validation.service';
@@ -37,8 +36,14 @@ const mockAuthSettingsRepository = {
 
 const mockTokenIssuer = {
   issueAccessToken: jest.fn(),
+  issueRefreshTokenFamily: jest.fn(),
+  rotateRefreshToken: jest.fn(),
+  revokeFamilyForSession: jest.fn(),
+  revokeAllUserFamilies: jest.fn(),
+  cleanupExpiredRefreshTokens: jest.fn(),
   generateSessionId: jest.fn(() => 'sess-test-uuid'),
   getAccessTokenTtlSeconds: jest.fn(() => 600),
+  getRefreshTokenTtlSeconds: jest.fn(() => 14 * 24 * 60 * 60),
 };
 
 const mockConfigService = {
@@ -51,14 +56,6 @@ const mockConfigService = {
     };
     return config[key] ?? defaultValue;
   }),
-};
-
-const mockRefreshTokenService = {
-  createRefreshToken: jest.fn(),
-  findByToken: jest.fn(),
-  rotateRefreshToken: jest.fn(),
-  revokeToken: jest.fn(),
-  revokeAllUserTokens: jest.fn(),
 };
 
 const mockMfaService = {
@@ -114,7 +111,6 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(AuthSettings), useValue: mockAuthSettingsRepository },
         { provide: TokenIssuerService, useValue: mockTokenIssuer },
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: RefreshTokenService, useValue: mockRefreshTokenService },
         { provide: MfaService, useValue: mockMfaService },
         { provide: AuthEventsService, useValue: mockAuthEventsService },
         { provide: PasswordValidationService, useValue: mockPasswordValidationService },
@@ -154,9 +150,10 @@ describe('AuthService', () => {
         token: 'mock-access-token',
         expiresIn: 600,
       });
-      mockRefreshTokenService.createRefreshToken.mockResolvedValue({
-        token: 'mock-refresh-token',
-        entity: { id: 'token-id' },
+      mockTokenIssuer.issueRefreshTokenFamily.mockResolvedValue({
+        refreshToken: 'mock-refresh-token',
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        familyId: 'family-uuid',
       });
 
       const result = await service.login(
@@ -221,9 +218,10 @@ describe('AuthService', () => {
         token: 'mock-access-token',
         expiresIn: 600,
       });
-      mockRefreshTokenService.createRefreshToken.mockResolvedValue({
-        token: 'mock-refresh-token',
-        entity: { id: 'token-id' },
+      mockTokenIssuer.issueRefreshTokenFamily.mockResolvedValue({
+        refreshToken: 'mock-refresh-token',
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        familyId: 'family-uuid',
       });
 
       const result = await service.login({
@@ -337,6 +335,18 @@ describe('AuthService', () => {
       );
     });
 
+    it('revokes every active refresh family for the user (canon §29.5 password_change)', async () => {
+      mockPasswordValidationService.validatePassword.mockResolvedValue({ valid: true, errors: [] });
+
+      const result = await service.changePassword(userId, 'TestPassword123!', 'NewPassword456!');
+
+      expect(result.success).toBe(true);
+      expect(mockTokenIssuer.revokeAllUserFamilies).toHaveBeenCalledWith(
+        userId,
+        'password_change',
+      );
+    });
+
     it('throws when the current password is incorrect', async () => {
       await expect(
         service.changePassword(userId, 'WrongPassword!', 'NewPassword456!'),
@@ -358,12 +368,12 @@ describe('AuthService', () => {
 
   describe('refreshAccessToken', () => {
     it('rotates the refresh token and issues a new access token', async () => {
-      mockRefreshTokenService.findByToken.mockResolvedValue({
+      mockTokenIssuer.rotateRefreshToken.mockResolvedValue({
+        refreshToken: 'new-refresh-token',
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         userId: 'user-123',
-        token: 'hashed-old-token',
-        family: 'family-1',
-        isRevoked: false,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        sessionId: 'sess-existing',
+        instanceId: null,
       });
       mockUserRepository.findOne.mockResolvedValue({
         id: 'user-123',
@@ -371,75 +381,91 @@ describe('AuthService', () => {
         displayName: 'Test User',
         status: 'active',
       });
-      mockRefreshTokenService.rotateRefreshToken.mockResolvedValue({
-        token: 'new-refresh-token',
-        entity: { id: 'new-token-id' },
-      });
       mockTokenIssuer.issueAccessToken.mockResolvedValue({
         token: 'new-access-token',
         expiresIn: 600,
       });
 
-      const result = await service.refreshAccessToken('old-refresh-token', undefined, '127.0.0.1', 'Jest Test');
+      const result = await service.refreshAccessToken(
+        'old-refresh-token',
+        undefined,
+        '127.0.0.1',
+        'Jest Test',
+      );
 
       expect(result).toEqual({
         accessToken: 'new-access-token',
         refreshToken: 'new-refresh-token',
       });
-      expect(mockRefreshTokenService.rotateRefreshToken).toHaveBeenCalledWith(
-        'old-refresh-token',
-        '127.0.0.1',
-        'Jest Test',
-        'user-123',
-      );
+      expect(mockTokenIssuer.rotateRefreshToken).toHaveBeenCalledWith({
+        presentedToken: 'old-refresh-token',
+        ipAddress: '127.0.0.1',
+        userAgent: 'Jest Test',
+      });
+      // sessionId is reused across rotations (canon §29.5)
+      expect(mockTokenIssuer.issueAccessToken).toHaveBeenCalledWith({
+        userId: 'user-123',
+        sessionId: 'sess-existing',
+      });
     });
 
-    it('rejects an unknown refresh token', async () => {
-      mockRefreshTokenService.findByToken.mockResolvedValue(null);
+    it('rejects an unknown refresh token with the bland session-expired message', async () => {
+      const { UnauthorizedException } = await import('@nestjs/common');
+      mockTokenIssuer.rotateRefreshToken.mockRejectedValue(
+        new UnauthorizedException('Your session has expired. Please sign in again.'),
+      );
 
       await expect(
         service.refreshAccessToken('invalid-token'),
-      ).rejects.toThrow(/invalid or expired/i);
+      ).rejects.toThrow(/session has expired/i);
     });
 
-    it('rejects a revoked refresh token', async () => {
-      mockRefreshTokenService.findByToken.mockResolvedValue({
+    it('rejects when rotation succeeds but the user is no longer active', async () => {
+      mockTokenIssuer.rotateRefreshToken.mockResolvedValue({
+        refreshToken: 'new-refresh-token',
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         userId: 'user-123',
-        token: 'hashed-revoked',
-        isRevoked: true,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        sessionId: 'sess-existing',
+        instanceId: null,
+      });
+      mockUserRepository.findOne.mockResolvedValue({
+        id: 'user-123',
+        status: 'suspended',
       });
 
       await expect(
-        service.refreshAccessToken('revoked-token'),
-      ).rejects.toThrow(/invalid or expired/i);
+        service.refreshAccessToken('valid-token'),
+      ).rejects.toThrow(/session has expired/i);
+      // Fail-closed: a user suspended between login and refresh must
+      // have their freshly-minted family revoked too.
+      expect(mockTokenIssuer.revokeAllUserFamilies).toHaveBeenCalledWith(
+        'user-123',
+        'admin_revoke',
+      );
     });
   });
 
   describe('logout', () => {
-    it('revokes all refresh tokens for the user and records the event', async () => {
+    it('records the LOGOUT event and is a no-op on refresh-token state when no sessionId is present', async () => {
       await service.logout('user-123', undefined, '127.0.0.1', 'Jest Test');
 
-      expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
+      // Canon §29.5 rule 4: logout is session-scoped. Without a sessionId
+      // we cannot identify which family to revoke, so no revocation
+      // fires — but the audit event still records.
+      expect(mockTokenIssuer.revokeFamilyForSession).not.toHaveBeenCalled();
+      expect(mockJwtRevocationAdapter.revokeSession).not.toHaveBeenCalled();
       expect(mockAuthEventsService.record).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: 'LOGOUT', userId: 'user-123' }),
       );
     });
 
-    it('revokes the live access-token session in Redis when sessionId is present (F002)', async () => {
+    it('revokes the refresh-token family AND the live access-token session in Redis when sessionId is present', async () => {
       await service.logout('user-123', 'sess-xyz', '127.0.0.1', 'Jest Test');
 
+      // Canon §29.5 rule 4 — refresh-side revocation by sessionId.
+      expect(mockTokenIssuer.revokeFamilyForSession).toHaveBeenCalledWith('sess-xyz');
+      // F002 — access-token revocation by sessionId.
       expect(mockJwtRevocationAdapter.revokeSession).toHaveBeenCalledWith('sess-xyz');
-      // Refresh-token revocation must still fire — the two are
-      // independent revocation surfaces.
-      expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
-    });
-
-    it('skips the access-token session revoke when no sessionId is on the JWT (F002)', async () => {
-      await service.logout('user-123', undefined, '127.0.0.1', 'Jest Test');
-
-      expect(mockJwtRevocationAdapter.revokeSession).not.toHaveBeenCalled();
-      expect(mockRefreshTokenService.revokeAllUserTokens).toHaveBeenCalledWith('user-123');
     });
   });
 });

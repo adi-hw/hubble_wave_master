@@ -67,7 +67,7 @@ export class AuthController {
         secure,
         sameSite,
         path: this.cookiePath,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: 14 * 24 * 60 * 60 * 1000,
       });
     }
 
@@ -107,7 +107,7 @@ export class AuthController {
           secure,
           sameSite,
           path: this.cookiePath,
-          maxAge: 7 * 24 * 60 * 60 * 1000,
+          maxAge: 14 * 24 * 60 * 60 * 1000,
         });
       }
 

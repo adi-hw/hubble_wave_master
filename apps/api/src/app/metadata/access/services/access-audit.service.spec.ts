@@ -147,4 +147,40 @@ describe('AccessAuditService (§28.7 provenance)', () => {
     expect((created.context?.additionalData as Record<string, unknown>)['provenance']).toBeUndefined();
     expect(created.context?.additionalData).toMatchObject({ trace: 'business-as-usual' });
   });
+
+  it('20. logSecurityEvent writes the event with decision=HIGH_SEVERITY and the kind/severity in context (canon §29.5)', () => {
+    const auditRepo = buildRepoStub<AccessAuditLog>();
+    const ruleAuditRepo = buildRepoStub<AccessRuleAuditLog>();
+    const service = new AccessAuditService(
+      auditRepo as unknown as Repository<AccessAuditLog>,
+      ruleAuditRepo as unknown as Repository<AccessRuleAuditLog>,
+    );
+
+    service.logSecurityEvent({
+      userId: 'user-1',
+      kind: 'reuse_detected',
+      severity: 'high',
+      context: {
+        familyId: 'fam-1',
+        sessionId: 'sess-1',
+        ipAddressAtReuse: '203.0.113.7',
+        userAgentAtReuse: 'curl/7.85',
+      },
+    });
+
+    expect(auditRepo.create).toHaveBeenCalledTimes(1);
+    const created = auditRepo.create.mock.calls[0][0] as Partial<AccessAuditLog>;
+    expect(created.decision).toBe('HIGH_SEVERITY');
+    expect(created.userId).toBe('user-1');
+    expect(created.resource).toBe('security_event');
+    expect(created.action).toBe('reuse_detected');
+    expect(created.context?.additionalData).toMatchObject({
+      kind: 'reuse_detected',
+      severity: 'high',
+      familyId: 'fam-1',
+      sessionId: 'sess-1',
+      ipAddressAtReuse: '203.0.113.7',
+      userAgentAtReuse: 'curl/7.85',
+    });
+  });
 });

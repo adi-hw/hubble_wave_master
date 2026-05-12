@@ -590,6 +590,37 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-12 (canon §29 PR-C — Refresh token family + rotation + reuse
+  detection): closes audit finding F001. Refines the §29.5 schema
+  ahead of code landing — replaces the draft field set with the
+  operational shape:
+  • Plaintext `ip`/`user_agent`/`device_id` dropped from the
+    operational table. Replaced with SHA-256 hashes (`ip_address_hash`,
+    `user_agent_hash`) and a user-facing `device_label`. Plaintext
+    values live only in the `AccessAuditPort.logSecurityEvent` payload
+    on reuse-detection events, where retention + access controls are
+    stricter than the operational refresh_tokens table.
+  • `instance_id` changed from NOT NULL to NULL — single-tenant mode
+    (canon §5) has no instance UUID to carry.
+  • Field renames: `issued_at` → `created_at` (DEFAULT now()), `used_at`
+    → `last_used_at`, `parent_token_id` upgraded to a real self-FK with
+    `ON DELETE SET NULL`. `replaced_by_token_id` becomes a real FK with
+    the same ON DELETE behavior so descendants survive the eviction of
+    an ancestor.
+  Founder-locked defaults (binding): refresh TTL default 14 days;
+  `JWT_REFRESH_TTL_DAYS` configurable in `[1, 30]` with fail-fast
+  startup guard; concurrent families per user UNBOUNDED (no cap);
+  reuse-detection response = revoke family + revoke session via
+  `JwtRevocationPort` + force re-auth + high-severity audit event.
+  Client-facing 401 message is bland ("Your session has expired.
+  Please sign in again.") — does NOT leak the reuse signal.
+  AccessAuditPort extended with `logSecurityEvent({ severity,
+  userId, kind, context })` — a sibling to `logAdminBypass`. The
+  adapter writes the event to `AccessAuditLog` with
+  `decision='HIGH_SEVERITY'` and the structured payload in
+  `context.additionalData`. Audit log table required no schema
+  change. Refs F001 PR #32.
+
 - 2026-05-11 (W3 — Identity & Service Authentication Architecture):
   new §29. Locks the identity slice that closes audit findings F001,
   F015, F022 as ONE architectural commitment (not three isolated fixes).
@@ -918,29 +949,42 @@ Persistent state per token:
 refresh_tokens (
   token_hash             text PRIMARY KEY,    -- SHA-256 of the opaque token
   family_id              uuid NOT NULL,
-  parent_token_id        text NULL,           -- self-FK; NULL for first token in family
+  parent_token_id        text NULL,           -- FK to token_hash; NULL for first token in family
   user_id                uuid NOT NULL,
-  instance_id            uuid NOT NULL,
+  instance_id            uuid NULL,           -- NULL in single-tenant mode (canon §5)
   session_id             uuid NOT NULL,
-  device_id              text NULL,
-  ip                     text NULL,
-  user_agent             text NULL,
-  issued_at              timestamptz NOT NULL,
+  device_label           text NULL,           -- user-facing label, e.g. "Chrome on Mac"
+  user_agent_hash        text NULL,           -- SHA-256 of UA at issue time
+  ip_address_hash        text NULL,           -- SHA-256 of IP at issue time
+  created_at             timestamptz NOT NULL DEFAULT now(),
   expires_at             timestamptz NOT NULL,
-  used_at                timestamptz NULL,
-  replaced_by_token_id   text NULL,
+  last_used_at           timestamptz NULL,    -- set on first rotation; NULL = never used
   revoked_at             timestamptz NULL,
-  revoked_reason         text NULL  -- enum: 'reuse_detected' | 'logout' | 'password_change' | 'admin_revoke' | 'family_expired'
+  replaced_by_token_id   text NULL,           -- FK to token_hash of successor in family
+  revoked_reason         text NULL            -- enum: 'reuse_detected' | 'logout' |
+                                              -- 'password_change' | 'admin_revoke' |
+                                              -- 'family_expired'
 )
 ```
+
+Plaintext IP and User-Agent are NOT stored on the operational row — only
+their SHA-256 hashes. Plaintext values (when needed for forensics) are
+captured in the audit event emitted via AccessAuditPort on security
+events; the audit log row has different retention and access controls
+than the operational refresh_tokens table.
+
+`device_label` is user-facing display only ("Chrome on Mac", "iPhone
+14 Pro"). The login endpoint accepts an optional `device_label`
+parameter from the client; defaults to a User-Agent-parsed string when
+omitted.
 
 Indexes: `(family_id, revoked_at)`, `(user_id, session_id)`, plus the primary key on `token_hash`.
 
 Rotation rules:
 
-1. **Issue**: every refresh request consumes the current token (`used_at = now()`), mints a new one with the same `family_id`, sets `parent_token_id` and `replaced_by_token_id` to chain them.
-2. **Reuse detection**: if a token presents with `used_at IS NOT NULL`, **revoke the entire family** (`UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'reuse_detected' WHERE family_id = $1 AND revoked_at IS NULL`). Emit a security audit event via F021's `AccessAuditPort`.
-3. **Family expiry**: when the family's oldest `issued_at` is older than the refresh-token max lifetime, revoke the whole family with `revoked_reason = 'family_expired'`.
+1. **Issue**: every refresh request consumes the current token (`last_used_at = now()`), mints a new one with the same `family_id`, sets `parent_token_id` and `replaced_by_token_id` to chain them.
+2. **Reuse detection**: if a token presents with `last_used_at IS NOT NULL`, **revoke the entire family** (`UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'reuse_detected' WHERE family_id = $1 AND revoked_at IS NULL`). Emit a security audit event via F021's `AccessAuditPort.logSecurityEvent`.
+3. **Family expiry**: when the family's oldest `created_at` is older than the refresh-token max lifetime, revoke the whole family with `revoked_reason = 'family_expired'`.
 4. **Logout**: revokes the family with `revoked_reason = 'logout'`. The access-token revocation (F002's `JwtRevocationPort`) is the parallel mechanism for in-flight access tokens.
 5. **Single-use rotation without a family chain is forbidden** — it cannot reliably kill descendants after reuse.
 

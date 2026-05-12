@@ -3,16 +3,33 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+} from 'crypto';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import {
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
   KEY_SIGNING_SERVICE,
   KeySigningService,
 } from '@hubblewave/auth-guard';
+import {
+  ACCESS_AUDIT_PORT,
+  type AccessAuditPort,
+} from '@hubblewave/authorization';
+import {
+  RefreshToken,
+  type RefreshTokenRevokedReason,
+} from '@hubblewave/instance-db';
+import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 
 /**
  * Minimum and maximum allowed values for `JWT_ACCESS_TTL_SECONDS` per
@@ -23,6 +40,33 @@ import {
 const ACCESS_TOKEN_TTL_MIN_SECONDS = 300; // 5 minutes
 const ACCESS_TOKEN_TTL_MAX_SECONDS = 900; // 15 minutes
 const ACCESS_TOKEN_TTL_DEFAULT_SECONDS = 600; // 10 minutes (canon §29.4 default)
+
+/**
+ * Refresh-token TTL bounds per canon §29.4 + §29.5. Founder-locked
+ * defaults (PR-C amendment): default 14 days, configurable in [1, 30].
+ * Values outside the range fail startup — same fail-fast posture as
+ * `JWT_ACCESS_TTL_SECONDS`.
+ */
+const REFRESH_TOKEN_TTL_MIN_DAYS = 1;
+const REFRESH_TOKEN_TTL_MAX_DAYS = 30;
+const REFRESH_TOKEN_TTL_DEFAULT_DAYS = 14;
+
+/**
+ * Generic 401 message returned to the client on every refresh failure
+ * mode. Canon §29.5 + founder direction explicitly require that
+ * reuse-detection responses are indistinguishable from any other
+ * "your session is gone" 401 — leaking the reuse signal trains
+ * attackers on how to probe the revocation surface.
+ */
+const SESSION_EXPIRED_MESSAGE =
+  'Your session has expired. Please sign in again.';
+
+/**
+ * Bytes of entropy in the opaque refresh-token string. 32 bytes = 256
+ * bits, encoded as 43-char base64url. Matches OWASP guidance for
+ * persistent session identifiers.
+ */
+const REFRESH_TOKEN_ENTROPY_BYTES = 32;
 
 /**
  * Canonical issuer prefix per canon §29.3. The full issuer is
@@ -76,20 +120,37 @@ export class TokenIssuerService implements OnModuleInit {
    */
   private accessTokenTtlSeconds: number = ACCESS_TOKEN_TTL_DEFAULT_SECONDS;
 
+  /**
+   * Refresh-token TTL in seconds, derived from `JWT_REFRESH_TTL_DAYS` at
+   * startup. Cached so every issue call sees the same value.
+   */
+  private refreshTokenTtlSeconds: number =
+    REFRESH_TOKEN_TTL_DEFAULT_DAYS * 24 * 60 * 60;
+
   constructor(
     @Inject(KEY_SIGNING_SERVICE)
     private readonly keySigning: KeySigningService,
     @Inject(IDENTITY_RESOLVER_PORT)
     private readonly identityResolver: IdentityResolverPort,
     private readonly configService: ConfigService,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepo: Repository<RefreshToken>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    private readonly sessionRevoker: JwtRevocationAdapter,
+    @Optional()
+    @Inject(ACCESS_AUDIT_PORT)
+    private readonly accessAudit: AccessAuditPort | null = null,
   ) {}
 
   onModuleInit(): void {
     // Canon §29.4 — the TTL window is enforced at startup, not per call.
     // A misconfigured instance must not boot.
-    this.accessTokenTtlSeconds = this.loadAndValidateTtl();
+    this.accessTokenTtlSeconds = this.loadAndValidateAccessTtl();
+    this.refreshTokenTtlSeconds = this.loadAndValidateRefreshTtl();
     this.logger.log(
-      `Access token TTL configured: ${this.accessTokenTtlSeconds}s (canon §29.4)`,
+      `Access token TTL: ${this.accessTokenTtlSeconds}s | ` +
+        `Refresh token TTL: ${this.refreshTokenTtlSeconds}s (canon §29.4)`,
     );
   }
 
@@ -177,11 +238,279 @@ export class TokenIssuerService implements OnModuleInit {
     return this.accessTokenTtlSeconds;
   }
 
+  /**
+   * Surface the refresh-token TTL to callers that need it for cookie
+   * `Max-Age` calculation.
+   */
+  getRefreshTokenTtlSeconds(): number {
+    return this.refreshTokenTtlSeconds;
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Refresh tokens (canon §29.5)
+  // ───────────────────────────────────────────────────────────────────
+
+  /**
+   * Issue a brand-new refresh-token family. Called on every login /
+   * SSO callback / magic-link verification — each login gets its own
+   * family (founder direction: unbounded concurrency per user).
+   *
+   * The returned token is the plaintext opaque string the client stores
+   * in its `refreshToken` HttpOnly cookie. The DB row carries only the
+   * SHA-256 hash; plaintext is forgotten the moment this method returns.
+   */
+  async issueRefreshTokenFamily(params: {
+    userId: string;
+    sessionId: string;
+    instanceId: string | null;
+    deviceLabel?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }): Promise<{ refreshToken: string; expiresAt: Date; familyId: string }> {
+    const token = generateRefreshToken();
+    const familyId = randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + this.refreshTokenTtlSeconds * 1000,
+    );
+
+    await this.refreshTokenRepo.insert({
+      tokenHash: hashToken(token),
+      familyId,
+      parentTokenId: null,
+      userId: params.userId,
+      instanceId: params.instanceId,
+      sessionId: params.sessionId,
+      deviceLabel:
+        params.deviceLabel ??
+        parseDeviceLabelFromUserAgent(params.userAgent),
+      userAgentHash: params.userAgent ? hashUserAgent(params.userAgent) : null,
+      ipAddressHash: params.ipAddress ? hashIp(params.ipAddress) : null,
+      createdAt: now,
+      expiresAt,
+    });
+
+    return { refreshToken: token, expiresAt, familyId };
+  }
+
+  /**
+   * Rotate a refresh token in a single transaction. Canon §29.5 rules:
+   *
+   *   1. Happy path: consume the presented token (set last_used_at +
+   *      replaced_by_token_id) and mint a successor with the same
+   *      family_id and inherited expires_at (no extension via rotation).
+   *   2. Already-used token presented → REUSE DETECTED. Revoke entire
+   *      family, revoke session (so access tokens for the session also
+   *      fail), emit high-severity audit event with plaintext IP/UA,
+   *      raise a bland 401.
+   *   3. Unknown token / revoked / expired → bland 401, no audit event
+   *      (would be noisy from probes).
+   *
+   * The transaction uses SELECT FOR UPDATE so two concurrent rotations
+   * cannot both treat the same token as fresh.
+   */
+  async rotateRefreshToken(params: {
+    presentedToken: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }): Promise<RefreshTokenRotationResult> {
+    const presentedHash = hashToken(params.presentedToken);
+
+    return this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(RefreshToken);
+
+      const row = await repo
+        .createQueryBuilder('rt')
+        .where('rt.token_hash = :hash', { hash: presentedHash })
+        .setLock('pessimistic_write')
+        .getOne();
+
+      if (!row) {
+        // Token never existed (or evicted post-revocation). No audit
+        // event — would be too noisy from probes.
+        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+      }
+
+      // Family expiry — anchored to the family root's created_at + TTL.
+      // Successors inherit `expires_at` so the same check fires for
+      // every member of an expired family.
+      if (row.expiresAt < new Date()) {
+        await this.revokeFamily(manager, row.familyId, 'family_expired');
+        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+      }
+
+      if (row.revokedAt !== null && row.revokedAt !== undefined) {
+        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+      }
+
+      if (row.lastUsedAt !== null && row.lastUsedAt !== undefined) {
+        // Canon §29.5 rule 2: token already used → reuse detected.
+        await this.handleReuseDetection({
+          manager,
+          familyId: row.familyId,
+          userId: row.userId,
+          sessionId: row.sessionId,
+          userAgent: params.userAgent,
+          ipAddress: params.ipAddress,
+        });
+        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+      }
+
+      // Happy path — consume + mint successor.
+      const newToken = generateRefreshToken();
+      const newTokenHash = hashToken(newToken);
+      const now = new Date();
+      // Successor inherits the family root's expires_at (carried on
+      // every row). Rotation does NOT extend the family lifetime.
+      const newExpiresAt = row.expiresAt;
+
+      await repo.update(
+        { tokenHash: presentedHash },
+        { lastUsedAt: now, replacedByTokenId: newTokenHash },
+      );
+
+      await repo.insert({
+        tokenHash: newTokenHash,
+        familyId: row.familyId,
+        parentTokenId: presentedHash,
+        userId: row.userId,
+        instanceId: row.instanceId,
+        sessionId: row.sessionId,
+        deviceLabel: row.deviceLabel,
+        userAgentHash: params.userAgent
+          ? hashUserAgent(params.userAgent)
+          : row.userAgentHash,
+        ipAddressHash: params.ipAddress
+          ? hashIp(params.ipAddress)
+          : row.ipAddressHash,
+        createdAt: now,
+        expiresAt: newExpiresAt,
+      });
+
+      return {
+        refreshToken: newToken,
+        expiresAt: newExpiresAt,
+        userId: row.userId,
+        sessionId: row.sessionId,
+        instanceId: row.instanceId ?? null,
+      };
+    });
+  }
+
+  /**
+   * Logout path: revoke the family that backs `sessionId`. Called from
+   * `AuthService.logout`. Canon §29.5 rule 4.
+   */
+  async revokeFamilyForSession(sessionId: string): Promise<void> {
+    if (!sessionId) return;
+    await this.refreshTokenRepo.update(
+      { sessionId, revokedAt: IsNull() },
+      { revokedAt: new Date(), revokedReason: 'logout' },
+    );
+  }
+
+  /**
+   * Password-change / admin-revoke / suspend: revoke every active refresh
+   * family for the user. Pair with `security_stamp` bump (canon §29.6)
+   * so both the issue path (refresh family) and the in-flight access
+   * tokens are killed.
+   */
+  async revokeAllUserFamilies(
+    userId: string,
+    reason: RefreshTokenRevokedReason = 'password_change',
+  ): Promise<void> {
+    if (!userId) return;
+    await this.refreshTokenRepo.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date(), revokedReason: reason },
+    );
+  }
+
+  /**
+   * Scheduled cleanup — delete rows whose `expires_at` is in the past.
+   * Revoked rows past their natural expiry are also deleted; rows still
+   * marked active but expired are deleted (the partial index on
+   * `expires_at WHERE revoked_at IS NULL` keeps this scan cheap).
+   *
+   * Returns the count of rows removed for observability.
+   */
+  async cleanupExpiredRefreshTokens(): Promise<number> {
+    const cutoff = new Date();
+    const result = await this.refreshTokenRepo
+      .createQueryBuilder()
+      .delete()
+      .from(RefreshToken)
+      .where('expires_at < :cutoff', { cutoff })
+      .execute();
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Reuse-detection handler. Canon §29.5 rule 2:
+   *   1. Revoke entire family with reason 'reuse_detected'.
+   *   2. Revoke session via JwtRevocationPort so the access tokens
+   *      already minted for this session also fail.
+   *   3. Emit a high-severity AccessAuditPort security event. Plaintext
+   *      IP and User-Agent flow into the audit payload — they are NEVER
+   *      stored on the operational refresh_tokens row.
+   *   4. Caller raises a generic 401 (handled by `rotateRefreshToken`).
+   */
+  private async handleReuseDetection(params: {
+    manager: EntityManager;
+    familyId: string;
+    userId: string;
+    sessionId: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }): Promise<void> {
+    await this.revokeFamily(params.manager, params.familyId, 'reuse_detected');
+    await this.sessionRevoker.revokeSession(params.sessionId);
+
+    if (this.accessAudit) {
+      try {
+        this.accessAudit.logSecurityEvent({
+          userId: params.userId,
+          kind: 'reuse_detected',
+          severity: 'high',
+          context: {
+            familyId: params.familyId,
+            sessionId: params.sessionId,
+            ipAddressAtReuse: params.ipAddress ?? null,
+            userAgentAtReuse: params.userAgent ?? null,
+          },
+        });
+      } catch (err) {
+        // Belt-and-suspenders — the adapter already swallows save errors,
+        // but a thrown audit must not regress the revocation path.
+        this.logger.error(
+          'AccessAuditPort.logSecurityEvent threw on reuse detection',
+          err,
+        );
+      }
+    } else {
+      this.logger.warn(
+        'AccessAuditPort unbound; reuse detection event not persisted ' +
+          '(canon §29.5 / canon §10 audit gap)',
+      );
+    }
+  }
+
+  private async revokeFamily(
+    manager: EntityManager,
+    familyId: string,
+    reason: RefreshTokenRevokedReason,
+  ): Promise<void> {
+    await manager.getRepository(RefreshToken).update(
+      { familyId, revokedAt: IsNull() },
+      { revokedAt: new Date(), revokedReason: reason },
+    );
+  }
+
   // ───────────────────────────────────────────────────────────────────
   // Internals
   // ───────────────────────────────────────────────────────────────────
 
-  private loadAndValidateTtl(): number {
+  private loadAndValidateAccessTtl(): number {
     const raw = this.configService.get<string | number>('JWT_ACCESS_TTL_SECONDS');
     if (raw === undefined || raw === null || raw === '') {
       return ACCESS_TOKEN_TTL_DEFAULT_SECONDS;
@@ -204,6 +533,36 @@ export class TokenIssuerService implements OnModuleInit {
     return parsed;
   }
 
+  /**
+   * Canon §29.4 / §29.5 + founder-locked PR-C defaults: refresh-token TTL
+   * defaults to 14 days and must fall within `[1, 30]`. Out-of-range
+   * values fail startup — same posture as `JWT_ACCESS_TTL_SECONDS`. A
+   * misconfigured refresh-token TTL must not be allowed to silently mint
+   * never-expiring or instantly-expiring tokens.
+   */
+  private loadAndValidateRefreshTtl(): number {
+    const raw = this.configService.get<string | number>('JWT_REFRESH_TTL_DAYS');
+    if (raw === undefined || raw === null || raw === '') {
+      return REFRESH_TOKEN_TTL_DEFAULT_DAYS * 24 * 60 * 60;
+    }
+    const parsed = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+      throw new Error(
+        `JWT_REFRESH_TTL_DAYS must be an integer; got '${raw}' (canon §29.4)`,
+      );
+    }
+    if (
+      parsed < REFRESH_TOKEN_TTL_MIN_DAYS ||
+      parsed > REFRESH_TOKEN_TTL_MAX_DAYS
+    ) {
+      throw new Error(
+        `JWT_REFRESH_TTL_DAYS must be in [${REFRESH_TOKEN_TTL_MIN_DAYS}, ${REFRESH_TOKEN_TTL_MAX_DAYS}]; ` +
+          `got ${parsed} (canon §29.4 / §29.5).`,
+      );
+    }
+    return parsed * 24 * 60 * 60;
+  }
+
   private resolveInstanceId(): string {
     // Canon §5: single-tenant deployments use the configured INSTANCE_ID
     // (or 'default-instance' for dev). Pooled-mode instances supply per
@@ -222,4 +581,71 @@ export class TokenIssuerService implements OnModuleInit {
       DEFAULT_AUDIENCE
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Module-level helpers (canon §29.5)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Returned by `rotateRefreshToken` on the happy path. The caller mints a
+ * fresh access token via `issueAccessToken({ userId, sessionId })` and
+ * sends both back to the client.
+ */
+export interface RefreshTokenRotationResult {
+  refreshToken: string;
+  expiresAt: Date;
+  userId: string;
+  sessionId: string;
+  instanceId: string | null;
+}
+
+/** 256 bits of entropy, base64url-encoded. Exported for test fixtures. */
+export function generateRefreshToken(): string {
+  return randomBytes(REFRESH_TOKEN_ENTROPY_BYTES).toString('base64url');
+}
+
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function hashIp(ip: string): string {
+  return createHash('sha256').update(ip).digest('hex');
+}
+
+export function hashUserAgent(ua: string): string {
+  return createHash('sha256').update(ua).digest('hex');
+}
+
+/**
+ * Derive a human-friendly device label from a raw User-Agent. The label
+ * is the display string the user sees in their session list ("Chrome on
+ * Mac"). When the client supplies its own `device_label` on the login
+ * payload, that value wins.
+ *
+ * Conservative parser — we deliberately keep the result short because it
+ * shows up in security UI. Matches the heuristic already used by
+ * `SessionService.parseUserAgent` so the two surfaces produce identical
+ * labels for identical UAs.
+ */
+export function parseDeviceLabelFromUserAgent(
+  userAgent: string | undefined,
+): string | null {
+  if (!userAgent) return null;
+  const ua = userAgent.toLowerCase();
+
+  let browser = 'Browser';
+  if (/edg\//.test(ua)) browser = 'Edge';
+  else if (/chrome/.test(ua) && !/chromium/.test(ua)) browser = 'Chrome';
+  else if (/firefox/.test(ua)) browser = 'Firefox';
+  else if (/safari/.test(ua) && !/chrome/.test(ua)) browser = 'Safari';
+
+  let os = 'device';
+  if (/windows/.test(ua)) os = 'Windows';
+  else if (/android/.test(ua)) os = 'Android';
+  else if (/iphone|ipad|ipod/.test(ua)) os = 'iOS';
+  else if (/mac os x/.test(ua)) os = 'Mac';
+  else if (/linux/.test(ua)) os = 'Linux';
+
+  return `${browser} on ${os}`;
 }
