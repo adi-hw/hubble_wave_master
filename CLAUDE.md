@@ -590,6 +590,43 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-11 (W3 — Identity & Service Authentication Architecture):
+  new §29. Locks the identity slice that closes audit findings F001,
+  F015, F022 as ONE architectural commitment (not three isolated fixes).
+  Highlights:
+  • Signing: ES256 (KMS does not support Ed25519); per-instance AWS
+    KMS asymmetric keys; alias `alias/hubblewave/{instance_id}/jwt-signing`;
+    direct KMS signing per token (no in-memory cache, no envelope keys).
+  • `kid` namespace: `hwk_YYYY_MM_DD_<8-hex>` — readable + ~32-bit
+    entropy; `key_metadata` table maps `kid` → KMS ARN + state; JWT
+    format never exposes AWS identifiers.
+  • Key lifecycle: pending → active → retiring → retired/compromised;
+    rotation every 30–90 days; retiring keys retained in JWKS until
+    max(access_TTL, service_TTL) + clock skew.
+  • JWT claims contract: every token carries kid, iss, aud, iat, exp,
+    sub, instance_id, session_id, token_version. Verifiers check all
+    of these plus signature.
+  • TTLs: user access 10min default (range [5, 15]); service tokens
+    5min fixed; refresh 1–30 days.
+  • F001 — Refresh token family chains: single-use rotation, reuse
+    detection revokes entire family, `revoked_reason` enum captures
+    cause.
+  • F015 — security_stamp / token_version on users; bumped on
+    password change / MFA disable / admin force-logout / suspend;
+    JWT carries value at issuance; mismatch → reject. Closes the
+    "old session still works after password change" gap.
+  • F022 — Service-to-service: `service_principals` table; production
+    bootstrap via Kubernetes projected SA tokens + TokenReview API;
+    local dev `JWT_BOOTSTRAP_SECRET` honored only when
+    NODE_ENV !== 'production' (production startup fails fast if set);
+    scope vocabulary `<collection>:<action>`.
+  • Performance posture explicitly EXCLUDES in-memory signing key
+    caches and envelope-key patterns; HSM is the cryptographic root.
+  Code lands as a 4-PR chain after this amendment: (1) key_metadata
+  infra + JWKS publication, (2) token claims + security_stamp,
+  (3) refresh family schema + rotation, (4) service principals +
+  service-token issuance.
+
 - 2026-05-11 (W2 — Authorization Resolution Model): new §28
   formalizing the authorization model. Publishes (a) the field-decision
   precedence matrix (7 levels: field-explicit deny/allow → field-wildcard
@@ -815,6 +852,176 @@ The following are committed in spirit but NOT bound by §28 today:
 - **Pre-computed materialized permissions** — see §28.8.
 
 Spec reference: this section + the in-flight remediation PRs (F003, F004, F005, F006, F021, F023, F024, F025) collectively implement §28. The remediation backlog tracks each.
+
+---
+
+## 29. Identity & Service Authentication Architecture (canon §29 NEW, 2026-05-11)
+
+§9 commits to centralized authorization. §28 specifies how authorization decisions are made. §29 specifies **who issues the tokens that drive those decisions**, how those tokens are signed, how they expire, how they are revoked, and how internal services authenticate to one another.
+
+### 29.1 Signing topology
+
+- **Algorithm: ES256 (ECDSA P-256).** RS256 is a fallback only for specific OIDC RP interoperability issues; not the default.
+- **Per-instance AWS KMS asymmetric keys.** No shared signing keys across instances. Each instance's KMS alias: `alias/hubblewave/{instance_id}/jwt-signing`. The private key never leaves the KMS HSM.
+- **Direct KMS signing per token.** No in-memory signing key cache. No envelope-key / data-key shortcut. The HSM is the cryptographic root.
+- **Verification via cached public keys.** Public keys are fetched once at startup and on rotation events; JWKS endpoint exposes them.
+
+### 29.2 `kid` namespace + key lifecycle
+
+- **`kid` format**: `hwk_YYYY_MM_DD_<8-hex>`. Example: `hwk_2026_05_11_7f3a9c2e`. Date prefix for ops readability; 8-hex suffix (~32 bits entropy) defeats predictable-kid attacks. Generated at key-creation time, immutable.
+- **`key_metadata` table** maps `kid` → `{ provider: 'aws-kms', kms_alias, kms_arn, algorithm, state, created_at, activated_at, retiring_at, retired_at, compromised_at }`. JWT format never exposes AWS-specific identifiers; internal `kid` is the only public reference.
+- **Key states**: `pending` → `active` → `retiring` → `retired` (terminal) or `compromised` (terminal, emergency state). Lifecycle transitions are admin operations, audited via F021's `AccessAuditPort`.
+- **Rotation cadence**: every 30–90 days. Default 90 days; shorten to 30 if compromise risk emerges. Rotation creates a new key (`pending`), activates it (`active`), demotes the previous active key (`retiring`), and retains the retiring key's public component in JWKS until the longest in-flight token lifetime + clock skew has elapsed.
+- **JWKS exposure rule**: `/.well-known/jwks.json` returns the public keys of `active` and `retiring` keys only. `pending`, `retired`, and `compromised` keys are never in JWKS.
+
+### 29.3 JWT claims contract
+
+Every HubbleWave JWT MUST include:
+
+| Claim | Value |
+|---|---|
+| Header `alg` | `ES256` |
+| Header `typ` | `JWT` |
+| Header `kid` | Internal `kid` from §29.2 |
+| `iss` | Instance issuer — `hubblewave-{instance_id}` |
+| `aud` | Target audience — `hubblewave-instance` for human tokens, `svc-{target}` for service tokens |
+| `iat` | Issued-at (unix seconds) |
+| `exp` | Expires-at (unix seconds) — bounded per §29.4 |
+| `sub` | `user:{user_id}` for human tokens, `service:svc-{service-id}` for service tokens |
+| `instance_id` | Instance UUID — duplicates `iss` parsing but is independently checked |
+| `session_id` | Persisted session row UUID — used for revocation lookups |
+| `token_version` | Per-user `security_stamp` value (see §29.6) |
+| `scope` (service tokens only) | Array of `<collection>:<action>` strings |
+
+Verifiers MUST check signature, `kid` resolves to an `active` or `retiring` key, `iss`, `aud`, `exp`, `iat` (with clock tolerance ≤ 30s), and `token_version` matches the current DB value (see §29.6).
+
+### 29.4 Token TTLs
+
+- **User access tokens**: default **10 minutes**. Configurable per instance within `[5min, 15min]`. Values outside that range fail instance startup. Stale permissions are NOT solved with longer JWTs — they are solved with `security_stamp` invalidation (§29.6).
+- **Service-to-service tokens**: **5 minutes**, fixed. No instance override. Audience-bound, scope-limited.
+- **Refresh tokens**: 1–30 days, configurable per instance. Single-use rotation (§29.5).
+- **Retiring key retention** in JWKS: `max(access_token_TTL, service_token_TTL) + clock_skew`, never less than 24 hours for operational safety.
+
+### 29.5 Refresh token family model (closes F001)
+
+Single-use rotation with token-family chains. Reusable refresh tokens are forbidden.
+
+Persistent state per token:
+
+```
+refresh_tokens (
+  token_hash             text PRIMARY KEY,    -- SHA-256 of the opaque token
+  family_id              uuid NOT NULL,
+  parent_token_id        text NULL,           -- self-FK; NULL for first token in family
+  user_id                uuid NOT NULL,
+  instance_id            uuid NOT NULL,
+  session_id             uuid NOT NULL,
+  device_id              text NULL,
+  ip                     text NULL,
+  user_agent             text NULL,
+  issued_at              timestamptz NOT NULL,
+  expires_at             timestamptz NOT NULL,
+  used_at                timestamptz NULL,
+  replaced_by_token_id   text NULL,
+  revoked_at             timestamptz NULL,
+  revoked_reason         text NULL  -- enum: 'reuse_detected' | 'logout' | 'password_change' | 'admin_revoke' | 'family_expired'
+)
+```
+
+Indexes: `(family_id, revoked_at)`, `(user_id, session_id)`, plus the primary key on `token_hash`.
+
+Rotation rules:
+
+1. **Issue**: every refresh request consumes the current token (`used_at = now()`), mints a new one with the same `family_id`, sets `parent_token_id` and `replaced_by_token_id` to chain them.
+2. **Reuse detection**: if a token presents with `used_at IS NOT NULL`, **revoke the entire family** (`UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'reuse_detected' WHERE family_id = $1 AND revoked_at IS NULL`). Emit a security audit event via F021's `AccessAuditPort`.
+3. **Family expiry**: when the family's oldest `issued_at` is older than the refresh-token max lifetime, revoke the whole family with `revoked_reason = 'family_expired'`.
+4. **Logout**: revokes the family with `revoked_reason = 'logout'`. The access-token revocation (F002's `JwtRevocationPort`) is the parallel mechanism for in-flight access tokens.
+5. **Single-use rotation without a family chain is forbidden** — it cannot reliably kill descendants after reuse.
+
+### 29.6 `security_stamp` / token_version
+
+Every user carries a `security_stamp` column (`uuid` regenerated on security events):
+
+- Password change → bump stamp.
+- MFA disable → bump stamp.
+- Admin force-logout → bump stamp.
+- Account suspend → bump stamp.
+
+Every JWT carries the user's `security_stamp` value at issuance time in the `token_version` claim. Verifiers (`JwtAuthGuard`, `JwtStrategy`) compare to the current DB value; mismatch → reject with `Token version stale`. Closes the "old session still works after password change" gap.
+
+`security_stamp` is the cross-cutting kill-switch — independent of `JwtRevocationPort` (which is per-session) and refresh-token family revocation (which is per-family). Bumping stamp invalidates ALL tokens for the user globally.
+
+### 29.7 Service-to-service authentication (closes F022)
+
+No shared "internal secret." Every service has a registered principal and mints short-lived audience-bound tokens.
+
+`service_principals` table (seeded at deploy time per environment):
+
+```
+service_principals (
+  service_id              text PRIMARY KEY,            -- 'svc-api', 'svc-ava', 'svc-insights', 'svc-worker'
+  display_name            text NOT NULL,
+  allowed_audiences       text[] NOT NULL,             -- ['svc-api', 'svc-worker'] — services this principal may call
+  allowed_scopes          text[] NOT NULL,             -- ['work_order:read', 'dashboard:read', ...]
+  k8s_service_account     text NULL,                   -- 'system:serviceaccount:hubblewave-system:svc-ava-sa'
+  active                  boolean NOT NULL DEFAULT true,
+  created_at              timestamptz NOT NULL,
+  updated_at              timestamptz NOT NULL
+)
+```
+
+#### Bootstrap
+
+**Production**: Kubernetes projected service account tokens with audience binding. The auth service exposes `/internal/service-token` (mTLS or in-cluster only); each calling service presents its projected SA JWT (with `audience: hubblewave-auth-service`); auth service validates via the k8s `TokenReview` API, looks up the matching `service_principals` row by `k8s_service_account`, mints a HubbleWave service token.
+
+**Local dev only**: `JWT_BOOTSTRAP_SECRET` env var. The auth service accepts this **only when `NODE_ENV !== 'production'`**. Production-mode startup MUST fail fast if `JWT_BOOTSTRAP_SECRET` is present — defense in depth against accidental dev-mode deploy.
+
+#### Service token claims
+
+```json
+{
+  "alg": "ES256",
+  "typ": "JWT",
+  "kid": "hwk_2026_05_11_7f3a9c2e",
+  "iss": "hubblewave-{instance_id}",
+  "aud": "svc-api",
+  "sub": "service:svc-ava",
+  "iat": 1747000000,
+  "exp": 1747000300,
+  "instance_id": "{uuid}",
+  "session_id": "{uuid-generated-per-issuance}",
+  "scope": ["work_order:read", "dashboard:read"]
+}
+```
+
+#### Scope vocabulary
+
+`<collection>:<action>`. Examples: `work_order:read`, `work_order:write`, `dashboard:read`, `search:query`, `attachment:read`, `audit:write`.
+
+Service identity is in `sub` (the caller) and `aud` (the target). Scopes describe permission, not caller identity. Do NOT add service-prefixed scopes (e.g., `svc-ava:work_order:read`) — `sub` already carries that.
+
+#### Defense in depth
+
+mTLS at the service mesh / ingress layer is acceptable as defense in depth but does NOT replace app-layer authorization. Network trust is not authorization.
+
+### 29.8 Performance posture
+
+KMS signing is ~50–100ms per call. At pilot scale (low-mid hundreds of token issuances per minute per instance), direct KMS signing is acceptable without optimization. Verification is local (cached public keys), so the read path is fast.
+
+**Explicitly excluded** from this canon section:
+
+- In-memory signing key cache (envelope pattern). The HSM is the cryptographic root; data keys break that invariant.
+- Bulk token pre-mint. Each token is signed at issue time.
+
+If measured signing latency becomes a problem post-pilot, the canonical optimization is provisioning higher KMS request quotas, not an in-memory cache.
+
+### 29.9 What §29 does NOT include (deferred)
+
+- **mTLS service mesh** — defense-in-depth layer; not the primary authentication mechanism.
+- **HSM provider migration tooling** — KMS is the only provider supported today. Vault Transit / GCP KMS are future options if pricing or sovereignty pressure requires.
+- **OIDC RP federation server** — HubbleWave's OIDC capabilities today are RP-side (consuming external IdPs per F007–F010). Being an OIDC OP for third-party RPs is a separate spec.
+
+Spec reference: this section + the implementation PRs that follow (canon §29 PR-chain — `key_metadata` infra + JWKS publication; token claims + `security_stamp`; refresh family schema; service principals + token issuance) collectively close audit findings F001, F015, F022.
 
 ---
 
