@@ -72,9 +72,10 @@ export interface AccessAuditEvent {
  * these strings.
  */
 export type SecurityAuditEventKind =
-  | 'reuse_detected'   // canon §29.5 refresh-token reuse
-  | 'service_replay'   // future: service-to-service token replay
-  | 'mfa_tamper';      // future: MFA secret tamper detection
+  | 'reuse_detected'      // canon §29.5 refresh-token reuse
+  | 'logout_all_devices'  // canon §29.6.1 global kill-switch invoked
+  | 'service_replay'      // future: service-to-service token replay
+  | 'mfa_tamper';         // future: MFA secret tamper detection
 
 /** Triage severity. */
 export type SecurityAuditSeverity = 'low' | 'medium' | 'high';

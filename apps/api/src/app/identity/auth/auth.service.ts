@@ -1,13 +1,18 @@
-import { Injectable, UnauthorizedException, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   User,
   AuthSettings,
   PasswordHistory,
+  RefreshToken,
 } from '@hubblewave/instance-db';
+import {
+  ACCESS_AUDIT_PORT,
+  type AccessAuditPort,
+} from '@hubblewave/authorization';
 import { LoginDto } from './dto/login.dto';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
@@ -68,6 +73,8 @@ export class AuthService {
     private readonly authSettingsRepo: Repository<AuthSettings>,
     @InjectRepository(PasswordHistory)
     private readonly passwordHistoryRepo: Repository<PasswordHistory>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly mfaService: MfaService,
     private readonly authEventsService: AuthEventsService,
     private readonly passwordValidationService: PasswordValidationService,
@@ -75,6 +82,9 @@ export class AuthService {
     private readonly redisService: RedisService,
     private readonly jwtRevocationAdapter: JwtRevocationAdapter,
     private readonly tokenIssuer: TokenIssuerService,
+    @Optional()
+    @Inject(ACCESS_AUDIT_PORT)
+    private readonly accessAudit: AccessAuditPort | null = null,
   ) {}
 
   /**
@@ -377,10 +387,16 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    // Canon §29.5 rule 4: logout revokes the refresh-token family
-    // backing the session (so the client cannot mint fresh access
-    // tokens). Scoped to sessionId — other browsers / devices the user
-    // is logged in on are NOT affected.
+    // Canon §29.5 rule 4 + §29.6.1: per-device logout. Revokes the
+    // refresh-token family backing the session (so the client cannot
+    // mint fresh access tokens) and the live access-token's session in
+    // Redis. Scoped to sessionId — other browsers / devices the user
+    // is signed in on are NOT affected.
+    //
+    // DELIBERATELY does NOT bump `security_stamp`. The stamp is the
+    // global kill-switch (canon §29.6.1); the ordinary per-device sign
+    // -out is not it. The `logoutAllDevices` method below is the
+    // bumping path.
     if (sessionId) {
       await this.tokenIssuer.revokeFamilyForSession(sessionId);
       // F002: revoke the live access-token's session too. Without this,
@@ -398,6 +414,84 @@ export class AuthService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Canon §29.6 + §29.6.1 — global kill-switch.
+   *
+   * Revokes EVERY active refresh-token family for the user with
+   * `revoked_reason = 'logout_all_devices'` and bumps `security_stamp`
+   * so every in-flight access token across every device fails
+   * verification on its next request (verifiers compare `token_version`
+   * to the live stamp; mismatch → 401).
+   *
+   * The two writes run in ONE transaction — both happen or neither
+   * does. The high-severity audit event fires after commit (fire-and
+   * -forget per F021 / PR-C pattern; a thrown audit must not regress
+   * the revocation path).
+   *
+   * The access token the caller used to authenticate this very request
+   * is invalidated by the stamp bump. That is intentional: the response
+   * carries no new tokens; the user MUST re-authenticate on every
+   * device including this one.
+   */
+  async logoutAllDevices(
+    userId: string,
+    opts?: { ipAddress?: string; userAgent?: string },
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      // 1. Revoke every active refresh family for the user. Includes
+      //    the family backing the calling device — that's the point.
+      await manager.getRepository(RefreshToken).update(
+        { userId, revokedAt: IsNull() },
+        { revokedAt: new Date(), revokedReason: 'logout_all_devices' },
+      );
+
+      // 2. Bump security_stamp — invalidates ALL access tokens for the
+      //    user globally. Independent of the refresh-family revocation
+      //    above; together they close both the issue path and the
+      //    in-flight access-token path.
+      await manager.getRepository(User).update(
+        { id: userId },
+        { securityStamp: randomUUID() },
+      );
+    });
+
+    // 3. High-severity audit event (post-commit, fire-and-forget).
+    if (this.accessAudit) {
+      try {
+        this.accessAudit.logSecurityEvent({
+          userId,
+          kind: 'logout_all_devices',
+          severity: 'high',
+          context: {
+            ipAddressAtInvocation: opts?.ipAddress ?? null,
+            userAgentAtInvocation: opts?.userAgent ?? null,
+          },
+        });
+      } catch (err) {
+        // Belt-and-suspenders — the adapter already swallows save
+        // errors, but a thrown audit must not regress the revocation
+        // path. Mirrors the posture in TokenIssuerService.handleReuseDetection.
+        this.logger.error(
+          'AccessAuditPort.logSecurityEvent threw on logout_all_devices',
+          err,
+        );
+      }
+    } else {
+      this.logger.warn(
+        'AccessAuditPort unbound; logout_all_devices event not persisted ' +
+          '(canon §29.6.1 / canon §10 audit gap)',
+      );
+    }
+
+    await this.authEventsService.record({
+      eventType: 'LOGOUT_ALL_DEVICES',
+      success: true,
+      userId,
+      ipAddress: opts?.ipAddress,
+      userAgent: opts?.userAgent,
+    });
   }
 
   /**

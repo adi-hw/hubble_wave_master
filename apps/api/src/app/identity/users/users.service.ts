@@ -5,6 +5,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Like, IsNull } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -254,6 +255,9 @@ export class UsersService {
     user.deactivatedAt = new Date();
     user.deactivatedBy = deactivatedBy;
     user.deactivationReason = reason;
+    // Canon §29.6 — deactivation is a security-relevant status flip;
+    // every in-flight access token must be invalidated immediately.
+    user.securityStamp = randomUUID();
 
     await this.usersRepo.save(user);
     this.logger.log(`Deactivated user: ${userId}`);
@@ -291,6 +295,12 @@ export class UsersService {
     user.suspendedBy = suspendedBy;
     user.suspensionReason = reason;
     user.suspensionExpiresAt = expiresAt;
+    // Canon §29.6 — account status flip to suspended is a security
+    // event. Bump `security_stamp` so every in-flight access token
+    // for the user fails verification on its next request; without
+    // this a suspended user could keep operating against the API
+    // until their access token's natural exp.
+    user.securityStamp = randomUUID();
 
     await this.usersRepo.save(user);
     this.logger.log(`Suspended user: ${userId}`);
@@ -346,6 +356,10 @@ export class UsersService {
     user.status = 'deleted' as UserStatus;
     user.deletedAt = new Date();
     user.deletedBy = deletedBy;
+    // Canon §29.6 — a soft-deleted user must not continue to
+    // authenticate. Bump `security_stamp` so every in-flight access
+    // token is invalidated immediately.
+    user.securityStamp = randomUUID();
 
     await this.usersRepo.save(user);
     this.logger.log(`Deleted user: ${userId}`);

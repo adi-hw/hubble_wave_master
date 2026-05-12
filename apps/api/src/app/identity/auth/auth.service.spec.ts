@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import type { DataSource, EntityManager } from 'typeorm';
 
+import { ACCESS_AUDIT_PORT, type AccessAuditPort } from '@hubblewave/authorization';
 import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
@@ -11,7 +13,7 @@ import { PasswordValidationService } from './password-validation.service';
 import { SessionCacheService } from './session-cache.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 import { RedisService } from '@hubblewave/redis';
-import { User, PasswordHistory, AuthSettings } from '@hubblewave/instance-db';
+import { User, PasswordHistory, AuthSettings, RefreshToken } from '@hubblewave/instance-db';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 import { TokenIssuerService } from './token-issuer.service';
 
@@ -91,6 +93,37 @@ const mockJwtRevocationAdapter = {
   revokeAllUserTokens: jest.fn().mockResolvedValue(undefined),
 };
 
+/**
+ * In-memory DataSource simulation. `transaction(cb)` invokes the callback
+ * with an `EntityManager` whose `getRepository(Entity)` returns the matching
+ * mock repository. Tests can assert on `mockRefreshTokenRepository.update`
+ * and `mockUserRepository.update` to verify transactional writes.
+ */
+const mockRefreshTokenRepository = {
+  update: jest.fn().mockResolvedValue({ affected: 0 }),
+  insert: jest.fn().mockResolvedValue({ identifiers: [] }),
+  find: jest.fn().mockResolvedValue([]),
+};
+
+const mockAccessAuditPort: AccessAuditPort = {
+  logAdminBypass: jest.fn(),
+  logSecurityEvent: jest.fn(),
+};
+
+const mockDataSource = {
+  transaction: jest.fn(async (cb: (manager: EntityManager) => unknown) => {
+    const manager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === RefreshToken) return mockRefreshTokenRepository;
+        if (entity === User) return mockUserRepository;
+        if (entity === PasswordHistory) return mockPasswordHistoryRepository;
+        return mockUserRepository;
+      }),
+    } as unknown as EntityManager;
+    return cb(manager);
+  }),
+} as unknown as DataSource;
+
 describe('AuthService', () => {
   let service: AuthService;
   let validPasswordHash: string;
@@ -109,6 +142,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: mockUserRepository },
         { provide: getRepositoryToken(PasswordHistory), useValue: mockPasswordHistoryRepository },
         { provide: getRepositoryToken(AuthSettings), useValue: mockAuthSettingsRepository },
+        { provide: getDataSourceToken(), useValue: mockDataSource },
         { provide: TokenIssuerService, useValue: mockTokenIssuer },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MfaService, useValue: mockMfaService },
@@ -117,6 +151,7 @@ describe('AuthService', () => {
         { provide: PermissionResolverService, useValue: mockPermissionResolver },
         { provide: RedisService, useValue: mockRedisService },
         { provide: JwtRevocationAdapter, useValue: mockJwtRevocationAdapter },
+        { provide: ACCESS_AUDIT_PORT, useValue: mockAccessAuditPort },
       ],
     }).compile();
 
@@ -466,6 +501,160 @@ describe('AuthService', () => {
       expect(mockTokenIssuer.revokeFamilyForSession).toHaveBeenCalledWith('sess-xyz');
       // F002 — access-token revocation by sessionId.
       expect(mockJwtRevocationAdapter.revokeSession).toHaveBeenCalledWith('sess-xyz');
+    });
+
+    it('does NOT bump security_stamp on per-device logout (canon §29.6.1)', async () => {
+      // Per-device logout is the load-bearing distinction: it must NOT
+      // touch the user's security_stamp. The stamp is the global
+      // kill-switch invoked only by /auth/logout-all-devices.
+      await service.logout('user-123', 'sess-xyz', '127.0.0.1', 'Jest Test');
+
+      // No update to the User row touching securityStamp.
+      const securityStampCalls = mockUserRepository.update.mock.calls.filter(
+        (call) => {
+          const updates = call[1];
+          return (
+            updates &&
+            typeof updates === 'object' &&
+            'securityStamp' in updates
+          );
+        },
+      );
+      expect(securityStampCalls.length).toBe(0);
+    });
+  });
+
+  describe('logoutAllDevices (canon §29.6.1)', () => {
+    beforeEach(() => {
+      mockRefreshTokenRepository.update.mockReset();
+      mockRefreshTokenRepository.update.mockResolvedValue({ affected: 3 });
+      mockUserRepository.update.mockReset();
+      mockUserRepository.update.mockResolvedValue({ affected: 1 });
+      (mockAccessAuditPort.logSecurityEvent as jest.Mock).mockReset();
+      (mockDataSource.transaction as jest.Mock).mockClear();
+    });
+
+    it('revokes ALL active refresh families for the user with reason logout_all_devices', async () => {
+      await service.logoutAllDevices('user-123');
+
+      // The transactional update on refresh_tokens scopes to the user
+      // and to active rows; the reason code is the new dedicated value.
+      const refreshUpdateCall = mockRefreshTokenRepository.update.mock.calls[0];
+      expect(refreshUpdateCall[0]).toMatchObject({ userId: 'user-123' });
+      expect(refreshUpdateCall[1]).toMatchObject({
+        revokedReason: 'logout_all_devices',
+        revokedAt: expect.any(Date),
+      });
+    });
+
+    it('bumps security_stamp to a fresh uuid in the same transaction', async () => {
+      await service.logoutAllDevices('user-123');
+
+      // Find the User.update call that touches securityStamp.
+      const stampCall = mockUserRepository.update.mock.calls.find((call) => {
+        const updates = call[1];
+        return (
+          updates && typeof updates === 'object' && 'securityStamp' in updates
+        );
+      });
+      expect(stampCall).toBeDefined();
+      // Stamp value must be a fresh uuid (not the literal string
+      // 'undefined' or empty).
+      expect((stampCall as unknown[])[1]).toMatchObject({
+        securityStamp: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      });
+    });
+
+    it('runs both writes inside a single DataSource transaction', async () => {
+      await service.logoutAllDevices('user-123');
+
+      // dataSource.transaction MUST be invoked exactly once — the two
+      // writes commit together or roll back together.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(1);
+    });
+
+    it('emits a high-severity audit event with kind logout_all_devices', async () => {
+      await service.logoutAllDevices('user-123', {
+        ipAddress: '127.0.0.1',
+        userAgent: 'Jest Test',
+      });
+
+      expect(mockAccessAuditPort.logSecurityEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-123',
+          kind: 'logout_all_devices',
+          severity: 'high',
+          context: expect.objectContaining({
+            ipAddressAtInvocation: '127.0.0.1',
+            userAgentAtInvocation: 'Jest Test',
+          }),
+        }),
+      );
+    });
+
+    it('records LOGOUT_ALL_DEVICES in auth_events', async () => {
+      await service.logoutAllDevices('user-123', {
+        ipAddress: '127.0.0.1',
+        userAgent: 'Jest Test',
+      });
+
+      expect(mockAuthEventsService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'LOGOUT_ALL_DEVICES',
+          userId: 'user-123',
+          success: true,
+        }),
+      );
+    });
+
+    it('audit context carries null ip + user-agent when not supplied', async () => {
+      await service.logoutAllDevices('user-123');
+
+      expect(mockAccessAuditPort.logSecurityEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            ipAddressAtInvocation: null,
+            userAgentAtInvocation: null,
+          }),
+        }),
+      );
+    });
+
+    it('does not throw when the AccessAuditPort logSecurityEvent throws', async () => {
+      (mockAccessAuditPort.logSecurityEvent as jest.Mock).mockImplementation(() => {
+        throw new Error('audit DB down');
+      });
+
+      // A thrown audit MUST NOT regress the revocation path.
+      await expect(service.logoutAllDevices('user-123')).resolves.toBeUndefined();
+      // Refresh-family revocation still ran.
+      expect(mockRefreshTokenRepository.update).toHaveBeenCalled();
+    });
+
+    it('works for a user with zero active families (just bumps stamp + audits)', async () => {
+      mockRefreshTokenRepository.update.mockResolvedValue({ affected: 0 });
+
+      await service.logoutAllDevices('user-123');
+
+      // Even with zero families to revoke, stamp bump still happens.
+      const stampCall = mockUserRepository.update.mock.calls.find((call) => {
+        const updates = call[1];
+        return (
+          updates && typeof updates === 'object' && 'securityStamp' in updates
+        );
+      });
+      expect(stampCall).toBeDefined();
+      // And the audit event still fires.
+      expect(mockAccessAuditPort.logSecurityEvent).toHaveBeenCalled();
+    });
+
+    it('is idempotent across rapid successive calls', async () => {
+      await service.logoutAllDevices('user-123');
+      await service.logoutAllDevices('user-123');
+
+      // Two transactions, two audit events, two stamp bumps. No errors.
+      expect((mockDataSource.transaction as jest.Mock).mock.calls.length).toBe(2);
+      expect((mockAccessAuditPort.logSecurityEvent as jest.Mock).mock.calls.length).toBe(2);
     });
   });
 });

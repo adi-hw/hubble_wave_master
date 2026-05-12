@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Req, Get, Logger, UnauthorizedException, Res } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, Get, HttpCode, Logger, UnauthorizedException, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
@@ -161,6 +161,49 @@ export class AuthController {
       });
     }
     return response;
+  }
+
+  /**
+   * Canon §29.6.1 — global kill-switch. Revokes every active refresh
+   * family for the calling user AND bumps `security_stamp`, invalidating
+   * every in-flight access token across every device (including the one
+   * that made this request).
+   *
+   * Response is 204 No Content. No body. No tokens issued. The user
+   * MUST re-authenticate everywhere.
+   *
+   * For the per-device sign-out see `POST /auth/logout`; that path does
+   * NOT bump `security_stamp` (canon §29.6.1).
+   */
+  @AuthenticatedOnly()
+  @Post('logout-all-devices')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  async logoutAllDevices(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.authService.logoutAllDevices(req.user.userId, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    // Clear the refresh cookie on the current device too. Cosmetic —
+    // the family is already revoked in the DB and the stamp bump kills
+    // the access token, so this is purely "do not leave a stale cookie
+    // in the browser".
+    if (this.useRefreshCookie) {
+      const isProduction = process.env.NODE_ENV === 'production';
+      const secure = isProduction || process.env.REFRESH_COOKIE_SECURE === 'true';
+      const sameSite: SameSiteOption = (process.env.REFRESH_COOKIE_SAMESITE as SameSiteOption) || 'lax';
+      res.cookie('refreshToken', '', {
+        httpOnly: true,
+        secure,
+        sameSite,
+        path: this.cookiePath,
+        expires: new Date(0),
+      });
+    }
   }
 
   @AuthenticatedOnly()
