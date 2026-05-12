@@ -2,6 +2,9 @@
   "_comment": "Edit this file to add or replace approved dependencies. Each entry MUST include a 'reason' field. The CI scanner blocks new package.json deps not on this list. @types/* packages are auto-allowed. The 'legacy' map carves out pre-existing banned deps that are tracked for removal in a separate cleanup commit; net-new additions of any dep in 'banned' fail CI.",
   "approved": {
     "production": {
+      "@aws-sdk/client-kms": {
+        "reason": "Canonical KMS client for canon §29.1 ES256 signing"
+      },
       "@aws-sdk/client-s3": {
         "reason": "AWS S3 client for object storage (backups, attachments)"
       },
@@ -139,6 +142,9 @@
       },
       "ioredis": {
         "reason": "Canonical Redis client"
+      },
+      "jose": {
+        "reason": "Canonical JOSE/JWS toolkit for canon §29 ES256 signing and JWKS export (used directly by the LocalEs256KeySigningService and for SPKI->JWK conversion of KMS public keys)"
       },
       "jspdf": {
         "reason": "Canonical PDF generation for client-side report export"

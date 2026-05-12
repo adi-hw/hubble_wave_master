@@ -82,6 +82,8 @@ import { BehavioralAnalyticsService } from './behavioral-analytics.service';
 import { BehavioralAnalyticsController } from './behavioral-analytics.controller';
 import { IdentityResolverAdapter } from './identity-resolver.adapter';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
+import { KeySigningModule } from './key-signing/key-signing.module';
+import { JwksController } from './jwks.controller';
 
 @Module({
   imports: [
@@ -142,6 +144,8 @@ import { JwtRevocationAdapter } from './jwt-revocation.adapter';
       timeout: 5000,
       maxRedirects: 5,
     }),
+    // canon §29 PR-A: signing-key infrastructure + JWKS publication.
+    KeySigningModule.forRoot(),
   ],
   controllers: [
     AuthController,
@@ -159,6 +163,8 @@ import { JwtRevocationAdapter } from './jwt-revocation.adapter';
     DelegationController,
     DeviceTrustController,
     BehavioralAnalyticsController,
+    // canon §29 PR-A
+    JwksController,
   ],
   providers: [
     AuthService,

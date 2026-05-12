@@ -65,6 +65,13 @@ libs/**/.env
 servicenow-*.pdf
 **/servicenow-*.pdf
 
+# canon §29.9 — local ES256 JWT signing keys. Generated automatically by
+# LocalEs256KeySigningService on first dev/test startup. Mode 0600 on disk;
+# the provider refuses to start if any file here is group/other-readable.
+# MUST NEVER be committed.
+.dev/keys/
+.dev/keys/*
+
 # Local Claude Code settings (machine-local, never committed)
 .claude/settings.local.json
 .claude/*.local.md

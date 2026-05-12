@@ -80,6 +80,14 @@ const PUBLIC_ALLOWLIST = new Set([
   // -------------------------------------------------------------------
   'apps/api/src/app/data/integration/oauth2.controller.ts',
   // -------------------------------------------------------------------
+  // Category 6: JWKS publication (canon §29.2).
+  // RFC 7517 JWKS endpoint — relying parties fetch our public signing
+  // keys to verify our JWTs. Intentionally unauthenticated; only
+  // exposes the `active` + `retiring` public keys, never private
+  // material or KMS identifiers.
+  // -------------------------------------------------------------------
+  'apps/api/src/app/identity/auth/jwks.controller.ts',
+  // -------------------------------------------------------------------
   // Category 5: Auth handled by a dedicated guard (PackInstallGuard).
   // -------------------------------------------------------------------
   'apps/api/src/app/metadata/packs/packs.controller.ts',
