@@ -166,6 +166,20 @@ export class CollectionDefinition {
   @Column({ name: 'default_access', type: 'varchar', length: 20, default: 'read' })
   defaultAccess!: string;
 
+  /**
+   * Canon §28.2 level 7 (default-deny fallback). When `true`, the field-
+   * access evaluator returns canRead=false, canWrite=false,
+   * maskingStrategy='FULL' for any field on this collection that no
+   * explicit (levels 1-2) or wildcard (levels 3-4) rule matched. When
+   * `false` (the default), the evaluator preserves the pre-§28 default-
+   * allow behaviour: canRead=true, canWrite=!isSystem, mask='NONE'.
+   *
+   * Opt-in per collection — flipping the platform default in one step
+   * would cascade access regressions across every customer pack.
+   */
+  @Column({ name: 'secure_fields_by_default', type: 'boolean', default: false })
+  secureFieldsByDefault!: boolean;
+
   // ─────────────────────────────────────────────────────────────────
   // Metadata
   // ─────────────────────────────────────────────────────────────────
