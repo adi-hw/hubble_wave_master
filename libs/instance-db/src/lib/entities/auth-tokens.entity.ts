@@ -1,5 +1,6 @@
 import {
   Entity,
+  PrimaryColumn,
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
@@ -121,22 +122,66 @@ export class EmailVerificationToken {
 }
 
 // ============================================================
-// REFRESH TOKEN ENTITY
+// REFRESH TOKEN ENTITY (canon §29.5)
 // ============================================================
 
 /**
- * RefreshToken entity - tracks JWT refresh tokens
+ * Allowed reasons a refresh token row may carry in `revokedReason`. Mirrors
+ * the CHECK constraint on the migration so application code and the database
+ * agree on the closed vocabulary.
+ */
+export type RefreshTokenRevokedReason =
+  | 'reuse_detected'
+  | 'logout'
+  | 'password_change'
+  | 'admin_revoke'
+  | 'family_expired';
+
+/**
+ * RefreshToken entity — canon §29.5 single-use rotation with family chains.
+ *
+ * Primary key is the SHA-256 hash of the opaque refresh-token string —
+ * plaintext never lands in the operational row. Every token belongs to a
+ * `family_id`; rotation issues a new row with the same `family_id`, links
+ * the predecessor via `parent_token_id`, and marks the predecessor with
+ * `last_used_at` + `replaced_by_token_id`.
+ *
+ * Reuse detection (canon §29.5 rule 2): if a token presents with
+ * `last_used_at IS NOT NULL`, the entire family is revoked with
+ * `revoked_reason = 'reuse_detected'` and an `AccessAuditPort.logSecurityEvent`
+ * high-severity event is emitted. The client receives a generic 401.
+ *
+ * Plaintext IP / User-Agent are NOT stored on the operational row — only
+ * SHA-256 hashes. Plaintext values are captured in the security audit
+ * event payload on reuse cases, where retention + access controls differ
+ * from the operational table.
+ *
+ * `device_label` is a user-facing display string ("Chrome on Mac",
+ * "iPhone 14 Pro"). Defaults to a UA-parsed string if the client omits one.
+ *
+ * `instance_id` is NULL in single-tenant mode per canon §5 SOFTEN.
  */
 @Entity('refresh_tokens')
-@Index(['userId'])
-@Index(['token'], { unique: true })
-@Index(['expiresAt'])
-@Index(['isRevoked'])
+@Index('idx_refresh_tokens_family_id', ['familyId'])
+@Index('idx_refresh_tokens_user_session', ['userId', 'sessionId'])
 export class RefreshToken {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  /** SHA-256 hash of the opaque refresh token. Plaintext never persisted. */
+  @PrimaryColumn({ name: 'token_hash', type: 'text' })
+  tokenHash!: string;
 
-  /** User this token belongs to */
+  /** Family chain id — rotation produces a new row with the same family_id. */
+  @Column({ name: 'family_id', type: 'uuid' })
+  familyId!: string;
+
+  /**
+   * FK to the predecessor token's `token_hash`. NULL for the family root.
+   * Migration uses `ON DELETE SET NULL` so eviction of an ancestor does not
+   * cascade-destroy descendants — they must remain reuse-detectable.
+   */
+  @Column({ name: 'parent_token_id', type: 'text', nullable: true })
+  parentTokenId?: string | null;
+
+  /** User this token authenticates. ON DELETE CASCADE via FK in migration. */
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
 
@@ -144,44 +189,65 @@ export class RefreshToken {
   @JoinColumn({ name: 'user_id' })
   user?: User;
 
-  /** Token value (hashed) */
-  @Column({ type: 'varchar', length: 500, unique: true })
-  token!: string;
+  /** Instance scope per canon §5; NULL in single-tenant mode. */
+  @Column({ name: 'instance_id', type: 'uuid', nullable: true })
+  instanceId?: string | null;
 
-  /** Token family (for rotation detection) */
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  family?: string | null;
+  /**
+   * Logical session id. Shared across all rotations in a family so that
+   * `JwtRevocationPort.revokeSession()` can kill both access tokens (in
+   * Redis) and refresh tokens (this table) on logout / reuse / etc.
+   */
+  @Column({ name: 'session_id', type: 'uuid' })
+  sessionId!: string;
 
-  /** Device ID */
-  @Column({ name: 'device_id', type: 'varchar', length: 255, nullable: true })
-  deviceId?: string | null;
+  /** User-facing display label, e.g. "Chrome on Mac". */
+  @Column({ name: 'device_label', type: 'text', nullable: true })
+  deviceLabel?: string | null;
 
-  /** IP address */
-  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
-  ipAddress?: string | null;
+  /** SHA-256 hash of the User-Agent at issue time. */
+  @Column({ name: 'user_agent_hash', type: 'text', nullable: true })
+  userAgentHash?: string | null;
 
-  /** User agent */
-  @Column({ name: 'user_agent', type: 'text', nullable: true })
-  userAgent?: string | null;
-
-  /** Token expiry */
-  @Column({ name: 'expires_at', type: 'timestamptz' })
-  expiresAt!: Date;
-
-  /** Is revoked */
-  @Column({ name: 'is_revoked', type: 'boolean', default: false })
-  isRevoked!: boolean;
-
-  /** When revoked */
-  @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true })
-  revokedAt?: Date | null;
-
-  /** Revocation reason */
-  @Column({ name: 'revoked_reason', type: 'varchar', length: 100, nullable: true })
-  revokedReason?: string | null;
+  /** SHA-256 hash of the IP address at issue time. */
+  @Column({ name: 'ip_address_hash', type: 'text', nullable: true })
+  ipAddressHash?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  /**
+   * Anchored at the family root's `created_at + TTL`. Successors do NOT
+   * extend the family's lifetime — they inherit the root's `expires_at`
+   * so the family is bounded by canon §29.5 rule 3 (family expiry).
+   */
+  @Column({ name: 'expires_at', type: 'timestamptz' })
+  expiresAt!: Date;
+
+  /**
+   * Set on first rotation. NULL means "never used"; a non-NULL value on a
+   * token that presents again is the reuse-detection trigger per
+   * canon §29.5 rule 2.
+   */
+  @Column({ name: 'last_used_at', type: 'timestamptz', nullable: true })
+  lastUsedAt?: Date | null;
+
+  @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true })
+  revokedAt?: Date | null;
+
+  /**
+   * FK to the successor token's `token_hash`. Same `ON DELETE SET NULL`
+   * posture as `parent_token_id` — descendants survive ancestor eviction.
+   */
+  @Column({ name: 'replaced_by_token_id', type: 'text', nullable: true })
+  replacedByTokenId?: string | null;
+
+  /**
+   * Constrained by the migration CHECK to one of: 'reuse_detected',
+   * 'logout', 'password_change', 'admin_revoke', 'family_expired'.
+   */
+  @Column({ name: 'revoked_reason', type: 'text', nullable: true })
+  revokedReason?: RefreshTokenRevokedReason | null;
 }
 
 // ============================================================

@@ -134,10 +134,15 @@ export class PasswordResetService {
       securityStamp: crypto.randomUUID(),
     });
 
-    // Revoke all refresh tokens for security (force re-login)
+    // Canon §29.5: revoke every active refresh family for the user on
+    // password reset. Defense in depth alongside the security_stamp bump
+    // above — the stamp kills the access-token side, this kills the
+    // refresh-token side. `revoked_reason='password_change'` matches
+    // the canon §29.5 enum; password reset is operationally a
+    // password change for this purpose.
     await this.refreshTokenRepo.update(
-      { userId: resetToken.userId, isRevoked: false },
-      { isRevoked: true, revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' }
+      { userId: resetToken.userId, revokedAt: IsNull() },
+      { revokedAt: new Date(), revokedReason: 'password_change' }
     );
 
     // Record the password change event

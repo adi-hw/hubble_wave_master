@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User, AuthSettings, MfaMethod } from '@hubblewave/instance-db';
@@ -133,8 +134,15 @@ export class AuthService {
 
       const { roleNames, permissions } = await this.resolveRolesAndPermissions(user.id);
 
+      // The instance-api duplicate still mints HS256-signed access
+      // tokens via JwtService — a canon §29 violation that lives until
+      // the duplicate is deleted. The refresh-token side, however, runs
+      // the canon §29.5 family contract: single-use rotation, reuse
+      // detection, opaque base64url tokens.
+      const sessionId = randomUUID();
       const payload = {
         sub: user.id,
+        session_id: sessionId,
         username: user.displayName || user.email,
         roles: roleNames,
         permissions: Array.from(permissions),
@@ -143,11 +151,12 @@ export class AuthService {
 
       const accessToken = this.jwtService.sign(payload);
 
-      const { token: refreshToken } = await this.refreshTokenService.createRefreshToken(
-        user.id,
+      const { refreshToken } = await this.refreshTokenService.createRefreshTokenFamily({
+        userId: user.id,
+        sessionId,
+        userAgent,
         ipAddress,
-        userAgent
-      );
+      });
 
       await this.authEventsService.record({
         eventType: 'LOGIN_SUCCESS',
@@ -203,9 +212,11 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    await this.refreshTokenService.revokeAllUserTokens(userId);
-
+    // Canon §29.5 rule 4: scope logout revocation to the session, not
+    // every active family for the user. Other browsers/devices the user
+    // is logged in on are unaffected.
     if (sessionId) {
+      await this.refreshTokenService.revokeFamilyForSession(sessionId);
       await this.redis.set(
         `jwt:revoked:session:${sessionId}`,
         String(Math.floor(Date.now() / 1000)),
@@ -225,9 +236,13 @@ export class AuthService {
   }
 
   async refreshAccessToken(refreshToken: string, ipAddress?: string, userAgent?: string) {
-    const tokenEntity = await this.refreshTokenService.findByToken(refreshToken);
+    const rotated = await this.refreshTokenService.rotateRefreshToken({
+      presentedToken: refreshToken,
+      userAgent,
+      ipAddress,
+    });
 
-    if (!tokenEntity) {
+    if (!rotated) {
       await this.authEventsService.record({
         eventType: 'REFRESH_FAILED',
         success: false,
@@ -235,42 +250,25 @@ export class AuthService {
         ipAddress,
         userAgent,
       });
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    if (tokenEntity.isRevoked || (tokenEntity.expiresAt && tokenEntity.expiresAt < new Date())) {
-      await this.authEventsService.record({
-        eventType: 'REFRESH_FAILED',
-        success: false,
-        userId: tokenEntity.userId,
-        ipAddress,
-        userAgent,
-      });
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException('Your session has expired. Please sign in again.');
     }
 
     const user = await this.userRepo.findOne({
-      where: { id: tokenEntity.userId },
+      where: { id: rotated.userId },
     });
 
     if (!user || user.status !== 'active') {
-      throw new UnauthorizedException('User not found or inactive');
+      await this.refreshTokenService.revokeAllUserFamilies(rotated.userId, 'admin_revoke');
+      throw new UnauthorizedException('Your session has expired. Please sign in again.');
     }
 
     const { roleNames, permissions } = await this.resolveRolesAndPermissions(user.id);
 
-    const rotated = await this.refreshTokenService.rotateRefreshToken(
-      refreshToken,
-      ipAddress,
-      userAgent
-    );
-
-    if (!rotated) {
-      throw new UnauthorizedException('Failed to rotate refresh token');
-    }
-
+    // Reuse the same sessionId across rotations — canon §29.5 keeps the
+    // session identity stable for the lifetime of the family.
     const payload = {
       sub: user.id,
+      session_id: rotated.sessionId,
       username: user.displayName || user.email,
       roles: roleNames,
       permissions: Array.from(permissions),
@@ -289,7 +287,7 @@ export class AuthService {
 
     return {
       accessToken,
-      refreshToken: rotated.token,
+      refreshToken: rotated.refreshToken,
     };
   }
 

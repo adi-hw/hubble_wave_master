@@ -38,7 +38,11 @@ export class SessionController {
     const userId = user.userId || user.id;
 
     // Try to get current token ID from request (if available)
-    const currentTokenId = req.tokenId || undefined;
+    // canon §29.5: the JWT's `session_id` claim identifies the family
+    // backing the current session. Plumb it through so the session list
+    // can mark "this device" correctly.
+    const currentTokenId =
+      (req?.user?.sessionId as string | undefined) || undefined;
 
     const sessions = await this.sessionService.getActiveSessionsForUser(
       userId,
@@ -87,7 +91,7 @@ export class SessionController {
     const userId = user.userId || user.id;
 
     // Prevent revoking current session through this endpoint
-    const currentTokenId = req.tokenId;
+    const currentTokenId = req?.user?.sessionId as string | undefined;
     if (currentTokenId && currentTokenId === sessionId) {
       throw new ForbiddenException(
         'Cannot revoke current session. Use logout instead.',
@@ -113,7 +117,11 @@ export class SessionController {
     @Req() req: any,
   ): Promise<{ success: boolean; count: number; message: string }> {
     const userId = user.userId || user.id;
-    const currentTokenId = req.tokenId || undefined;
+    // canon §29.5: the JWT's `session_id` claim identifies the family
+    // backing the current session. Plumb it through so the session list
+    // can mark "this device" correctly.
+    const currentTokenId =
+      (req?.user?.sessionId as string | undefined) || undefined;
 
     const count = await this.sessionService.revokeAllOtherSessions(
       userId,

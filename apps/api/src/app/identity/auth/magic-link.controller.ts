@@ -18,7 +18,6 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MagicLinkService } from './magic-link.service';
-import { RefreshTokenService } from './refresh-token.service';
 import { AuthEventsService } from './auth-events.service';
 import { Public } from './decorators/public.decorator';
 import { TokenIssuerService } from './token-issuer.service';
@@ -40,7 +39,6 @@ export class MagicLinkController {
   constructor(
     private readonly magicLinkService: MagicLinkService,
     private readonly tokenIssuer: TokenIssuerService,
-    private readonly refreshTokenService: RefreshTokenService,
     private readonly authEventsService: AuthEventsService,
     @Inject('EMAIL_SERVICE') private readonly emailService: EmailServiceInterface,
   ) {}
@@ -94,17 +92,20 @@ export class MagicLinkController {
 
     // Generate tokens via TokenIssuerService — same canon §29.3 claims
     // contract (including security_stamp → token_version) as every other
-    // identity flow.
+    // identity flow. Canon §29.5 family issuance on every successful
+    // magic-link verification.
     const sessionId = randomUUID();
     const { token: accessToken } = await this.tokenIssuer.issueAccessToken({
       userId: result.user.id,
       sessionId,
     });
-    const refreshToken = await this.refreshTokenService.createRefreshToken(
-      result.user.id,
-      req.ip,
-      req.headers['user-agent'],
-    );
+    const { refreshToken } = await this.tokenIssuer.issueRefreshTokenFamily({
+      userId: result.user.id,
+      sessionId,
+      instanceId: null,
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
 
     await this.authEventsService.record({
       userId: result.user.id,
@@ -117,7 +118,7 @@ export class MagicLinkController {
     return {
       success: true,
       accessToken,
-      refreshToken: refreshToken.token,
+      refreshToken,
       user: {
         id: result.user.id,
         email: result.user.email,

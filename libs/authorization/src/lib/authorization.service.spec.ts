@@ -584,7 +584,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   }
 
   it('canAccessCollection admin bypass calls the port', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
     const service = buildServiceWithAudit(port);
 
     const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
@@ -599,7 +599,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   });
 
   it('canAccessCollectionRecord admin bypass calls the port with recordId in context', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
     const service = buildServiceWithAudit(port);
 
     const allowed = await service.canAccessCollectionRecord(
@@ -620,7 +620,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   });
 
   it('getAuthorizedFieldsForCollection admin bypass calls the port with fields:read action', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
     const service = buildServiceWithAudit(port);
 
     await service.getAuthorizedFieldsForCollection(
@@ -638,7 +638,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   });
 
   it('buildCollectionRowLevelClause admin bypass calls the port with row-clause action', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
     const service = buildServiceWithAudit(port);
 
     await service.buildCollectionRowLevelClause(buildAdminContext(), COLLECTION_ID, 'read', 't');
@@ -651,7 +651,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   });
 
   it('non-admin path does NOT call the port', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn() };
+    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
     const service = buildServiceWithAudit(port);
 
     await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
@@ -670,6 +670,7 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
       logAdminBypass: jest.fn(() => {
         throw new Error('audit DB down');
       }),
+      logSecurityEvent: jest.fn(),
     };
     const service = buildServiceWithAudit(port);
 

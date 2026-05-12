@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthEventsService } from './auth-events.service';
-import { RefreshTokenService } from './refresh-token.service';
+import { TokenIssuerService } from './token-issuer.service';
 import { PasswordResetService } from './password-reset.service';
 
 /**
@@ -26,7 +26,7 @@ export class ScheduledTasksService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly authEventsService: AuthEventsService,
-    private readonly refreshTokenService: RefreshTokenService,
+    private readonly tokenIssuer: TokenIssuerService,
     private readonly passwordResetService: PasswordResetService,
   ) {
     // Default: keep audit events for 90 days
@@ -97,8 +97,8 @@ export class ScheduledTasksService implements OnModuleInit {
 
   private async cleanupExpiredTokens(): Promise<void> {
     try {
-      await this.refreshTokenService.cleanupExpiredTokens();
-      this.logger.debug('Cleaned up expired refresh tokens');
+      const removed = await this.tokenIssuer.cleanupExpiredRefreshTokens();
+      this.logger.debug(`Cleaned up ${removed} expired refresh tokens`);
     } catch (error) {
       this.logger.error('Failed to cleanup refresh tokens:', error);
     }

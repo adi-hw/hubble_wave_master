@@ -4,11 +4,19 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SessionService } from './session.service';
 import { RefreshToken } from '@hubblewave/instance-db';
 
+/**
+ * SessionService spec — rewritten against the canon §29.5 schema. The
+ * `session_id` from a refresh-token family backs each user-visible
+ * session; multiple rotations in a family deduplicate down to one row
+ * in the session list.
+ */
+
 const mockRefreshTokenRepository = {
   find: jest.fn(),
   findOne: jest.fn(),
   update: jest.fn(),
   count: jest.fn(),
+  createQueryBuilder: jest.fn(),
 };
 
 describe('SessionService', () => {
@@ -74,38 +82,56 @@ describe('SessionService', () => {
   });
 
   describe('getActiveSessionsForUser', () => {
-    it('should return active sessions', async () => {
+    it('returns one session per family deduplicated by session_id', async () => {
+      // Two refresh tokens for the same session (rotation) + one for a
+      // different session — the result must contain two sessions, not
+      // three rows.
+      const sharedSessionId = '11111111-1111-1111-1111-111111111111';
+      const otherSessionId = '22222222-2222-2222-2222-222222222222';
       const mockTokens: Partial<RefreshToken>[] = [
         {
-          id: 'token-1',
+          tokenHash: 'hash-2',
+          sessionId: sharedSessionId,
           userId: 'user-123',
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/120',
-          ipAddress: '192.168.1.1',
-          isRevoked: false,
-          createdAt: new Date(),
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          deviceLabel: 'Chrome on Windows',
+          revokedAt: null,
+          createdAt: new Date(Date.now() - 1000),
+          expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         },
         {
-          id: 'token-2',
+          tokenHash: 'hash-1',
+          sessionId: sharedSessionId,
           userId: 'user-123',
-          userAgent: 'Mozilla/5.0 (iPhone) Safari/17',
-          ipAddress: '10.0.0.1',
-          isRevoked: false,
+          deviceLabel: 'Chrome on Windows',
+          revokedAt: null,
+          createdAt: new Date(Date.now() - 10_000),
+          expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        },
+        {
+          tokenHash: 'hash-3',
+          sessionId: otherSessionId,
+          userId: 'user-123',
+          deviceLabel: 'Safari on iOS',
+          revokedAt: null,
           createdAt: new Date(),
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         },
       ];
 
       mockRefreshTokenRepository.find.mockResolvedValue(mockTokens);
 
-      const sessions = await service.getActiveSessionsForUser('user-123', 'token-1');
+      const sessions = await service.getActiveSessionsForUser('user-123', sharedSessionId);
 
       expect(sessions).toHaveLength(2);
-      expect(sessions[0].isCurrent).toBe(true);
-      expect(sessions[1].isCurrent).toBe(false);
+      const current = sessions.find((s) => s.id === sharedSessionId);
+      const other = sessions.find((s) => s.id === otherSessionId);
+      expect(current?.isCurrent).toBe(true);
+      expect(other?.isCurrent).toBe(false);
+      expect(current?.deviceLabel).toBe('Chrome on Windows');
+      expect(other?.deviceLabel).toBe('Safari on iOS');
     });
 
-    it('should return empty array when no sessions', async () => {
+    it('returns empty array when no sessions exist', async () => {
       mockRefreshTokenRepository.find.mockResolvedValue([]);
 
       const sessions = await service.getActiveSessionsForUser('user-123');
@@ -115,22 +141,21 @@ describe('SessionService', () => {
   });
 
   describe('revokeSession', () => {
-    it('should revoke a specific session', async () => {
+    it('revokes the family for a session_id with reason admin_revoke', async () => {
       mockRefreshTokenRepository.update.mockResolvedValue({ affected: 1 });
 
-      const result = await service.revokeSession('token-123', 'user-123');
+      const result = await service.revokeSession('sess-123', 'user-123');
 
       expect(result).toBe(true);
       expect(mockRefreshTokenRepository.update).toHaveBeenCalledWith(
-        { id: 'token-123', userId: 'user-123' },
+        expect.objectContaining({ sessionId: 'sess-123', userId: 'user-123' }),
         expect.objectContaining({
-          isRevoked: true,
-          revokedReason: 'USER_REVOKED',
-        })
+          revokedReason: 'admin_revoke',
+        }),
       );
     });
 
-    it('should return false when session not found', async () => {
+    it('returns false when no rows were revoked', async () => {
       mockRefreshTokenRepository.update.mockResolvedValue({ affected: 0 });
 
       const result = await service.revokeSession('non-existent', 'user-123');
@@ -140,73 +165,80 @@ describe('SessionService', () => {
   });
 
   describe('revokeAllOtherSessions', () => {
-    it('should revoke all sessions except current', async () => {
+    it('revokes all sessions except the current one', async () => {
       mockRefreshTokenRepository.update.mockResolvedValue({ affected: 3 });
 
-      const count = await service.revokeAllOtherSessions('user-123', 'current-token');
+      const count = await service.revokeAllOtherSessions('user-123', 'current-session');
 
       expect(count).toBe(3);
       expect(mockRefreshTokenRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-123',
-          isRevoked: false,
-          id: expect.anything(), // Not(currentTokenId)
+          sessionId: expect.anything(), // Not(currentSessionId)
         }),
         expect.objectContaining({
-          isRevoked: true,
-          revokedReason: 'USER_REVOKED_ALL_OTHERS',
-        })
+          revokedReason: 'admin_revoke',
+        }),
       );
     });
   });
 
   describe('revokeAllSessionsForUser', () => {
-    it('should revoke all sessions for user', async () => {
+    it('revokes every active family for the user', async () => {
       mockRefreshTokenRepository.update.mockResolvedValue({ affected: 5 });
 
       const count = await service.revokeAllSessionsForUser('user-123');
 
       expect(count).toBe(5);
       expect(mockRefreshTokenRepository.update).toHaveBeenCalledWith(
-        { userId: 'user-123', isRevoked: false },
+        expect.objectContaining({ userId: 'user-123' }),
         expect.objectContaining({
-          isRevoked: true,
-          revokedReason: 'USER_LOGOUT_ALL',
-        })
+          revokedReason: 'admin_revoke',
+        }),
       );
     });
   });
 
   describe('countActiveSessions', () => {
-    it('should count active sessions', async () => {
-      mockRefreshTokenRepository.count.mockResolvedValue(3);
+    it('counts distinct session_id values via the query builder', async () => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ count: '3' }),
+      };
+      mockRefreshTokenRepository.createQueryBuilder.mockReturnValue(qb);
 
       const count = await service.countActiveSessions('user-123');
 
       expect(count).toBe(3);
+      expect(qb.select).toHaveBeenCalledWith(
+        expect.stringContaining('DISTINCT rt.session_id'),
+        'count',
+      );
     });
   });
 
   describe('getSessionById', () => {
-    it('should return session info', async () => {
+    it('returns the most recent rotation for the session', async () => {
       const mockToken: Partial<RefreshToken> = {
-        id: 'token-123',
+        tokenHash: 'h-1',
+        sessionId: 'sess-1',
         userId: 'user-123',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/120',
-        ipAddress: '192.168.1.1',
+        deviceLabel: 'Chrome on Windows',
         createdAt: new Date(),
       };
 
       mockRefreshTokenRepository.findOne.mockResolvedValue(mockToken);
 
-      const session = await service.getSessionById('token-123', 'user-123');
+      const session = await service.getSessionById('sess-1', 'user-123');
 
       expect(session).not.toBeNull();
-      expect(session?.id).toBe('token-123');
-      expect(session?.ipAddress).toBe('192.168.1.1');
+      expect(session?.id).toBe('sess-1');
+      expect(session?.deviceLabel).toBe('Chrome on Windows');
     });
 
-    it('should return null for non-existent session', async () => {
+    it('returns null for non-existent session', async () => {
       mockRefreshTokenRepository.findOne.mockResolvedValue(null);
 
       const session = await service.getSessionById('non-existent', 'user-123');

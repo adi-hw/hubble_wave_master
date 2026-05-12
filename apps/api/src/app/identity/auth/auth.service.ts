@@ -9,7 +9,6 @@ import {
   PasswordHistory,
 } from '@hubblewave/instance-db';
 import { LoginDto } from './dto/login.dto';
-import { RefreshTokenService } from './refresh-token.service';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
 import { PasswordValidationService } from './password-validation.service';
@@ -69,7 +68,6 @@ export class AuthService {
     private readonly authSettingsRepo: Repository<AuthSettings>,
     @InjectRepository(PasswordHistory)
     private readonly passwordHistoryRepo: Repository<PasswordHistory>,
-    private readonly refreshTokenService: RefreshTokenService,
     private readonly mfaService: MfaService,
     private readonly authEventsService: AuthEventsService,
     private readonly passwordValidationService: PasswordValidationService,
@@ -328,8 +326,15 @@ export class AuthService {
         sessionId,
       });
 
-      const { token: refreshToken } =
-        await this.refreshTokenService.createRefreshToken(user.id, ipAddress, userAgent);
+      // Canon §29.5: every login mints a fresh refresh-token family.
+      // No cap on concurrent families — founder direction.
+      const { refreshToken } = await this.tokenIssuer.issueRefreshTokenFamily({
+        userId: user.id,
+        sessionId,
+        instanceId: null,
+        userAgent,
+        ipAddress,
+      });
 
       await this.authEventsService.record({
         eventType: 'LOGIN_SUCCESS',
@@ -372,16 +377,15 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    // Refresh-token revocation (existing behavior — required to stop
-    // the client from minting fresh access tokens after logout).
-    await this.refreshTokenService.revokeAllUserTokens(userId);
-
-    // F002: revoke the live access token's session too. Without this,
-    // a captured access token would remain valid until exp even though
-    // the user clicked "log out". The Redis revocation key has a TTL
-    // longer than any reasonable access-token lifetime, so the check
-    // outlives every token it could invalidate.
+    // Canon §29.5 rule 4: logout revokes the refresh-token family
+    // backing the session (so the client cannot mint fresh access
+    // tokens). Scoped to sessionId — other browsers / devices the user
+    // is logged in on are NOT affected.
     if (sessionId) {
+      await this.tokenIssuer.revokeFamilyForSession(sessionId);
+      // F002: revoke the live access-token's session too. Without this,
+      // a captured access token would remain valid until exp even though
+      // the user clicked "log out".
       await this.jwtRevocationAdapter.revokeSession(sessionId);
     }
 
@@ -423,11 +427,13 @@ export class AuthService {
       sessionId,
     });
 
-    const { token: refreshToken } = await this.refreshTokenService.createRefreshToken(
-      user.id,
-      ipAddress,
-      userAgent
-    );
+    const { refreshToken } = await this.tokenIssuer.issueRefreshTokenFamily({
+      userId: user.id,
+      sessionId,
+      instanceId: null,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+      ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+    });
 
     // Record login event
     await this.authEventsService.record({
@@ -454,88 +460,85 @@ export class AuthService {
     };
   }
 
-  async refreshAccessToken(refreshToken: string, _instanceSlug?: string, ipAddress?: string, userAgent?: string) {
-    // 2. Validate Refresh Token
-    const tokenEntity = await this.refreshTokenService.findByToken(refreshToken);
-    if (!tokenEntity) {
+  async refreshAccessToken(
+    refreshToken: string,
+    _instanceSlug?: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    // Canon §29.5: single-use rotation with reuse detection. The
+    // TokenIssuerService.rotateRefreshToken handles all four outcome
+    // paths (happy path, unknown token, family expiry, reuse detection)
+    // and throws an UnauthorizedException with the canonical
+    // "session expired" message in every failure case — including
+    // reuse, where it ALSO revokes the family, revokes the session,
+    // and emits a high-severity audit event before throwing. The
+    // client sees an indistinguishable 401 regardless of cause.
+    let rotated;
+    try {
+      rotated = await this.tokenIssuer.rotateRefreshToken({
+        presentedToken: refreshToken,
+        userAgent,
+        ipAddress,
+      });
+    } catch (err) {
+      // REFRESH_FAILED audit event still records the attempt for the
+      // auth-events log even though we cannot attribute the userId in
+      // some cases (unknown token).
       await this.authEventsService.record({
         eventType: 'REFRESH_FAILED',
         success: false,
         userId: undefined,
-        ipAddress: ipAddress,
+        ipAddress,
         userAgent,
       });
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw err;
     }
 
-    if (tokenEntity.isRevoked || (tokenEntity.expiresAt && tokenEntity.expiresAt < new Date())) {
+    // The user must still be active. The rotation succeeded against
+    // DB state, but a user suspended between login and this refresh
+    // call must not get a fresh access token.
+    const user = await this.userRepo.findOne({
+      where: { id: rotated.userId },
+    });
+    if (!user || user.status !== 'active') {
+      // Revoke the family we just minted into — fail-closed posture.
+      await this.tokenIssuer.revokeAllUserFamilies(rotated.userId, 'admin_revoke');
       await this.authEventsService.record({
         eventType: 'REFRESH_FAILED',
         success: false,
-        userId: tokenEntity.userId,
-        ipAddress: ipAddress,
+        userId: rotated.userId,
+        ipAddress,
         userAgent,
       });
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException('Your session has expired. Please sign in again.');
     }
 
-    // 3. Find User
-    const user = await this.userRepo.findOne({
-        where: { id: tokenEntity.userId }
-    });
-
-    if (!user || user.status !== 'active') {
-       await this.authEventsService.record({
-        eventType: 'REFRESH_FAILED',
-        success: false,
-        userId: tokenEntity.userId,
-        ipAddress: ipAddress,
-        userAgent,
-      });
-      throw new UnauthorizedException('User not found or inactive');
-    }
-    
-    // 4. Resolve Roles + fresh permissions are no longer minted into the
-    //    token payload — TokenIssuerService reads them straight from
-    //    IdentityResolverPort. We still call resolveRolesAndPermissionsForUser
-    //    here so a future refresh-time policy gate (e.g. "user role
-    //    changed enough to require re-auth") has the snapshot in hand.
+    // Resolve roles + fresh permissions stay outside the JWT payload —
+    // TokenIssuerService reads them via IdentityResolverPort. We still
+    // resolve here so a future refresh-time policy gate has the snapshot.
     await this.resolveRolesAndPermissionsForUser(user.id);
 
-    // 5. Rotate Token (pass the verified user id so the rotation path
-    //    cross-checks the token owner against the caller this handler has
-    //    already resolved, in addition to the cookie-side validation above).
-    const rotated = await this.refreshTokenService.rotateRefreshToken(
-      refreshToken,
-      ipAddress,
-      userAgent,
-      user.id,
-    );
-
-    if (!rotated) {
-        throw new UnauthorizedException('Failed to rotate refresh token');
-    }
-
-    // 6. Generate New Access Token via TokenIssuerService — same canon
-    //    §29.3 claims contract as login + SSO. Fresh sessionId per token
-    //    rotation so revocation surfaces stay granular.
-    const sessionId = randomUUID();
+    // Reuse the same sessionId across rotations — canon §29.5 keeps the
+    // session identity stable for the lifetime of the family. A new
+    // sessionId on every rotation would defeat the
+    // JwtRevocationPort.revokeSession path on reuse detection.
     const { token: accessToken } = await this.tokenIssuer.issueAccessToken({
       userId: user.id,
-      sessionId,
+      sessionId: rotated.sessionId,
     });
 
     await this.authEventsService.record({
       eventType: 'REFRESH_SUCCESS',
       success: true,
       userId: user.id,
-      ipAddress: ipAddress,
+      ipAddress,
       userAgent,
     });
 
     return {
       accessToken,
-      refreshToken: rotated.token,
+      refreshToken: rotated.refreshToken,
     };
   }
 
@@ -622,6 +625,11 @@ export class AuthService {
       securityStamp: randomUUID(),
     });
 
+    // Canon §29.5: revoke every active refresh family for the user.
+    // Stamp bump kills the access-token side; family revoke kills the
+    // refresh-token side. Both paths must close on a password change.
+    await this.tokenIssuer.revokeAllUserFamilies(user.id, 'password_change');
+
     await this.authEventsService.record({
       eventType: 'PASSWORD_CHANGED',
       success: true,
@@ -693,6 +701,9 @@ export class AuthService {
       passwordChangedAt: new Date(),
       securityStamp: randomUUID(),
     });
+
+    // Canon §29.5: defense in depth alongside the stamp bump.
+    await this.tokenIssuer.revokeAllUserFamilies(userId, 'password_change');
 
     await this.authEventsService.record({
       eventType: 'PASSWORD_CHANGED',
