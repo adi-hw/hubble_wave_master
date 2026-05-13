@@ -590,6 +590,14 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 27): F054 audit hash chain backfill landed.
+  One-shot idempotent migration that walks audit_logs in canonical
+  order, recomputes hash + previousHash for missing/inconsistent
+  rows. Uses `pg_advisory_xact_lock(hashtext(AUDIT_LOG_CHAIN_LOCK_KEY))`
+  per subscriber convention. Forward-only (down() is no-op). Closes
+  the §10 gap where rows inserted before AuditLogSubscriber landed
+  had NULL hashes.
+
 - 2026-05-13 (W5.A / Plan Fix 25): §10 enforcement strengthened.
   `tools/audit-bypass-check.ts` regex widened to catch
   `<varName>Repo.save()` / `<varName>Repository.save()` patterns
