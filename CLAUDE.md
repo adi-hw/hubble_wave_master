@@ -590,6 +590,24 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (W6.A / Plan Fix 26): performance hardening kickoff.
+  Added `createIndexConcurrent` / `dropIndexConcurrent` helpers in
+  `libs/instance-db/src/lib/migrations/utils/concurrent-index.ts` and
+  `migrations:check` scanner at `tools/migration-blocking-index-check.ts`.
+  Scanner blocks new migrations from creating indexes on growth tables
+  (audit_logs, collection_records, automation_execution_logs, data_records,
+  pack_install_logs, refresh_tokens, cust__*) without `CREATE INDEX
+  CONCURRENTLY` + `static transaction = false`. Legacy migrations
+  inventoried in Plan Fix 26 — not retroactively modified. Refs F046.
+
+- 2026-05-13 (Plan Fix 28): orphan-lib cleanup completed.
+  3 libs deleted: libs/relationship-resolver, libs/schema-engine,
+  libs/schema-validator. dead-code-allowlist.json entries (owedTo: W2)
+  removed. tsconfig.base.json path mappings cleaned. Canon §14
+  ("delete ruthlessly") + §1 (greenfield) applied — the libs predate
+  service consolidation and had zero live consumers post-arc-w1-complete
+  (PR #35). Refs Item 12 of pending Phase 2 backlog.
+
 - 2026-05-13 (Plan Fix 27): F054 audit hash chain backfill landed.
   One-shot idempotent migration that walks audit_logs in canonical
   order, recomputes hash + previousHash for missing/inconsistent
@@ -607,14 +625,6 @@ Past amendments (most recent first):
   W5.D data, W5.E automation+ava, W5.F fold-ins). Area sweeps
   follow in W5.B-F; allowlist must reach empty by end of wave.
   Refs Plan Fix 25.
-
-- 2026-05-13 (Plan Fix 28): orphan-lib cleanup completed.
-  3 libs deleted: libs/relationship-resolver, libs/schema-engine,
-  libs/schema-validator. dead-code-allowlist.json entries (owedTo: W2)
-  removed. tsconfig.base.json path mappings cleaned. Canon §14
-  ("delete ruthlessly") + §1 (greenfield) applied — the libs predate
-  service consolidation and had zero live consumers post-arc-w1-complete
-  (PR #35). Refs Item 12 of pending Phase 2 backlog.
 
 - 2026-05-12 (canon §29 PR-D — service principals + RequestContext
   discriminated union, closes audit finding F022):
