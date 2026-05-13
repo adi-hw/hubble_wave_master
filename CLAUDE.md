@@ -590,6 +590,13 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (W5.B / Plan Fix 25): §10 enforcement applied to
+  identity/auth. Refactored 4 services to use `withAudit(...)`:
+  behavioral-analytics, delegation, device-trust, impersonation.
+  Removed all 4 entries from `KNOWN_DEFERRED_OFFENDERS` —
+  scanner now reports zero deferred sites. Added integration test
+  asserting atomic rollback when audit write fails. Refs Plan Fix 25.
+
 - 2026-05-13 (W5.A / Plan Fix 25): §10 enforcement strengthened.
   `tools/audit-bypass-check.ts` regex widened to catch
   `<varName>Repo.save()` / `<varName>Repository.save()` patterns
