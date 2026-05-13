@@ -9,13 +9,13 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, MoreThan } from 'typeorm';
 import {
   BehavioralProfile,
   SecurityAlert,
   AuthEvent,
-  AuditLog,
+  withAudit,
 } from '@hubblewave/instance-db';
 
 const ANOMALY_THRESHOLD = 70; // Score above this triggers alert
@@ -65,8 +65,8 @@ export class BehavioralAnalyticsService {
     private readonly alertRepo: Repository<SecurityAlert>,
     @InjectRepository(AuthEvent)
     private readonly authEventRepo: Repository<AuthEvent>,
-    @InjectRepository(AuditLog)
-    private readonly auditLogRepo: Repository<AuditLog>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -409,13 +409,13 @@ export class BehavioralAnalyticsService {
       alert.resolutionNotes = notes;
     }
 
-    await this.alertRepo.save(alert);
+    const updatedAlert = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(SecurityAlert).save(alert);
 
-    // The audit entry links the resolver to the alert's investigation context
-    // (the original subject user, alert type, severity, and prior status) so a
-    // reviewer can answer "who closed this alert and what was being closed".
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      // The audit entry links the resolver to the alert's investigation context
+      // (the original subject user, alert type, severity, and prior status) so a
+      // reviewer can answer "who closed this alert and what was being closed".
+      recordAudit({
         userId: updatedBy,
         action: `security_alert.${status}`,
         collectionCode: 'security_alert',
@@ -432,12 +432,14 @@ export class BehavioralAnalyticsService {
           acknowledgedBy: alert.acknowledgedBy ?? null,
           acknowledgedAt: alert.acknowledgedAt ?? null,
         },
-      }),
-    );
+      });
+
+      return persisted;
+    });
 
     this.logger.log(`Security alert ${alertId} (${alert.alertType}/${alert.severity}) transitioned ${previousStatus} -> ${status} by ${updatedBy}`);
 
-    return alert;
+    return updatedAlert;
   }
 
   /**

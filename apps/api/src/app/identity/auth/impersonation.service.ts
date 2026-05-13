@@ -12,9 +12,9 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ImpersonationSession, User, AuditLog } from '@hubblewave/instance-db';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { ImpersonationSession, User, withAudit } from '@hubblewave/instance-db';
 import { AuthEventsService } from './auth-events.service';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 
@@ -40,10 +40,10 @@ export class ImpersonationService {
     private readonly sessionRepo: Repository<ImpersonationSession>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(AuditLog)
-    private readonly auditLogRepo: Repository<AuditLog>,
     private readonly authEventsService: AuthEventsService,
     private readonly permissionResolver: PermissionResolverService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -128,9 +128,30 @@ export class ImpersonationService {
       actionsLog: [],
     });
 
-    await this.sessionRepo.save(session);
+    const savedSession = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(ImpersonationSession).save(session);
 
-    // Log the auth event
+      recordAudit({
+        userId: impersonatorId,
+        action: 'impersonation.start',
+        collectionCode: 'user',
+        recordId: targetUserId,
+        newValues: {
+          reason,
+          sessionId: persisted.id,
+          targetUserEmail: targetUser.email,
+          impersonatorEmail: impersonator.email,
+          durationMinutes,
+        },
+        ipAddress,
+        userAgent,
+      });
+
+      return persisted;
+    });
+
+    // Analytics observability write — intentionally outside the audit transaction
+    // (not a §10 audit row; does not need to be atomic with the data write).
     await this.authEventsService.record({
       userId: impersonatorId,
       eventType: 'impersonation_start',
@@ -139,30 +160,11 @@ export class ImpersonationService {
       userAgent,
     });
 
-    // Create audit log entry
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
-        userId: impersonatorId,
-        action: 'impersonation.start',
-        collectionCode: 'user',
-        recordId: targetUserId,
-        newValues: {
-          reason,
-          sessionId: session.id,
-          targetUserEmail: targetUser.email,
-          impersonatorEmail: impersonator.email,
-          durationMinutes,
-        },
-        ipAddress,
-        userAgent,
-      }),
-    );
-
     this.logger.warn(
       `IMPERSONATION: User ${impersonator.email} started impersonating ${targetUser.email} - Reason: ${reason}`,
     );
 
-    return session;
+    return savedSession;
   }
 
   /**
@@ -185,8 +187,34 @@ export class ImpersonationService {
 
     session.isActive = false;
     session.endedAt = new Date();
-    await this.sessionRepo.save(session);
 
+    const endedAt = session.endedAt;
+    const startedAt = session.startedAt;
+    const actionsCount = session.actionsLog.length;
+    const targetUserId = session.targetUserId;
+
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      await mgr.getRepository(ImpersonationSession).save(session);
+
+      recordAudit({
+        userId: impersonatorId,
+        action: 'impersonation.end',
+        collectionCode: 'user',
+        recordId: targetUserId,
+        newValues: {
+          sessionId,
+          durationMinutes: Math.round(
+            (endedAt.getTime() - startedAt.getTime()) / 60000,
+          ),
+          actionsCount,
+        },
+        ipAddress,
+        userAgent,
+      });
+    });
+
+    // Analytics observability write — intentionally outside the audit transaction
+    // (not a §10 audit row; does not need to be atomic with the data write).
     await this.authEventsService.record({
       userId: impersonatorId,
       eventType: 'impersonation_end',
@@ -194,24 +222,6 @@ export class ImpersonationService {
       ipAddress,
       userAgent,
     });
-
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
-        userId: impersonatorId,
-        action: 'impersonation.end',
-        collectionCode: 'user',
-        recordId: session.targetUserId,
-        newValues: {
-          sessionId,
-          durationMinutes: Math.round(
-            (new Date().getTime() - session.startedAt.getTime()) / 60000,
-          ),
-          actionsCount: session.actionsLog.length,
-        },
-        ipAddress,
-        userAgent,
-      }),
-    );
 
     this.logger.log(`IMPERSONATION: Session ${sessionId} ended`);
   }

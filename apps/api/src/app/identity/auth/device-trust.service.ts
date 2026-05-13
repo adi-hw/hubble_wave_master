@@ -11,10 +11,10 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, LessThan } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, MoreThan, LessThan } from 'typeorm';
 import * as crypto from 'crypto';
-import { TrustedDevice, User, AuditLog } from '@hubblewave/instance-db';
+import { TrustedDevice, User, AuditLog, withAudit } from '@hubblewave/instance-db';
 
 const DEVICE_TRUST_EXPIRY_DAYS = 90;
 const MAX_TRUSTED_DEVICES_PER_USER = 10;
@@ -61,6 +61,8 @@ export class DeviceTrustService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -132,25 +134,27 @@ export class DeviceTrustService {
       ),
     });
 
-    await this.deviceRepo.save(device);
+    const savedDevice = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(TrustedDevice).save(device);
 
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      recordAudit({
         userId,
         action: 'device.trust',
         collectionCode: 'device',
-        recordId: device.id,
+        recordId: persisted.id,
         newValues: {
-          deviceName: device.deviceName,
+          deviceName: persisted.deviceName,
         },
         ipAddress: options.ipAddress,
         userAgent: options.userAgent,
-      }),
-    );
+      });
 
-    this.logger.log(`Device trusted for user ${userId}: ${device.deviceName}`);
+      return persisted;
+    });
 
-    return device;
+    this.logger.log(`Device trusted for user ${userId}: ${savedDevice.deviceName}`);
+
+    return savedDevice;
   }
 
   /**
@@ -283,17 +287,18 @@ export class DeviceTrustService {
     }
 
     device.status = 'revoked';
-    await this.deviceRepo.save(device);
 
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+    await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      await mgr.getRepository(TrustedDevice).save(device);
+
+      recordAudit({
         userId,
         action: 'device.revoke',
         collectionCode: 'device',
         recordId: deviceId,
         newValues: { reason, deviceName: device.deviceName },
-      }),
-    );
+      });
+    });
 
     this.logger.log(`Device ${deviceId} revoked for user ${userId}`);
   }
@@ -312,23 +317,25 @@ export class DeviceTrustService {
    * Revoke all devices for a user (emergency)
    */
   async revokeAllDevices(userId: string, reason?: string): Promise<number> {
-    const result = await this.deviceRepo.update(
-      { userId, status: 'trusted' },
-      { status: 'revoked' },
-    );
+    const affected = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const result = await mgr.getRepository(TrustedDevice).update(
+        { userId, status: 'trusted' },
+        { status: 'revoked' },
+      );
 
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      recordAudit({
         userId,
         action: 'device.revoke_all',
         collectionCode: 'device',
         newValues: { reason, count: result.affected },
-      }),
-    );
+      });
 
-    this.logger.warn(`All devices revoked for user ${userId}: ${result.affected} devices`);
+      return result.affected ?? 0;
+    });
 
-    return result.affected || 0;
+    this.logger.warn(`All devices revoked for user ${userId}: ${affected} devices`);
+
+    return affected;
   }
 
   /**
