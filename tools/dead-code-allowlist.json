@@ -65,14 +65,6 @@
   },
   {
     "type": "orphan-lib",
-    "path": "libs/search-authz",
-    "reason": "Plan Fix 30 PR-1: search authz DSL + compiler primitives. No importer exists yet — engine wiring (Typesense filter_by injection) lands in PR-2; pgvector pre-filter SQL in PR-3. Intentional multi-PR staged rollout per F136.",
-    "addedBy": "Plan Fix 30 PR-1",
-    "addedAt": "2026-05-13",
-    "owedTo": "Plan Fix 30 PR-2"
-  },
-  {
-    "type": "orphan-lib",
     "path": "libs/enterprise",
     "reason": "Junk-drawer lib carrying SSO + Audit + Compliance services with no shared concept. Audit finding F147. W4 splits SSO into libs/sso/ (or merges into svc-identity), Audit into libs/instance-db/audit (already exists), Compliance into libs/compliance/, then deletes the libs/enterprise/ shell.",
     "addedBy": "W0 task 10",

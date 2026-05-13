@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   AuditLog,
+  CollectionAccessRule,
   CollectionDefinition,
   InstanceEventOutbox,
   SearchDictionary,
@@ -28,6 +29,7 @@ import { SearchExperienceService } from './search-experience.service';
       CollectionDefinition,
       InstanceEventOutbox,
       AuditLog,
+      CollectionAccessRule,
     ]),
   ],
   providers: [

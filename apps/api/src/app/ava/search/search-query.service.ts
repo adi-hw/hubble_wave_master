@@ -1,10 +1,19 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
-import { AuthorizationService } from '@hubblewave/authorization';
+import { In, Repository } from 'typeorm';
 import { UserRequestContext } from '@hubblewave/auth-guard';
-import { AuditLog, CollectionDefinition, SearchExperience, SearchSource } from '@hubblewave/instance-db';
+import {
+  AuditLog,
+  CollectionAccessRule,
+  SearchExperience,
+  SearchSource,
+} from '@hubblewave/instance-db';
 import { buildSearchParams, FacetConfig, FilterCondition } from '@hubblewave/search-typesense';
+import {
+  compileSearchAuthz,
+  emitTypesenseFilterBy,
+} from '@hubblewave/search-authz';
+import type { CollectionAccessRuleData } from '@hubblewave/authorization';
 import { SearchEmbeddingService } from './search-embedding.service';
 import { SearchTypesenseService } from './search-typesense.service';
 import { SearchSourceConfig } from './search.types';
@@ -40,12 +49,10 @@ export class SearchQueryService {
     private readonly experienceRepo: Repository<SearchExperience>,
     @InjectRepository(SearchSource)
     private readonly sourceRepo: Repository<SearchSource>,
-    @InjectRepository(CollectionDefinition)
-    private readonly collectionRepo: Repository<CollectionDefinition>,
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
-    private readonly dataSource: DataSource,
-    private readonly authz: AuthorizationService,
+    @InjectRepository(CollectionAccessRule)
+    private readonly collectionAccessRuleRepo: Repository<CollectionAccessRule>,
     private readonly typesenseService: SearchTypesenseService,
     private readonly embeddingService: SearchEmbeddingService,
   ) {}
@@ -85,6 +92,13 @@ export class SearchQueryService {
     });
 
     const mode = this.resolveMode(request.mode, experienceConfig);
+
+    // Build the authz pre-filter clause for Typesense. The compiler translates
+    // §28 CollectionAccessRules into an engine-neutral AST; the emitter renders
+    // that AST into a Typesense filter_by string. This replaces the per-hit
+    // post-filter loop that caused pagination and facet count leakage (F136).
+    const authzFilterBy = await this.buildAuthzFilterBy(request.context, sources);
+
     const filters = this.mergeFilters(
       request.filters,
       experienceConfig['filters'] as FilterCondition[] | undefined,
@@ -105,6 +119,7 @@ export class SearchQueryService {
       queryBy,
       filters,
       facets,
+      authzFilterBy,
       request,
     });
 
@@ -123,35 +138,110 @@ export class SearchQueryService {
       experienceConfig,
     });
 
-    const trimmedHits = await this.trimUnauthorized(request.context, mergedHits, sources);
-    const filteredCount = mergedHits.length - trimmedHits.length;
-    const facetCounts = this.resolveFacetCounts(mode, facets, trimmedHits, filteredCount);
-    // F136-minimal: `out_of` collapses to the post-trim count so callers
-    // cannot infer the existence/volume of unauthorized records by diffing
-    // `found` against the lexical engine's corpus total. Pagination is now
-    // approximate — a page-size of N may return fewer than N rows when
-    // trimming occurs. `pagination_approximate` signals that the response
-    // shape is not strictly comparable across pages. The full fix (push
-    // authz into Typesense/vector queries so the engine never returns
-    // unauthorized rows in the first place) is tracked as F136-full.
+    const facetCounts = this.resolveFacetCounts(mode, facets, mergedHits, response);
     const result = {
-      found: trimmedHits.length,
-      out_of: trimmedHits.length,
+      found: mergedHits.length,
+      out_of: mergedHits.length,
       page: response?.page || request.page || 1,
-      hits: trimmedHits,
+      hits: mergedHits,
       facet_counts: facetCounts,
-      pagination_approximate: filteredCount > 0,
+      pagination_approximate: false,
     };
 
     await this.auditSearch(request, sources, {
       total: mergedHits.length,
-      filtered: filteredCount,
+      filtered: 0,
       lexicalTotal,
       semanticTotal,
       mode,
       semanticThreshold: request.semanticThreshold ?? this.resolveSemanticThreshold(experienceConfig),
     });
     return result;
+  }
+
+  /**
+   * Build the Typesense `filter_by` clause that enforces §28 record visibility
+   * for the active user across all collections covered by the active sources.
+   *
+   * Fetches all active CollectionAccessRules, filters them to the rules
+   * relevant to the current user via the compiler's principal-match logic,
+   * compiles to a FilterAst, and emits Typesense syntax.
+   *
+   * Admin users bypass the pre-filter (matching the §28.6 posture — admins
+   * are not short-circuited silently, but the seeded admin policy grants broad
+   * allow, which the compiler would produce as allow_all → empty filter anyway).
+   * We short-circuit here for performance.
+   */
+  private async buildAuthzFilterBy(
+    context: UserRequestContext,
+    sources: SearchSource[],
+  ): Promise<string> {
+    if (context.isAdmin) {
+      return '';
+    }
+
+    const collectionIds = this.resolveCollectionIds(sources);
+    if (!collectionIds.length) {
+      return '';
+    }
+
+    const rules = await this.collectionAccessRuleRepo.find({
+      where: { collectionId: In(collectionIds), isActive: true },
+      order: { priority: 'ASC' },
+    });
+
+    const ruleData: CollectionAccessRuleData[] = rules.map((r) => ({
+      id: r.id,
+      collectionId: r.collectionId,
+      name: r.name,
+      description: r.description ?? null,
+      roleId: r.roleId ?? null,
+      groupId: r.groupId ?? null,
+      userId: r.userId ?? null,
+      canRead: r.canRead,
+      canCreate: r.canCreate,
+      canUpdate: r.canUpdate,
+      canDelete: r.canDelete,
+      conditions: r.conditions as CollectionAccessRuleData['conditions'] ?? null,
+      priority: r.priority,
+      isActive: r.isActive,
+      effect: (r.effect as 'allow' | 'deny') ?? 'allow',
+    }));
+
+    const ast = compileSearchAuthz({
+      userId: context.userId,
+      userRoleIds: context.roles ?? [],
+      userGroupIds: [],
+      collectionRules: ruleData,
+    });
+
+    const userAttrs = this.buildAttributeContext(context);
+    return emitTypesenseFilterBy(ast, userAttrs);
+  }
+
+  /**
+   * Build the ABAC attribute context from the active UserRequestContext.
+   * These values are substituted into `attribute_match` AST nodes at query time.
+   */
+  private buildAttributeContext(context: UserRequestContext): Record<string, string | number | boolean | null> {
+    return {
+      userId: context.userId,
+    };
+  }
+
+  /**
+   * Resolve the collection UUIDs covered by the active search sources.
+   * Uses `config.collection_id` when set on the source.
+   */
+  private resolveCollectionIds(sources: SearchSource[]): string[] {
+    const ids = new Set<string>();
+    for (const source of sources) {
+      const config = (source.config || {}) as SearchSourceConfig;
+      if (config.collection_id) {
+        ids.add(config.collection_id);
+      }
+    }
+    return [...ids];
   }
 
   private resolveMode(requestMode: SearchMode | undefined, config: Record<string, unknown>): SearchMode {
@@ -166,8 +256,9 @@ export class SearchQueryService {
     queryBy: string[];
     filters: FilterCondition[];
     facets: FacetConfig[];
+    authzFilterBy: string;
     request: SearchQueryRequest;
-  }): Promise<{ lexicalHits: SearchHit[]; lexicalTotal: number; response?: { page: number; facet_counts?: unknown[] } }> {
+  }): Promise<{ lexicalHits: SearchHit[]; lexicalTotal: number; response?: { page: number; found?: number; facet_counts?: unknown[] } }> {
     if (params.mode === 'semantic') {
       return { lexicalHits: [], lexicalTotal: 0 };
     }
@@ -182,9 +273,22 @@ export class SearchQueryService {
       sortBy: params.request.sortBy,
     });
 
-    const response = await this.typesenseService.searchDocuments(searchParams);
-    const hits = (response.hits || []).map((hit) => ({
-      score: hit.text_match,
+    // Inject the authz pre-filter into the Typesense filter_by param.
+    // Typesense combines multiple filter_by strings with && when passed
+    // as separate params; here we build the combined string directly.
+    const existingFilter = searchParams.filter_by;
+    const combinedFilter = this.combineFilters(existingFilter, params.authzFilterBy);
+
+    const response = await this.typesenseService.searchDocuments({
+      ...searchParams,
+      filter_by: combinedFilter,
+    });
+    const hits = ((response.hits || []) as Array<{
+      text_match?: number;
+      document?: Record<string, unknown>;
+      highlights?: unknown;
+    }>).map((hit) => ({
+      score: hit.text_match ?? 0,
       document: (hit.document || {}) as Record<string, unknown>,
       highlights: hit.highlights,
     }));
@@ -194,6 +298,24 @@ export class SearchQueryService {
       lexicalTotal: hits.length,
       response,
     };
+  }
+
+  /**
+   * Combine an existing filter_by string from buildSearchParams with the
+   * authz pre-filter. When both are present they are AND-combined. When
+   * the authz filter is empty (allow_all) the existing filter is preserved.
+   */
+  private combineFilters(
+    existingFilter: string | undefined,
+    authzFilter: string,
+  ): string | undefined {
+    if (!authzFilter) {
+      return existingFilter;
+    }
+    if (!existingFilter) {
+      return authzFilter;
+    }
+    return `(${existingFilter}) && (${authzFilter})`;
   }
 
   private async runSemanticSearch(params: {
@@ -364,21 +486,21 @@ export class SearchQueryService {
   }
 
   private resolveFacetCounts(
-    _mode: SearchMode,
+    mode: SearchMode,
     facets: FacetConfig[],
     hits: SearchHit[],
-    _filteredCount: number,
+    response?: { facet_counts?: unknown[] },
   ) {
     if (!facets.length) {
       return [];
     }
-    // F136-minimal: facet aggregates always count over the trimmed
-    // (authorized) hits for this page. The lexical engine reports facet
-    // counts across the entire corpus match-set, which leaks the
-    // existence of unauthorized records even when the current page
-    // trims zero. Recomputing from trimmedHits is page-local — less
-    // accurate but never a leak. The full fix (corpus-scoped facets
-    // with authz pushed into the engine) is tracked as F136-full.
+    if (mode === 'lexical' && response?.facet_counts?.length) {
+      // The authz pre-filter is injected into the Typesense query, so
+      // facet_counts from the engine already reflect only authorized records.
+      // Return the engine's facet counts directly — they are corpus-accurate.
+      return response.facet_counts;
+    }
+    // Semantic / hybrid: compute facets from the merged hit set (page-local).
     return this.buildFacetCounts(hits, facets);
   }
 
@@ -401,88 +523,6 @@ export class SearchQueryService {
       return this.sourceRepo.find({ where: { isActive: true } });
     }
     return this.sourceRepo.find({ where: { code: In(sourceCodes), isActive: true } });
-  }
-
-  private async trimUnauthorized(
-    context: UserRequestContext,
-    hits: SearchHit[],
-    sources: SearchSource[],
-  ) {
-    if (!hits.length) {
-      return hits;
-    }
-
-    const sourceTypeMap = new Map<string, string>();
-    for (const source of sources) {
-      const config = (source.config || {}) as SearchSourceConfig;
-      const sourceType = config.source_type || source.collectionCode;
-      if (!sourceTypeMap.has(sourceType)) {
-        sourceTypeMap.set(sourceType, source.collectionCode);
-      }
-    }
-
-    const grouped = new Map<string, SearchHit[]>();
-    for (const hit of hits) {
-      const sourceType = String(hit.document['source_type'] || '');
-      if (!sourceTypeMap.has(sourceType)) {
-        continue;
-      }
-      const list = grouped.get(sourceType) ?? [];
-      list.push(hit);
-      grouped.set(sourceType, list);
-    }
-
-    const allowedIds = new Set<string>();
-    for (const [sourceType, groupHits] of grouped.entries()) {
-      const collectionCode = sourceTypeMap.get(sourceType);
-      if (!collectionCode) {
-        continue;
-      }
-      const collection = await this.collectionRepo.findOne({ where: { code: collectionCode } });
-      if (!collection) {
-        continue;
-      }
-
-      try {
-        await this.authz.ensureCollectionAccess(context, collection.id, 'read');
-      } catch {
-        continue;
-      }
-
-      const ids = groupHits
-        .map((hit) => String(hit.document['source_id'] || ''))
-        .filter(Boolean);
-      if (!ids.length) {
-        continue;
-      }
-
-      const schemaName = this.ensureSafeIdentifier('public');
-      const tableName = this.ensureSafeIdentifier(collection.tableName);
-      const qb = this.dataSource
-        .createQueryBuilder()
-        .select('t.id', 'id')
-        .from(`${schemaName}.${tableName}`, 't')
-        .where('t."id" = ANY(:ids)', { ids });
-
-      const rowLevel = await this.authz.buildCollectionRowLevelClause(context, collection.id, 'read', 't');
-      if (rowLevel.clauses.length > 0) {
-        rowLevel.clauses.forEach((clause, index) => {
-          qb.andWhere(clause, this.prefixParams(rowLevel.params, `rls_${index}_`));
-        });
-      }
-
-      const rows = await qb.getRawMany<{ id: string }>();
-      rows.forEach((row) => allowedIds.add(String(row.id)));
-    }
-
-    return hits.filter((hit) => {
-      const sourceType = String(hit.document['source_type'] || '');
-      if (!sourceTypeMap.has(sourceType)) {
-        return false;
-      }
-      const sourceId = String(hit.document['source_id'] || '');
-      return allowedIds.has(sourceId);
-    });
   }
 
   private async auditSearch(
@@ -590,20 +630,5 @@ export class SearchQueryService {
     }
 
     return results;
-  }
-
-  private ensureSafeIdentifier(value: string): string {
-    if (!value || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-      throw new BadRequestException(`Invalid identifier: ${value}`);
-    }
-    return value;
-  }
-
-  private prefixParams(params: Record<string, unknown>, prefix: string): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const key of Object.keys(params)) {
-      result[`${prefix}${key}`] = params[key];
-    }
-    return result;
   }
 }

@@ -67,7 +67,8 @@ export class SearchIndexingService {
         }
 
         const mapped = this.mapRecordToDocument(source, record, payload.recordId);
-        await indexer.upsert(mapToTypesenseDocument(mapped));
+        const aclFields = this.buildAclFields(source, record);
+        await indexer.upsert({ ...mapToTypesenseDocument(mapped), ...aclFields });
         await this.embeddingService.upsertRecordEmbeddings({
           sourceType: this.resolveSourceType(source),
           sourceId: payload.recordId,
@@ -106,6 +107,41 @@ export class SearchIndexingService {
         throw error;
       }
     }
+  }
+
+  /**
+   * Build the ACL field overlay for a Typesense document.
+   *
+   * Always includes `_collection_id` (from `source.config.collection_id`).
+   * Also includes `_<attribute>` for every field listed in
+   * `source.config.acl_attributes`, reading the raw value from `record`.
+   *
+   * Fields missing from the record are omitted rather than emitted as null —
+   * Typesense optional fields handle the absence gracefully and the
+   * attribute_match emitter treats a missing attribute as deny_all.
+   */
+  private buildAclFields(
+    source: SearchSource,
+    record: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const config = (source.config || {}) as SearchSourceConfig;
+    const fields: Record<string, unknown> = {};
+
+    if (config.collection_id) {
+      fields['_collection_id'] = config.collection_id;
+    }
+
+    const aclAttributes = config.acl_attributes;
+    if (Array.isArray(aclAttributes)) {
+      for (const attr of aclAttributes) {
+        const value = record[attr];
+        if (value !== undefined && value !== null) {
+          fields[`_${attr}`] = value;
+        }
+      }
+    }
+
+    return fields;
   }
 
   private mapRecordToDocument(
