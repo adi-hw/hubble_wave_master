@@ -94,11 +94,12 @@ export class PermissionsGuard implements CanActivate {
     // Get user permissions - support multiple property names
     const userPermissions: string[] = user.permissions || user.perms || [];
 
-    // Admin role bypasses permission checks
-    const userRoles: string[] = user.roles || [];
-    if (userRoles.includes('admin') || userRoles.includes('super_admin')) {
-      return true;
-    }
+    // Canon §28.6 (Plan Fix 33): admin role no longer bypasses permission
+    // checks here. Admin users hold explicit permission grants via the seeded
+    // role_permissions rows (1817999999999-seed-admin-role.ts) and the seeded
+    // CollectionAccessRules (1931100000000-seed-admin-policies.ts). They
+    // reach this guard with a fully-populated permissions array like any other
+    // role-bearing user.
 
     let hasPermission: boolean;
 

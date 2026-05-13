@@ -15,7 +15,6 @@ import {
 } from './types';
 import { AbacService, SafePredicate, LeafPredicate } from './abac.service';
 import { PolicyCompilerService } from './policy-compiler.service';
-import { ACCESS_AUDIT_PORT, type AccessAuditPort } from './audit-port';
 import type {
   AccessRuleCacheInvalidationPort,
   CollectionRuleChangeEvent,
@@ -90,9 +89,12 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     private readonly policyCompiler: PolicyCompilerService,
     @Optional() @Inject(COLLECTION_DEFINITION_REPOSITORY)
     private readonly collectionDefinitionRepo: CollectionDefinitionLookupRepo | null = null,
-    @Optional() @Inject(ACCESS_AUDIT_PORT)
-    private readonly accessAudit: AccessAuditPort | null = null,
   ) {}
+  // Note: AccessAuditPort (ACCESS_AUDIT_PORT) injection was removed by Plan
+  // Fix 33 (canon §28.6) because the `auditAdminBypass` helper — the sole
+  // consumer — was deleted along with the bypass sites. The port interface
+  // method `logAdminBypass` remains available on AccessAuditPort for future
+  // callers that add new audit emission requirements.
 
   // ============================================================================
   // Public API — Collection variants (preferred)
@@ -119,28 +121,10 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
-    // Admin bypass — short-circuits before the evaluator.
-    if (ctx.isAdmin) {
-      // §28.7: emit the would-be provenance alongside the audit row so
-      // forensics can answer "what would the policy have decided had the
-      // admin bypass not fired". Only when the audit port is bound (avoids
-      // the work in non-audited unit tests).
-      // TODO replacement note: §28.6 removes the silent admin bypass and
-      // replaces it with full evaluation against seeded admin policies.
-      // When that lands, this branch goes away and the wouldBeProvenance
-      // computation becomes the real provenance.
-      const wouldBe = this.accessAudit
-        ? await this.evaluateCollectionAccess(ctx, collectionId, operation, { asNonAdmin: true })
-        : null;
-      this.auditAdminBypass(
-        ctx,
-        collectionId,
-        operation,
-        wouldBe ? { wouldBeProvenance: wouldBe.provenance } : undefined,
-      );
-      return true;
-    }
-
+    // Canon §28.6 (Plan Fix 33): admin users go through the same evaluator as
+    // every other role. Broad allow rules for the admin role are seeded at
+    // instance provisioning time by migration
+    // `1931100000000-seed-admin-policies.ts`. No special-casing here.
     const { allowed } = await this.evaluateCollectionAccess(ctx, collectionId, operation);
     return allowed;
   }
@@ -152,9 +136,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    *
    * Always emits the provenance shape committed in §28.7. The `effect`
    * field carries the SAME boolean as `canAccessCollection` would have
-   * returned. For an admin caller, the provenance describes the non-admin
-   * decision (forensic posture) — the admin bypass is not the answer the
-   * compliance reviewer is asking for.
+   * returned. Canon §28.6 (Plan Fix 33): admin users flow through the
+   * evaluator like any other role, so provenance is the real decision.
    */
   async explainCollectionAccess(
     ctx: UserRequestContext,
@@ -171,10 +154,9 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * Core collection-access evaluator. Returns both the boolean decision
    * and the §28.7 provenance shape that describes how it was reached.
    *
-   * `opts.asNonAdmin` forces non-admin evaluation regardless of
-   * `ctx.isAdmin`. Used by:
-   *   - `explainCollectionAccess` (the admin asks "what would user X see")
-   *   - `canAccessCollection` admin-bypass branch (forensic wouldBe shape)
+   * `opts.asNonAdmin` suppresses the "no repository" log warning (used
+   * by `explainCollectionAccess` when called in stub contexts). Used by:
+   *   - `explainCollectionAccess` (admin asks "what would user X see")
    *
    * F006 / canon §28.3 two-pass evaluation:
    * 1. Walk all matching rules. Any UNCONDITIONAL deny matching the
@@ -336,12 +318,9 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     collectionId: string,
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
-    // Admin bypass - no row restrictions
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, collectionId, `${operation}:row-filter`);
-      return [];
-    }
-
+    // Canon §28.6 (Plan Fix 33): admin flows through the seeded allow rules,
+    // which are unconditional (conditions=null). The evaluator returns [] (no
+    // row predicates) for an unconditional allow — matching the prior bypass.
     if (!this.collectionAclRepo) {
       return [];
     }
@@ -446,12 +425,10 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     operation: CollectionOperation,
     tableAlias = 't',
   ): Promise<RowLevelClause> {
-    // Admin bypass
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, collectionId, `${operation}:row-clause`);
-      return { clauses: [], params: {} };
-    }
-
+    // Canon §28.6 (Plan Fix 33): admin flows through the seeded allow rules
+    // (unconditional, conditions=null). getSafeRowLevelPredicatesForCollection
+    // returns [] for an unconditional allow, which renders to the same empty
+    // clause set that the prior bypass produced.
     const predicates = await this.getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation);
 
     if (predicates.length === 0) {
@@ -481,16 +458,11 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     collectionId: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
-    // Admin bypass - full access
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, collectionId, 'fields:read');
-      return fields.map((field) => ({
-        ...field,
-        canRead: true,
-        canWrite: true,
-        maskingStrategy: 'NONE' as MaskingStrategy,
-      }));
-    }
+    // Canon §28.6 (Plan Fix 33): admin flows through the §28 evaluator.
+    // The seeded wildcard PropertyAccessRule (property_id IS NULL,
+    // wildcard_collection_id = collectionId, role_id = adminRoleId,
+    // can_read=true, can_write=true, masking_strategy='NONE') produces the
+    // same result as the prior bypass for every field on a seeded collection.
 
     // If no property access rule repo, use default permissions
     if (!this.propertyAclRepo) {
@@ -925,14 +897,11 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     record: Record<string, unknown>,
     fields: AuthorizedPropertyMeta[],
   ): Promise<Record<string, unknown>> {
-    // Admin bypass - no masking
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, 'record', 'mask', {
-        recordId: record['id'] != null ? String(record['id']) : null,
-      });
-      return record;
-    }
-
+    // Canon §28.6 (Plan Fix 33): masking decisions are driven by the
+    // `fields` array (which already encodes canRead and maskingStrategy from
+    // getAuthorizedFieldsForCollection). The seeded admin wildcard property
+    // rule produces maskingStrategy='NONE' for every field, so admins see
+    // unmasked values through the same path as every other authorised user.
     const masked = { ...record };
 
     for (const field of fields) {
@@ -965,14 +934,10 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     operation: CollectionOperation,
     record: Record<string, unknown>,
   ): Promise<boolean> {
-    // Admin bypass
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, collectionId, operation, {
-        recordId: record['id'] != null ? String(record['id']) : null,
-      });
-      return true;
-    }
-
+    // Canon §28.6 (Plan Fix 33): admin flows through the §28 record-level
+    // evaluator. The seeded CollectionAccessRule (conditions=null) is an
+    // unconditional allow that matches every record, producing the same
+    // result as the prior bypass.
     if (!this.collectionAclRepo) {
       return false;
     }
@@ -1041,10 +1006,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     tableName: string,
     operation: CollectionOperation,
   ): Promise<boolean> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, operation);
-      return true;
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to canAccessCollection
+    // which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     return this.canAccessCollection(ctx, collectionId, operation);
   }
@@ -1057,10 +1020,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     tableName: string,
     operation: CollectionOperation,
   ): Promise<void> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, operation);
-      return;
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to ensureCollectionAccess
+    // which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     await this.ensureCollectionAccess(ctx, collectionId, operation);
   }
@@ -1073,10 +1034,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     tableName: string,
     operation: CollectionOperation,
   ): Promise<SafePredicate[]> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, `${operation}:row-filter`);
-      return [];
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to the collection
+    // variant which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     return this.getSafeRowLevelPredicatesForCollection(ctx, collectionId, operation);
   }
@@ -1090,10 +1049,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     operation: CollectionOperation,
     tableAlias = 't',
   ): Promise<RowLevelClause> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, `${operation}:row-clause`);
-      return { clauses: [], params: {} };
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to the collection
+    // variant which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     return this.buildCollectionRowLevelClause(ctx, collectionId, operation, tableAlias);
   }
@@ -1106,15 +1063,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     tableName: string,
     fields: PropertyMeta[],
   ): Promise<AuthorizedPropertyMeta[]> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, 'fields:read');
-      return fields.map((field) => ({
-        ...field,
-        canRead: true,
-        canWrite: true,
-        maskingStrategy: 'NONE' as MaskingStrategy,
-      }));
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to the collection
+    // variant which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     return this.getAuthorizedFieldsForCollection(ctx, collectionId, fields);
   }
@@ -1165,12 +1115,8 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     operation: CollectionOperation,
     record: Record<string, unknown>,
   ): Promise<boolean> {
-    if (ctx.isAdmin) {
-      this.auditAdminBypass(ctx, tableName, operation, {
-        recordId: record['id'] != null ? String(record['id']) : null,
-      });
-      return true;
-    }
+    // Canon §28.6 (Plan Fix 33): no bypass. Delegates to the collection
+    // variant which goes through the §28 evaluator.
     const collectionId = await this.resolveTableNameToCollectionId(tableName);
     return this.canAccessCollectionRecord(ctx, collectionId, operation, record);
   }
@@ -1650,36 +1596,11 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
       : b;
   }
 
-  /**
-   * F021: emit an audit row for an admin bypass site. Fire-and-forget —
-   * never throws. The port's implementation is expected to be best-effort
-   * (matches the AccessAuditService.logAccess posture); a failing write
-   * cannot regress the bypass return value (canon §10 audit must not
-   * compromise runtime correctness).
-   *
-   * Caller is responsible for only invoking this on admin paths — the
-   * helper does not re-check ctx.isAdmin.
-   */
-  private auditAdminBypass(
-    ctx: UserRequestContext,
-    resource: string,
-    action: string,
-    context?: Record<string, unknown>,
-  ): void {
-    if (!this.accessAudit) return;
-    try {
-      this.accessAudit.logAdminBypass({
-        userId: ctx.userId,
-        resource,
-        action,
-        context,
-      });
-    } catch (err) {
-      this.logger.warn(
-        `Admin bypass audit emit failed for user=${ctx.userId} resource=${resource} action=${action}: ${(err as Error).message}`,
-      );
-    }
-  }
+  // auditAdminBypass was removed by Plan Fix 33 (canon §28.6): the bypass
+  // itself is gone so the helper has no callers. The AccessAuditPort
+  // interface method `logAdminBypass` is retained (not removed here) per the
+  // task scope; the method becomes callable again if an operator adds a future
+  // bypass site that warrants an explicit audit row.
 
   private checkOperationPermission(
     rule: CollectionAccessRuleData,

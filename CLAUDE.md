@@ -594,6 +594,17 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 33): canon §28.6 admin bypass retirement.
+  Deleted `if (ctx.isAdmin) return true` at 9 sites in
+  `libs/authorization/src/lib/authorization.service.ts` and 1 site in
+  `libs/auth-guard/src/lib/permissions.guard.ts`. Replaced with seed
+  migration `1931100000000-seed-admin-policies.ts` that inserts broad
+  allow rules for the admin role across system collections (37 collection
+  codes) + wildcard property rules. §28 evaluator now handles admin
+  uniformly. `auditAdminBypass` private helper removed (no callers);
+  `AccessAuditPort.logAdminBypass` interface method retained. Closes
+  canon §28.6 commitment.
+
 - 2026-05-13 (Plan Fix 30 PR-3 / F136 PR-3): pgvector pre-filter
   closes the search authz wave. New `emitPgvectorWhere(ast, attrs)`
   translates FilterAst → parameterized SQL WHERE clauses for filtering
@@ -1144,7 +1155,7 @@ These three are first-class outcomes, not bolted-on layers.
 
 Admin-role users go through the same evaluator. They are not short-circuited to `return true`. Instead, the platform ships an `admin` policy at install time that grants broad allow rules across system collections. Customers who tighten admin access do so by editing those policies, not by changing the evaluator.
 
-**Implementation status (pre-§28 amendment):** F021 added an audit row on every admin bypass site. The bypass still exists. Removing the bypass and replacing with seed policies is owed to a follow-up wave; the canon now binds the destination.
+**Implementation:** Bypass retired in Plan Fix 33. Admin-role users now flow through the §28 evaluator like any other role; broad allow policies are installed at instance provisioning via seed migration `migrations/instance/1931100000000-seed-admin-policies.ts`. F021 special-case `auditAdminBypass` helper and its DI injection were removed from `AuthorizationService` (no callers remain). The `AccessAuditPort.logAdminBypass` interface method is retained for future callers.
 
 ### 28.7 Explainability is mandatory
 
