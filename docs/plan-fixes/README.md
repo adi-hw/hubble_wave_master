@@ -16,7 +16,7 @@ Tracks architectural remediation efforts referenced in `CLAUDE.md`. Each fix has
 | 14 | Per-automation rate limiting | **Done** | Completed in W7.C. |
 | 15 | Approved-deps registry | **Done** | Completed in W6.D. |
 | 16 | AVA proposal state machine | **Deferred (Architecture v3)** | Per canon §12 PER-FEATURE: the trust progression applies per AI feature when customer enables autonomous action. Activate per-feature when needed; not a platform-wide framework. |
-| 24 | Per-service entity sets | **Superseded by Architecture v3** | The modular monolith uses one shared entity set inside `apps/api`. The "god-package" `libs/instance-db/src/lib/entities/index.ts` becomes the single source of truth for the API process; per-service splitting is no longer needed. |
+| 24 | Entity barrel restructure (per-area files) | **In progress (PR-A complete 2026-05-13)** | Per-service splitting superseded by Architecture v3; per-area FILE split revived as F031. PR-A landed: `index.ts` now re-exports from 8 area sibling files; public API unchanged. PR-B (per-module TypeORM forFeature) and PR-C (scanner enforcement) deferred pending measured benefit. See `24-entity-barrel-restructure.md`. |
 
 ## Active fixes after Architecture v3
 

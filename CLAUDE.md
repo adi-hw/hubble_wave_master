@@ -43,8 +43,12 @@ compliance scanner. Pre-existing violations are tracked explicitly:
   empty after W2.E)
 - `tools/service-boundary-check.ts` KNOWN_VIOLATIONS list (currently
   empty after W5.D)
-- `libs/instance-db/src/lib/entities/index.ts` is acknowledged as a
-  "god-package" pending Plan Fix 24 (per-service entity sets)
+- `libs/instance-db/src/lib/entities/index.ts` was a "god-package"
+  listing 130+ entities; Plan Fix 24 PR-A (2026-05-13) restructured it
+  into 8 per-area sibling files (identity, metadata, automation, ava,
+  settings, analytics, notifications, integrations) while preserving the
+  barrel public API verbatim. Per-service entity-set splitting remains
+  superseded by the monolith architecture (canon §17).
 
 Plan Fix 1 (automation consolidation) is complete: svc-data's
 `automation/` directory now contains only a thin HTTP client; the
@@ -589,6 +593,18 @@ explicit amendment note (date, fix code if from a remediation wave,
 1-line summary of what changed).
 
 Past amendments (most recent first):
+
+- 2026-05-13 (Plan Fix 24 PR-A — entity barrel restructured into
+  per-area files, closes F031): `libs/instance-db/src/lib/entities/index.ts`
+  was a 1 100-line god-package exporting 130+ entities from 52 source files.
+  Split into 8 per-area sibling files (identity.ts, metadata.ts,
+  automation.ts, ava.ts, settings.ts, analytics.ts, notifications.ts,
+  integrations.ts). The barrel at index.ts now re-exports via
+  `export * from './identity'` etc. Public API of `@hubblewave/instance-db`
+  is unchanged — no consumer import changes. `instanceEntities` TypeORM
+  array preserved verbatim. Future PR-B (per-module TypeOrmModule.forFeature)
+  and PR-C (area-boundary scanner) deferred unless measured benefit justifies
+  them. Refs F031.
 
 - 2026-05-13 (W6.B / Plan Fix 26): JSONB GIN coverage added (F048).
   5 GIN indexes on demonstrated query columns across 3 tables:
