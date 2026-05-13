@@ -50,9 +50,52 @@ W5.A fixes the regex, adds self-test coverage for the missed patterns, runs the 
 - `npm run authz:check && npm run security:check && npm run service-boundary:check && npm run deps:check && npm run compliance:check` → all green
 - `npx nx build api && npx nx build control-plane` → green
 
-### W5.B — identity area sweep
+### W5.B — identity area sweep (COMPLETE, 2026-05-13)
 
-Refactor every `apps/api/src/app/identity/**/*.service.ts` site captured in W5.A's allowlist to use `withAudit(...)`. Remove identity entries from `KNOWN_DEFERRED_OFFENDERS`. Add at least one integration test asserting atomic rollback (audit-write failure rolls back data-write).
+Refactored all 4 identity/auth sites captured in W5.A's allowlist to use
+`withAudit(dataSource, fn)`. Removed all 4 entries from `KNOWN_DEFERRED_OFFENDERS`.
+`npm run audit:check` now reports `audit bypass check: ok` with zero deferred sites.
+
+**Files refactored:**
+
+- `apps/api/src/app/identity/auth/behavioral-analytics.service.ts`
+  - `updateAlertStatus` (lines 389–441): `alertRepo.save` + `auditLogRepo.save`
+    wrapped in `withAudit`. `AuditLog` injection removed (no longer used as
+    direct repo; `withAudit` manages audit writes internally).
+
+- `apps/api/src/app/identity/auth/delegation.service.ts`
+  - `createDelegation` (~line 120): `delegationRepo.save` + `auditLogRepo.save`
+  - `approveDelegation` (~line 186): `delegationRepo.save` + `auditLogRepo.save`
+  - `revokeDelegation` (~line 234): `delegationRepo.save` + `auditLogRepo.save`
+  All 3 wrapped in `withAudit`. `AuditLog` injection removed.
+
+- `apps/api/src/app/identity/auth/device-trust.service.ts`
+  - `trustDevice` (~line 135): `deviceRepo.save` + `auditLogRepo.save` for new devices
+  - `revokeDevice` (~line 285): `deviceRepo.save` + `auditLogRepo.save`
+  - `revokeAllDevices` (~line 314): `deviceRepo.update` + `auditLogRepo.save`
+  All 3 wrapped in `withAudit`. `AuditLog` injection kept (still used for
+  read-only queries in `assessDeviceRisk`).
+
+- `apps/api/src/app/identity/auth/impersonation.service.ts`
+  - `startImpersonation` (~line 131): `sessionRepo.save` + `authEventsService.record`
+    + `auditLogRepo.save`. After refactor: `sessionRepo.save` + `recordAudit`
+    inside `withAudit`; `authEventsService.record` moved after commit (analytics
+    concern, not a §10 audit row). `AuditLog` injection removed.
+  - `endImpersonation` (~line 188): same pattern.
+
+**Integration test added:**
+`apps/api/src/app/identity/auth/impersonation.service.spec.ts`
+
+- `startImpersonation — happy path`: asserts session persists when audit write succeeds.
+- `startImpersonation — atomic rollback (canon §10)`: overrides the `AuditLog`
+  repo save to throw; asserts the overall call throws and `authEventsService.record`
+  is NOT called (it runs after the transaction, so a throw inside the transaction
+  prevents it from executing).
+- `endImpersonation — happy path`: asserts session.isActive = false is persisted.
+
+`authEventsService.record(...)` calls intentionally moved OUTSIDE the `withAudit`
+wrapper in all affected methods — they are analytics/observability writes, not §10
+audit rows, and they do not need to be atomic with the data write.
 
 ### W5.C — metadata area sweep
 

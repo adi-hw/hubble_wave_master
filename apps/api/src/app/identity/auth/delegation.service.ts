@@ -12,9 +12,9 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, MoreThan } from 'typeorm';
-import { Delegation, DelegationStatus, User, AuditLog } from '@hubblewave/instance-db';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, LessThan, MoreThan } from 'typeorm';
+import { Delegation, DelegationStatus, User, withAudit } from '@hubblewave/instance-db';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 
 export interface CreateDelegationDto {
@@ -46,9 +46,9 @@ export class DelegationService {
     private readonly delegationRepo: Repository<Delegation>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(AuditLog)
-    private readonly auditLogRepo: Repository<AuditLog>,
     private readonly permissionResolver: PermissionResolverService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -117,15 +117,14 @@ export class DelegationService {
       requiresApproval: dto.requiresApproval || false,
     });
 
-    await this.delegationRepo.save(delegation);
+    const savedDelegation = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(Delegation).save(delegation);
 
-    // Audit log
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      recordAudit({
         userId: delegatorId,
         action: 'delegation.create',
         collectionCode: 'delegation',
-        recordId: delegation.id,
+        recordId: persisted.id,
         newValues: {
           delegateId: dto.delegateId,
           delegateEmail: delegate.email,
@@ -134,14 +133,16 @@ export class DelegationService {
           startsAt: dto.startsAt.toISOString(),
           endsAt: dto.endsAt.toISOString(),
         },
-      }),
-    );
+      });
+
+      return persisted;
+    });
 
     this.logger.log(
       `Delegation created: ${delegator.email} -> ${delegate.email} (${dto.name})`,
     );
 
-    return delegation;
+    return savedDelegation;
   }
 
   /**
@@ -183,10 +184,10 @@ export class DelegationService {
     delegation.approvedBy = approverId;
     delegation.approvedAt = new Date();
 
-    await this.delegationRepo.save(delegation);
+    const approvedDelegation = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(Delegation).save(delegation);
 
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      recordAudit({
         userId: approverId,
         action: 'delegation.approve',
         collectionCode: 'delegation',
@@ -195,12 +196,14 @@ export class DelegationService {
           delegatorId: delegation.delegatorId,
           delegateId: delegation.delegateId,
         },
-      }),
-    );
+      });
+
+      return persisted;
+    });
 
     this.logger.log(`Delegation ${delegationId} approved by ${approverId}`);
 
-    return delegation;
+    return approvedDelegation;
   }
 
   /**
@@ -231,10 +234,10 @@ export class DelegationService {
     delegation.revokedAt = new Date();
     delegation.revocationReason = reason;
 
-    await this.delegationRepo.save(delegation);
+    const revokedDelegation = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(Delegation).save(delegation);
 
-    await this.auditLogRepo.save(
-      this.auditLogRepo.create({
+      recordAudit({
         userId: revokerId,
         action: 'delegation.revoke',
         collectionCode: 'delegation',
@@ -244,12 +247,14 @@ export class DelegationService {
           delegateId: delegation.delegateId,
           reason,
         },
-      }),
-    );
+      });
+
+      return persisted;
+    });
 
     this.logger.log(`Delegation ${delegationId} revoked by ${revokerId}`);
 
-    return delegation;
+    return revokedDelegation;
   }
 
   /**
