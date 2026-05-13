@@ -600,6 +600,14 @@ Past amendments (most recent first):
   follow in W5.B-F; allowlist must reach empty by end of wave.
   Refs Plan Fix 25.
 
+- 2026-05-13 (Plan Fix 28): orphan-lib cleanup completed.
+  3 libs deleted: libs/relationship-resolver, libs/schema-engine,
+  libs/schema-validator. dead-code-allowlist.json entries (owedTo: W2)
+  removed. tsconfig.base.json path mappings cleaned. Canon §14
+  ("delete ruthlessly") + §1 (greenfield) applied — the libs predate
+  service consolidation and had zero live consumers post-arc-w1-complete
+  (PR #35). Refs Item 12 of pending Phase 2 backlog.
+
 - 2026-05-12 (canon §29 PR-D — service principals + RequestContext
   discriminated union, closes audit finding F022):
   • `service_principals` table + `ServicePrincipal` entity land in

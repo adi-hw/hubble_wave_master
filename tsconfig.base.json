@@ -75,17 +75,8 @@
       "@hubblewave/ui-components": [
         "libs/ui-components/src/index.ts"
       ],
-      "@hubblewave/schema-engine": [
-        "libs/schema-engine/src/index.ts"
-      ],
       "@hubblewave/formula-parser": [
         "libs/formula-parser/src/index.ts"
-      ],
-      "@hubblewave/relationship-resolver": [
-        "libs/relationship-resolver/src/index.ts"
-      ],
-      "@hubblewave/schema-validator": [
-        "libs/schema-validator/src/index.ts"
       ],
       "@hubblewave/storage": [
         "libs/storage/src/index.ts"
