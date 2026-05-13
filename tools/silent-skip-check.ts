@@ -38,17 +38,20 @@ const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']
  * accepted as deferred work. Listed by relative path. Each entry must be
  * accompanied by a follow-up reference (Wave/Fix/issue).
  */
-const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [
+const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string; rationale?: string }> = [
   {
     // checkAlertRules: `continue` filters disabled alert rules (not an error
     // path); `logger.warn` fires on a SUCCESSFUL alert match, not on failure.
     // Neither pattern is an error-swallowing silent skip — no anomaly write is
     // warranted. The AuditService also does not inject RuntimeAnomalyService
     // because it uses method-level DataSource params (stateless helper pattern).
-    // W5.J: evaluate if AuditService should gain a persistent alert-dispatch
-    // path (e.g. writing to instance_event_outbox) rather than just logging.
     file: 'libs/enterprise/src/lib/audit.service.ts',
-    followUp: 'W5.J',
+    followUp: 'permanent',
+    rationale:
+      'False-positive: continue filters disabled rules (not an error path); ' +
+      'logger.warn is on the success path (alert matched), not an error skip. ' +
+      'No anomaly write warranted. AuditService is a stateless DataSource-param ' +
+      'helper and does not inject RuntimeAnomalyService by design.',
   },
 ];
 
