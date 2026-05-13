@@ -39,93 +39,16 @@ const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']
  * accompanied by a follow-up reference (Wave/Fix/issue).
  */
 const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [
-  // W5.G baseline inventory — first pass of silent-skip scanner. All sites below
-  // contain logger.warn/error + continue in the same method body without a
-  // RuntimeAnomalyService.record() call. Scheduled for W5.I sweep.
-  //
-  // NOTE: Some of these files DO use runtimeAnomaly.record() in OTHER methods,
-  // but not in the specific method(s) that triggered the scanner (logger.warn +
-  // continue without anomaly write in the same method body). Fixing each site
-  // requires adding a RuntimeAnomalyService.record() call adjacent to the
-  // continue statement, which is a service-file change deferred to W5.I.
   {
-    file: 'apps/api/src/app/analytics/backup/backup.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/automation/runtime/automation-runtime.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/automation/runtime/script-sandbox.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/automation/workflow/workflow-action.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/ava/search/search-indexing.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/collection-data.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/computed/computed-property-dispatcher.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/defaults/default-value.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/formula/dependency.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/formula/lookup.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/formula/rollup.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/data/validation/validation.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/api-key/api-key.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/mfa.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/sso/oidc.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/identity/roles/permission-seeder.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/metadata/packs/packs.service.ts',
-    followUp: 'W5.I',
-  },
-  {
-    file: 'apps/api/src/app/notifications/notification-outbox-processor.service.ts',
-    followUp: 'W5.I',
-  },
-  // enterprise lib — audit.service.ts uses logger.warn + continue but does not
-  // have RuntimeAnomalyService injected. W5.I to evaluate whether to inject it
-  // or refactor the pattern.
-  {
+    // checkAlertRules: `continue` filters disabled alert rules (not an error
+    // path); `logger.warn` fires on a SUCCESSFUL alert match, not on failure.
+    // Neither pattern is an error-swallowing silent skip — no anomaly write is
+    // warranted. The AuditService also does not inject RuntimeAnomalyService
+    // because it uses method-level DataSource params (stateless helper pattern).
+    // W5.J: evaluate if AuditService should gain a persistent alert-dispatch
+    // path (e.g. writing to instance_event_outbox) rather than just logging.
     file: 'libs/enterprise/src/lib/audit.service.ts',
-    followUp: 'W5.I',
+    followUp: 'W5.J',
   },
 ];
 

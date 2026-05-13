@@ -5,7 +5,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { spawn } from 'child_process';
-import { AuditLog } from '@hubblewave/instance-db';
+import { AuditLog, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { RedisService } from '@hubblewave/redis';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
@@ -47,6 +47,7 @@ export class BackupService implements OnModuleInit {
     private readonly storageConfig: StorageConfig,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly redisService: RedisService,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {
     this.bucketName = this.storageConfig.buckets.backups;
     this.cronSchedule = this.configService.get<string>('BACKUP_CRON') || '0 2 * * *';
@@ -343,6 +344,13 @@ export class BackupService implements OnModuleInit {
     for (const collection of collections) {
       const name = (collection as { name?: string }).name;
       if (!name) {
+        this.logger.warn('Typesense collection missing name field; skipping export');
+        await this.runtimeAnomalyService.record({
+          kind: 'typesense_collection_name_missing',
+          serviceCode: 'svc-backup',
+          message: 'Typesense collection missing name field during backup; collection skipped',
+          context: { prefix, collection },
+        });
         continue;
       }
       const exportPayload = await client.collections(name).documents().export();
@@ -459,6 +467,13 @@ export class BackupService implements OnModuleInit {
       }
       const name = artifact.key.split('/').pop()?.replace('.jsonl', '');
       if (!name) {
+        this.logger.warn(`Typesense artifact key yielded empty collection name during restore; skipping: ${artifact.key}`);
+        await this.runtimeAnomalyService.record({
+          kind: 'typesense_artifact_name_missing',
+          serviceCode: 'svc-backup',
+          message: `Typesense artifact key yielded empty collection name during restore; skipping: ${artifact.key}`,
+          context: { artifactKey: artifact.key },
+        });
         continue;
       }
       await client.collections(name).documents().import(jsonl.toString('utf8'), { action: 'upsert' });
@@ -668,6 +683,13 @@ export class BackupService implements OnModuleInit {
       await client.eval(lua, 1, this.lockKey(operation), token);
     } catch (error) {
       this.logger.warn(`Failed to release ${operation} lock: ${(error as Error).message}`);
+      await this.runtimeAnomalyService.record({
+        kind: 'backup_lock_release_failed',
+        serviceCode: 'svc-backup',
+        message: `Failed to release ${operation} lock ${this.lockKey(operation)}: ${(error as Error).message}`,
+        context: { operation, lockKey: this.lockKey(operation) },
+        error: error as Error,
+      });
     }
   }
 

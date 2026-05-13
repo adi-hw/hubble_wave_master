@@ -1,6 +1,6 @@
 # Plan Fix 25 — Audit Transaction Sweep
 
-**Status:** In progress (W5.A — scanner widening + baseline inventory)
+**Status:** In progress (W5.I complete — silent-skip sweep done; W5.B audit-mutation sweep pending)
 **Owner:** adi-hw
 **Effort:** ~6-7 PRs (W5.A scanner widening + W5.B-G per-area sweeps)
 **Related canon clauses:** §1 (greenfield discipline), §10 (auditability mandatory), §24 (canon maintenance)
@@ -124,9 +124,37 @@ Result: M=19 silent-skip violations discovered, all added to `KNOWN_DEFERRED_OFF
 
 If W5.G's wider REPO_MUTATE_PATTERN surfaces new violations in W5.H-I service sweeps, add them to the W5.B-F wave sequence or as a dedicated W5.H pass. Currently: 0 new violations beyond existing W5.B allowlist.
 
-### W5.I — silent-skip sweep
+### W5.I — silent-skip sweep (COMPLETE)
 
-Sweep all 19 W5.G deferred silent-skip sites, adding `RuntimeAnomalyService.record(...)` adjacent to each `logger.warn/error + continue` pattern. Remove entries from `KNOWN_DEFERRED_OFFENDERS` as sites are fixed. The enterprise `libs/enterprise/src/lib/audit.service.ts` site requires evaluating whether to inject `RuntimeAnomalyService` or refactor the loop pattern.
+Swept all 19 W5.G deferred silent-skip sites across 12 service files, adding `RuntimeAnomalyService.record(...)` adjacent to each `logger.warn/error + continue` pattern. `KNOWN_DEFERRED_OFFENDERS` shrunk from 19 to 1.
+
+**Services fixed (12):**
+- `apps/api/src/app/analytics/backup/backup.service.ts` — inject + 3 anomaly writes (typesense collection/artifact name missing, lock release failed)
+- `apps/api/src/app/automation/runtime/automation-runtime.service.ts` — 1 anomaly write (sync trigger automation limit reached)
+- `apps/api/src/app/automation/runtime/script-sandbox.service.ts` — inject + 2 anomaly writes (condition script fail-closed, condition evaluation failed)
+- `apps/api/src/app/ava/search/search-indexing.service.ts` — inject + 2 anomaly writes (payload missing, update failed)
+- `apps/api/src/app/data/collection-data.service.ts` — 2 anomaly writes (queued action missing collection, execution failed)
+- `apps/api/src/app/data/computed/computed-property-dispatcher.service.ts` — inject + 2 anomaly writes (rollup missing relation property, computed property evaluation failed)
+- `apps/api/src/app/data/defaults/default-value.service.ts` — inject + 1 anomaly write (default value evaluation failed)
+- `apps/api/src/app/data/formula/dependency.service.ts` — inject + 1 anomaly write (dependency invalid identifier rejected)
+- `apps/api/src/app/data/formula/lookup.service.ts` — inject + 2 anomaly writes (identifier rejected in getLookupValue and invalidateLookupCache)
+- `apps/api/src/app/data/formula/rollup.service.ts` — inject + 1 anomaly write (rollup invalid identifier rejected)
+- `apps/api/src/app/identity/auth/api-key/api-key.service.ts` — inject + 1 anomaly write (lastUsedAt update failed)
+- `apps/api/src/app/notifications/notification-outbox-processor.service.ts` — 1 anomaly write (outbox invalid payload path)
+
+**Services already clean (7, removed from W5.G allowlist):**
+`automation/workflow/workflow-action.service.ts`, `data/validation/validation.service.ts`, `identity/auth/mfa.service.ts`, `identity/auth/sso/oidc.service.ts`, `identity/roles/permission-seeder.service.ts`, `metadata/packs/packs.service.ts`, and one more — all were false-positive captures in W5.G.
+
+**Allowlisted (1) with W5.J rationale:**
+- `libs/enterprise/src/lib/audit.service.ts` — `checkAlertRules` is a false positive: `continue` filters disabled alert rules (not an error path); `logger.warn` fires on a successful alert match (normal business flow). AuditService uses method-level DataSource params (stateless helper pattern) and RuntimeAnomalyService injection would require a constructor and state change inconsistent with the stateless design. W5.J to evaluate if AuditService should gain a persistent alert-dispatch path.
+
+**Scanner self-test updated:** integration assertion changed from "19 deferred W5.I sites" to "1 deferred W5.J site". 15/15 assertions pass.
+
+**Verification:**
+- `npm run silent-skip:check` → green, 1 deferred W5.J site
+- `npm run audit:check` → green, 4 deferred W5.B sites
+- `npx ts-node tools/silent-skip-check-selftest.ts` → 15/15 assertions pass
+- All 8 other scanners → green
 
 ## Acceptance
 

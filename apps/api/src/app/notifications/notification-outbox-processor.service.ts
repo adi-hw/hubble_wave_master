@@ -66,6 +66,18 @@ export class NotificationOutboxProcessor implements OnModuleInit, OnModuleDestro
             `Notify outbox payload invalid for entry ${entry.id}: ${validation.error}`,
           );
           await this.markFailed(entry.id, `invalid payload: ${validation.error}`);
+          await this.runtimeAnomaly.record({
+            kind: 'outbox_invalid_payload',
+            serviceCode: 'svc-notify',
+            message: `Notification outbox entry ${entry.id} (${entry.eventType}) has invalid payload: ${validation.error}`,
+            collectionCode: entry.collectionCode ?? undefined,
+            recordId: entry.recordId ?? undefined,
+            context: {
+              outboxId: entry.id,
+              eventType: entry.eventType,
+              validationError: validation.error,
+            },
+          });
           continue;
         }
 

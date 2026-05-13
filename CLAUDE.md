@@ -716,6 +716,18 @@ Past amendments (most recent first):
   follow in W5.B-F; allowlist must reach empty by end of wave.
   Refs Plan Fix 25.
 
+- 2026-05-13 (W5.I / Plan Fix 25): silent-skip → RuntimeAnomaly sweep.
+  Refactored 12 services across automation, data, ava, identity,
+  notifications, and analytics to call `RuntimeAnomalyService.record(...)`
+  before silent `continue` per canon §10. `tools/silent-skip-check.ts`
+  `KNOWN_DEFERRED_OFFENDERS` shrunk from 19 (W5.G baseline) to 1.
+  The one remaining entry (`libs/enterprise/src/lib/audit.service.ts`)
+  is a scanner false-positive: `continue` filters disabled alert rules
+  (not an error path) and `logger.warn` fires on a successful alert match.
+  Tracked as W5.J for evaluation of a persistent alert-dispatch path.
+  Self-test updated: 15/15 assertions pass. Refs F044 (§10 silent-skip
+  clause).
+
 - 2026-05-12 (canon §29 PR-D — service principals + RequestContext
   discriminated union, closes audit finding F022):
   • `service_principals` table + `ServicePrincipal` entity land in

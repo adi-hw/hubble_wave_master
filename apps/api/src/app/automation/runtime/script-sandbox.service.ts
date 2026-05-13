@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Parser } from 'expr-eval';
+import { RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { ExecutionContext } from './automation-runtime.types';
 
 // Layered defense for user-supplied scripts:
@@ -125,7 +126,7 @@ export class ScriptSandboxService {
   private readonly logger = new Logger(ScriptSandboxService.name);
   private readonly parser: Parser;
 
-  constructor() {
+  constructor(private readonly runtimeAnomalyService: RuntimeAnomalyService) {
     this.parser = new Parser({
       operators: {
         in: false,
@@ -420,6 +421,12 @@ export class ScriptSandboxService {
       // can mark the action as failed rather than silently dropping output.
       if (mode === 'condition') {
         this.logger.warn(`Condition script failed (fail-closed): ${message}`);
+        await this.runtimeAnomalyService.record({
+          kind: 'condition_script_fail_closed',
+          serviceCode: 'svc-automation',
+          message: `Condition script failed (fail-closed → false): ${message}`,
+          context: { mode, scriptLength: script.length, errorMessage: message },
+        });
         return {
           output: false,
           error: message,
@@ -467,6 +474,13 @@ export class ScriptSandboxService {
     } catch (error) {
       // Fail-closed: an unevaluable condition is treated as 'not met'.
       this.logger.error(`Condition evaluation failed: ${(error as Error).message}`);
+      await this.runtimeAnomalyService.record({
+        kind: 'condition_evaluation_failed',
+        serviceCode: 'svc-automation',
+        message: `Condition evaluation failed (fail-closed → false): ${(error as Error).message}`,
+        context: { conditionLength: condition.length, errorMessage: (error as Error).message },
+        error: error as Error,
+      });
       return false;
     }
   }

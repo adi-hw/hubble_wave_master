@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { PropertyDefinition } from '@hubblewave/instance-db';
+import { PropertyDefinition, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { v4 as uuidv4 } from 'uuid';
 import { Parser } from 'expr-eval';
 import {
@@ -88,7 +88,10 @@ export class DefaultValueService {
   private readonly logger = new Logger(DefaultValueService.name);
   private readonly parser: Parser;
 
-  constructor(private readonly sequenceGenerator: SequenceGeneratorService) {
+  constructor(
+    private readonly sequenceGenerator: SequenceGeneratorService,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
+  ) {
     this.parser = new Parser({
       operators: {
         'in': false,
@@ -135,6 +138,13 @@ export class DefaultValueService {
         this.logger.warn(
           `Failed to evaluate default for ${property.code}: ${evaluated.error}`
         );
+        await this.runtimeAnomalyService.record({
+          kind: 'default_value_evaluation_failed',
+          serviceCode: 'svc-data',
+          message: `Failed to evaluate default value for property ${property.code} in collection ${context.collectionCode}: ${evaluated.error}`,
+          collectionCode: context.collectionCode,
+          context: { propertyCode: property.code, defaultType: defaultConfig?.type, errorMessage: evaluated.error },
+        });
       }
     }
 

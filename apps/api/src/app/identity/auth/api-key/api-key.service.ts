@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ApiKey } from '@hubblewave/instance-db';
+import { ApiKey, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 
@@ -54,6 +54,7 @@ export class ApiKeyService {
   constructor(
     @InjectRepository(ApiKey)
     private readonly apiKeyRepo: Repository<ApiKey>,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {}
 
   /**
@@ -122,6 +123,13 @@ export class ApiKeyService {
         // Update last used timestamp (fire and forget)
         this.apiKeyRepo.update({ id: candidate.id }, { lastUsedAt: new Date() }).catch((err) => {
           this.logger.warn(`Failed to update lastUsedAt for API key ${candidate.id}: ${err.message}`);
+          void this.runtimeAnomalyService.record({
+            kind: 'api_key_last_used_update_failed',
+            serviceCode: 'svc-identity',
+            message: `Failed to update lastUsedAt for API key ${candidate.id}: ${(err as Error).message}`,
+            context: { apiKeyId: candidate.id },
+            error: err as Error,
+          });
         });
 
         return {

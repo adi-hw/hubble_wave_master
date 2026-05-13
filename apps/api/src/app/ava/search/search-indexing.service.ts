@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import {
   SearchIndexState,
   SearchSource,
+  RuntimeAnomalyService,
 } from '@hubblewave/instance-db';
 import { mapToTypesenseDocument, IndexableDocument } from '@hubblewave/search-typesense';
 import { SearchTypesenseService } from './search-typesense.service';
@@ -21,6 +22,7 @@ export class SearchIndexingService {
     private readonly indexStateRepo: Repository<SearchIndexState>,
     private readonly typesenseService: SearchTypesenseService,
     private readonly embeddingService: SearchEmbeddingService,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {}
 
   async handleRecordEvent(payload: RecordEventPayload): Promise<void> {
@@ -52,6 +54,15 @@ export class SearchIndexingService {
 
         const record = payload.record;
         if (!record) {
+          this.logger.warn(`Search index update skipped for ${payload.collectionCode}:${payload.recordId} — record payload missing`);
+          await this.runtimeAnomalyService.record({
+            kind: 'search_index_record_payload_missing',
+            serviceCode: 'svc-search',
+            message: `Search index update skipped for ${payload.collectionCode}:${payload.recordId}: record payload missing in event`,
+            collectionCode: payload.collectionCode,
+            recordId: payload.recordId,
+            context: { eventType: payload.eventType, sourceCode: source.code },
+          });
           continue;
         }
 
@@ -83,6 +94,15 @@ export class SearchIndexingService {
           error: (error as Error).message,
         });
         this.logger.warn(`Search index update failed for ${payload.collectionCode}:${payload.recordId}`);
+        await this.runtimeAnomalyService.record({
+          kind: 'search_index_update_failed',
+          serviceCode: 'svc-search',
+          message: `Search index update failed for ${payload.collectionCode}:${payload.recordId}: ${(error as Error).message}`,
+          collectionCode: payload.collectionCode,
+          recordId: payload.recordId,
+          context: { eventType, sourceCode: source.code, errorMessage: (error as Error).message },
+          error: error as Error,
+        });
         throw error;
       }
     }

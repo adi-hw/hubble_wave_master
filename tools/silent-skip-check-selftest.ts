@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 /**
- * Self-test for tools/silent-skip-check.ts (W5.G / Plan Fix 25 / §10 amendment).
+ * Self-test for tools/silent-skip-check.ts (W5.I / Plan Fix 25 / §10 amendment).
  *
  * Tests two surfaces:
  *   A. Direct unit tests against the core analysis logic using synthetic TS
@@ -22,7 +22,7 @@
  *   Negative-5: logger.warn('skip'); RuntimeAnomalyService.record(); continue; → NOT flagged
  *   Positive-2: logger.error + continue without anomaly → flagged
  *   Negative-6: this.runtimeAnomaly.record() (shortened field name) satisfies requirement → NOT flagged
- *   Integration-1: master tree is clean
+ *   Integration-1: master tree is clean (W5.I complete: 1 W5.J deferred false-positive)
  *   Integration-2: planted unsafe fixture (warn+continue, no anomaly) is caught
  *   Integration-3: planted safe fixture (warn+continue+anomaly) is accepted
  *
@@ -390,7 +390,11 @@ async methodB() {
 console.log('\n--- Part B: integration tests via npm run silent-skip:check ---\n');
 
 // -----------------------------------------------------------------------
-// Integration-1: Master tree is clean (allowlist matches reality post-W5.G).
+// Integration-1: Master tree is clean post-W5.I (1 W5.J deferred false-positive).
+// W5.G baseline was 19 deferred sites; W5.I closed all real violations leaving
+// only libs/enterprise/src/lib/audit.service.ts as a scanner false-positive
+// (its continue filters disabled rules, its logger.warn fires on successful
+// alert match — not an error-swallowing path). Tracked as W5.J for evaluation.
 // -----------------------------------------------------------------------
 {
   let exitCode = 0;
@@ -414,8 +418,8 @@ console.log('\n--- Part B: integration tests via npm run silent-skip:check ---\n
     'Integration-1: scanner reports clean status',
   );
   t.assert(
-    /19 deferred site/.test(stdout),
-    'Integration-1: scanner lists 19 deferred W5.I sites',
+    /1 deferred site/.test(stdout),
+    'Integration-1: scanner lists 1 deferred W5.J site (audit.service.ts false-positive)',
   );
 }
 
