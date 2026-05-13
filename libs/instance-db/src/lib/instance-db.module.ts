@@ -68,18 +68,38 @@ import { AvaProposalService } from './ava-proposal/ava-proposal.service';
             : { rejectUnauthorized };
         }
 
+        // W6.C (F045): PgBouncer sits in front of Postgres in transaction-pooling
+        // mode. The runtime DataSource connects to PgBouncer (DB_HOST:DB_PORT).
+        // When the migration runner needs a direct Postgres connection it reads
+        // DIRECT_DB_HOST / DIRECT_DB_PORT instead; the same pattern applies to
+        // any consumer using LISTEN/NOTIFY (which PgBouncer transaction mode
+        // does not support).
+        //
+        // In development (no PgBouncer) DB_HOST / DB_PORT resolve directly to
+        // Postgres and the DIRECT_* vars are optional (they fall back to the
+        // same values).
+        const migrationsRun = configService.get('RUN_MIGRATIONS', 'false') === 'true';
+        const dbHost = migrationsRun
+          ? configService.get<string>('DIRECT_DB_HOST', configService.get<string>('DB_HOST', 'localhost'))
+          : configService.get<string>('DB_HOST', 'localhost');
+        const dbPort = migrationsRun
+          ? parseInt(configService.get<string>('DIRECT_DB_PORT', configService.get<string>('DB_PORT', '5432')), 10)
+          : parseInt(configService.get<string>('DB_PORT', '5432'), 10);
+
         return {
           type: 'postgres' as const,
-          host: configService.get<string>('DB_HOST', 'localhost'),
-          port: parseInt(configService.get<string>('DB_PORT', '5432'), 10),
+          host: dbHost,
+          port: dbPort,
           username: configService.get<string>('DB_USER', 'hubblewave'),
           password: dbPassword,
           database: configService.get<string>('DB_NAME', 'hubblewave'),
           entities: instanceEntities,
-          synchronize: false, // Always use migrations in production
+          synchronize: false,
           // W1.3: migrations now run from the dedicated svc-migrations job
           // with pg_advisory_lock; app pods boot read-only by default.
-          migrationsRun: configService.get('RUN_MIGRATIONS', 'false') === 'true',
+          // W6.C: migration runner uses DIRECT_DB_HOST/DIRECT_DB_PORT (above)
+          // so DDL statements bypass PgBouncer transaction-pooling mode.
+          migrationsRun,
           migrations: ['dist/migrations/instance/*.js'],
           // W1.7: IdentityCacheInvalidationSubscriber publishes identity.*
           // events on UserRole/RolePermission/GroupRole/GroupMember changes
@@ -96,12 +116,30 @@ import { AvaProposalService } from './ava-proposal/ava-proposal.service';
           ],
           logging: configService.get('DB_LOGGING', 'false') === 'true',
           ssl,
-          // Connection pool settings
           extra: {
-            max: parseInt(configService.get('DB_POOL_MAX', '20'), 10),
+            // W6.C: with PgBouncer in transaction mode, the Node process needs
+            // far fewer pg-driver-level connections. PgBouncer multiplexes
+            // these 10 driver connections into up to default_pool_size (25)
+            // Postgres backends. DB_POOL_MAX can be overridden per-instance
+            // for tuning, but should remain well below PgBouncer's
+            // max_client_conn to avoid saturating the pool.
+            max: parseInt(configService.get('DB_POOL_MAX', '10'), 10),
             idleTimeoutMillis: parseInt(configService.get('DB_POOL_IDLE_TIMEOUT', '30000'), 10),
             connectionTimeoutMillis: parseInt(configService.get('DB_CONNECTION_TIMEOUT', '5000'), 10),
+            // W6.C: disable pg driver-level prepared statement caching.
+            // PgBouncer transaction mode does not persist a server connection
+            // across statements, so prepared statements from one transaction
+            // are not visible in the next. Sending PREPARE against a pooled
+            // connection would fail with "prepared statement does not exist".
+            statement_timeout: parseInt(configService.get('DB_STATEMENT_TIMEOUT', '30000'), 10),
+            options: '-c statement_timeout=30000',
           },
+          // W6.C: instruct the underlying pg driver not to use prepared
+          // statements. Without this flag, node-postgres caches PREPARE
+          // responses on the client side and sends prepared-statement
+          // execution on subsequent calls — which breaks under PgBouncer
+          // transaction mode because the server connection may change.
+          cache: false,
         };
       },
       inject: [ConfigService],

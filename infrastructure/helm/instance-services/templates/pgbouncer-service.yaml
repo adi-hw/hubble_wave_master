@@ -1,0 +1,33 @@
+{{- /*
+ClusterIP Service exposing PgBouncer at port 6432 within the instance namespace.
+
+App pods (api) connect to this Service's DNS name at port 6432. PgBouncer
+forwards each transaction to the real Postgres at Values.database.host:5432.
+
+DNS name inside the cluster:
+  <release-name>-pgbouncer.<namespace>.svc.cluster.local:6432
+or the short form (within the same namespace):
+  <release-name>-pgbouncer:6432
+
+The configmap and env vars render DB_HOST pointing to this Service and
+DIRECT_DB_HOST pointing to the real Postgres host (for migrations and
+LISTEN/NOTIFY consumers).
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "instance-services.fullname" . }}-pgbouncer
+  labels:
+    {{- include "instance-services.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - name: pgbouncer
+      port: 6432
+      targetPort: 6432
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "instance-services.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: pgbouncer

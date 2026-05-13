@@ -42,6 +42,39 @@ redis:
   host: ""
   port: "6379"
 
+# PgBouncer connection pooler (W6.C / F045).
+# App pods connect to PgBouncer at port 6432; PgBouncer multiplexes into
+# Postgres at database.host:database.port.
+# Migration runner and LISTEN/NOTIFY consumers must use the direct Postgres
+# coordinates (DIRECT_DB_HOST / DIRECT_DB_PORT) to bypass PgBouncer because
+# transaction-pooling mode is incompatible with multi-statement DDL and
+# server-side notifications.
+pgbouncer:
+  # edoburu/pgbouncer is a minimal, well-maintained Alpine-based image.
+  image: "edoburu/pgbouncer:1.21.0"
+  replicaCount: 1
+  # Per-instance Postgres-side connections per pool. 25 server conns support
+  # hundreds of concurrent client connections in transaction mode.
+  defaultPoolSize: 25
+  # Reserve slots so monitoring / admin connections are never starved.
+  reservePoolSize: 5
+  reservePoolTimeout: 5
+  # Maximum simultaneous client connections (burst tolerance across all pods).
+  maxClientConn: 1000
+  # Idle server connections are closed after 10 minutes; reduces Postgres
+  # backend count during off-peak.
+  serverIdleTimeout: 600
+  # Queued clients that cannot get a connection in 30s get an immediate error
+  # rather than blocking indefinitely.
+  queryWaitTimeout: 30
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+
 # Per-instance secret values. Production should set secrets.create=false and
 # point existingSecret at a Secret materialised by external-secrets.
 secrets:

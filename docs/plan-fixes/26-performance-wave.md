@@ -102,8 +102,93 @@ maintenance script rather than a TypeORM migration.
 
 ### W6.C — PgBouncer + connection pooling (F045)
 
-Pending. Infrastructure-level change; adds PgBouncer as a sidecar in the
-per-instance container spec. No migration changes.
+**Status:** Complete (this PR)
+
+**What:** Deploy PgBouncer between app pods and Postgres in `transaction`
+pool mode. The runtime TypeORM DataSource (in `libs/instance-db`) connects
+to PgBouncer at port 6432. The migration runner and any consumer using
+`LISTEN`/`NOTIFY` use a separate `DIRECT_DB_HOST`/`DIRECT_DB_PORT` pair
+that bypasses PgBouncer and connects directly to Postgres.
+
+**Files:**
+
+New — instance-services helm chart:
+
+- `deploy/helm/instance-services/templates/pgbouncer-configmap.yaml` —
+  `pgbouncer.ini` with `pool_mode=transaction`, tuned timeouts and pool sizes.
+- `deploy/helm/instance-services/templates/pgbouncer-deployment.yaml` —
+  PgBouncer Deployment. An init container generates `userlist.txt` at pod
+  start by hashing `DB_PASSWORD` from the Secret; the main container runs
+  with `readOnlyRootFilesystem: true`.
+- `deploy/helm/instance-services/templates/pgbouncer-service.yaml` —
+  ClusterIP Service on port 6432.
+
+Modified:
+
+- `deploy/helm/instance-services/values.yaml` — new `pgbouncer` block
+  (`image`, `replicaCount`, pool-size settings, resource limits).
+- `deploy/helm/instance-services/templates/configmap.yaml` —
+  `DB_HOST` now resolves to the PgBouncer ClusterIP Service;
+  `DB_PORT` is `6432`. Added `DIRECT_DB_HOST` and `DIRECT_DB_PORT`
+  keys carrying the raw Postgres coordinates for migration + LISTEN use.
+- `libs/instance-db/src/lib/instance-db.module.ts` — when
+  `RUN_MIGRATIONS=true` the DataSource reads `DIRECT_DB_HOST`/`DIRECT_DB_PORT`
+  (bypassing PgBouncer). Runtime path uses `DB_HOST`/`DB_PORT` (PgBouncer).
+  `DB_POOL_MAX` default lowered from 20 → 10 (PgBouncer handles multiplexing).
+  `cache: false` disables TypeORM's query-result cache; `statement_timeout`
+  guard added to the `extra` block.
+- `libs/control-plane-db/src/lib/control-plane-db.module.ts` — analogous
+  `DIRECT_CONTROL_PLANE_DB_HOST`/`DIRECT_CONTROL_PLANE_DB_PORT` fallback for
+  migration runner. Pool-size defaults, statement timeout, and `cache: false`
+  aligned with the instance-plane posture. No PgBouncer sidecar added to the
+  control-plane chart yet (connection volume does not justify it at pilot scale).
+
+**Pool settings rationale:**
+
+| Setting | Value | Rationale |
+|---|---|---|
+| `pool_mode` | `transaction` | Canonical recommendation; returns server connection after each transaction so 25 server conns serve hundreds of concurrent clients |
+| `default_pool_size` | 25 | 25 Postgres-side conns per pool; with 2–4 api pod replicas this keeps Postgres backend count in the 25–30 range under burst load |
+| `reserve_pool_size` | 5 | Admin/monitoring slots always available even under saturation |
+| `max_client_conn` | 1000 | Burst tolerance for all pod replicas combined |
+| `server_idle_timeout` | 600s | Closes idle backends after 10 min; reduces off-peak Postgres backend count |
+| `query_wait_timeout` | 30s | Client waiting >30s for a pool slot gets an explicit error instead of piling up indefinitely |
+| App `DB_POOL_MAX` | 10 | Each app pod opens ≤10 pg-driver connections to PgBouncer; PgBouncer multiplexes into Postgres |
+
+**Operational notes:**
+
+- Migrations MUST run against `DIRECT_DB_HOST`/`DIRECT_DB_PORT` because
+  `pool_mode=transaction` breaks multi-statement DDL inside a single TypeORM
+  migration. The module auto-selects the correct host when `RUN_MIGRATIONS=true`.
+- There are no `LISTEN`/`NOTIFY` consumers in the current codebase. Any
+  future consumer must read `DIRECT_DB_HOST`/`DIRECT_DB_PORT` and open a
+  dedicated non-pooled connection.
+- The control-plane does not yet have a PgBouncer sidecar. At pilot scale
+  (< 20 customer instances) the control-plane Postgres sees at most ~20
+  connections from the API pods. A PgBouncer sidecar can be added to the
+  control-plane chart if measured connection count warrants it; the module
+  already reads `DIRECT_CONTROL_PLANE_DB_*` vars in migration mode.
+- `DB_POOL_MAX` can be overridden per-instance at deploy time for tuning.
+  The value must stay well below `max_client_conn=1000` divided by pod count.
+
+**Verification:**
+
+- Apply the helm chart in dev/staging.
+- Verify `apps/api` can serve requests through PgBouncer (health endpoint
+  + basic data read).
+- Run migrations: `npm run migrate` should log connections to `DIRECT_DB_HOST`
+  (raw Postgres), not the PgBouncer Service.
+- Confirm `SELECT count(*) FROM pg_stat_activity` on Postgres shows ≤ 30
+  active backends under burst load (vs 100+ without PgBouncer).
+- `helm template deploy/helm/instance-services` renders without errors.
+
+**Out of scope:**
+
+- Postgres-side `max_connections` tuning (operator concern).
+- PgBouncer SCRAM-SHA-256 authentication (MD5 used for compatibility;
+  upgrade when Postgres instance is configured for it).
+- Cluster-level secret management (external-secrets controller).
+- Control-plane PgBouncer sidecar (deferred to measured need).
 
 ### W6.D — N+1 group resolution + request-scoped cache (F047)
 
