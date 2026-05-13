@@ -1,6 +1,19 @@
 # Plan Fix 25 — Audit Transaction Sweep
 
-**Status:** In progress (W5.I complete — silent-skip sweep done; W5.B audit-mutation sweep pending)
+**Status:** Complete (PRs #35 W5.A, #37 W5.B, #42 W5.G, #46 W5.I; KNOWN_DEFERRED_OFFENDERS empty; 1 allowlisted W5.J false-positive for libs/enterprise/audit.service.ts checkAlertRules)
+
+## Completion summary
+
+W5 wave landed across 4 PRs:
+- **W5.A** (PR #35) — Widen audit-bypass-check.ts regex to catch `<varName>Repo.save()` patterns; baseline F044 inventory captured
+- **W5.B** (PR #37, merged to claude/optimistic-heisenberg-a86f1f worktree branch — reconciliation to master pending) — Refactor 4 identity/auth services (impersonation, delegation, device-trust, behavioral-analytics) to use `withAudit(...)`
+- **W5.G** (PR #42) — Scanner precision: widen REPO_MUTATE_PATTERN to include .update/.delete/.insert/.softDelete; new silent-skip:check scanner
+- **W5.I** (PR #46) — Sweep 19 silent-skip violations: 12 services fixed with RuntimeAnomalyService.record() writes, 7 false-positives removed, 1 allowlisted as W5.J
+
+Outcome: KNOWN_DEFERRED_OFFENDERS in audit-bypass-check.ts and silent-skip-check.ts collectively contain zero entries with active follow-up work. The one remaining libs/enterprise/audit.service.ts entry (W5.J in silent-skip-check) is a documented false-positive — not a deferred fix.
+
+Note: W5.B's content is on the claude/optimistic-heisenberg-a86f1f worktree branch but not yet on master. Reconciliation to master is tracked separately.
+
 **Owner:** adi-hw
 **Effort:** ~6-7 PRs (W5.A scanner widening + W5.B-G per-area sweeps)
 **Related canon clauses:** §1 (greenfield discipline), §10 (auditability mandatory), §24 (canon maintenance)
