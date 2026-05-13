@@ -5,7 +5,6 @@ import {
 } from './authorization.service';
 import { PolicyCompilerService } from './policy-compiler.service';
 import { CollectionAccessRuleData, PropertyAccessRuleData, PropertyMeta } from './types';
-import type { AccessAuditPort } from './audit-port';
 
 type CollectionAclRepoStub = {
   find: jest.Mock<Promise<CollectionAccessRuleData[]>, [unknown]>;
@@ -150,17 +149,45 @@ describe('AuthorizationService — collection-id API', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('admins bypass collection-level checks', async () => {
-    const { service, collectionAclRepo } = buildService();
+  it('canon §28.6 (Plan Fix 33): admin with seeded policy rule is allowed via the §28 evaluator', async () => {
+    // The bypass is gone. Admin access is granted by explicit CollectionAccessRule rows
+    // seeded at instance provision time (migration 1931100000000-seed-admin-policies.ts).
+    // In this test we simulate that by providing an allow rule keyed to the admin role id.
+    const ADMIN_ROLE_ID = 'role-admin';
+    const adminRule = buildReadRule({
+      roleId: ADMIN_ROLE_ID,
+      canRead: true,
+      canCreate: true,
+      canUpdate: true,
+      canDelete: true,
+    });
+    const { service, collectionAclRepo } = buildService({ collectionRules: [adminRule] });
 
     const allowed = await service.canAccessCollection(
-      buildContext({ isAdmin: true }),
+      buildContext({ isAdmin: true, attributes: { roleIds: [ADMIN_ROLE_ID] } }),
       COLLECTION_ID,
       'read',
     );
 
     expect(allowed).toBe(true);
-    expect(collectionAclRepo.find).not.toHaveBeenCalled();
+    // The evaluator was invoked — no short-circuit bypass.
+    expect(collectionAclRepo.find).toHaveBeenCalled();
+  });
+
+  it('canon §28.6 (Plan Fix 33): admin WITHOUT seeded policies is denied — bypass is gone', async () => {
+    // Regression guard: verifies the bypass was actually removed.
+    // An admin user with isAdmin=true but no matching rule in the repo is denied.
+    const { service, collectionAclRepo } = buildService({ collectionRules: [] });
+
+    const denied = await service.canAccessCollection(
+      buildContext({ isAdmin: true }),
+      COLLECTION_ID,
+      'read',
+    );
+
+    expect(denied).toBe(false);
+    // The repo was queried — the evaluator ran, found no rules, and applied default deny.
+    expect(collectionAclRepo.find).toHaveBeenCalled();
   });
 });
 
@@ -550,58 +577,78 @@ describe('AuthorizationService — multi-rule field permissions (F024 + canon §
   });
 });
 
-describe('AuthorizationService — admin bypass audit (F021)', () => {
-  // F021 (canon §10): every admin bypass in AuthorizationService MUST emit
-  // an audit row. The port is OPTIONAL — when unbound the lib falls back to
-  // silent bypass (preserves the "lib usable outside apps/api" property).
+describe('AuthorizationService — admin via seeded policies (canon §28.6 / Plan Fix 33)', () => {
+  // Canon §28.6: the silent `if (ctx.isAdmin) return true` bypass has been
+  // retired. Admin access is now granted by explicit CollectionAccessRule and
+  // PropertyAccessRule rows seeded at instance provision time
+  // (migration 1931100000000-seed-admin-policies.ts). This suite verifies
+  // that the §28 evaluator handles admin users correctly through the normal
+  // rule-evaluation path.
+
+  const ADMIN_ROLE_ID = 'admin-role-uuid';
 
   function buildAdminContext(): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'admin-1',
-      roles: ['role-admin'],
+      roles: [ADMIN_ROLE_ID],
       permissions: [],
       isAdmin: true,
-      attributes: { roleIds: ['role-admin'] },
+      attributes: { roleIds: [ADMIN_ROLE_ID] },
     } as unknown as UserRequestContext;
   }
 
-  function buildServiceWithAudit(audit: AccessAuditPort | null): AuthorizationService {
-    const policyCompiler = new PolicyCompilerService();
-    const collectionAclRepo: CollectionAclRepoStub = {
-      find: jest.fn().mockResolvedValue([]),
+  function buildAdminCollectionRule(
+    overrides: Partial<CollectionAccessRuleData> = {},
+  ): CollectionAccessRuleData {
+    return {
+      id: 'admin-rule-1',
+      collectionId: COLLECTION_ID,
+      name: 'Admin full access',
+      description: null,
+      roleId: ADMIN_ROLE_ID,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canCreate: true,
+      canUpdate: true,
+      canDelete: true,
+      conditions: null,
+      priority: 0,
+      isActive: true,
+      effect: 'allow',
+      ...overrides,
     };
-    const propertyAclRepo: PropertyAclRepoStub = {
-      find: jest.fn().mockResolvedValue([]),
-    };
-    return new AuthorizationService(
-      collectionAclRepo,
-      propertyAclRepo,
-      null,
-      null,
-      policyCompiler,
-      null,
-      audit,
-    );
   }
 
-  it('canAccessCollection admin bypass calls the port', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
-    const service = buildServiceWithAudit(port);
+  it('admin with seeded collection rule is allowed via the §28 evaluator (collection read)', async () => {
+    const { service } = buildService({ collectionRules: [buildAdminCollectionRule()] });
 
     const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
 
     expect(allowed).toBe(true);
-    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
-    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'admin-1',
-      resource: COLLECTION_ID,
-      action: 'read',
-    }));
   });
 
-  it('canAccessCollectionRecord admin bypass calls the port with recordId in context', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
-    const service = buildServiceWithAudit(port);
+  it('admin with seeded collection rule is allowed for all operations', async () => {
+    const { service } = buildService({ collectionRules: [buildAdminCollectionRule()] });
+    const ctx = buildAdminContext();
+
+    expect(await service.canAccessCollection(ctx, COLLECTION_ID, 'create')).toBe(true);
+    expect(await service.canAccessCollection(ctx, COLLECTION_ID, 'update')).toBe(true);
+    expect(await service.canAccessCollection(ctx, COLLECTION_ID, 'delete')).toBe(true);
+  });
+
+  it('admin WITHOUT seeded policies is denied — no bypass remains', async () => {
+    // Regression guard: with no matching rule, default deny fires.
+    const { service } = buildService({ collectionRules: [] });
+
+    const denied = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
+
+    expect(denied).toBe(false);
+  });
+
+  it('admin with seeded collection rule can access a specific record', async () => {
+    const { service } = buildService({ collectionRules: [buildAdminCollectionRule()] });
 
     const allowed = await service.canAccessCollectionRecord(
       buildAdminContext(),
@@ -611,74 +658,49 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
     );
 
     expect(allowed).toBe(true);
-    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
-    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'admin-1',
-      resource: COLLECTION_ID,
-      action: 'update',
-      context: expect.objectContaining({ recordId: 'rec-42' }),
-    }));
   });
 
-  it('getAuthorizedFieldsForCollection admin bypass calls the port with fields:read action', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
-    const service = buildServiceWithAudit(port);
+  it('admin with seeded wildcard property rule sees all fields canRead=true, canWrite=true, masking=NONE', async () => {
+    const wildcardPropRule: PropertyAccessRuleData = {
+      id: 'admin-prop-rule-1',
+      propertyId: null,
+      wildcardCollectionId: COLLECTION_ID,
+      roleId: ADMIN_ROLE_ID,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 0,
+      isActive: true,
+      effect: 'allow',
+      maskingStrategy: 'NONE',
+    };
+    const { service } = buildService({ propertyRules: [wildcardPropRule] });
 
-    await service.getAuthorizedFieldsForCollection(
+    const [authorized] = await service.getAuthorizedFieldsForCollection(
       buildAdminContext(),
       COLLECTION_ID,
-      [{ code: 'name' }],
+      [{ code: 'sensitive_field' }],
     );
 
-    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
-    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'admin-1',
-      resource: COLLECTION_ID,
-      action: 'fields:read',
-    }));
+    expect(authorized.canRead).toBe(true);
+    expect(authorized.canWrite).toBe(true);
+    expect(authorized.maskingStrategy).toBe('NONE');
   });
 
-  it('buildCollectionRowLevelClause admin bypass calls the port with row-clause action', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
-    const service = buildServiceWithAudit(port);
+  it('admin row-level clause is empty when seeded rule is unconditional (conditions=null)', async () => {
+    const { service } = buildService({ collectionRules: [buildAdminCollectionRule()] });
 
-    await service.buildCollectionRowLevelClause(buildAdminContext(), COLLECTION_ID, 'read', 't');
+    const clause = await service.buildCollectionRowLevelClause(
+      buildAdminContext(),
+      COLLECTION_ID,
+      'read',
+      't',
+    );
 
-    expect(port.logAdminBypass).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'admin-1',
-      resource: COLLECTION_ID,
-      action: 'read:row-clause',
-    }));
-  });
-
-  it('non-admin path does NOT call the port', async () => {
-    const port: AccessAuditPort = { logAdminBypass: jest.fn(), logSecurityEvent: jest.fn() };
-    const service = buildServiceWithAudit(port);
-
-    await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
-
-    expect(port.logAdminBypass).not.toHaveBeenCalled();
-  });
-
-  it('port not bound: bypass still works (no port required)', async () => {
-    const service = buildServiceWithAudit(null);
-    const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
-    expect(allowed).toBe(true);
-  });
-
-  it('port write failure does NOT crash the bypass path', async () => {
-    const port: AccessAuditPort = {
-      logAdminBypass: jest.fn(() => {
-        throw new Error('audit DB down');
-      }),
-      logSecurityEvent: jest.fn(),
-    };
-    const service = buildServiceWithAudit(port);
-
-    const allowed = await service.canAccessCollection(buildAdminContext(), COLLECTION_ID, 'read');
-
-    expect(allowed).toBe(true);
-    expect(port.logAdminBypass).toHaveBeenCalledTimes(1);
+    // Unconditional allow → no row predicates → empty WHERE clause.
+    expect(clause.clauses).toHaveLength(0);
   });
 });
 
@@ -2363,12 +2385,29 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     expect(second.maskingStrategy).toBe('FULL');
   });
 
-  it('9. admin bypass short-circuits before the flag lookup (canon §28.6 preserved)', async () => {
-    // Admins still bypass at the top of getAuthorizedFieldsForCollection.
-    // The flag lookup is never reached, so even a secureFieldsByDefault=
-    // true collection is fully readable/writable for admins, and the
-    // collectionDefinitionRepo is never queried for this call.
+  it('9. canon §28.6 (Plan Fix 33): admin with seeded wildcard property rule overrides secureFieldsByDefault=true', async () => {
+    // The bypass is gone. Admin access to fields comes from the seeded
+    // wildcard PropertyAccessRule. When that rule is present, it fires at
+    // §28.2 level 3-4 (wildcard allow) before the secureFieldsByDefault
+    // default-deny flag (level 7) is reached, so admins still see all fields.
+    const ADMIN_ROLE_ID_F = 'role-admin';
+    const wildcardAdminRule: PropertyAccessRuleData = {
+      id: 'admin-wildcard-1',
+      propertyId: null,
+      wildcardCollectionId: COLLECTION_ID,
+      roleId: ADMIN_ROLE_ID_F,
+      groupId: null,
+      userId: null,
+      canRead: true,
+      canWrite: true,
+      conditions: null,
+      priority: 0,
+      isActive: true,
+      effect: 'allow',
+      maskingStrategy: 'NONE',
+    };
     const { service, collectionDefinitionRepo } = buildService({
+      propertyRules: [wildcardAdminRule],
       collectionFlags: {
         [COLLECTION_ID]: { secureFieldsByDefault: true },
       },
@@ -2377,10 +2416,10 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     const adminCtx: UserRequestContext = {
       kind: 'user',
       userId: 'admin-1',
-      roles: ['role-admin'],
+      roles: [ADMIN_ROLE_ID_F],
       permissions: [],
       isAdmin: true,
-      attributes: { roleIds: ['role-admin'] },
+      attributes: { roleIds: [ADMIN_ROLE_ID_F] },
     };
     const [adminAuthorized] = await service.getAuthorizedFieldsForCollection(
       adminCtx,
@@ -2390,8 +2429,8 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     expect(adminAuthorized.canRead).toBe(true);
     expect(adminAuthorized.canWrite).toBe(true);
     expect(adminAuthorized.maskingStrategy).toBe('NONE');
-    // Flag lookup never fired for the admin path.
-    expect(collectionDefinitionRepo.findOne).not.toHaveBeenCalled();
+    // The flag lookup now DOES fire — admin goes through the evaluator.
+    expect(collectionDefinitionRepo.findOne).toHaveBeenCalled();
   });
 
   it('10. isSystem field with secureFieldsByDefault=false retains its legacy canWrite=false default', async () => {
