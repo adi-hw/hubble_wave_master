@@ -26,3 +26,7 @@ export {
   AvaProposalService,
   BadStateTransitionException,
 } from './lib/ava-proposal';
+export {
+  createIndexConcurrent,
+  dropIndexConcurrent,
+} from './lib/migrations/utils/concurrent-index';
