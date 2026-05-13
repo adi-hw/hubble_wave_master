@@ -1,0 +1,147 @@
+{{- /*
+PgBouncer Deployment for per-instance connection pooling (W6.C / F045).
+
+This pod runs alongside the api pod within the same instance namespace.
+An init container generates /etc/pgbouncer/userlist.txt from the Postgres
+password before PgBouncer starts. The userlist file is written to an
+emptyDir volume so the readOnlyRootFilesystem constraint on the main
+container can be satisfied without relaxing security.
+
+Upgrade path: Helm rolling-update is safe — PgBouncer is stateless.
+The api pods reconnect to the new PgBouncer pod on their next reconnect
+cycle (governed by pg driver poolIdleTimeoutMillis).
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "instance-services.fullname" . }}-pgbouncer
+  labels:
+    {{- include "instance-services.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "instance-services.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "instance-services.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: pgbouncer
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/pgbouncer-configmap.yaml") . | sha256sum }}
+        {{- if .Values.secrets.create }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: userlist-init
+          image: {{ .Values.pgbouncer.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 70
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - sh
+            - -c
+            - |
+              # Generate a MD5-hashed userlist entry as required by PgBouncer.
+              # Format: "username" "md5<md5(password+username)>"
+              PG_USER="${DB_USER}"
+              PG_PASS="${DB_PASSWORD}"
+              HASH="md5$(printf '%s%s' "${PG_PASS}" "${PG_USER}" | md5sum | awk '{print $1}')"
+              printf '"{{ .Values.database.user }}" "%s"\n' "${HASH}" > /pgbouncer-userlist/userlist.txt
+              echo "userlist.txt written"
+          env:
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "instance-services.fullname" . }}-config
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "instance-services.secretName" . }}
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: pgbouncer-userlist
+              mountPath: /pgbouncer-userlist
+      containers:
+        - name: pgbouncer
+          image: {{ .Values.pgbouncer.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 70
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+              protocol: TCP
+          volumeMounts:
+            - name: pgbouncer-config
+              mountPath: /etc/pgbouncer/pgbouncer.ini
+              subPath: pgbouncer.ini
+              readOnly: true
+            - name: pgbouncer-userlist
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: userlist.txt
+              readOnly: true
+            - name: pgbouncer-tmp
+              mountPath: /tmp
+          readinessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.pgbouncer.resources | nindent 12 }}
+      volumes:
+        - name: pgbouncer-config
+          configMap:
+            name: {{ include "instance-services.fullname" . }}-pgbouncer-config
+        - name: pgbouncer-userlist
+          emptyDir: {}
+        - name: pgbouncer-tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

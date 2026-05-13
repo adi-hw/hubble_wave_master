@@ -11,9 +11,13 @@ data:
   INSTANCE_ID: {{ .Values.instanceId | quote }}
   CUSTOMER_CODE: {{ .Values.customerCode | quote }}
   RESOURCE_TIER: {{ .Values.resourceTier | quote }}
-  DB_HOST: {{ .Values.database.host | quote }}
-  DB_PORT: {{ .Values.database.port | quote }}
+  # DB_HOST/DB_PORT point at PgBouncer (port 6432); DIRECT_DB_HOST/DIRECT_DB_PORT
+  # carry the raw Postgres coordinates for migrations and LISTEN/NOTIFY consumers.
+  DB_HOST: {{ printf "%s-pgbouncer" (include "instance-services.fullname" .) | quote }}
+  DB_PORT: "6432"
   DB_USER: {{ .Values.database.user | quote }}
   DB_NAME: {{ .Values.database.name | quote }}
+  DIRECT_DB_HOST: {{ .Values.database.host | quote }}
+  DIRECT_DB_PORT: {{ .Values.database.port | quote }}
   REDIS_HOST: {{ .Values.redis.host | quote }}
   REDIS_PORT: {{ .Values.redis.port | quote }}

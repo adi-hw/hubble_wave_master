@@ -1,0 +1,73 @@
+{{- /*
+PgBouncer configuration for per-instance connection pooling (W6.C / F045).
+
+pool_mode=transaction: PgBouncer returns a server connection to the pool
+after each client transaction. This allows many app connections to share a
+smaller set of actual Postgres connections. The runtime DataSource connects
+here; the migration runner uses DIRECT_DATABASE_URL to bypass PgBouncer
+because multi-statement DDL migrations are incompatible with transaction mode.
+
+userlist.txt: PgBouncer requires a local file with the Postgres user and
+password hash. The password is injected at pod start via an init container
+that reads DB_PASSWORD from the Secret and writes a hashed line. The
+configmap carries only the structural config; the userlist is managed by
+the Secret.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "instance-services.fullname" . }}-pgbouncer-config
+  labels:
+    {{- include "instance-services.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+data:
+  pgbouncer.ini: |
+    [databases]
+    * = host={{ .Values.database.host }} port={{ .Values.database.port }} dbname={{ .Values.database.name }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+
+    ; Transaction pooling — server connection returned to pool after each transaction.
+    ; Incompatible with SET, PREPARE/EXECUTE across transaction boundaries,
+    ; LISTEN/NOTIFY, and multi-statement DDL sequences. Migration runner and any
+    ; LISTEN consumers MUST use DIRECT_DATABASE_URL (the raw Postgres host:5432).
+    pool_mode = transaction
+
+    ; Clients connecting to PgBouncer authenticate with Postgres credentials.
+    ; md5 used here for compatibility; SCRAM-SHA-256 upgrade is an operator
+    ; concern when the Postgres instance is configured for it.
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+
+    ; Per-pool Postgres-side connections. At 25 server conns per pool, a single
+    ; instance with 2–4 api pods can serve hundreds of concurrent client
+    ; connections while Postgres sees at most ~30 active backends.
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+
+    ; Reserved slots for admin/monitoring connections so the pool is never fully
+    ; saturated by application traffic.
+    reserve_pool_size = {{ .Values.pgbouncer.reservePoolSize }}
+    reserve_pool_timeout = {{ .Values.pgbouncer.reservePoolTimeout }}
+
+    ; Maximum simultaneous client connections accepted by PgBouncer.
+    ; High enough for burst load from all api pod replicas.
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+
+    ; Close idle server connections after this many seconds. Reduces Postgres
+    ; backend count during off-peak.
+    server_idle_timeout = {{ .Values.pgbouncer.serverIdleTimeout }}
+
+    ; Abort a queued client that cannot acquire a connection within this window.
+    ; Prevents unbounded queue growth under sustained overload.
+    query_wait_timeout = {{ .Values.pgbouncer.queryWaitTimeout }}
+
+    ; Log level: warning keeps the pod logs clean; change to debug for ops troubleshooting.
+    log_connections = 0
+    log_disconnections = 0
+    log_pooler_errors = 1
+
+    ; Admin interface is available inside the pod only (no external access).
+    admin_users = pgbouncer_admin
+    stats_users = pgbouncer_admin

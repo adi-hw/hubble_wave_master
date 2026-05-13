@@ -48,19 +48,55 @@ import { controlPlaneEntities } from './entities/index';
             : { rejectUnauthorized };
         }
 
+        // W6.C (F045): Mirror the instance-plane pattern. When RUN_CONTROL_PLANE_MIGRATIONS
+        // is true the DataSource must bypass any future connection pooler (PgBouncer) and
+        // connect directly to Postgres because multi-statement DDL migrations are
+        // incompatible with transaction-pooling mode.
+        // DIRECT_CONTROL_PLANE_DB_HOST / DIRECT_CONTROL_PLANE_DB_PORT fall back to the
+        // standard CONTROL_PLANE_DB_HOST/PORT values so dev environments without a
+        // PgBouncer sidecar are unaffected.
+        const migrationsRun = configService.get('RUN_CONTROL_PLANE_MIGRATIONS', 'true') === 'true';
+        const dbHost = migrationsRun
+          ? configService.get<string>(
+              'DIRECT_CONTROL_PLANE_DB_HOST',
+              configService.get<string>('CONTROL_PLANE_DB_HOST', 'localhost'),
+            )
+          : configService.get<string>('CONTROL_PLANE_DB_HOST', 'localhost');
+        const dbPort = migrationsRun
+          ? parseInt(
+              configService.get<string>(
+                'DIRECT_CONTROL_PLANE_DB_PORT',
+                configService.get<string>('CONTROL_PLANE_DB_PORT', '5432'),
+              ),
+              10,
+            )
+          : configService.get<number>('CONTROL_PLANE_DB_PORT', 5432);
+
         return {
           type: 'postgres' as const,
-          host: configService.get<string>('CONTROL_PLANE_DB_HOST', 'localhost'),
-          port: configService.get<number>('CONTROL_PLANE_DB_PORT', 5432),
+          host: dbHost,
+          port: dbPort,
           username: configService.get<string>('CONTROL_PLANE_DB_USER', 'hubblewave'),
           password: dbPassword,
           database: configService.get<string>('CONTROL_PLANE_DB_NAME', 'hubblewave_control_plane'),
           entities: controlPlaneEntities,
-          synchronize: false, // Always use migrations in production
-          migrationsRun: configService.get('RUN_CONTROL_PLANE_MIGRATIONS', 'true') === 'true',
+          synchronize: false,
+          migrationsRun,
           migrations: ['dist/migrations/control-plane/*.js'],
           logging: configService.get('DB_LOGGING', 'false') === 'true',
           ssl,
+          extra: {
+            // W6.C: conservative pool size for the control-plane; connection count
+            // is low (HubbleWave-internal service, not customer traffic). If a
+            // PgBouncer sidecar is added to the control-plane deployment in future,
+            // lowering this further and disabling prepared statements here is the
+            // necessary follow-up — documented in docs/plan-fixes/26-performance-wave.md.
+            max: parseInt(configService.get('CONTROL_PLANE_DB_POOL_MAX', '10'), 10),
+            idleTimeoutMillis: parseInt(configService.get('CONTROL_PLANE_DB_POOL_IDLE_TIMEOUT', '30000'), 10),
+            connectionTimeoutMillis: parseInt(configService.get('CONTROL_PLANE_DB_CONNECTION_TIMEOUT', '5000'), 10),
+            statement_timeout: parseInt(configService.get('CONTROL_PLANE_DB_STATEMENT_TIMEOUT', '30000'), 10),
+          },
+          cache: false,
         };
       },
       inject: [ConfigService],

@@ -764,6 +764,19 @@ Past amendments (most recent first):
   Self-test updated: 15/15 assertions pass. Refs F044 (§10 silent-skip
   clause).
 
+- 2026-05-13 (W6.C / Plan Fix 26): PgBouncer + connection pooling (F045).
+  Adds PgBouncer Deployment + Service + ConfigMap to the
+  `deploy/helm/instance-services` chart (`transaction` pool mode,
+  `default_pool_size=25`, `max_client_conn=1000`). Runtime TypeORM
+  DataSources in `libs/instance-db` and `libs/control-plane-db` connect
+  via `DB_HOST:6432` (PgBouncer). Migration runner reads
+  `DIRECT_DB_HOST`/`DIRECT_DB_PORT` (raw Postgres) to bypass PgBouncer —
+  multi-statement DDL is incompatible with transaction-pooling mode.
+  App-side `DB_POOL_MAX` default lowered 20 → 10 since PgBouncer handles
+  multiplexing. `cache: false` and `statement_timeout` guard added to both
+  module DataSource configs. Postgres-side connection count expected to
+  drop ~10x under burst load. Refs F045.
+
 - 2026-05-12 (canon §29 PR-D — service principals + RequestContext
   discriminated union, closes audit finding F022):
   • `service_principals` table + `ServicePrincipal` entity land in
