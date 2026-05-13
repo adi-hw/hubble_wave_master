@@ -16,6 +16,8 @@ export interface UserPermissionCache {
   permissionDetails: Map<string, Permission>;
   roleIds: string[];
   roles: Role[];
+  /** W6.D / F047 — direct group membership IDs; see main PermissionResolverService. */
+  groupIds: string[];
   computedAt: Date;
   expiresAt: Date;
 }
@@ -86,15 +88,16 @@ export class PermissionResolverService {
     const directRoleIds = new Set(directAssignments.map((a) => a.roleId));
 
     let groupRoleIds = new Set<string>();
+    let resolvedGroupIds: string[] = [];
     try {
       const groupMemberships = await this.groupMemberRepo.find({
         where: { userId },
       });
 
       if (groupMemberships.length > 0) {
-        const groupIds = groupMemberships.map((m) => m.groupId);
+        resolvedGroupIds = groupMemberships.map((m) => m.groupId);
         const groupRoles = await this.groupRoleRepo.find({
-          where: { groupId: In(groupIds) },
+          where: { groupId: In(resolvedGroupIds) },
         });
         groupRoleIds = new Set(groupRoles.map((gr) => gr.roleId));
       }
@@ -134,6 +137,7 @@ export class PermissionResolverService {
       permissionDetails,
       roleIds: allRoleIds,
       roles,
+      groupIds: resolvedGroupIds,
       computedAt: now,
       expiresAt: new Date(now.getTime() + this.CACHE_TTL_MS),
     };

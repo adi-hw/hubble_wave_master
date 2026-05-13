@@ -771,6 +771,93 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       expect.arrayContaining(['group-a', 'team-b']),
     );
   });
+
+  // ── W6.D / F047 — groupCache in UserRequestContext ─────────────────────────
+
+  it('W6.D: uses groupCache.get(userId) over attributes.groupIds when both are present', async () => {
+    const repo = buildSqlFilteredRepo([]);
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      repo,
+      { find: jest.fn().mockResolvedValue([]) },
+      null,
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+
+    const groupCache = new Map<string, string[]>([
+      ['user-1', ['grp-from-cache']],
+    ]);
+
+    const ctx = {
+      kind: 'user',
+      userId: 'user-1',
+      roles: [ROLE_VIEWER],
+      permissions: [],
+      isAdmin: false,
+      attributes: {
+        roleIds: [ROLE_VIEWER],
+        groupIds: ['grp-from-attributes'],  // should be ignored
+      },
+      groupCache,
+    } as unknown as UserRequestContext;
+
+    await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
+
+    // groupCache wins: only the cache value is passed to the repo
+    expect(repo.findByCollectionAndUser).toHaveBeenCalledWith(
+      COLLECTION_ID,
+      'user-1',
+      [ROLE_VIEWER],
+      expect.arrayContaining(['grp-from-cache']),
+    );
+    expect(repo.findByCollectionAndUser).not.toHaveBeenCalledWith(
+      COLLECTION_ID,
+      'user-1',
+      [ROLE_VIEWER],
+      expect.arrayContaining(['grp-from-attributes']),
+    );
+  });
+
+  it('W6.D: falls back to attributes.groupIds when groupCache has no entry for the user', async () => {
+    const repo = buildSqlFilteredRepo([]);
+    const policyCompiler = new PolicyCompilerService();
+    const service = new AuthorizationService(
+      repo,
+      { find: jest.fn().mockResolvedValue([]) },
+      null,
+      null,
+      policyCompiler,
+      null,
+      null,
+    );
+
+    const groupCache = new Map<string, string[]>(); // empty — no entry for user-1
+
+    const ctx = {
+      kind: 'user',
+      userId: 'user-1',
+      roles: [ROLE_VIEWER],
+      permissions: [],
+      isAdmin: false,
+      attributes: {
+        roleIds: [ROLE_VIEWER],
+        groupIds: ['grp-from-attributes'],
+      },
+      groupCache,
+    } as unknown as UserRequestContext;
+
+    await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
+
+    expect(repo.findByCollectionAndUser).toHaveBeenCalledWith(
+      COLLECTION_ID,
+      'user-1',
+      [ROLE_VIEWER],
+      expect.arrayContaining(['grp-from-attributes']),
+    );
+  });
 });
 
 describe('AuthorizationService — cache invalidation (F025)', () => {

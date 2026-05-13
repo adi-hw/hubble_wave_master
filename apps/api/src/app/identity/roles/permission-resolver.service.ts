@@ -26,6 +26,13 @@ export interface UserPermissionCache {
   permissionDetails: Map<string, Permission>;  // code -> full permission
   roleIds: string[];                 // Direct + inherited role IDs
   roles: Role[];               // Full role objects
+  /**
+   * W6.D / F047 — direct group membership IDs for the user. Populated
+   * by `computeUserPermissions` as a by-product of fetching group roles.
+   * Surfaced here so callers (e.g. `IdentityResolverAdapter`) can include
+   * the group list in the request context without an extra DB query.
+   */
+  groupIds: string[];
   computedAt: Date;
   expiresAt: Date;
 }
@@ -106,6 +113,89 @@ export class PermissionResolverService implements OnModuleInit {
         }
       },
     );
+  }
+
+  /**
+   * W6.D / F047 — batch group lookup for multiple users in a single SQL
+   * IN-query, with request-scoped cache support.
+   *
+   * Callers that need group IDs for N users (e.g. batch authz checks on
+   * bulk record endpoints) should call this once before their loop and
+   * index into the returned Map rather than calling `getUserPermissions`
+   * per user — that pattern issues N separate DB round-trips.
+   *
+   * Cache semantics:
+   *   - If `ctx.groupCache` is provided, entries already in the cache are
+   *     returned directly; only the uncached userIds hit the DB.
+   *   - DB hits are written back into `ctx.groupCache` for the remainder
+   *     of the request.
+   *   - When `ctx` is absent, falls through to a direct DB batch query with
+   *     no caching.
+   *
+   * The in-process `UserPermissionCache` (keyed by userId, 30s TTL) is
+   * also checked as a secondary source when the group cache misses but
+   * the full permission cache is warm — avoids a DB query in the common
+   * case where the user was recently resolved via `getUserPermissions`.
+   *
+   * @param userIds - Deduplicated list of user IDs to resolve.
+   * @param groupCacheCtx - Optional request-scoped cache (`UserRequestContext.groupCache`).
+   * @returns Map from userId → direct groupIds[]. Users with no memberships map to `[]`.
+   */
+  async getUserGroupsBatch(
+    userIds: string[],
+    groupCacheCtx?: Map<string, string[]>,
+  ): Promise<Map<string, string[]>> {
+    if (userIds.length === 0) {
+      return new Map<string, string[]>();
+    }
+
+    const result = new Map<string, string[]>();
+    const uncached: string[] = [];
+
+    for (const uid of userIds) {
+      // 1. Request-scoped cache hit.
+      if (groupCacheCtx?.has(uid)) {
+        result.set(uid, groupCacheCtx.get(uid)!);
+        continue;
+      }
+
+      // 2. In-process permission cache hit — groupIds already computed.
+      const permCached = this.cache.get(uid);
+      if (permCached && permCached.expiresAt > new Date()) {
+        const gids = permCached.groupIds;
+        result.set(uid, gids);
+        groupCacheCtx?.set(uid, gids);
+        continue;
+      }
+
+      uncached.push(uid);
+    }
+
+    if (uncached.length === 0) {
+      return result;
+    }
+
+    // 3. Single SQL IN-query for all uncached users (the N+1 fix).
+    const rows = await this.groupMemberRepo.find({
+      where: { userId: In(uncached) },
+      select: ['userId', 'groupId'],
+    });
+
+    // Bucket by userId.
+    const fromDb = new Map<string, string[]>();
+    for (const uid of uncached) {
+      fromDb.set(uid, []);
+    }
+    for (const row of rows) {
+      fromDb.get(row.userId)?.push(row.groupId);
+    }
+
+    for (const [uid, gids] of fromDb) {
+      result.set(uid, gids);
+      groupCacheCtx?.set(uid, gids);
+    }
+
+    return result;
   }
 
   /**
@@ -282,17 +372,20 @@ export class PermissionResolverService implements OnModuleInit {
 
     const directRoleIds = new Set(directAssignments.map((a) => a.roleId));
 
-    // Step 2: Get roles from group membership
+    // Step 2: Get roles from group membership. Capture groupIds as a
+    // by-product (W6.D / F047) — returned in the cache entry so callers
+    // can include them in the request context without an additional query.
     let groupRoleIds = new Set<string>();
+    let resolvedGroupIds: string[] = [];
     try {
       const groupMemberships = await this.groupMemberRepo.find({
         where: { userId: userId },
       });
 
       if (groupMemberships.length > 0) {
-        const groupIds = groupMemberships.map((m) => m.groupId);
+        resolvedGroupIds = groupMemberships.map((m) => m.groupId);
         const groupRoles = await this.groupRoleRepo.find({
-          where: { groupId: In(groupIds) },
+          where: { groupId: In(resolvedGroupIds) },
         });
         groupRoleIds = new Set(groupRoles.map((gr) => gr.roleId));
       }
@@ -337,6 +430,7 @@ export class PermissionResolverService implements OnModuleInit {
       permissionDetails,
       roleIds: allRoleIds,
       roles,
+      groupIds: resolvedGroupIds,
       computedAt: now,
       expiresAt: new Date(now.getTime() + this.CACHE_TTL_MS),
     };
