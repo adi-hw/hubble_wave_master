@@ -13,6 +13,7 @@ import {
   compileSearchAuthz,
   emitTypesenseFilterBy,
 } from '@hubblewave/search-authz';
+import type { FilterAst } from '@hubblewave/search-authz';
 import type { CollectionAccessRuleData } from '@hubblewave/authorization';
 import { SearchEmbeddingService } from './search-embedding.service';
 import { SearchTypesenseService } from './search-typesense.service';
@@ -93,11 +94,14 @@ export class SearchQueryService {
 
     const mode = this.resolveMode(request.mode, experienceConfig);
 
-    // Build the authz pre-filter clause for Typesense. The compiler translates
-    // §28 CollectionAccessRules into an engine-neutral AST; the emitter renders
-    // that AST into a Typesense filter_by string. This replaces the per-hit
-    // post-filter loop that caused pagination and facet count leakage (F136).
-    const authzFilterBy = await this.buildAuthzFilterBy(request.context, sources);
+    // Build the authz pre-filter AST. The compiler translates §28
+    // CollectionAccessRules into an engine-neutral FilterAst that is then
+    // rendered by engine-specific emitters:
+    //   - Typesense: emitTypesenseFilterBy → filter_by string (lexical path)
+    //   - pgvector: emitPgvectorWhere → parameterized SQL WHERE (semantic path)
+    // This replaces the per-hit post-filter loop (F136).
+    const authzResult = await this.buildAuthzAst(request.context, sources);
+    const authzFilterBy = authzResult.filterBy;
 
     const filters = this.mergeFilters(
       request.filters,
@@ -129,6 +133,8 @@ export class SearchQueryService {
       sourceTypes,
       request,
       experienceConfig,
+      authzAst: authzResult.ast,
+      authzAttrs: authzResult.userAttrs,
     });
 
     const mergedHits = this.mergeHits({
@@ -160,29 +166,37 @@ export class SearchQueryService {
   }
 
   /**
-   * Build the Typesense `filter_by` clause that enforces §28 record visibility
-   * for the active user across all collections covered by the active sources.
+   * Compile the §28 record-visibility AST for the active user across all
+   * collections covered by the active sources, and return:
    *
-   * Fetches all active CollectionAccessRules, filters them to the rules
-   * relevant to the current user via the compiler's principal-match logic,
-   * compiles to a FilterAst, and emits Typesense syntax.
+   *   - `ast`       — engine-neutral FilterAst (passed to pgvector emitter)
+   *   - `filterBy`  — Typesense filter_by string (lexical path)
+   *   - `userAttrs` — ABAC attribute context (passed to both emitters)
+   *
+   * Both emitters (Typesense + pgvector) consume the same AST compiled here.
+   * The AST is produced once per request — not once per engine.
    *
    * Admin users bypass the pre-filter (matching the §28.6 posture — admins
    * are not short-circuited silently, but the seeded admin policy grants broad
-   * allow, which the compiler would produce as allow_all → empty filter anyway).
+   * allow, which the compiler would produce as allow_all → no filter anyway).
    * We short-circuit here for performance.
    */
-  private async buildAuthzFilterBy(
+  private async buildAuthzAst(
     context: UserRequestContext,
     sources: SearchSource[],
-  ): Promise<string> {
+  ): Promise<{
+    ast: FilterAst;
+    filterBy: string;
+    userAttrs: Record<string, string | number | boolean | null>;
+  }> {
+    const allowAll: FilterAst = { kind: 'allow_all' };
     if (context.isAdmin) {
-      return '';
+      return { ast: allowAll, filterBy: '', userAttrs: this.buildAttributeContext(context) };
     }
 
     const collectionIds = this.resolveCollectionIds(sources);
     if (!collectionIds.length) {
-      return '';
+      return { ast: allowAll, filterBy: '', userAttrs: this.buildAttributeContext(context) };
     }
 
     const rules = await this.collectionAccessRuleRepo.find({
@@ -216,7 +230,8 @@ export class SearchQueryService {
     });
 
     const userAttrs = this.buildAttributeContext(context);
-    return emitTypesenseFilterBy(ast, userAttrs);
+    const filterBy = emitTypesenseFilterBy(ast, userAttrs);
+    return { ast, filterBy, userAttrs };
   }
 
   /**
@@ -324,6 +339,14 @@ export class SearchQueryService {
     sourceTypes: string[];
     request: SearchQueryRequest;
     experienceConfig: Record<string, unknown>;
+    /**
+     * §28 pre-filter AST for the pgvector path. When provided the emitter
+     * translates the AST into a parameterized SQL WHERE clause that is
+     * AND-combined into the cosine-similarity query before ranking runs.
+     * This replaces any post-fetch authzCheck loop on the vector path.
+     */
+    authzAst?: FilterAst;
+    authzAttrs?: Record<string, string | number | boolean | null>;
   }): Promise<{ semanticHits: SearchHit[]; semanticTotal: number }> {
     if (params.mode === 'lexical') {
       return { semanticHits: [], semanticTotal: 0 };
@@ -340,6 +363,8 @@ export class SearchQueryService {
       limit,
       threshold,
       sourceTypes: params.sourceTypes,
+      authzAst: params.authzAst,
+      authzAttrs: params.authzAttrs ?? {},
     });
 
     const hits = results.map((entry) => ({

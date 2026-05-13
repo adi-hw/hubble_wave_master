@@ -88,6 +88,11 @@ const AUTHZ_USAGE_PATTERNS = [
   /ensureCollectionAccess\(/,
   /buildRowLevelClause\(/,
   /buildCollectionRowLevelClause\(/,
+  // search-authz emitters: the pgvector and Typesense emitters ARE the authz
+  // integration point for the vector/lexical search paths (Plan Fix 30 / F136).
+  /emitPgvectorWhere\(/,
+  /emitTypesenseFilterBy\(/,
+  /compileSearchAuthz\(/,
 ];
 
 // Authz decorators that are inert without an upstream guard chain.
