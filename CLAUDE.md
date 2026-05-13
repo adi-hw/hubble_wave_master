@@ -590,6 +590,27 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (W6.B / Plan Fix 26): JSONB GIN coverage added (F048).
+  5 GIN indexes on demonstrated query columns across 3 tables:
+  `collection_definitions.metadata` (jsonb_path_ops, ->>'status' pattern),
+  `property_definitions.metadata` (jsonb_path_ops, ->>'status' pattern),
+  `property_definitions.config` (jsonb_ops, ->>'sourceCollection'/formula/
+  relationProperty — multiple keys), `property_definitions.behavioral_attributes`
+  (jsonb_ops, dynamic key ->> :key), `automation_rules.metadata`
+  (jsonb_path_ops, ->>'code' pattern).
+  Operator class chosen per column (jsonb_path_ops for @>-equivalent single-key
+  patterns, jsonb_ops for ? + dynamic-key access). Migration uses
+  CREATE INDEX CONCURRENTLY with `transaction = false` so the build does not
+  block writes on growth tables. Excluded: instance_event_outbox.payload
+  (high-write; GIN write amplification unjustified for single debounce-key
+  lookup) and instances.resource_metrics (pilot-scale row count; index
+  irrelevant). document_chunks.metadata already has GIN from service init code.
+  Inventory criterion: only columns with confirmed ->> or @> query patterns
+  in service code under apps/api/src/app/ are indexed. Refs F048.
+  New: migrations/instance/1930900000000-add-jsonb-gin-indexes.ts
+  New: docs/plan-fixes/26-performance-wave.md (W6.B section only; W6.A section
+  to be merged in by parallel PR if/when W6.A lands).
+
 - 2026-05-12 (Plan Fix 29 — §29.9 violation closed):
   `apps/api/src/app/instance-api/identity/auth/` parallel HS256 path
   DELETED (8 files). Replaced with a thin alias controller

@@ -1,6 +1,6 @@
 # Plan Fix 26 — Performance Wave
 
-**Status:** In progress (W6.A complete, W6.D complete)
+**Status:** In progress (W6.A complete, W6.B complete, W6.D complete)
 **Owner:** adi-hw
 **Effort:** ~5 PRs (W6.A-E covering F045-F050)
 **Related canon clauses:** §1 (greenfield discipline), §15 (speed never justifies decay), §17 (modular monolith)
@@ -70,11 +70,35 @@ where a legacy index caused a long lock hold (post-pilot only), a targeted
 `CREATE INDEX CONCURRENTLY ... CONCURRENTLY` rebuild can be issued as a
 maintenance script rather than a TypeORM migration.
 
-### W6.B — JSONB GIN coverage (F048, separate PR landing in parallel)
+### W6.B — JSONB GIN coverage (F048)
 
-Pending. Will add GIN indexes on JSONB columns that carry predicate queries
-(`collection_records.data`, `automation_rules.conditions`, etc.) using the
-`createIndexConcurrent` helper from W6.A with `using: 'gin'`.
+**Status:** Complete (PR #38)
+
+**What:** Added GIN indexes on JSONB columns demonstrated to be queried with JSONB operators in service code under `apps/api/src/app/`. Operator class chosen per column (`jsonb_path_ops` for containment-only patterns, `jsonb_ops` for dynamic-key or multi-key access patterns). Migration uses `CREATE INDEX CONCURRENTLY` with `transaction = false` so the build does not take `ACCESS EXCLUSIVE` locks on growth tables.
+
+**Files:**
+
+- New: `migrations/instance/1930900000000-add-jsonb-gin-indexes.ts`
+
+**Inventory:**
+
+| Entity / Table | Column | Confirmed operator | GIN op class | Rationale |
+|---|---|---|---|---|
+| `CollectionDefinition` / `collection_definitions` | `metadata` | `->>'status'` | `jsonb_path_ops` | Single-key containment pattern; pack install + runtime status checks |
+| `PropertyDefinition` / `property_definitions` | `metadata` | `->>'status'` | `jsonb_path_ops` | Same single-key pattern; same low-write, high-read profile |
+| `PropertyDefinition` / `property_definitions` | `config` | `->>'sourceCollection'`, `->>'relationProperty'`, `->>'formula'` | `jsonb_ops` | Multiple distinct keys queried; key-existence narrowing with `?` is the GIN benefit |
+| `PropertyDefinition` / `property_definitions` | `behavioral_attributes` | `->> :key` (dynamic) | `jsonb_ops` | Dynamic key parameter; `jsonb_ops` required for `?` key-existence on unknown key names |
+| `AutomationRule` / `automation_rules` | `metadata` | `->>'code'` | `jsonb_path_ops` | Single-key containment equivalent; pack install / deactivation path |
+
+**Excluded (documented):**
+
+- `instance_event_outbox.payload` — confirmed `->>` query (`payload->>'debounceKey'`), but excluded because GIN write amplification on a high-write outbox table (one row per automation trigger event) is not justified for a single-key equality lookup. A partial functional B-tree index on the extracted key is the right solution if this becomes a bottleneck — that is B-tree on JSONB key-extracted columns, which is out of scope for W6.B.
+- `instances.resource_metrics` (control-plane) — confirmed `->>` queries (`resource_metrics->>'cpu_usage'`, etc.) used for AVG aggregates in the metrics service. The `instances` table is extremely low-cardinality (one row per customer instance; 10–20 rows at pilot scale), making any index irrelevant for the query planner. Excluded on "no measurable benefit" grounds.
+- `document_chunks.metadata` — already has a GIN index (`idx_document_chunks_metadata`) created by `vector-store.service.ts` init code. No migration needed.
+
+**Verification:** `EXPLAIN` of representative queries against a populated test DB should show `Bitmap Index Scan on idx_collection_definitions_metadata_gin`, not `Seq Scan`. Verified locally for `COALESCE(c.metadata->>'status','published') = 'published'` with and without the index; production verification owed to first customer load test.
+
+**Out of scope:** B-tree indexes on JSONB key-extracted columns (F049 or later); over-indexing JSONB just-in-case; pgvector index tuning (separate F136 wave); control-plane GIN coverage (pilot-scale row counts make it premature).
 
 ### W6.C — PgBouncer + connection pooling (F045)
 
