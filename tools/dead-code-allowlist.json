@@ -78,29 +78,5 @@
     "addedBy": "W0 task 10",
     "addedAt": "2026-05-09",
     "owedTo": "W4"
-  },
-  {
-    "type": "orphan-lib",
-    "path": "libs/relationship-resolver",
-    "reason": "Library lost all importers when the svc-* thin adapters were deleted in W1 final cutover. The functionality (entity reference resolution) is now embedded inline in apps/api/src/app/data and apps/api/src/app/metadata. W2 cleanup either reconnects the lib to apps/api or deletes it after confirming the embedded implementations have feature parity.",
-    "addedBy": "W1 final cutover",
-    "addedAt": "2026-05-10",
-    "owedTo": "W2"
-  },
-  {
-    "type": "orphan-lib",
-    "path": "libs/schema-engine",
-    "reason": "Library lost all importers when the svc-* thin adapters were deleted in W1 final cutover. Schema engine functionality (collection DDL, schema sync, governance) now lives inline in apps/api/src/app/metadata. W2 cleanup either reconnects the lib to apps/api or deletes it after confirming the embedded implementations have feature parity.",
-    "addedBy": "W1 final cutover",
-    "addedAt": "2026-05-10",
-    "owedTo": "W2"
-  },
-  {
-    "type": "orphan-lib",
-    "path": "libs/schema-validator",
-    "reason": "Library lost all importers when the svc-* thin adapters were deleted in W1 final cutover. Validation functionality now lives inline in apps/api/src/app/metadata and apps/api/src/app/data. W2 cleanup either reconnects the lib to apps/api or deletes it after confirming the embedded implementations have feature parity.",
-    "addedBy": "W1 final cutover",
-    "addedAt": "2026-05-10",
-    "owedTo": "W2"
   }
 ]
