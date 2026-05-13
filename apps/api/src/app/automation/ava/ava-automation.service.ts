@@ -266,7 +266,7 @@ export class AvaAutomationService {
           'Do you want to create a new automation rule?',
         ],
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         success: false,
         message: 'I couldn\'t retrieve the automation rules. Please try again.',

@@ -1,8 +1,8 @@
 # Plan Fix 30 — Search Authz Pre-Filter
 
-**Status:** In progress (PR-1 — DSL + compiler primitives complete)
+**Status:** In progress (PR-2 — Typesense emitter + indexer projection complete)
 **Owner:** adi-hw
-**Effort:** 3 PRs (PR-1 DSL/compiler, PR-2 Typesense emitter + indexer projection updater, PR-3 vector pre-filter)
+**Effort:** 3 PRs (PR-1 DSL/compiler ✓, PR-2 Typesense emitter + indexer projection ✓, PR-3 vector pre-filter)
 **Related canon clauses:** §9 (centralized authz), §11 (AVA), §28 (resolution model)
 **Triggering audit:** F136 — search authz post-filter (pagination + facet leak)
 
@@ -62,12 +62,27 @@ Lands the engine-neutral filter AST type definitions and the compiler that maps 
 
 **Out of scope:** Typesense wiring, vector pre-filter, indexer projection updater. Those land in PR-2 and PR-3.
 
-### PR-2 (next): Typesense filter_by + indexer projection updater
+### PR-2 (complete): Typesense filter_by + indexer projection updater
 
-- `TypesenseFilterEmitter` — translates FilterAst to a Typesense `filter_by` string.
-- Indexer projection updater — ensures `collectionId` (and any ABAC fields used in `attribute_match` nodes) are indexed as filterable fields in Typesense.
-- Wires the emitter into the AVA vector + keyword search path in `apps/api/src/app/ava/search/`.
-- Removes the post-filter authzCheck call from the Typesense search pipeline.
+**Files:**
+- New: `libs/search-authz/src/lib/typesense-emitter.ts` — `emitTypesenseFilterBy(ast, attrs)` translates FilterAst → Typesense filter_by syntax.
+- New: `libs/search-authz/src/lib/typesense-emitter.spec.ts` — 29 assertions covering every node kind, edge cases, and ABAC substitution.
+- New: `libs/search-authz/src/lib/acl-projection.ts` — `AclProjection` type + `extractRequiredAttributes(ast)` walker.
+- Updated: `libs/search-authz/src/index.ts` — extended barrel exports.
+- Updated: `apps/api/src/app/ava/search/search.types.ts` — `SearchSourceConfig` extended with `collection_id` + `acl_attributes` fields.
+- Updated: `apps/api/src/app/ava/search/search-indexing.service.ts` — `buildAclFields()` attaches `_collection_id` + `_<attr>` fields to every indexed document.
+- Updated: `apps/api/src/app/ava/search/search-query.service.ts` — pre-filter wired; `trimUnauthorized` post-filter loop removed; pagination counts are now exact.
+- Updated: `apps/api/src/app/ava/search/search-query.service.spec.ts` — 9 pre-filter integration assertions replace the F136-minimal post-filter suite.
+- Updated: `apps/api/src/app/ava/search/search.module.ts` — `CollectionAccessRule` added to TypeOrmModule.forFeature.
+- Updated: `tools/dead-code-allowlist.json` — removed `libs/search-authz` orphan-lib entry (now has an importer).
+
+**Algorithm:** `buildAuthzFilterBy(context, sources)` (1) resolves `collection_id` from each source's config, (2) fetches all active `CollectionAccessRule` rows for those collections, (3) maps them to `CollectionAccessRuleData`, (4) calls `compileSearchAuthz()` to produce a FilterAst, (5) calls `emitTypesenseFilterBy(ast, userAttrs)` to produce the filter string, (6) AND-combines with any existing request filters before passing to the Typesense client. Admin users short-circuit to an empty filter (matching §28.6 posture).
+
+**Post-filter removal:** `trimUnauthorized()` deleted. `pagination_approximate` is always `false` in lexical mode (pre-filter guarantees the engine only returns authorized records). Facet counts come from the engine directly in lexical mode (engine-accurate post-filter, not page-local recompute).
+
+**ABAC attributes:** `SearchSourceConfig.acl_attributes` lists which record fields to denormalize as `_<field>` in the Typesense document. `extractRequiredAttributes(ast)` derives the required set from the compiled AST for documentation / tooling use.
+
+**Scope note:** pgvector / semantic pre-filter lands in PR-3. Semantic mode still runs without authz pre-filter at this stage (the lexical pre-filter handles the hybrid/lexical path entirely).
 
 ### PR-3 (next): pgvector pre-filter SQL
 

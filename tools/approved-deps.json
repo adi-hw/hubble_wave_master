@@ -373,6 +373,9 @@
       "tslib": {
         "reason": "TypeScript runtime helpers"
       },
+      "tsx": {
+        "reason": "Node-native TypeScript/ESM loader for scanner and script invocations; replaces ts-node for npx-invoked scripts to resolve Node 20+ ERR_UNKNOWN_FILE_EXTENSION on .ts files (Plan Fix 31)"
+      },
       "typescript": {
         "reason": "Type checking"
       },

@@ -594,6 +594,34 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 31): master CI infrastructure cleanup.
+  Three master-wide CI issues fixed: (1) scanner script invocations
+  switched from `ts-node` to `tsx` to resolve Node 20+ ESM resolution
+  failures on `.ts` extensions, (2) `@aws-sdk/client-kms` confirmed
+  present in dependencies (was already added by canon §29 PR-A's
+  KeySigningService landing; F031 agent report reflected a prior state),
+  (3) `catch (error)` → `catch (_error)` at
+  `ava-automation.service.ts:269` clears the ESLint unused-vars rule
+  that fired on every apps/api lint run. Future PRs should see clean
+  CI on Architectural CI gates + License audit. SBOM/CVE high-severity
+  finding remains a separate concern.
+
+- 2026-05-13 (Plan Fix 30 PR-2 / F136 PR-2): search authz pre-filter
+  reaches Typesense. New `emitTypesenseFilterBy(ast, attrs)` translates
+  FilterAst → Typesense filter_by syntax. New `AclProjection` +
+  `extractRequiredAttributes(ast)` walker describe the ABAC fields the
+  indexer must denormalize onto every document (`_collection_id` always;
+  `_<attr>` for each `attribute_match.field`). `SearchSourceConfig` gains
+  `collection_id` + `acl_attributes` so the indexer knows what to project.
+  `SearchIndexingService.buildAclFields()` attaches ACL fields on every
+  Typesense document write. `buildAuthzFilterBy()` in `SearchQueryService`
+  compiles §28 rules + emits filter_by before each Typesense query.
+  `trimUnauthorized` post-filter loop removed — pagination + facets are
+  now correct because forbidden records never reach the result set.
+  `pagination_approximate` is always `false` in lexical mode.
+  `libs/search-authz` orphan-lib entry removed from dead-code-allowlist
+  (now has importers). PR-3 (pgvector pre-filter) lands separately.
+
 - 2026-05-13 (Plan Fix 30 PR-1 / F136 PR-1): search authz DSL +
   compiler primitives landed in new `libs/search-authz/`. Compiles
   §28 collection access rules into engine-neutral filter AST.
