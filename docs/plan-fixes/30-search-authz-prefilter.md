@@ -1,6 +1,6 @@
 # Plan Fix 30 — Search Authz Pre-Filter
 
-**Status:** In progress (PR-2 — Typesense emitter + indexer projection complete)
+**Status:** Complete (PR-3 — pgvector pre-filter landed)
 **Owner:** adi-hw
 **Effort:** 3 PRs (PR-1 DSL/compiler ✓, PR-2 Typesense emitter + indexer projection ✓, PR-3 vector pre-filter)
 **Related canon clauses:** §9 (centralized authz), §11 (AVA), §28 (resolution model)
@@ -84,12 +84,24 @@ Lands the engine-neutral filter AST type definitions and the compiler that maps 
 
 **Scope note:** pgvector / semantic pre-filter lands in PR-3. Semantic mode still runs without authz pre-filter at this stage (the lexical pre-filter handles the hybrid/lexical path entirely).
 
-### PR-3 (next): pgvector pre-filter SQL
+### PR-3 (complete): pgvector pre-filter SQL
 
-- `PgvectorFilterEmitter` — translates FilterAst to a parameterized SQL WHERE clause.
-- Wires the emitter into the pgvector cosine-similarity search path.
-- Resolves `attribute_match` nodes using the active `RequestContext` (user or service context via §29 discriminated union).
-- Removes the post-filter authzCheck call from the pgvector search pipeline.
+**Files:**
+- New: `libs/search-authz/src/lib/pgvector-emitter.ts` — `emitPgvectorWhere(ast, attrs, startParamIndex?)` translates FilterAst → parameterized SQL WHERE clause. All user-attribute values go through bind parameters (`$N`) — never interpolated into the SQL string.
+- New: `libs/search-authz/src/lib/pgvector-emitter.spec.ts` — 33 assertions covering every node kind, parameter ordering, startParamIndex offset, and SQL injection guard (tests 17–19 explicitly verify malicious values never appear in the clause string).
+- Updated: `libs/search-authz/src/index.ts` — exports `emitPgvectorWhere` and `PgvectorWhereResult`.
+- Updated: `apps/api/src/app/ava/search/search-embedding.service.ts` — `search()` accepts optional `authzAst` + `authzAttrs` parameters; `emitPgvectorWhere` is called to build the WHERE clause injected before ANN ranking. `upsertRecordEmbeddings()` accepts optional `acl` object to write `_collection_id` and `_attribute_*` columns at index time.
+- Updated: `apps/api/src/app/ava/search/search-query.service.ts` — `buildAuthzFilterBy()` refactored to `buildAuthzAst()` which returns `{ ast, filterBy, userAttrs }`. The same FilterAst is now passed to both the Typesense emitter (lexical path) and pgvector emitter (semantic path) — compiled once per request.
+- New: `migrations/instance/1931000000000-search-embeddings-acl-columns.ts` — adds `_collection_id uuid`, `_attribute_region text`, `_attribute_department_id uuid`, `_attribute_site_id uuid` columns to `search_embeddings`. All indexes use `CREATE INDEX CONCURRENTLY`. Migration runs outside transaction (`transaction = false`).
+- Updated: `tools/authz-bypass-check.ts` — extended `AUTHZ_USAGE_PATTERNS` to recognize `emitPgvectorWhere(`, `emitTypesenseFilterBy(`, and `compileSearchAuthz(` as authz integration points (these ARE the §28 enforcement path for the search pipeline).
+
+**Algorithm:** `buildAuthzAst(context, sources)` compiles the §28 FilterAst once from `CollectionAccessRule[]`. The same AST is passed to:
+- `emitTypesenseFilterBy(ast, userAttrs)` → Typesense `filter_by` string (lexical/hybrid path, PR-2).
+- `emitPgvectorWhere(ast, userAttrs, 2)` inside `SearchEmbeddingService.search()` → SQL WHERE fragment with `$N` bind params injected into the cosine-similarity query (semantic path, this PR).
+
+**Security:** `emitPgvectorWhere` never interpolates attribute values as SQL literals. Every `attribute_match`, `in_collection`, `eq`, and `in` node binds its values via PostgreSQL parameterized query placeholders. The self-test includes three explicit SQL injection guard assertions (tests 17–19).
+
+**Schema note:** The `_attribute_*` columns added in this migration are the initial set derived from current ACL rule vocabulary (`region`, `department_id`, `site_id`). Additional columns can be added in follow-up migrations as new ABAC attributes are introduced to `CollectionAccessRule` conditions.
 
 ## Acceptance
 

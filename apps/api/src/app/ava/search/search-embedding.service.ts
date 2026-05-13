@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { LLMService } from '@hubblewave/ai';
+import type { FilterAst } from '@hubblewave/search-authz';
+import { emitPgvectorWhere } from '@hubblewave/search-authz';
+import type { AttributeContext } from '@hubblewave/search-authz';
 
 export type SearchEmbeddingResult = {
   sourceType: string;
@@ -37,8 +40,21 @@ export class SearchEmbeddingService {
     text: string;
     metadata: Record<string, unknown>;
     options?: ChunkingOptions;
+    /**
+     * ACL projection fields written to the `search_embeddings` row so the
+     * pgvector pre-filter (Plan Fix 30 PR-3) can enforce §28 record visibility
+     * at the SQL layer rather than post-fetch.
+     *
+     * `collectionId` — the parent collection UUID. Maps to `_collection_id`.
+     * `attributes`   — ABAC field values keyed by field name (without prefix).
+     *                  E.g. `{ region: 'us-east' }` writes to `_attribute_region`.
+     */
+    acl?: {
+      collectionId?: string;
+      attributes?: Record<string, string | null>;
+    };
   }): Promise<number> {
-    const { sourceType, sourceId, text, metadata, options } = params;
+    const { sourceType, sourceId, text, metadata, options, acl } = params;
     const normalized = text.trim();
     if (!normalized) {
       await this.deleteEmbeddings(sourceType, sourceId);
@@ -68,13 +84,19 @@ export class SearchEmbeddingService {
       await this.dataSource.query(
         `
         INSERT INTO search_embeddings
-          (source_type, source_id, chunk_index, content, metadata, embedding, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6::vector, NOW())
+          (source_type, source_id, chunk_index, content, metadata, embedding,
+           _collection_id, _attribute_region, _attribute_department_id, _attribute_site_id,
+           updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9, $10, NOW())
         ON CONFLICT (source_type, source_id, chunk_index)
         DO UPDATE SET
           content = EXCLUDED.content,
           metadata = EXCLUDED.metadata,
           embedding = EXCLUDED.embedding,
+          _collection_id = EXCLUDED._collection_id,
+          _attribute_region = EXCLUDED._attribute_region,
+          _attribute_department_id = EXCLUDED._attribute_department_id,
+          _attribute_site_id = EXCLUDED._attribute_site_id,
           updated_at = NOW()
         `,
         [
@@ -88,6 +110,10 @@ export class SearchEmbeddingService {
             totalChunks: rows.length,
           }),
           embeddingStr,
+          acl?.collectionId ?? null,
+          acl?.attributes?.['region'] ?? null,
+          acl?.attributes?.['department_id'] ?? null,
+          acl?.attributes?.['site_id'] ?? null,
         ],
       );
     }
@@ -100,10 +126,44 @@ export class SearchEmbeddingService {
     limit?: number;
     threshold?: number;
     sourceTypes?: string[];
+    /**
+     * §28 authz pre-filter. When provided the emitted SQL WHERE clause is
+     * AND-combined with the vector search query so only records the active
+     * user is authorized to see are ranked and returned. This replaces any
+     * post-fetch authzCheck loop on the vector path (Plan Fix 30 PR-3 / F136).
+     *
+     * `authzAst`  — FilterAst from `compileSearchAuthz()`.
+     * `authzAttrs` — ABAC attribute context from the active RequestContext.
+     *               Pass an empty object when no ABAC attributes are needed.
+     */
+    authzAst?: FilterAst;
+    authzAttrs?: AttributeContext;
   }): Promise<SearchEmbeddingResult[]> {
-    const { query, limit = 10, threshold = 0.65, sourceTypes } = params;
+    const {
+      query,
+      limit = 10,
+      threshold = 0.65,
+      sourceTypes,
+      authzAst,
+      authzAttrs,
+    } = params;
     const embedding = await this.llmService.getEmbedding(query);
     const embeddingStr = `[${embedding.join(',')}]`;
+
+    // $1 is always the embedding vector; other params start at $2.
+    const values: unknown[] = [embeddingStr];
+    let nextParam = 2;
+
+    // Inject the §28 authz pre-filter as a SQL WHERE clause.
+    // The emitter produces a parameterized expression and the bind values.
+    // This replaces any post-fetch authzCheck loop on the pgvector path.
+    let authzClause = 'TRUE';
+    if (authzAst) {
+      const emitResult = emitPgvectorWhere(authzAst, authzAttrs ?? {}, nextParam);
+      authzClause = emitResult.clause;
+      values.push(...emitResult.params);
+      nextParam = emitResult.nextParamIndex;
+    }
 
     let sql = `
       SELECT
@@ -113,21 +173,19 @@ export class SearchEmbeddingService {
         metadata,
         1 - (embedding <=> $1::vector) as similarity
       FROM search_embeddings
-      WHERE 1 = 1
+      WHERE ${authzClause}
     `;
-    const values: unknown[] = [embeddingStr];
-    let index = 2;
 
     if (sourceTypes && sourceTypes.length) {
-      sql += ` AND source_type = ANY($${index})`;
+      sql += ` AND source_type = ANY($${nextParam})`;
       values.push(sourceTypes);
-      index += 1;
+      nextParam += 1;
     }
 
     sql += `
-      AND 1 - (embedding <=> $1::vector) >= $${index}
+      AND 1 - (embedding <=> $1::vector) >= $${nextParam}
       ORDER BY embedding <=> $1::vector
-      LIMIT $${index + 1}
+      LIMIT $${nextParam + 1}
     `;
     values.push(threshold, limit);
 

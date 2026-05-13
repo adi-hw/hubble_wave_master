@@ -594,6 +594,21 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 30 PR-3 / F136 PR-3): pgvector pre-filter
+  closes the search authz wave. New `emitPgvectorWhere(ast, attrs)`
+  translates FilterAst → parameterized SQL WHERE clauses for filtering
+  pgvector ANN search. All values go through bind parameters — no
+  string interpolation of user attributes. Vector search now respects
+  §28 ACL rules pre-query, completing the wave begun by PR-1 (DSL +
+  compiler) and PR-2 (Typesense emitter + indexer projection).
+  Pagination + facets on AVA semantic search are now corpus-accurate.
+  `search_embeddings` table gains `_collection_id` and `_attribute_*`
+  ACL projection columns (migration 1931000000000). `buildAuthzAst()`
+  in `SearchQueryService` compiles the FilterAst once per request and
+  passes it to both the Typesense emitter (lexical path) and the
+  pgvector emitter (semantic path). `tools/authz-bypass-check.ts`
+  extended to recognize search-authz emitter calls as authz usage.
+
 - 2026-05-13 (Plan Fix 32): cleanup PR — W5.J false-positive entry
   in `tools/silent-skip-check.ts` finalized with rationale + permanent
   tag (not a deferred fix). `docs/plan-fixes/25-audit-transaction-sweep.md`
