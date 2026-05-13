@@ -594,6 +594,18 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 31): master CI infrastructure cleanup.
+  Three master-wide CI issues fixed: (1) scanner script invocations
+  switched from `ts-node` to `tsx` to resolve Node 20+ ESM resolution
+  failures on `.ts` extensions, (2) `@aws-sdk/client-kms` confirmed
+  present in dependencies (was already added by canon §29 PR-A's
+  KeySigningService landing; F031 agent report reflected a prior state),
+  (3) `catch (error)` → `catch (_error)` at
+  `ava-automation.service.ts:269` clears the ESLint unused-vars rule
+  that fired on every apps/api lint run. Future PRs should see clean
+  CI on Architectural CI gates + License audit. SBOM/CVE high-severity
+  finding remains a separate concern.
+
 - 2026-05-13 (Plan Fix 30 PR-2 / F136 PR-2): search authz pre-filter
   reaches Typesense. New `emitTypesenseFilterBy(ast, attrs)` translates
   FilterAst → Typesense filter_by syntax. New `AclProjection` +
