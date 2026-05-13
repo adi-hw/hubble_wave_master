@@ -594,6 +594,14 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 30 PR-1 / F136 PR-1): search authz DSL +
+  compiler primitives landed in new `libs/search-authz/`. Compiles
+  §28 collection access rules into engine-neutral filter AST.
+  ABAC predicates emit `attribute_match` nodes for query-time
+  substitution by per-engine emitters. No engine wiring in this PR —
+  Typesense filter_by injection lands in PR-2, pgvector pre-filter SQL
+  in PR-3. Refs F136.
+
 - 2026-05-13 (Plan Fix 24 PR-A — entity barrel restructured into
   per-area files, closes F031): `libs/instance-db/src/lib/entities/index.ts`
   was a 1 100-line god-package exporting 130+ entities from 52 source files.
