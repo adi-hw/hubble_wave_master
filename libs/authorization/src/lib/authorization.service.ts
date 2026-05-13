@@ -1402,12 +1402,27 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
   private buildUserContext(ctx: UserRequestContext): UserAccessContext {
     const attributes = ctx.attributes || {};
 
+    // W6.D / F047 — prefer the request-scoped group cache over the JWT
+    // `attributes.groupIds` fallback. The cache is seeded by JwtAuthGuard
+    // from the IdentityResolverAdapter's resolved identity (which fetches
+    // group memberships once per request, covered by a 60s Redis TTL).
+    //
+    // Fallback order (first non-empty value wins):
+    //   1. ctx.groupCache.get(userId)  — populated by JwtAuthGuard (W6.D)
+    //   2. attributes['groupIds']       — JWT-embedded fallback for legacy callers
+    //   3. []                           — pre-W6.D default (groups never matched)
+    const cachedGroupIds = ctx.groupCache?.get(ctx.userId);
+    const groupIds: string[] =
+      cachedGroupIds ??
+      (attributes['groupIds'] as string[] | undefined) ??
+      [];
+
     return {
       userId: ctx.userId,
       email: attributes['email'] as string | undefined,
       roleIds: (attributes['roleIds'] as string[]) || ctx.roles || [],
       roleNames: ctx.roles || [],
-      groupIds: (attributes['groupIds'] as string[]) || [],
+      groupIds,
       teamIds: (attributes['teamIds'] as string[]) || [],
       departmentId: attributes['departmentId'] as string | undefined,
       locationId: attributes['locationId'] as string | undefined,

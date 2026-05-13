@@ -483,6 +483,69 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
     });
   });
 
+  describe('W6.D / F047 — groupCache seeding on UserRequestContext', () => {
+    it('seeds groupCache from the resolver identity.groupIds', async () => {
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-1',
+          roles: ['user'],
+          permissions: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-gc',
+          groupIds: ['grp-x', 'grp-y'],
+        }),
+      };
+      const { guard, ctx, request } = await buildGuardForClaims(
+        { sub: 'user:u-1', token_version: 'stamp-gc' },
+        { identity: resolver },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['context'] as {
+        groupCache?: Map<string, string[]>;
+        userId: string;
+      };
+      expect(userCtx.groupCache).toBeDefined();
+      expect(userCtx.groupCache!.get('u-1')).toEqual(['grp-x', 'grp-y']);
+    });
+
+    it('seeds an empty groupCache entry when resolver returns no groupIds', async () => {
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-2',
+          roles: ['user'],
+          permissions: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-empty',
+          // groupIds intentionally absent — pre-W6.D adapter shape
+        }),
+      };
+      const { guard, ctx, request } = await buildGuardForClaims(
+        { sub: 'user:u-2', token_version: 'stamp-empty' },
+        { identity: resolver },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['context'] as {
+        groupCache?: Map<string, string[]>;
+      };
+      expect(userCtx.groupCache).toBeDefined();
+      expect(userCtx.groupCache!.get('u-2')).toEqual([]);
+    });
+
+    it('groupCache is initialized (empty Map) even when no IdentityResolverPort is wired', async () => {
+      const { guard, ctx, request } = await buildGuardForClaims({
+        sub: 'user:u-no-resolver',
+      });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['context'] as {
+        groupCache?: Map<string, string[]>;
+      };
+      expect(userCtx.groupCache).toBeDefined();
+      expect(userCtx.groupCache!.size).toBe(0);
+    });
+  });
+
   // ───────────────────────────────────────────────────────────────────
   // Service-token branch (canon §29.7 PR-D)
   // ───────────────────────────────────────────────────────────────────

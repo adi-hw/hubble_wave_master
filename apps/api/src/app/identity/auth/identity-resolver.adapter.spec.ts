@@ -33,7 +33,11 @@ function buildUserRepoMock(user: Partial<User> | null) {
   } as unknown as Repository<User>;
 }
 
-function buildPermResolverMock(roleCodes: string[], permissions: string[]) {
+function buildPermResolverMock(
+  roleCodes: string[],
+  permissions: string[],
+  groupIds: string[] = [],
+) {
   return {
     getUserPermissions: jest.fn(async () => ({
       userId: 'u-1',
@@ -41,6 +45,7 @@ function buildPermResolverMock(roleCodes: string[], permissions: string[]) {
       permissionDetails: new Map(),
       roleIds: [],
       roles: roleCodes.map((code) => ({ code }) as { code: string }),
+      groupIds,
       computedAt: new Date(),
       expiresAt: new Date(),
     })),
@@ -66,6 +71,7 @@ describe('IdentityResolverAdapter', () => {
       isAdmin: false,
       status: 'active',
       securityStamp: 'stamp-cached-1',
+      groupIds: ['grp-cached'],
     };
     const redis = buildRedisMock(cached);
     const repo = buildUserRepoMock(null);
@@ -78,7 +84,7 @@ describe('IdentityResolverAdapter', () => {
     expect((repo as unknown as { findOne: jest.Mock }).findOne).not.toHaveBeenCalled();
   });
 
-  it('falls through to the DB and seeds the cache on a miss (includes securityStamp)', async () => {
+  it('falls through to the DB and seeds the cache on a miss (includes securityStamp + groupIds)', async () => {
     const redis = buildRedisMock();
     const repo = buildUserRepoMock({
       id: 'u-1',
@@ -86,7 +92,7 @@ describe('IdentityResolverAdapter', () => {
       isAdmin: false,
       securityStamp: 'stamp-from-db-9',
     } as Partial<User>);
-    const perms = buildPermResolverMock(['user'], ['records.read']);
+    const perms = buildPermResolverMock(['user'], ['records.read'], ['grp-1', 'grp-2']);
     const adapter = new IdentityResolverAdapter(repo, perms, redis);
 
     const result = await adapter.resolveIdentity('u-1');
@@ -97,15 +103,47 @@ describe('IdentityResolverAdapter', () => {
       isAdmin: false,
       status: 'active',
       securityStamp: 'stamp-from-db-9',
+      groupIds: ['grp-1', 'grp-2'],
     });
     expect((redis as unknown as { setJson: jest.Mock }).setJson).toHaveBeenCalledWith(
       'authz:identity:u-1',
       expect.objectContaining({
         userId: 'u-1',
         securityStamp: 'stamp-from-db-9',
+        groupIds: ['grp-1', 'grp-2'],
       }),
       60,
     );
+  });
+
+  it('W6.D — surfaces groupIds in the resolved identity (F047)', async () => {
+    const redis = buildRedisMock();
+    const repo = buildUserRepoMock({
+      id: 'u-1',
+      status: 'active',
+      isAdmin: false,
+      securityStamp: 'stamp-1',
+    } as Partial<User>);
+    const perms = buildPermResolverMock(['user'], [], ['group-a', 'group-b', 'group-c']);
+    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+
+    const result = await adapter.resolveIdentity('u-1');
+    expect(result?.groupIds).toEqual(['group-a', 'group-b', 'group-c']);
+  });
+
+  it('W6.D — groupIds is empty array when user has no group memberships (F047)', async () => {
+    const redis = buildRedisMock();
+    const repo = buildUserRepoMock({
+      id: 'u-1',
+      status: 'active',
+      isAdmin: false,
+      securityStamp: 'stamp-2',
+    } as Partial<User>);
+    const perms = buildPermResolverMock(['user'], [], []);
+    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+
+    const result = await adapter.resolveIdentity('u-1');
+    expect(result?.groupIds).toEqual([]);
   });
 
   it('returns the user current securityStamp value (canon §29.6)', async () => {

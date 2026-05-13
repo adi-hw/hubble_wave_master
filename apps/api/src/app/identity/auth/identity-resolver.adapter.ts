@@ -31,6 +31,8 @@ interface CachedIdentity {
   isAdmin: boolean;
   status: string;
   securityStamp: string;
+  /** W6.D / F047 — direct group IDs; included in cache to avoid extra DB queries. */
+  groupIds?: string[];
 }
 
 /**
@@ -74,7 +76,7 @@ export class IdentityResolverAdapter implements IdentityResolverPort {
     // Resolve effective roles + permissions through the same path
     // JwtStrategy uses, so the guard and the strategy agree on what the
     // user can do right now.
-    const { roles, permissions } =
+    const { roles, permissions, groupIds: resolvedGroupIds } =
       await this.permissionResolver.getUserPermissions(userId);
     const roleCodes = roles.map((r) => r.code);
     const permissionCodes = Array.from(permissions);
@@ -92,6 +94,9 @@ export class IdentityResolverAdapter implements IdentityResolverPort {
       status: user.status,
       // canon §29.6 — the kill-switch the guard compares to `token_version`.
       securityStamp: user.securityStamp,
+      // W6.D / F047 — direct group IDs; surfaced here so JwtAuthGuard can
+      // seed UserRequestContext.groupCache without an additional DB query.
+      groupIds: resolvedGroupIds ?? [],
     };
 
     // setJson swallows errors internally — a Redis outage degrades to a

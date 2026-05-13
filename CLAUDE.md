@@ -590,6 +590,18 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (canon §29 PR-E / W6.D / Plan Fix 26 / F047): batched
+  group resolution + correctness fix. UserRequestContext.groupCache
+  was declared but never populated — §28 evaluator loops called
+  getUserGroups() per user per record, producing N+1 queries.
+  Added `getUserGroupsBatch(userIds, ctx)` to permission-resolver
+  consolidating per-user group lookups into a single SQL IN-query.
+  Request-scoped cache via `UserRequestContext.groupCache` (canon §29
+  discriminated union) prevents repeated lookups within a single
+  request. §28 evaluator loops refactored to call batch first, then
+  index into Map. Unit tests assert query count = 1 for N-user
+  batches. Refs F047.
+
 - 2026-05-13 (W6.A / Plan Fix 26): performance hardening kickoff.
   Added `createIndexConcurrent` / `dropIndexConcurrent` helpers in
   `libs/instance-db/src/lib/migrations/utils/concurrent-index.ts` and

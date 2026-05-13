@@ -24,6 +24,7 @@ import { ALLOW_SERVICE_TOKEN } from './allow-service-token.decorator';
 import {
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
+  type ResolvedIdentity,
 } from './identity-resolver.port';
 import {
   JWT_REVOCATION_PORT,
@@ -294,13 +295,16 @@ export class JwtAuthGuard implements CanActivate {
       resolvedRoles.includes('admin') ||
       (payload as Record<string, unknown>)['is_admin'] === true;
     let resolvedSecurityStamp: string | undefined;
+    // W6.D / F047: hoisted so the groupIds field is accessible after the
+    // block for seeding groupCache (see below).
+    let resolvedIdentity: ResolvedIdentity | null = null;
 
     if (this.identityResolver) {
-      const identity = await this.identityResolver.resolveIdentity(userId);
-      if (!identity) {
+      resolvedIdentity = await this.identityResolver.resolveIdentity(userId);
+      if (!resolvedIdentity) {
         throw new UnauthorizedException('User not found');
       }
-      if (identity.status !== 'active') {
+      if (resolvedIdentity.status !== 'active') {
         throw new UnauthorizedException('User is inactive');
       }
       // Canon §29.6 — kill-switch check. The JWT carries the user's
@@ -310,14 +314,14 @@ export class JwtAuthGuard implements CanActivate {
       const tokenVersion = (payload as Record<string, unknown>)['token_version'];
       if (
         typeof tokenVersion === 'string' &&
-        tokenVersion !== identity.securityStamp
+        tokenVersion !== resolvedIdentity.securityStamp
       ) {
         throw new UnauthorizedException('Token version stale');
       }
-      resolvedRoles = identity.roles;
-      resolvedPermissions = identity.permissions;
-      resolvedIsAdmin = identity.isAdmin;
-      resolvedSecurityStamp = identity.securityStamp;
+      resolvedRoles = resolvedIdentity.roles;
+      resolvedPermissions = resolvedIdentity.permissions;
+      resolvedIsAdmin = resolvedIdentity.isAdmin;
+      resolvedSecurityStamp = resolvedIdentity.securityStamp;
     }
 
     const sessionIdRaw =
@@ -345,6 +349,27 @@ export class JwtAuthGuard implements CanActivate {
 
     const username = (payload as Record<string, unknown>)['username'];
     const attributes = (payload as Record<string, unknown>)['attributes'];
+    // W6.D / F047 — seed the request-scoped group cache from the resolved
+    // identity so the §28 authz evaluator can match group-based ACL rules
+    // without additional per-request DB queries. The cache is keyed on
+    // `userId`; for the common single-user path the map has one entry.
+    // Service tokens never reach this branch; the service path returns early
+    // above, so `groupCache` is never set on `ServiceRequestContext`.
+    // W6.D / F047 — seed the request-scoped group cache from the resolved
+    // identity so the §28 authz evaluator can match group-based ACL rules
+    // without additional per-request DB queries. The cache is keyed on
+    // `userId`; for the common single-user path the map has one entry.
+    // Service tokens never reach this branch; the service path returns early
+    // above, so `groupCache` is never set on `ServiceRequestContext`.
+    const groupCache = new Map<string, string[]>();
+    if (resolvedIdentity) {
+      // Re-use the groupIds field from the already-resolved identity rather
+      // than making a second DB round-trip. When the field is absent (adapters
+      // pre-dating W6.D), we write an empty list so behaviour is consistent
+      // with the pre-W6.D state (no groups matched, no group-based rules fire).
+      groupCache.set(userId, resolvedIdentity.groupIds ?? []);
+    }
+
     const requestContext: UserRequestContext = {
       kind: 'user',
       userId,
@@ -360,6 +385,7 @@ export class JwtAuthGuard implements CanActivate {
           : undefined,
       raw: payload as Record<string, unknown>,
       bearerToken: token,
+      groupCache,
     };
 
     request.user = requestContext;

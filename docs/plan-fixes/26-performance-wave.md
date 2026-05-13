@@ -1,6 +1,6 @@
 # Plan Fix 26 — Performance Wave
 
-**Status:** In progress (W6.A — CREATE INDEX CONCURRENTLY tooling)
+**Status:** In progress (W6.A complete, W6.D complete)
 **Owner:** adi-hw
 **Effort:** ~5 PRs (W6.A-E covering F045-F050)
 **Related canon clauses:** §1 (greenfield discipline), §15 (speed never justifies decay), §17 (modular monolith)
@@ -19,7 +19,9 @@ Each is a separate PR; this plan-fix doc tracks the wave.
 
 ## PR sequence
 
-### W6.A — CREATE INDEX CONCURRENTLY tooling (this PR / F046)
+### W6.A — CREATE INDEX CONCURRENTLY tooling (F046)
+
+**Status:** Complete (PR #39)
 
 **Files landed:**
 - `libs/instance-db/src/lib/migrations/utils/concurrent-index.ts` —
@@ -79,10 +81,156 @@ Pending. Will add GIN indexes on JSONB columns that carry predicate queries
 Pending. Infrastructure-level change; adds PgBouncer as a sidecar in the
 per-instance container spec. No migration changes.
 
-### W6.D — N+1 group resolution (F047)
+### W6.D — N+1 group resolution + request-scoped cache (F047)
 
-Pending. RBAC group membership resolution currently issues one query per
-group per user; will batch via a single recursive CTE.
+**Status:** Complete (PR #41)
+
+Group membership IDs were never populated in `UserRequestContext` at
+request time, which meant group-based ACL rules (`CollectionAccessRule.groupId`,
+`PropertyAccessRule.groupId`) silently never fired — the authz evaluator
+checked `user.groupIds.includes(rule.groupId)` against an empty array on
+every request.
+
+The underlying cause: `buildUserContext` in `AuthorizationService` reads
+`ctx.attributes['groupIds']`, but `JwtAuthGuard` never populated that field.
+The JWT payload carries no group memberships; `IdentityResolverAdapter`
+resolved roles and permissions but did not surface the group list.
+
+At first-customer scale with deep group hierarchies and group-scoped ACL
+rules, the symptom would have been silent permit/deny mismatches rather
+than N+1 latency — though the `collectInheritedRoles` while-loop in
+`PermissionResolverService` is a secondary N+1 (one query per role
+inheritance level) that becomes latency-visible as hierarchy depth grows.
+
+#### Fix shape
+
+**1. `ResolvedIdentity.groupIds?: string[]`** (libs/auth-guard)
+
+Added `groupIds` as an optional field to the `IdentityResolverPort`'s
+`ResolvedIdentity` shape. Optional so pre-W6.D adapters compile without
+changes and produce an empty list at runtime.
+
+**2. `PermissionResolverService.getUserPermissions` returns `groupIds`**
+(`apps/api/src/app/identity/roles/permission-resolver.service.ts`)
+
+The service already fetched `groupMemberships` during `computeUserPermissions`
+to expand group-assigned roles. W6.D captures those group IDs into
+`resolvedGroupIds` and returns them in `UserPermissionCache.groupIds`.
+No additional DB query — the data was already in memory.
+
+Same change applied to the parallel implementation at
+`apps/api/src/app/instance-api/identity/auth/permission-resolver.service.ts`.
+
+**3. `IdentityResolverAdapter.resolveIdentity` surfaces `groupIds`**
+(`apps/api/src/app/identity/auth/identity-resolver.adapter.ts`)
+
+Destructures `groupIds` from `permissionResolver.getUserPermissions(userId)`
+and includes it in the returned `ResolvedIdentity`. Covered by the
+existing Redis cache (60s TTL) so the DB is queried at most once per TTL
+window per user. `CachedIdentity` extended with `groupIds?: string[]`.
+
+**4. `UserRequestContext.groupCache?: Map<string, string[]>`** (libs/auth-guard)
+
+Added an optional `groupCache` slot to `UserRequestContext` (canon §29
+discriminated union; `UserRequestContext` only — `ServiceRequestContext`
+has no user identity). The map is keyed on `userId` for the single-user
+request path; the design supports batch authz scenarios (e.g. admin
+viewing multi-user records) without API changes.
+
+**5. `JwtAuthGuard` seeds `groupCache` on every authenticated user request**
+(libs/auth-guard)
+
+Hoisted the `resolvedIdentity` variable so its `groupIds` field is
+accessible after the `IdentityResolverPort` block. Initializes
+`groupCache = new Map<string, string[]>()` unconditionally (even when no
+resolver is wired — the map exists but stays empty, consistent with the
+pre-W6.D default). When `resolvedIdentity` is available, writes
+`groupCache.set(userId, resolvedIdentity.groupIds ?? [])`.
+
+**6. `AuthorizationService.buildUserContext` consumes `groupCache`**
+(libs/authorization)
+
+Fallback order (first non-empty wins):
+
+1. `ctx.groupCache?.get(ctx.userId)` — W6.D path: populated by JwtAuthGuard
+2. `ctx.attributes['groupIds']` — JWT-embedded fallback for legacy/test callers
+3. `[]` — pre-W6.D default (no group rules ever fired)
+
+**7. `PermissionResolverService.getUserGroupsBatch(userIds, groupCacheCtx?)`**
+(`apps/api/src/app/identity/roles/permission-resolver.service.ts`)
+
+Batch API for multi-user group lookups. Issues **one** SQL IN-query for N
+users rather than N per-user queries. Checks (in order):
+
+1. Request-scoped `groupCacheCtx` map — zero queries when warm
+2. In-process `UserPermissionCache` (30s TTL) — zero queries when warm
+3. Single `groupMemberRepo.find({ where: { userId: In(uncached) } })` for
+   the remaining users
+
+Results are written back to `groupCacheCtx` for the duration of the request.
+
+#### Files modified
+
+- `libs/auth-guard/src/lib/request-context.interface.ts` — added `groupCache`
+- `libs/auth-guard/src/lib/identity-resolver.port.ts` — added `groupIds`
+- `libs/auth-guard/src/lib/jwt.guard.ts` — seeds `groupCache`; hoisted
+  `resolvedIdentity`
+- `libs/authorization/src/lib/authorization.service.ts` — consumes
+  `groupCache` in `buildUserContext`
+- `apps/api/src/app/identity/roles/permission-resolver.service.ts` —
+  added `groupIds` to `UserPermissionCache`; added `getUserGroupsBatch`
+- `apps/api/src/app/instance-api/identity/auth/permission-resolver.service.ts` —
+  parallel implementation updated with `groupIds`
+- `apps/api/src/app/identity/auth/identity-resolver.adapter.ts` — surfaces
+  `groupIds` in resolved identity + cache
+
+#### Test coverage
+
+New assertions in the following spec files:
+
+- `libs/authorization/src/lib/authorization.service.spec.ts` (2 new tests):
+  - W6.D: groupCache wins over attributes.groupIds
+  - W6.D: falls back to attributes.groupIds when cache has no entry for user
+- `libs/auth-guard/src/lib/jwt.guard.spec.ts` (3 new tests):
+  - Seeds groupCache from resolver identity.groupIds
+  - Seeds empty entry when resolver returns no groupIds
+  - groupCache initialized even without IdentityResolverPort
+- `apps/api/src/app/identity/auth/identity-resolver.adapter.spec.ts`
+  (3 new tests / 1 updated):
+  - Falls through to DB and seeds cache (updated: includes groupIds)
+  - W6.D: surfaces groupIds in the resolved identity (F047)
+  - W6.D: groupIds is empty array when user has no memberships (F047)
+- `apps/api/src/app/identity/roles/permission-resolver.service.spec.ts`
+  (7 new tests under `getUserGroupsBatch` describe block):
+  - Returns empty map for empty input (no DB query)
+  - Issues ONE query for N users
+  - Buckets results correctly per userId
+  - Request-scoped cache hit issues ZERO additional queries
+  - Partial cache hit issues ONE query for uncached users only
+  - Populates ctx cache with DB results for future calls
+  - Returns empty arrays for users with no group memberships
+  - Falls through to in-process permission cache when warm
+
+#### Verification
+
+All scanner groups green: `audit:check`, `authz:check`, `security:check`,
+`service-boundary:check`, `deps:check`, `compliance:check`, `migrations:check`.
+
+Tests:
+- `libs/authorization` — 115 passed
+- `libs/auth-guard` — 55 passed
+- `apps/api` (adapter + resolver specs) — 24 passed
+
+#### Out of scope
+
+- DataLoader dependency (not added — explicit batch API + context-cache
+  covers the same ground with no new dep)
+- `collectInheritedRoles` N+1 (one query per role hierarchy level) — the
+  existing batching with `In(currentIds)` limits blast radius; a CTE-based
+  recursive query is a future optimization when hierarchy depths exceed ~5
+- N+1 fixes in non-authz code paths (separate sweep)
+- F025 permission cache invalidation (already closed)
+- §28.6 admin bypass retirement (Item 15)
 
 ### W6.E — Materialized rollups + refresh strategy (F049/F050)
 

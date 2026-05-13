@@ -56,6 +56,21 @@ export interface ResolvedIdentity {
    * force-logout, and account suspend.
    */
   securityStamp: string;
+  /**
+   * Direct group membership IDs for the user (W6.D / F047).
+   *
+   * Used by `JwtAuthGuard` to seed `UserRequestContext.groupCache` at
+   * request start so the §28 authz evaluator can correctly match
+   * group-based ACL rules without additional per-request DB queries.
+   *
+   * Populated from the `group_members` table by the adapter. Covered by
+   * the adapter's Redis cache (60s TTL) so the DB is queried at most once
+   * per TTL window per user. Absence of this field (e.g. legacy adapters
+   * that pre-date W6.D) is treated as an empty group list, which is
+   * consistent with the pre-W6.D behaviour where `groupIds` was never
+   * populated.
+   */
+  groupIds?: string[];
 }
 
 /** Nest DI token for binding the port implementation. */

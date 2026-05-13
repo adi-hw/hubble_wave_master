@@ -171,4 +171,126 @@ describe('PermissionResolverService', () => {
 
     expect(isCached('user-1')).toBe(true);
   });
+
+  // ── W6.D / F047 — getUserGroupsBatch tests ─────────────────────────────────
+
+  describe('getUserGroupsBatch', () => {
+    it('returns an empty map when given an empty userIds list', async () => {
+      const result = await service.getUserGroupsBatch([]);
+      expect(result.size).toBe(0);
+      expect(mockGroupMemberRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for N users — not N queries', async () => {
+      const userIds = ['u-1', 'u-2', 'u-3', 'u-4', 'u-5'];
+
+      mockGroupMemberRepo.find.mockResolvedValueOnce([
+        { userId: 'u-1', groupId: 'g-a' },
+        { userId: 'u-1', groupId: 'g-b' },
+        { userId: 'u-3', groupId: 'g-c' },
+      ]);
+
+      await service.getUserGroupsBatch(userIds);
+
+      // Single call with IN predicate — not one call per user.
+      expect(mockGroupMemberRepo.find).toHaveBeenCalledTimes(1);
+      expect(mockGroupMemberRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: expect.anything() },
+        }),
+      );
+    });
+
+    it('buckets results correctly per userId', async () => {
+      mockGroupMemberRepo.find.mockResolvedValueOnce([
+        { userId: 'u-1', groupId: 'g-a' },
+        { userId: 'u-1', groupId: 'g-b' },
+        { userId: 'u-2', groupId: 'g-c' },
+      ]);
+
+      const result = await service.getUserGroupsBatch(['u-1', 'u-2', 'u-3']);
+
+      expect(result.get('u-1')).toEqual(expect.arrayContaining(['g-a', 'g-b']));
+      expect(result.get('u-1')).toHaveLength(2);
+      expect(result.get('u-2')).toEqual(['g-c']);
+      expect(result.get('u-3')).toEqual([]);
+    });
+
+    it('uses the request-scoped cache on a cache hit — issues ZERO additional queries', async () => {
+      const groupCacheCtx = new Map<string, string[]>([
+        ['u-1', ['g-a', 'g-b']],
+        ['u-2', ['g-c']],
+      ]);
+
+      const result = await service.getUserGroupsBatch(['u-1', 'u-2'], groupCacheCtx);
+
+      // Both users were in the cache; no DB query should have been issued.
+      expect(mockGroupMemberRepo.find).not.toHaveBeenCalled();
+      expect(result.get('u-1')).toEqual(['g-a', 'g-b']);
+      expect(result.get('u-2')).toEqual(['g-c']);
+    });
+
+    it('issues ONE query only for uncached users when ctx cache is partially warm', async () => {
+      const groupCacheCtx = new Map<string, string[]>([
+        ['u-1', ['g-a']],
+      ]);
+
+      mockGroupMemberRepo.find.mockResolvedValueOnce([
+        { userId: 'u-2', groupId: 'g-b' },
+      ]);
+
+      const result = await service.getUserGroupsBatch(['u-1', 'u-2'], groupCacheCtx);
+
+      // Only u-2 was uncached; find called once.
+      expect(mockGroupMemberRepo.find).toHaveBeenCalledTimes(1);
+      expect(result.get('u-1')).toEqual(['g-a']);
+      expect(result.get('u-2')).toEqual(['g-b']);
+
+      // Cache was updated with the newly resolved entry.
+      expect(groupCacheCtx.get('u-2')).toEqual(['g-b']);
+    });
+
+    it('populates the ctx cache with DB results for future calls', async () => {
+      const groupCacheCtx = new Map<string, string[]>();
+
+      mockGroupMemberRepo.find.mockResolvedValueOnce([
+        { userId: 'u-1', groupId: 'g-x' },
+      ]);
+
+      await service.getUserGroupsBatch(['u-1'], groupCacheCtx);
+      expect(groupCacheCtx.get('u-1')).toEqual(['g-x']);
+
+      // Second call — same ctx — should hit the cache, no new DB query.
+      mockGroupMemberRepo.find.mockClear();
+      const result2 = await service.getUserGroupsBatch(['u-1'], groupCacheCtx);
+      expect(mockGroupMemberRepo.find).not.toHaveBeenCalled();
+      expect(result2.get('u-1')).toEqual(['g-x']);
+    });
+
+    it('returns empty arrays for users with no group memberships', async () => {
+      mockGroupMemberRepo.find.mockResolvedValueOnce([]);
+
+      const result = await service.getUserGroupsBatch(['u-no-groups']);
+
+      expect(result.get('u-no-groups')).toEqual([]);
+    });
+
+    it('falls through to in-process permission cache when it is warm', async () => {
+      const future = new Date(Date.now() + 60_000);
+      // Seed the permission cache with a warm entry that already has groupIds.
+      (service as unknown as {
+        cache: Map<string, { userId: string; expiresAt: Date; groupIds: string[] }>;
+      }).cache.set('u-warm', {
+        userId: 'u-warm',
+        expiresAt: future,
+        groupIds: ['g-warm-1'],
+      });
+
+      const result = await service.getUserGroupsBatch(['u-warm']);
+
+      // Permission cache was warm — no DB query issued.
+      expect(mockGroupMemberRepo.find).not.toHaveBeenCalled();
+      expect(result.get('u-warm')).toEqual(['g-warm-1']);
+    });
+  });
 });

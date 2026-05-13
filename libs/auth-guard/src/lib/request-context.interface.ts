@@ -61,6 +61,23 @@ export interface UserRequestContext {
    * a token.
    */
   bearerToken?: string;
+  /**
+   * Request-scoped group membership cache (W6.D / F047).
+   *
+   * Populated by `JwtAuthGuard` at request start from the resolved
+   * identity's `groupIds`. Consumed by `AuthorizationService.buildUserContext`
+   * so that group-based ACL rules (`CollectionAccessRule.groupId`,
+   * `PropertyAccessRule.groupId`) are correctly evaluated on every
+   * authorised request without additional per-request DB queries.
+   *
+   * The map is keyed on `userId` so it can be extended for batch scenarios
+   * (e.g. an admin viewing records owned by multiple users). For the
+   * common single-user request path the map contains exactly one entry.
+   *
+   * Service tokens NEVER carry this field — service principals have no
+   * user identity and therefore no user-group memberships (canon §29.7).
+   */
+  groupCache?: Map<string, string[]>;
 }
 
 /**
