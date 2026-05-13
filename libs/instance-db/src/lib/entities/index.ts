@@ -1,598 +1,33 @@
-// ============================================================
-// Instance Database Entities
-// ============================================================
+// libs/instance-db/src/lib/entities/index.ts
+//
+// Public re-export barrel for all instance-database entities.
+// Per-area exports live in sibling files:
+//
+//   identity.ts      — users, RBAC, sessions, auth tokens, signing keys,
+//                      service principals, advanced auth
+//   metadata.ts      — schema engine, access-control rules, forms, views,
+//                      navigation, workspaces, packs, search, localization
+//   automation.ts    — business rules, process flows, SLA, decision tables,
+//                      guided processes, connectors, event outbox
+//   ava.ts           — AVA conversations, proposals, ModelOps, app-builder
+//   settings.ts      — instance settings, nav, themes, user preferences,
+//                      audit logs, runtime anomalies
+//   analytics.ts     — dashboards, metrics, reports
+//   notifications.ts — notification templates, queue, in-app, push tokens
+//   integrations.ts  — OAuth, webhooks, connectors, import/export, sync
+//
+// External consumers MUST continue to import from `@hubblewave/instance-db`.
+// Never import directly from per-area file paths — those paths are an
+// internal implementation detail of this library. See Plan Fix 24 PR-A.
 
-// ─────────────────────────────────────────────────────────────────
-// Core Identity
-// ─────────────────────────────────────────────────────────────────
-export { User, UserStatus } from './user.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// RBAC (Role-Based Access Control)
-// ─────────────────────────────────────────────────────────────────
-export { Role, RoleScope } from './role.entity';
-export { Permission } from './permission.entity';
-export { RolePermission, UserRole, AssignmentSource } from './role-permission.entity';
-export { Group, GroupType, GroupMember, GroupRole } from './group.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Application Registry (App Studio scope)
-// ─────────────────────────────────────────────────────────────────
-export {
-  Application,
-  ApplicationRevision,
-} from './application.entity';
-export type { ApplicationStatus, ApplicationRevisionStatus } from './application.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Schema Engine (Collections & Properties)
-// ─────────────────────────────────────────────────────────────────
-export {
-  CollectionDefinition,
-  CollectionDefinitionRevision,
-  OwnerType,
-} from './collection-definition.entity';
-export type {
-  CollectionDefinitionStatus,
-  CollectionDefinitionRevisionStatus,
-} from './collection-definition.entity';
-export {
-  PropertyDefinition,
-  PropertyDefinitionRevision,
-  DefaultValueType,
-} from './property-definition.entity';
-export type {
-  PropertyDefinitionStatus,
-  PropertyDefinitionRevisionStatus,
-  PropertyBehavioralAttributes,
-} from './property-definition.entity';
-export { PropertyType, PropertyTypeCategory, ChoiceList, ChoiceItem } from './property-type.entity';
-export {
-  CollectionIndex,
-  CollectionConstraint,
-  CollectionIndexType,
-  CollectionConstraintType,
-} from './collection-index.entity';
-export { SchemaChangeLog, SchemaEntityType, SchemaChangeType, SchemaChangeSource, PerformedByType } from './schema-change-log.entity';
-export { SchemaSyncState, SyncResult, DriftDetails } from './schema-sync-state.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Access Control
-// ─────────────────────────────────────────────────────────────────
-export { CollectionAccessRule, PropertyAccessRule, UserSession, BreakGlassSession } from './access-rule.entity';
-export type { BreakGlassReasonCode, BreakGlassStatus } from './access-rule.entity';
-export { AccessCondition, AccessConditionGroup } from './access-conditions.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Authentication & Settings
-// ─────────────────────────────────────────────────────────────────
-export { AuthSettings, AuthEvent, AuditLog, NavProfile, NavProfileItem, InstanceSetting } from './settings.entity';
-export { NavNode, NavPatch } from './navigation.entity';
-export { PasswordPolicy, LdapConfig, SsoProvider } from './auth-config.entity';
-export { InstanceCustomization, ConfigChangeHistory } from './instance-config.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Auth Tokens
-// ─────────────────────────────────────────────────────────────────
-export {
-  PasswordHistory,
-  PasswordResetToken,
-  EmailVerificationToken,
-  RefreshToken,
-  ApiKey,
-  MfaMethod,
-  UserInvitation,
-  SAMLAuthState,
-  LoginAttempt,
-} from './auth-tokens.entity';
-export type { LoginAttemptResult, RefreshTokenRevokedReason } from './auth-tokens.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Signing Key Registry (canon §29.2)
-// ─────────────────────────────────────────────────────────────────
-export { KeyMetadata } from './key-metadata.entity';
-export type {
-  KeyProvider,
-  KeyAlgorithm,
-  KeyState,
-} from './key-metadata.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Service Principal Registry (canon §29.7)
-// ─────────────────────────────────────────────────────────────────
-export { ServicePrincipal } from './service-principal.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Theme
-// ─────────────────────────────────────────────────────────────────
-export {
-  ThemeDefinition,
-  UserThemePreference,
-  InstanceBranding,
-  ThemeConfig,
-  ThemeType,
-  ContrastLevel,
-  ColorScheme,
-  ColorSchemePref,
-  PreferenceSource,
-} from './theme.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// User Preferences
-// ─────────────────────────────────────────────────────────────────
-export {
-  UserPreference,
-  DensityMode,
-  SidebarPosition,
-  DateFormat,
-  TimeFormat,
-  StartOfWeek,
-  NotificationFrequency,
-  PinnedNavigationItem,
-  KeyboardShortcut,
-  NotificationPreferences,
-  AccessibilitySettings,
-  TablePreferences,
-  DashboardPreferences,
-} from './user-preference.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Modules
-// ─────────────────────────────────────────────────────────────────
-export { ModuleEntity, ModuleSecurity, ModuleType, ModuleTargetConfig } from './module.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Forms
-// ─────────────────────────────────────────────────────────────────
-export { FormDefinition, FormVersion } from './form.entity';
-export type { FormDefinitionStatus, FormVersionStatus } from './form.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Views
-// ─────────────────────────────────────────────────────────────────
-export {
-  ViewDefinition,
-  ViewDefinitionRevision,
-  ViewVariant,
-  WidgetCatalog,
-} from './view.entity';
-export type { ViewScope, ViewKind, ViewRevisionStatus } from './view.entity';
-export {
-  NavigationModule,
-  NavigationModuleRevision,
-  NavigationVariant,
-} from './navigation-module.entity';
-export type { NavigationScope, NavigationRevisionStatus } from './navigation-module.entity';
-
-// Search
-export {
-  SearchExperience,
-  SearchSource,
-  SearchDictionary,
-  SearchIndexState,
-} from './search.entity';
-export type { SearchScope, SearchIndexStatus } from './search.entity';
-
-export {
-  Locale,
-  TranslationKey,
-  TranslationValue,
-  LocalizationBundle,
-  TranslationRequest,
-} from './localization.entity';
-export type { LocaleDirection, TranslationStatus, TranslationRequestStatus } from './localization.entity';
-
-// ModelOps (AVA Predict)
-export {
-  DatasetDefinition,
-  DatasetSnapshot,
-  ModelArtifact,
-  ModelEvaluation,
-  ModelTrainingJob,
-  ModelDeployment,
-} from './modelops.entity';
-export type {
-  DatasetDefinitionStatus,
-  DatasetSnapshotStatus,
-  ModelArtifactStatus,
-  ModelEvaluationStatus,
-  ModelTrainingStatus,
-  ModelDeploymentStatus,
-} from './modelops.entity';
-
-// AVA Registry
-export {
-  AVATool,
-  AVATopic,
-  AVACard,
-  AVAPromptPolicy,
-  AVAToolApprovalPolicy,
-} from './ava-registry.entity';
-
-// AVA Proposal (canon §12 state machine: Suggest → Preview → Approve → Execute → Audit)
-export { AvaProposal } from './ava-proposal.entity';
-export type { AvaProposalState } from './ava-proposal.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Audit Logs
-// ─────────────────────────────────────────────────────────────────
-export { AccessRuleAuditLog, AccessAuditLog, PropertyAuditLog } from './audit.entity';
-
-export { InstanceEventOutbox, OutboxStatus } from './event-outbox.entity';
-
-export { DependentReviewQueueEntry } from './dependent-review-queue.entity';
-export type {
-  DependentReviewStatus,
-  DependentReviewChangeKind,
-  DependentReviewClassification,
-} from './dependent-review-queue.entity';
-
-export { DisplayRule, DisplayRuleRevision } from './display-rule.entity';
-export type {
-  DisplayRuleStatus,
-  DisplayRuleRevisionStatus,
-  DisplayActionKind,
-  DisplayAction,
-} from './display-rule.entity';
-
-export { Connector } from './connector.entity';
-export type { ConnectorKind, ConnectorStatus } from './connector.entity';
-
-export {
-  DecisionTable,
-  DecisionInput,
-  DecisionRow,
-  DecisionTableRevision,
-} from './decision-table.entity';
-export type {
-  DecisionTableStatus,
-  DecisionInputType,
-  DecisionRowOperator,
-  DecisionRowCondition,
-  DecisionTableRevisionStatus,
-} from './decision-table.entity';
-
-export {
-  GuidedProcessDefinition,
-  GuidedProcessStage,
-  GuidedProcessActivity,
-  GuidedProcessRevision,
-} from './guided-process.entity';
-export type {
-  GuidedProcessStatus,
-  GuidedActivityKind,
-  GuidedProcessRevisionStatus,
-} from './guided-process.entity';
-
-export {
-  WorkspaceDefinition,
-  WorkspacePage,
-  WorkspaceVariant,
-} from './workspace.entity';
-export type {
-  WorkspaceStatus,
-  WorkspacePageKind,
-  WorkspaceVariantScope,
-  PanelLayout,
-} from './workspace.entity';
-
-export { ChangePackage } from './change-package.entity';
-export type {
-  ChangePackageStatus,
-  MetadataChange,
-} from './change-package.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Runtime Anomaly Observability (W2.D)
-// ─────────────────────────────────────────────────────────────────
-export { RuntimeAnomaly } from './runtime-anomaly.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// AVA (AI Virtual Assistant) - Phase 6 Enhanced
-// ─────────────────────────────────────────────────────────────────
-export {
-  // Core AVA types
-  AVAActionType,
-  AVAActionStatus,
-  IntentCategory,
-  ConversationStatus,
-  MessageRole,
-  SuggestionType,
-  PredictionType,
-  FeedbackType,
-  // Core AVA entities
-  AVAAuditTrail,
-  AVAPermissionConfig,
-  AVAGlobalSettings,
-  // Phase 6: Conversations & Context
-  AVAConversation,
-  AVAMessage,
-  AVAIntent,
-  AVAContext,
-  // Phase 6: Predictive Analytics
-  AVAPrediction,
-  AVAAnomaly,
-  // Phase 6: Smart Suggestions & Learning
-  AVASuggestion,
-  AVAFeedback,
-  AVAKnowledgeEmbedding,
-  AVAUsageMetrics,
-} from './ava.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Analytics & Reporting
-// ─────────────────────────────────────────────────────────────────
-export {
-  AnalyticsEvent,
-  AggregatedMetric,
-  MetricDefinition,
-  MetricPoint,
-  DashboardDefinition,
-  AlertDefinition,
-  Report,
-} from './analytics.entity';
-export type {
-  ReportColumn,
-  ReportFilter,
-  ReportSorting,
-  ReportGrouping,
-  ReportDataSource,
-  DashboardScope,
-  MetricCadence,
-  MetricAggregation,
-  MetricSourceType,
-} from './analytics.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Automation (Business Rules, Scheduled Jobs, Client Scripts)
-// ─────────────────────────────────────────────────────────────────
-export {
-  AutomationRule,
-  AutomationRuleRevision,
-  ScheduledJob,
-  AutomationExecutionLog,
-  ClientScript,
-} from './automation.entity';
-export type {
-  TriggerTiming,
-  TriggerOperation,
-  AutomationConditionType,
-  AutomationActionType,
-  ExecutionStatus,
-  ScheduleFrequency,
-  AutomationAction,
-  ClientScriptTrigger,
-  ClientScriptAction,
-  AutomationRuleStatus,
-  AutomationRuleRevisionStatus,
-} from './automation.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Advanced Authentication (WebAuthn, Magic Link, Device Trust, etc.)
-// ─────────────────────────────────────────────────────────────────
-export {
-  WebAuthnCredential,
-  WebAuthnChallenge,
-  MagicLinkToken,
-  TrustedDevice,
-  ImpersonationSession,
-  Delegation,
-  BehavioralProfile,
-  SecurityAlert,
-} from './advanced-auth.entity';
-export type {
-  DeviceTrustStatus,
-  DelegationStatus,
-  AlertSeverity,
-  AlertStatus,
-} from './advanced-auth.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Process Flows (Phase 4)
-// ─────────────────────────────────────────────────────────────────
-export {
-  ProcessFlowDefinition,
-  ProcessFlowDefinitionRevision,
-  ProcessFlowInstance,
-  ProcessFlowExecutionHistory,
-  Approval,
-} from './process-flow.entity';
-export type {
-  TriggerType,
-  ProcessFlowRunAs,
-  ProcessFlowNode,
-  ProcessFlowConnection,
-  ProcessFlowCanvas,
-  ProcessFlowInstanceState,
-  ExecutionHistoryStatus,
-  ApprovalStatus,
-  ApproverType,
-  ApprovalType,
-  ProcessFlowDefinitionStatus,
-  ProcessFlowDefinitionRevisionStatus,
-} from './process-flow.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// SLA & State Machine (Phase 4)
-// ─────────────────────────────────────────────────────────────────
-export {
-  BusinessHours,
-  SLADefinition,
-  SLAInstance,
-  SLABreach,
-  StateMachineDefinition,
-  StateChangeHistory,
-} from './sla.entity';
-export type {
-  DaySchedule,
-  WeeklySchedule,
-  Holiday,
-  SLAType,
-  SLAEscalation,
-  SLAInstanceState,
-  StateMachineState,
-  StateMachineTransition,
-} from './sla.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Notifications (Phase 4)
-// ─────────────────────────────────────────────────────────────────
-export {
-  NotificationTemplate,
-  NotificationQueue,
-  NotificationHistory,
-  InAppNotification,
-  UserNotificationPreferences,
-  DeviceToken,
-} from './notification.entity';
-export type {
-  NotificationChannel,
-  NotificationPriority,
-  TemplateVariable,
-  PushAction,
-  InAppAction,
-  NotificationQueueStatus,
-  DigestFrequency,
-  ChannelPreferences,
-  DevicePlatform,
-} from './notification.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Packs (Release Records, Lineage)
-// ─────────────────────────────────────────────────────────────────
-export {
-  PackReleaseRecord,
-  PackObjectRevision,
-  PackObjectState,
-  PackInstallLock,
-  PackReleaseStatus,
-  PackActorType,
-  PackObjectType,
-} from './pack.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// Integrations & Data Management (Phase 5)
-// ─────────────────────────────────────────────────────────────────
-export {
-  IntegrationApiKey,
-  OAuthClient,
-  OAuthAuthorizationCode,
-  OAuthAccessToken,
-  OAuthRefreshToken,
-  WebhookSubscription,
-  WebhookDelivery,
-  ExternalConnector,
-  ConnectorConnection,
-  PropertyMapping,
-  ImportJob,
-  ExportJob,
-  SyncConfiguration,
-  SyncRun,
-  ApiRequestLog,
-} from './integration.entity';
-export type {
-  OAuthClientType,
-  OAuthGrantType,
-  WebhookEvent,
-  WebhookDeliveryStatus,
-  ConnectorType,
-  ConnectorAuthType,
-  ConnectionStatus,
-  SyncDirection,
-  SyncMode,
-  ConflictResolution,
-  ImportExportStatus,
-  ImportSourceType,
-  ExportFormat,
-  SyncRunStatus,
-  ApiScope,
-  PropertyMappingEntry,
-  DataTransformation,
-  ImportError,
-  SyncLogEntry,
-} from './integration.entity';
-
-// ─────────────────────────────────────────────────────────────────
-// App-Builder
-// ─────────────────────────────────────────────────────────────────
-export {
-  // AVA-Powered Agile Development
-  SprintRecording,
-  AvaStory,
-  StoryImplementation,
-  // Intelligent Upgrade Assistant
-  CustomizationRegistry,
-  UpgradeImpactAnalysis,
-  UpgradeFix,
-  // Living Documentation System
-  GeneratedDocumentation,
-  DocumentationVersion,
-  // Predictive Operations
-  PredictiveInsight,
-  InsightAnalysisJob,
-  // Digital Twins
-  DigitalTwin,
-  SensorReading,
-  // Self-Healing Infrastructure
-  SelfHealingEvent,
-  ServiceHealthStatus,
-  RecoveryAction,
-  // AI Reports
-  AIReport,
-  AIReportTemplate,
-  // Natural Language Queries
-  NLQuery,
-  SavedNLQuery,
-  // Zero-Code App Builder
-  ZeroCodeApp,
-  ZeroCodeAppVersion,
-  AppBuilderComponent,
-  // Voice Control
-  VoiceCommand,
-  VoiceCommandPattern,
-  // Predictive UI
-  UserBehavior,
-  PredictiveSuggestion,
-  UserPattern,
-  // Enums
-  ImpactSeverity,
-  FixStatus,
-  VoiceCommandStatus,
-  BehaviorType,
-  SuggestionStatus,
-  PatternType,
-  AppStatus,
-} from './app-builder.entity';
-export type {
-  // Types
-  SprintRecordingStatus,
-  StoryType,
-  StoryPriority,
-  StoryStatus,
-  ArtifactType,
-  CustomizationType,
-  AnalysisStatus,
-  FixType,
-  DocArtifactType,
-  DocContent,
-  InsightType,
-  InsightSeverity,
-  InsightStatus,
-  JobStatus,
-  SensorQuality,
-  SensorMapping,
-  TwinStatus,
-  ServiceStatus,
-  EventType,
-  RecoveryActionType,
-  ReportStatus,
-  ReportFormat,
-  VoiceIntent,
-  UserAction,
-  SuggestionType as PredictiveSuggestionType,
-  AppDefinition,
-  AppComponent,
-} from './app-builder.entity';
+export * from './identity';
+export * from './metadata';
+export * from './automation';
+export * from './ava';
+export * from './settings';
+export * from './analytics';
+export * from './notifications';
+export * from './integrations';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -820,8 +255,8 @@ import {
 } from './app-builder.entity';
 
 /**
- * All instance database entities
- * Use this array when configuring TypeORM
+ * All instance database entities.
+ * Use this array when configuring TypeORM.
  */
 export const instanceEntities = [
   // Core Identity
@@ -867,8 +302,8 @@ export const instanceEntities = [
   AuditLog,
   NavProfile,
   NavProfileItem,
-  NavNode,    // [NEW]
-  NavPatch,   // [NEW]
+  NavNode,
+  NavPatch,
   InstanceSetting,
   PasswordPolicy,
   LdapConfig,
@@ -922,15 +357,12 @@ export const instanceEntities = [
   TranslationValue,
   LocalizationBundle,
   TranslationRequest,
-  TranslationRequest,
-  LocalizationBundle,
   DatasetDefinition,
   DatasetSnapshot,
   ModelArtifact,
   ModelEvaluation,
   ModelTrainingJob,
   ModelDeployment,
-  ModelArtifact,
 
   // Audit Logs
   AccessRuleAuditLog,
@@ -1066,41 +498,30 @@ export const instanceEntities = [
   ApiRequestLog,
 
   // App-Builder
-  // AVA-Powered Agile Development
   SprintRecording,
   AvaStory,
   StoryImplementation,
-  // Intelligent Upgrade Assistant
   CustomizationRegistry,
   UpgradeImpactAnalysis,
   UpgradeFix,
-  // Living Documentation System
   GeneratedDocumentation,
   DocumentationVersion,
-  // Predictive Operations
   PredictiveInsight,
   InsightAnalysisJob,
-  // Digital Twins
   DigitalTwin,
   SensorReading,
-  // Self-Healing Infrastructure
   SelfHealingEvent,
   ServiceHealthStatus,
   RecoveryAction,
-  // AI Reports
   AIReport,
   AIReportTemplate,
-  // Natural Language Queries
   NLQuery,
   SavedNLQuery,
-  // Zero-Code App Builder
   ZeroCodeApp,
   ZeroCodeAppVersion,
   AppBuilderComponent,
-  // Voice Control
   VoiceCommand,
   VoiceCommandPattern,
-  // Predictive UI
   UserBehavior,
   PredictiveSuggestion,
   UserPattern,
