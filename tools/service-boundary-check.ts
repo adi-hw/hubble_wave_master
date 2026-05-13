@@ -52,7 +52,38 @@ const KNOWN_VIOLATIONS: Array<{
   importPath: string;
   rationale: string;
   followUp: string;
-}> = [];
+}> = [
+  // Plan Fix 29 (canon §29.9): IdentityAuthAliasController is a thin
+  // delegation shim — it mounts canonical AuthService (ES256) under
+  // `identity/auth/*` so the web client's base-URL convention
+  // (`/api/identity`) routes to the canonical ES256 token-issuance path.
+  // No business logic lives in instance-api; the import is a deliberate
+  // inward delegation, not a data-ownership violation.
+  {
+    file: 'apps/api/src/app/instance-api/identity/auth/identity-auth-alias.controller.ts',
+    importPath: '../../../identity/auth/auth.service',
+    rationale: 'thin alias delegates to canonical ES256 AuthService (Plan Fix 29 / §29.9)',
+    followUp: 'F029 — cleanup when instance-api is fully dissolved into identity',
+  },
+  {
+    file: 'apps/api/src/app/instance-api/identity/auth/identity-auth-alias.controller.ts',
+    importPath: '../../../identity/auth/dto/login.dto',
+    rationale: 'thin alias re-uses canonical LoginDto — no logic, just DTO forwarding',
+    followUp: 'F029 — same as above',
+  },
+  {
+    file: 'apps/api/src/app/instance-api/identity/auth/identity-auth-alias.controller.ts',
+    importPath: '../../../identity/auth/dto/user-profile.dto',
+    rationale: 'thin alias re-uses canonical UserProfileDto — no logic, just DTO forwarding',
+    followUp: 'F029 — same as above',
+  },
+  {
+    file: 'apps/api/src/app/instance-api/identity/identity.module.ts',
+    importPath: '../../identity/auth/auth.module',
+    rationale: 'IdentityModule imports canonical AuthModule to provide ES256 AuthService to the alias controller',
+    followUp: 'F029 — same as above',
+  },
+];
 
 /**
  * Entity ownership map. Each entity is owned by exactly one service per the

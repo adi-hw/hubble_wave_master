@@ -58,8 +58,9 @@ const PUBLIC_ALLOWLIST = new Set([
   // Category 2: Authentication entry points.
   // -------------------------------------------------------------------
   'apps/control-plane/src/app/auth/auth.controller.ts',
-  'apps/api/src/app/instance-api/identity/auth/auth.controller.ts',
-  'apps/api/src/app/instance-api/identity/auth/sso-config.controller.ts',
+  // Plan Fix 29 (§29.9): parallel HS256 path deleted; replaced by this
+  // thin alias that delegates to the canonical ES256 AuthService.
+  'apps/api/src/app/instance-api/identity/auth/identity-auth-alias.controller.ts',
   'apps/api/src/app/identity/auth/auth.controller.ts',
   'apps/api/src/app/identity/auth/email-verification.controller.ts',
   'apps/api/src/app/identity/auth/magic-link.controller.ts',
