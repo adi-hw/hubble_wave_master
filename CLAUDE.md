@@ -590,6 +590,16 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (W5.A / Plan Fix 25): §10 enforcement strengthened.
+  `tools/audit-bypass-check.ts` regex widened to catch
+  `<varName>Repo.save()` / `<varName>Repository.save()` patterns
+  that were previously missed due to a leading `\b` word-boundary
+  bug. Baseline F044 inventory captured in `KNOWN_DEFERRED_OFFENDERS`
+  with per-area `followUp` tags (W5.B identity, W5.C metadata,
+  W5.D data, W5.E automation+ava, W5.F fold-ins). Area sweeps
+  follow in W5.B-F; allowlist must reach empty by end of wave.
+  Refs Plan Fix 25.
+
 - 2026-05-12 (canon §29 PR-D — service principals + RequestContext
   discriminated union, closes audit finding F022):
   • `service_principals` table + `ServicePrincipal` entity land in

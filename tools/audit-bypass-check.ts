@@ -27,7 +27,29 @@ const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']
  * accepted as deferred work. Listed by relative path. Each entry must be
  * accompanied by a follow-up reference (Wave/Fix/issue).
  */
-const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [];
+const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [
+  // W5.A baseline inventory — discovered when RECORD_WRITE_PATTERNS[0] regex was widened
+  // to catch <varName>Repo.save() / <varName>Repository.save() identifiers (the original
+  // \b word-boundary matched standalone Repo.save but not sessionRepo.save, userRepo.save,
+  // alertRepo.save, etc. which are mid-identifier). All four sites are in the identity/auth
+  // area and are scheduled for the W5.B identity sweep.
+  {
+    file: 'apps/api/src/app/identity/auth/behavioral-analytics.service.ts',
+    followUp: 'W5.B',
+  },
+  {
+    file: 'apps/api/src/app/identity/auth/delegation.service.ts',
+    followUp: 'W5.B',
+  },
+  {
+    file: 'apps/api/src/app/identity/auth/device-trust.service.ts',
+    followUp: 'W5.B',
+  },
+  {
+    file: 'apps/api/src/app/identity/auth/impersonation.service.ts',
+    followUp: 'W5.B',
+  },
+];
 
 const AUDIT_WRITE_PATTERNS = [
   /\bauditLog(?:Repo|Repository)?\s*\.\s*save\s*\(/,
@@ -36,8 +58,20 @@ const AUDIT_WRITE_PATTERNS = [
   /\bgetRepository\s*\(\s*AuditLog\s*\)/,
 ];
 
+// Matches any identifier ending in Repo or Repository followed by .save( — including
+// prefixed identifiers like sessionRepo, userRepository, repo, Repository.
+// The original leading `\b` did NOT match mid-word occurrences like `sessionRepo` where
+// `Repo` is a suffix inside a longer identifier.
+// Exported for use by the self-test.
+export const REPO_SAVE_PATTERN = /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*save\s*\(/g;
+
+// Identifiers that represent audit-log repos (not record repos). These match
+// AUDIT_WRITE_PATTERNS[0] and must be excluded from record-write detection to
+// avoid false-positives when a method writes only to the audit repo.
+const AUDIT_REPO_NAME_PATTERN = /^(?:this\.)?auditLog(?:Repo|Repository)?\s*\./i;
+
 const RECORD_WRITE_PATTERNS = [
-  /\b(?:Repo|Repository|repo|repository)\s*\.\s*save\s*\(/,
+  // createQueryBuilder chain — unchanged.
   /\bcreateQueryBuilder\s*\(\s*\)\s*\.\s*(?:insert|update|delete)\s*\(/,
 ];
 
@@ -93,14 +127,35 @@ function hasAnyMatch(content: string, patterns: RegExp[]): boolean {
 }
 
 /**
+ * Returns true if the method body contains at least one Repo/Repository .save() call
+ * that is NOT an audit-log repo write (i.e., a state-changing record mutation).
+ */
+function hasNonAuditRepoSave(methodBody: string): boolean {
+  const pattern = new RegExp(REPO_SAVE_PATTERN.source, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(methodBody)) !== null) {
+    const token = match[0];
+    if (!AUDIT_REPO_NAME_PATTERN.test(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Scan one method body. Returns true if the method contains both
  * a record-mutation save and an audit save outside a transactional wrapper.
+ *
+ * Exported for use by the self-test suite.
  */
-function methodHasUnsafePattern(methodBody: string): boolean {
+export function methodHasUnsafePattern(methodBody: string): boolean {
   const hasAuditWrite = hasAnyMatch(methodBody, AUDIT_WRITE_PATTERNS);
   if (!hasAuditWrite) return false;
 
-  const hasRecordWrite = hasAnyMatch(methodBody, RECORD_WRITE_PATTERNS);
+  // Check both the RECORD_WRITE_PATTERNS (createQueryBuilder chains) and the
+  // Repo/Repository .save() pattern with audit-repo exclusion.
+  const hasRecordWrite =
+    hasAnyMatch(methodBody, RECORD_WRITE_PATTERNS) || hasNonAuditRepoSave(methodBody);
   if (!hasRecordWrite) return false;
 
   const hasWrapper = hasAnyMatch(methodBody, TRANSACTIONAL_WRAPPER_PATTERNS);
@@ -114,8 +169,10 @@ function methodHasUnsafePattern(methodBody: string): boolean {
  * after a likely method signature and walk to the matching `}`. This is a
  * crude scan that misses some patterns but is enough to catch the obvious
  * bug pattern of "save then write audit in the same method body".
+ *
+ * Exported for use by the self-test suite.
  */
-function extractMethodBodies(content: string): string[] {
+export function extractMethodBodies(content: string): string[] {
   const methods: string[] = [];
   const re = /(?:async\s+)?(?:public|private|protected\s+)?(?:async\s+)?[\w$]+\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/g;
   let match: RegExpExecArray | null;
@@ -215,4 +272,13 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Guard so that direct `ts-node` invocation runs main(), but imports by the
+// self-test suite do not trigger a scan of the whole repo.
+const isMainModule =
+  typeof require !== 'undefined'
+    ? require.main === module
+    : process.argv[1]?.includes('audit-bypass-check') ?? false;
+
+if (isMainModule) {
+  main();
+}
