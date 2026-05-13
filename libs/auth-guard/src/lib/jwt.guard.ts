@@ -15,8 +15,12 @@ import {
   type JWK,
   type JWTPayload,
 } from 'jose';
-import { RequestContext } from './request-context.interface';
+import {
+  ServiceRequestContext,
+  UserRequestContext,
+} from './request-context.interface';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { ALLOW_SERVICE_TOKEN } from './allow-service-token.decorator';
 import {
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
@@ -40,10 +44,18 @@ const ISSUER_PREFIX = 'hubblewave-';
 
 /**
  * Canon §29.3 default audience for human tokens. Service-to-service
- * tokens have audience `svc-{target}` per canon §29.7 and are not yet
- * accepted by this guard (closes in a follow-up PR).
+ * tokens have audience `svc-{target}` per canon §29.7 — service-token
+ * verification compares to `SERVICE_AUDIENCE` (the receiver's own
+ * service id).
  */
 const DEFAULT_AUDIENCE = 'hubblewave-instance';
+
+/**
+ * Canon §29.7 default service audience. `apps/api` (the dominant
+ * receiver of service tokens) treats every service token whose `aud`
+ * does not match this as a misrouted token and rejects with 401.
+ */
+const DEFAULT_SERVICE_AUDIENCE = 'svc-api';
 
 /**
  * Clock skew tolerance, in seconds. Matches `JwtStrategy` and the prior
@@ -53,27 +65,41 @@ const DEFAULT_AUDIENCE = 'hubblewave-instance';
 const CLOCK_TOLERANCE_SECONDS = 30;
 
 /**
+ * `sub` claim prefix for service tokens per canon §29.3 + §29.7.
+ * `service:<service_id>` distinguishes service callers from human
+ * callers (`user:<user_id>`) at the JWT layer.
+ */
+const SERVICE_SUB_PREFIX = 'service:';
+const USER_SUB_PREFIX = 'user:';
+
+/**
  * JwtAuthGuard — global authentication guard for the instance plane.
  *
- * Responsibilities (post canon §29 PR-B + audit F002/F013/F016 fix):
+ * Post canon §29 PR-D, the guard authenticates two distinct caller
+ * kinds and populates `request.context` with the discriminated-union
+ * `RequestContext` so consumers can branch on `ctx.kind`:
  *
- *   1. **Signature + claims** (canon §29.3): verify ES256 over the JWT
- *      using the public JWK whose `kid` matches the token header. Only
- *      `active`/`retiring` keys resolve via `KeySigningService.getPublicJwk`,
- *      so a retired/compromised key cannot validate. `aud` must match the
- *      configured audience. `iss` must start with `hubblewave-` (the
- *      suffix is the instance id, verified separately).
- *   2. **Token version** (canon §29.6): compare the JWT's `token_version`
- *      claim to the user's current `security_stamp`. Mismatch → reject
- *      with `Token version stale`. This is the cross-cutting kill-switch
- *      that survives password changes, MFA disables, and admin
- *      force-logouts.
- *   3. **Fresh identity** (F013): resolve roles, permissions, status via
- *      {@link IdentityResolverPort}, not the JWT claims. A user whose
- *      role was revoked between mint and verify is rejected.
- *   4. **Revocation** (F002): check {@link JwtRevocationPort}. A token
- *      whose session was logged-out, or whose `iat` predates a per-user
- *      revoke cutoff, is rejected even before expiry.
+ *   1. **User tokens** (`sub: user:<id>`)
+ *      Resolved through `IdentityResolverPort` (F013 — fresh roles +
+ *      permissions on every request), checked for revocation via
+ *      `JwtRevocationPort` (F002 — session logout / admin revoke),
+ *      and validated against `securityStamp` via the `token_version`
+ *      claim (canon §29.6 kill-switch). Audience: `hubblewave-instance`.
+ *
+ *   2. **Service tokens** (`sub: service:<id>`)
+ *      Verified against the configured `SERVICE_AUDIENCE` (default
+ *      `svc-api` — the receiver's own service identity). Service tokens
+ *      DO NOT route through `IdentityResolverPort`, `JwtRevocationPort`,
+ *      or `securityStamp` — services have no user identity, no session,
+ *      and no per-user revocation. Authorization is by `scope`
+ *      (`<collection>:<action>`) which the consuming controller checks
+ *      against its needs.
+ *
+ * **Default-deny for service tokens**: an endpoint accepts service
+ * tokens ONLY when it carries `@AllowServiceToken()` at the method or
+ * class level. A service token presented to a user-only endpoint is
+ * rejected with `Service tokens are not accepted at this endpoint`.
+ * This is the canon §28 deny-wins posture applied to the JWT layer.
  *
  * The two identity ports are `@Optional()` so light-weight integration
  * tests can stub them out. `KeySigningService` is REQUIRED — without a
@@ -108,6 +134,12 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) {
       return true;
     }
+
+    const allowsServiceToken =
+      this.reflector.getAllAndOverride<boolean>(ALLOW_SERVICE_TOKEN, [
+        ctx.getHandler(),
+        ctx.getClass(),
+      ]) === true;
 
     const request = ctx.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
@@ -146,20 +178,19 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token header');
     }
 
-    // Resolve the public JWK from the signing service. getPublicJwk only
-    // returns active/retiring keys; retired or compromised keys throw
-    // and the catch below maps them to Invalid token.
+    // Determine which audience to verify against. Service tokens use
+    // SERVICE_AUDIENCE; user tokens use JWT_AUDIENCE. We peek at the
+    // `sub` claim AFTER signature verification, so we have to verify
+    // twice in the worst case — instead, accept either audience here
+    // and re-check the specific one after we have the payload.
     let payload: JWTPayload;
     try {
       const jwk = await this.keySigning.getPublicJwk(header.kid);
       const publicKey = await importJWK(jwk as unknown as JWK, 'ES256');
-      const audience =
-        process.env['JWT_AUDIENCE'] || DEFAULT_AUDIENCE;
       const verified = await jwtVerify(token, publicKey, {
-        audience,
-        // We do not pin `issuer` via jose because canon §29.3 issuer is
-        // a per-instance suffix; we check the prefix ourselves below
-        // after jwtVerify confirms the signature.
+        // Defer audience check to post-signature step where we know
+        // the caller kind. jose's audience option does not support
+        // "accept any of these audiences contextually."
         clockTolerance: `${CLOCK_TOLERANCE_SECONDS}s`,
         algorithms: ['ES256'],
       });
@@ -180,15 +211,68 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token issuer');
     }
 
+    const subRaw = payload.sub;
+    if (typeof subRaw !== 'string' || subRaw.length === 0) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Service token branch (canon §29.7)
+    // ─────────────────────────────────────────────────────────────
+    if (subRaw.startsWith(SERVICE_SUB_PREFIX)) {
+      if (!allowsServiceToken) {
+        // Canon §29.7 default-deny — a service token at a non-opted-in
+        // endpoint MUST be rejected even when the signature is valid.
+        throw new UnauthorizedException(
+          'Service tokens are not accepted at this endpoint',
+        );
+      }
+
+      const serviceId = subRaw.slice(SERVICE_SUB_PREFIX.length);
+      if (!serviceId) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      const expectedServiceAudience =
+        process.env['SERVICE_AUDIENCE'] || DEFAULT_SERVICE_AUDIENCE;
+      if (payload.aud !== expectedServiceAudience) {
+        throw new UnauthorizedException('Token audience mismatch');
+      }
+
+      const rawScope = (payload as Record<string, unknown>)['scope'];
+      const scopes: string[] = Array.isArray(rawScope)
+        ? (rawScope as string[])
+        : [];
+
+      const instanceId =
+        (payload as Record<string, unknown>)['instance_id'];
+      const serviceContext: ServiceRequestContext = {
+        kind: 'service',
+        serviceId,
+        instanceId: typeof instanceId === 'string' ? instanceId : '',
+        scopes,
+        audience: payload.aud as string,
+        bearerToken: token,
+      };
+
+      request.user = serviceContext;
+      request.context = serviceContext;
+      return true;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // User token branch — existing flow (post-PR-B + PR-C)
+    // ─────────────────────────────────────────────────────────────
+    const userAudience = process.env['JWT_AUDIENCE'] || DEFAULT_AUDIENCE;
+    if (payload.aud !== userAudience) {
+      throw new UnauthorizedException('Token audience mismatch');
+    }
+
     // `sub` per canon §29.3 is `user:{user_id}` for human tokens. For
     // backward compat with fixtures we accept a bare user id too.
-    const subRaw = payload.sub;
-    const userId =
-      typeof subRaw === 'string'
-        ? subRaw.startsWith('user:')
-          ? subRaw.slice('user:'.length)
-          : subRaw
-        : '';
+    const userId = subRaw.startsWith(USER_SUB_PREFIX)
+      ? subRaw.slice(USER_SUB_PREFIX.length)
+      : subRaw;
     if (!userId) {
       throw new UnauthorizedException('Invalid token');
     }
@@ -209,6 +293,7 @@ export class JwtAuthGuard implements CanActivate {
     let resolvedIsAdmin =
       resolvedRoles.includes('admin') ||
       (payload as Record<string, unknown>)['is_admin'] === true;
+    let resolvedSecurityStamp: string | undefined;
 
     if (this.identityResolver) {
       const identity = await this.identityResolver.resolveIdentity(userId);
@@ -232,6 +317,7 @@ export class JwtAuthGuard implements CanActivate {
       resolvedRoles = identity.roles;
       resolvedPermissions = identity.permissions;
       resolvedIsAdmin = identity.isAdmin;
+      resolvedSecurityStamp = identity.securityStamp;
     }
 
     const sessionIdRaw =
@@ -259,11 +345,13 @@ export class JwtAuthGuard implements CanActivate {
 
     const username = (payload as Record<string, unknown>)['username'];
     const attributes = (payload as Record<string, unknown>)['attributes'];
-    const requestContext: RequestContext = {
+    const requestContext: UserRequestContext = {
+      kind: 'user',
       userId,
       roles: resolvedRoles,
       permissions: resolvedPermissions,
       isAdmin: resolvedIsAdmin,
+      securityStamp: resolvedSecurityStamp,
       sessionId,
       username: typeof username === 'string' ? username : undefined,
       attributes:

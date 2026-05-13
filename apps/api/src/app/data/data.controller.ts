@@ -1,5 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, InstanceRequest } from '@hubblewave/auth-guard';
+import {
+  JwtAuthGuard,
+  InstanceRequest,
+  assertUserContext,
+} from '@hubblewave/auth-guard';
 import { CreateRecordDto, UpdateRecordDto, ListRecordsDto, BulkUpdateDto, BulkDeleteDto } from '@hubblewave/shared-types';
 import { DataService } from './data.service';
 
@@ -14,7 +18,7 @@ export class DataController {
     @Query() query: ListRecordsDto,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.list(ctx, collectionCode, query);
   }
 
@@ -24,7 +28,7 @@ export class DataController {
     @Param('id') id: string,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.getOne(ctx, collectionCode, id);
   }
 
@@ -34,7 +38,7 @@ export class DataController {
     @Body() body: CreateRecordDto,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.create(ctx, collectionCode, body.data);
   }
 
@@ -44,7 +48,7 @@ export class DataController {
     @Body() body: BulkUpdateDto,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.bulkUpdate(ctx, collectionCode, body.ids, body.updates as Record<string, any>);
   }
 
@@ -55,7 +59,7 @@ export class DataController {
     @Body() body: UpdateRecordDto,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.update(ctx, collectionCode, id, body.data || {});
   }
 
@@ -65,7 +69,7 @@ export class DataController {
     @Body() body: BulkDeleteDto,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.bulkDelete(ctx, collectionCode, body.ids);
   }
 
@@ -75,7 +79,7 @@ export class DataController {
     @Param('id') id: string,
     @Req() req: InstanceRequest
   ) {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.dataService.delete(ctx, collectionCode, id);
   }
 }

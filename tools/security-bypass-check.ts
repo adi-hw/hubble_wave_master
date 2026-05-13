@@ -88,6 +88,16 @@ const PUBLIC_ALLOWLIST = new Set([
   // -------------------------------------------------------------------
   'apps/api/src/app/identity/auth/jwks.controller.ts',
   // -------------------------------------------------------------------
+  // Category 7: Service-token bootstrap mint endpoint (canon §29.7).
+  // POST /internal/service-token bypasses JwtAuthGuard because the
+  // caller has no HubbleWave JWT yet — they exchange a K8s projected
+  // SA token (production) or X-Bootstrap-Secret header (dev) for one.
+  // ServiceBootstrapService authenticates the request internally
+  // before the token is minted; @Public() only opts out of the global
+  // JWT chain.
+  // -------------------------------------------------------------------
+  'apps/api/src/app/identity/auth/service-token.controller.ts',
+  // -------------------------------------------------------------------
   // Category 5: Auth handled by a dedicated guard (PackInstallGuard).
   // -------------------------------------------------------------------
   'apps/api/src/app/metadata/packs/packs.controller.ts',

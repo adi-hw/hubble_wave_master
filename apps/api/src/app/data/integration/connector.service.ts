@@ -29,7 +29,7 @@ import {
 } from '@hubblewave/instance-db';
 import { ConnectorCredentialsService } from './connector-credentials.service';
 import { EventOutboxService } from '../events/event-outbox.service';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 
 /**
  * Wraps the platform-wide URL validator so connector errors surface as
@@ -1184,8 +1184,9 @@ export class ConnectorService {
     return value;
   }
 
-  private buildSystemContext(): RequestContext {
+  private buildSystemContext(): UserRequestContext {
     return {
+      kind: 'user',
       userId: this.systemUserId,
       roles: [],
       permissions: [],

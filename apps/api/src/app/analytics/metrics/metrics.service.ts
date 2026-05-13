@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from '@ne
 import { Cron } from '@nestjs/schedule';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { AuthorizationService } from '@hubblewave/authorization';
 import {
   AuditLog,
@@ -41,7 +41,7 @@ export class MetricsService {
     private readonly authz: AuthorizationService,
   ) {}
 
-  async listMetrics(context: RequestContext): Promise<MetricDefinition[]> {
+  async listMetrics(context: UserRequestContext): Promise<MetricDefinition[]> {
     const metrics = await this.metricRepo.find({
       where: { isActive: true },
       order: { name: 'ASC' },
@@ -56,7 +56,7 @@ export class MetricsService {
   }
 
   async getMetricPoints(
-    context: RequestContext,
+    context: UserRequestContext,
     metricCode: string,
     range: MetricQueryRange,
   ): Promise<MetricPointResult[]> {
@@ -180,7 +180,7 @@ export class MetricsService {
     await this.writeRollupAudit(metric, ownerContext, pointsWritten);
   }
 
-  private async buildOwnerContext(ownerId: string): Promise<RequestContext | null> {
+  private async buildOwnerContext(ownerId: string): Promise<UserRequestContext | null> {
     const user = await this.userRepo.findOne({ where: { id: ownerId } });
     if (!user || user.status !== 'active') {
       return null;
@@ -200,6 +200,7 @@ export class MetricsService {
     const roles = (roleRows || []).map((row) => row.code).filter(Boolean);
 
     return {
+      kind: 'user',
       userId: ownerId,
       roles,
       permissions: [],
@@ -209,7 +210,7 @@ export class MetricsService {
 
   private async writeRollupAudit(
     metric: MetricDefinition,
-    owner: RequestContext,
+    owner: UserRequestContext,
     pointsWritten: number,
   ): Promise<void> {
     try {
@@ -273,7 +274,7 @@ export class MetricsService {
       .execute();
   }
 
-  private async canAccessMetric(context: RequestContext, metric: MetricDefinition): Promise<boolean> {
+  private async canAccessMetric(context: UserRequestContext, metric: MetricDefinition): Promise<boolean> {
     if (context.isAdmin) {
       return true;
     }
@@ -392,7 +393,7 @@ export class MetricsService {
   }
 
   private async computeMetricValue(
-    context: RequestContext,
+    context: UserRequestContext,
     metric: MetricDefinition,
     start: Date,
     end: Date,
@@ -407,7 +408,7 @@ export class MetricsService {
   }
 
   private async computeCollectionMetric(
-    context: RequestContext,
+    context: UserRequestContext,
     metric: MetricDefinition,
     start: Date,
     end: Date,
@@ -456,7 +457,7 @@ export class MetricsService {
   }
 
   private async computeAnalyticsMetric(
-    context: RequestContext,
+    context: UserRequestContext,
     metric: MetricDefinition,
     start: Date,
     end: Date,

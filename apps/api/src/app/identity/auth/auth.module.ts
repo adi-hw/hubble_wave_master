@@ -21,6 +21,7 @@ import {
   Role,
   PasswordHistory,
   RefreshToken,
+  ServicePrincipal,
   MfaMethod,
   EmailVerificationToken,
   PasswordResetToken,
@@ -84,6 +85,8 @@ import { JwtRevocationAdapter } from './jwt-revocation.adapter';
 import { KeySigningModule } from './key-signing/key-signing.module';
 import { JwksController } from './jwks.controller';
 import { TokenIssuerService } from './token-issuer.service';
+import { ServiceBootstrapService } from './service-bootstrap.service';
+import { ServiceTokenController } from './service-token.controller';
 
 @Module({
   imports: [
@@ -101,6 +104,7 @@ import { TokenIssuerService } from './token-issuer.service';
       Role,
       PasswordHistory,
       RefreshToken,
+      ServicePrincipal,
       MfaMethod,
       EmailVerificationToken,
       PasswordResetToken,
@@ -178,6 +182,8 @@ import { TokenIssuerService } from './token-issuer.service';
     BehavioralAnalyticsController,
     // canon §29 PR-A
     JwksController,
+    // canon §29 PR-D — service-to-service token mint endpoint.
+    ServiceTokenController,
   ],
   providers: [
     AuthService,
@@ -231,6 +237,9 @@ import { TokenIssuerService } from './token-issuer.service';
     // Wraps KeySigningService (ES256) and embeds canon §29.3 claims
     // including the per-user security_stamp → token_version kill-switch.
     TokenIssuerService,
+    // canon §29 PR-D: service-to-service bootstrap authenticator.
+    // K8s TokenReview in production, JWT_BOOTSTRAP_SECRET in dev.
+    ServiceBootstrapService,
   ],
   exports: [
     AuthService,

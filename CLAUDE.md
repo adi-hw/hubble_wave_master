@@ -590,6 +590,55 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-12 (canon §29 PR-D — service principals + RequestContext
+  discriminated union, closes audit finding F022):
+  • `service_principals` table + `ServicePrincipal` entity land in
+    `migrations/instance/1930800000000-add-service-principals.ts`.
+  • Seed manifest is ONE row only: `svc-worker → svc-api`. Canon §29.7
+    amended to flag the prior `svc-api/svc-ava/svc-insights/svc-worker`
+    example list as documentation, not a seed manifest. Founder
+    direction: do not seed imaginary principals; future cross-process
+    call surfaces add their own row via migration.
+  • `RequestContext` is now a discriminated union
+    `{ kind: 'user', ... } | { kind: 'service', ... }`.
+    `UserRequestContext` carries `userId/roles/permissions/isAdmin/
+    securityStamp` (pre-PR-D fields preserved, with `kind: 'user'`).
+    `ServiceRequestContext` carries `serviceId/scopes/audience/
+    instanceId` — NO `userId`, NO `roles`, NO `securityStamp`.
+    Founder direction: "do not fake service callers as users."
+  • Helpers `assertUserContext()` / `assertServiceContext()` /
+    `isUserContext()` / `isServiceContext()` exported from
+    `@hubblewave/auth-guard`. Every controller that reads user-shaped
+    fields narrows at entry via `assertUserContext(req.context)`;
+    accessing `.userId` on the union without narrowing fails type
+    checking — that is the point.
+  • `@AllowServiceToken()` decorator + default-deny posture: every
+    endpoint rejects service tokens unless explicitly opted in at the
+    method or class level. Canon §28 deny-wins applied to the JWT
+    layer. `JwtAuthGuard` enforces.
+  • `TokenIssuerService.issueServiceToken({ serviceId, audience })`
+    mints ES256 service JWTs. Fixed 5-minute TTL per canon §29.4. NO
+    `token_version` claim — services have no `security_stamp` per
+    canon §29.6. Fresh `session_id` per mint.
+  • `POST /internal/service-token` endpoint: `@Public()` because the
+    caller has no HubbleWave JWT yet. Bootstrap via
+    `ServiceBootstrapService` — K8s TokenReview in production
+    (raw `https.request` to the cluster API server; no kubernetes-
+    client dep), `X-Bootstrap-Secret: <JWT_BOOTSTRAP_SECRET>` +
+    `X-Service-Id: <id>` in dev. Generic 401 on every failure mode
+    so probes cannot enumerate which bootstrap kind failed.
+    Allowlisted in `tools/security-bypass-check.ts` Category 7.
+  • `JwtAuthGuard` branches on `sub.startsWith('service:')` to build
+    `ServiceRequestContext`. Service tokens NEVER route through
+    `IdentityResolverPort`, `JwtRevocationPort`, or `security_stamp`
+    lookup — those carry user semantics that don't apply.
+  • `ServiceTokenClient` in `@hubblewave/auth-guard` for consumers
+    that need to mint outbound service tokens — caches per audience,
+    refreshes 30s before expiry, reads K8s SA token in production /
+    bootstrap headers in dev. Wired into `apps/worker` today; the
+    worker doesn't currently make HTTP callbacks to apps/api, but the
+    client is preparatory parity with the canon §29.7 contract.
+
 - 2026-05-12 (canon §29 PR-C2 — logout-all-devices + security_stamp
   bump triggers + §29.6.1 amendment):
   • §29.6 amended with the exclusive list of `security_stamp` bump
@@ -1062,16 +1111,24 @@ No shared "internal secret." Every service has a registered principal and mints 
 
 ```
 service_principals (
-  service_id              text PRIMARY KEY,            -- 'svc-api', 'svc-ava', 'svc-insights', 'svc-worker'
+  service_id              text PRIMARY KEY,            -- e.g. 'svc-worker'
   display_name            text NOT NULL,
-  allowed_audiences       text[] NOT NULL,             -- ['svc-api', 'svc-worker'] — services this principal may call
-  allowed_scopes          text[] NOT NULL,             -- ['work_order:read', 'dashboard:read', ...]
-  k8s_service_account     text NULL,                   -- 'system:serviceaccount:hubblewave-system:svc-ava-sa'
+  allowed_audiences       text[] NOT NULL,             -- e.g. ['svc-api'] — services this principal may call
+  allowed_scopes          text[] NOT NULL,             -- e.g. ['work_order:read', 'audit:write'] — <collection>:<action>
+  k8s_service_account     text NULL,                   -- e.g. 'system:serviceaccount:hubblewave-system:svc-worker-sa'
   active                  boolean NOT NULL DEFAULT true,
   created_at              timestamptz NOT NULL,
   updated_at              timestamptz NOT NULL
 )
 ```
+
+**Service identifier examples in this canon (svc-api, svc-ava, svc-insights, svc-worker, etc.) are DOCUMENTATION, not a seed manifest.** Each row is added only when a real cross-process call surface emerges. Per founder direction (canon §29 PR-D landing 2026-05-12), the seed manifest starts with exactly one principal:
+
+| service_id    | display_name                | allowed_audiences | allowed_scopes                                        | k8s_service_account                                       |
+|---------------|-----------------------------|-------------------|-------------------------------------------------------|-----------------------------------------------------------|
+| `svc-worker`  | BullMQ background worker    | `['svc-api']`     | `['work_order:read', 'work_order:write', 'audit:write']` | `system:serviceaccount:hubblewave-system:svc-worker-sa` |
+
+Adding a principal is an architectural decision, not a runtime operation — it requires a migration, a canon §24 maintenance log entry, and a clear answer to "what real cross-process call uses this." Speculative seeding ("we might call svc-ava someday") is rejected.
 
 #### Bootstrap
 

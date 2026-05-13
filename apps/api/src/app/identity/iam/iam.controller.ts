@@ -1,5 +1,5 @@
 import { Controller, Get, NotFoundException, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, UserRequestContext } from '@hubblewave/auth-guard';
 import { User } from '@hubblewave/instance-db';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,7 +20,7 @@ export class IamController {
 
   @Get('me')
   async me(@Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
+    const ctx: UserRequestContext = req.context || req.user;
     if (!ctx?.userId) {
       throw new NotFoundException('User context missing');
     }
@@ -49,7 +49,7 @@ export class IamController {
 
   @Get('profile')
   async profile(@Req() req: any) {
-    const ctx: RequestContext = req.context || req.user;
+    const ctx: UserRequestContext = req.context || req.user;
     if (!ctx?.userId) {
       throw new NotFoundException('User context missing');
     }

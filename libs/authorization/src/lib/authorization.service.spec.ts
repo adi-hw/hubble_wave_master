@@ -1,5 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import {
   AuthorizationService,
 } from './authorization.service';
@@ -22,8 +22,9 @@ type CollectionDefinitionRepoStub = {
 const COLLECTION_ID = '11111111-1111-1111-1111-111111111111';
 const ROLE_VIEWER = '22222222-2222-2222-2222-222222222222';
 
-function buildContext(overrides: Partial<RequestContext> = {}): RequestContext {
+function buildContext(overrides: Partial<UserRequestContext> = {}): UserRequestContext {
   return {
+    kind: 'user',
     userId: 'user-1',
     roles: [ROLE_VIEWER],
     permissions: [],
@@ -277,7 +278,7 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
   const ROLE_ANALYST = '33333333-3333-3333-3333-333333333333';
   const TEAM_ALPHA = '44444444-4444-4444-4444-444444444444';
 
-  function buildMultiRuleContext(): RequestContext {
+  function buildMultiRuleContext(): UserRequestContext {
     return {
       userId: 'user-1',
       roles: [ROLE_VIEWER, ROLE_ANALYST],
@@ -287,7 +288,7 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
         roleIds: [ROLE_VIEWER, ROLE_ANALYST],
         groupIds: [TEAM_ALPHA],
       },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('returns flat predicates when exactly one rule matches (single-rule AND semantic)', async () => {
@@ -432,14 +433,14 @@ describe('AuthorizationService — multi-rule field permissions (F024 + canon §
     };
   }
 
-  function buildMultiRoleContext(roles: string[]): RequestContext {
+  function buildMultiRoleContext(roles: string[]): UserRequestContext {
     return {
       userId: 'user-1',
       roles,
       permissions: [],
       isAdmin: false,
       attributes: { roleIds: roles },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('canRead is true if ANY matching rule grants read (union)', async () => {
@@ -554,14 +555,14 @@ describe('AuthorizationService — admin bypass audit (F021)', () => {
   // an audit row. The port is OPTIONAL — when unbound the lib falls back to
   // silent bypass (preserves the "lib usable outside apps/api" property).
 
-  function buildAdminContext(): RequestContext {
+  function buildAdminContext(): UserRequestContext {
     return {
       userId: 'admin-1',
       roles: ['role-admin'],
       permissions: [],
       isAdmin: true,
       attributes: { roleIds: ['role-admin'] },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   function buildServiceWithAudit(audit: AccessAuditPort | null): AuthorizationService {
@@ -759,7 +760,7 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
         groupIds: ['group-a'],
         teamIds: ['team-b'],
       },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
 
     await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
 
@@ -1315,14 +1316,14 @@ describe('AuthorizationService — field deny rules (F006, canon §28.2)', () =>
     };
   }
 
-  function buildCtx(roles: string[]): RequestContext {
+  function buildCtx(roles: string[]): UserRequestContext {
     return {
       userId: 'user-1',
       roles,
       permissions: [],
       isAdmin: false,
       attributes: { roleIds: roles },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('field-explicit deny forces canRead=false, canWrite=false, maskingStrategy=FULL', async () => {
@@ -1444,14 +1445,14 @@ describe('AuthorizationService — masking direction (canon §28.5)', () => {
     };
   }
 
-  function buildCtxM(roles: string[]): RequestContext {
+  function buildCtxM(roles: string[]): UserRequestContext {
     return {
       userId: 'user-1',
       roles,
       permissions: [],
       isAdmin: false,
       attributes: { roleIds: roles },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('three rules NONE+PARTIAL+FULL → result is FULL (was NONE under F024)', async () => {
@@ -1569,14 +1570,14 @@ describe('AuthorizationService — wildcard field rules (§28.2 levels 3-4)', ()
     };
   }
 
-  function buildCtxW(roles: string[]): RequestContext {
+  function buildCtxW(roles: string[]): UserRequestContext {
     return {
       userId: 'user-1',
       roles,
       permissions: [],
       isAdmin: false,
       attributes: { roleIds: roles },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('1. wildcard allow only → field gets the wildcard allow (level 4 fires)', async () => {
@@ -1948,14 +1949,14 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     };
   }
 
-  function buildCtxF(roles: string[]): RequestContext {
+  function buildCtxF(roles: string[]): UserRequestContext {
     return {
       userId: 'user-1',
       roles,
       permissions: [],
       isAdmin: false,
       attributes: { roleIds: roles },
-    } as unknown as RequestContext;
+    } as unknown as UserRequestContext;
   }
 
   it('1. secureFieldsByDefault=false, no field rules → legacy default-allow preserved', async () => {
@@ -2286,7 +2287,8 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
       },
     });
 
-    const adminCtx: RequestContext = {
+    const adminCtx: UserRequestContext = {
+      kind: 'user',
       userId: 'admin-1',
       roles: ['role-admin'],
       permissions: [],
@@ -2342,8 +2344,9 @@ describe('AuthorizationService — explainability (§28.7)', () => {
   const RULE_ID_3 = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
   const FIELD_E: PropertyMeta = { code: 'phi_field' };
 
-  function buildCtxE(overrides: Partial<RequestContext> = {}): RequestContext {
+  function buildCtxE(overrides: Partial<UserRequestContext> = {}): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
       roles: [ROLE_E],
       permissions: [],

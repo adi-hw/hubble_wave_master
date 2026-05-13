@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { LLMService } from './llm.service';
 
 // Default vector dimension - nomic-embed-text produces 768
@@ -57,7 +57,7 @@ export interface VectorSearchOptions {
  * to bypass the new RequestContext requirement on search().
  */
 export const SYSTEM_VECTOR_SEARCH_CONTEXT = '__hw_system_vector_search__' as const;
-export type VectorSearchPrincipal = RequestContext | typeof SYSTEM_VECTOR_SEARCH_CONTEXT;
+export type VectorSearchPrincipal = UserRequestContext | typeof SYSTEM_VECTOR_SEARCH_CONTEXT;
 
 @Injectable()
 export class VectorStoreService {

@@ -98,6 +98,11 @@ export type {
 } from './key-metadata.entity';
 
 // ─────────────────────────────────────────────────────────────────
+// Service Principal Registry (canon §29.7)
+// ─────────────────────────────────────────────────────────────────
+export { ServicePrincipal } from './service-principal.entity';
+
+// ─────────────────────────────────────────────────────────────────
 // Theme
 // ─────────────────────────────────────────────────────────────────
 export {
@@ -629,6 +634,7 @@ import {
   LoginAttempt,
 } from './auth-tokens.entity';
 import { KeyMetadata } from './key-metadata.entity';
+import { ServicePrincipal } from './service-principal.entity';
 import { ThemeDefinition, UserThemePreference, InstanceBranding } from './theme.entity';
 import { UserPreference } from './user-preference.entity';
 import { ModuleEntity, ModuleSecurity } from './module.entity';
@@ -883,6 +889,9 @@ export const instanceEntities = [
 
   // Signing Key Registry (canon §29.2)
   KeyMetadata,
+
+  // Service Principal Registry (canon §29.7)
+  ServicePrincipal,
 
   // UI & Forms
   ThemeDefinition,

@@ -6,7 +6,7 @@ import { AVAAction, AVAContext } from './ava.service';
 import { AVAGovernanceService, PermissionCheckResult, AuditEntry } from './ava-governance.service';
 import { AVAAuditTrail, AVAActionStatus, CollectionDefinition } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 
 /**
  * Action types the executor knows how to dispatch. Any action.type not in this
@@ -62,7 +62,7 @@ export interface ActionRequest {
   ipAddress?: string;
   userAgent?: string;
   sessionId?: string;
-  requestContext?: RequestContext;
+  requestContext?: UserRequestContext;
 }
 
 export interface ActionResult {

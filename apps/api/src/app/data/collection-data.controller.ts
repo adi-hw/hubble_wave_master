@@ -13,7 +13,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, RequestUser, UserRequestContext } from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from './collection-data.service';
 
 // Query DTOs
@@ -110,8 +110,9 @@ export class CollectionDataController {
     return options;
   }
 
-  private buildContext(user: RequestUser) {
+  private buildContext(user: RequestUser): UserRequestContext {
     return {
+      kind: 'user',
       userId: user.id,
       roles: user.roles,
       permissions: user.permissions,

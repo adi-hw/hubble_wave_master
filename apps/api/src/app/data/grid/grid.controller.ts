@@ -16,7 +16,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard, RequestContext, InstanceRequest } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, InstanceRequest, assertUserContext } from '@hubblewave/auth-guard';
 import {
   GridQueryService,
   GridQueryRequest,
@@ -113,7 +113,7 @@ export class GridController {
     @Req() req: InstanceRequest,
     @Body() dto: GridQueryDto,
   ): Promise<GridQueryResponse> {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.gridQueryService.query(ctx, {
       collection: dto.collection,
       startRow: dto.startRow,
@@ -143,7 +143,7 @@ export class GridController {
     @Req() req: InstanceRequest,
     @Body() dto: GridCountDto,
   ): Promise<{ count: number }> {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     const count = await this.gridQueryService.count(ctx, {
       collection: dto.collection,
       filters: dto.filters,
@@ -165,7 +165,7 @@ export class GridController {
     @Req() req: InstanceRequest,
     @Body() dto: GridAggregateDto,
   ): Promise<{ value: number | null }> {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.gridQueryService.aggregate(ctx, {
       collection: dto.collection,
       column: dto.column,
@@ -198,7 +198,7 @@ export class GridController {
     @Req() req: InstanceRequest,
     @Body() dto: GridQueryDto,
   ): Promise<GridQueryResponse> {
-    const ctx: RequestContext = req.context;
+    const ctx = assertUserContext(req.context);
     return this.gridQueryService.queryGrouped(ctx, {
       collection: dto.collection,
       startRow: dto.startRow,

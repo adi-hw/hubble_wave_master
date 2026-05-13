@@ -15,7 +15,7 @@ import {
   withAudit,
 } from '@hubblewave/instance-db';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'typeorm';
 import { ValidationService } from './validation/validation.service';
 import { DefaultValueService } from './defaults/default-value.service';
@@ -187,7 +187,7 @@ export class CollectionDataService {
    * already-validated source columns).
    */
   private async runComputedDispatch(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collection: { id: string; code: string; tableName: string },
     properties: PropertyDefinition[],
     recordId: string,
@@ -242,7 +242,7 @@ export class CollectionDataService {
    * commit via `drainQueuedActions`.
    */
   private async runBeforeAutomations(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collection: CollectionDefinition,
     operation: 'insert' | 'update' | 'delete',
     record: Record<string, unknown>,
@@ -300,7 +300,7 @@ export class CollectionDataService {
    * automations and validation run normally.
    */
   private async drainQueuedActions(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     parentCollection: CollectionDefinition,
     parentRecordId: string | undefined,
     asyncQueue: Array<{
@@ -403,7 +403,7 @@ export class CollectionDataService {
    * errors throw 400 too so the read fails closed.
    */
   private async runBeforeQueryAutomations(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collection: CollectionDefinition,
     options: Record<string, unknown>,
   ): Promise<void> {
@@ -459,7 +459,7 @@ export class CollectionDataService {
   }
 
   private async runAfterAutomations(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collection: CollectionDefinition,
     operation: 'insert' | 'update' | 'delete',
     record: Record<string, unknown>,
@@ -494,7 +494,7 @@ export class CollectionDataService {
 
   private readonly instanceId = process.env.INSTANCE_ID || 'default-instance';
 
-  private withContext(ctx: RequestContext) {
+  private withContext(ctx: UserRequestContext) {
     return { ...ctx, instanceId: this.instanceId };
   }
 
@@ -705,7 +705,7 @@ export class CollectionDataService {
    * collection's read ACL.
    */
   async listAuditLog(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     recordId: string,
     options: { limit?: number } = {},
@@ -879,7 +879,7 @@ export class CollectionDataService {
 
   // List records from a collection
   async list(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     options: QueryOptions = {}
   ): Promise<QueryResult> {
@@ -1126,7 +1126,7 @@ export class CollectionDataService {
   }
 
   // Get single record
-  async getOne(ctx: RequestContext, collectionCode: string, id: string): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
+  async getOne(ctx: UserRequestContext, collectionCode: string, id: string): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(context, collection.id, 'read');
@@ -1190,7 +1190,7 @@ export class CollectionDataService {
 
   // Create record
   async create(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     data: Record<string, unknown>
   ): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
@@ -1210,7 +1210,7 @@ export class CollectionDataService {
    * the SQL write proceeds as a plain create.
    */
   private async createInternal(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     data: Record<string, unknown>,
     parentAutomationContext: { depth: number; executionChain: string[] },
@@ -1443,7 +1443,7 @@ export class CollectionDataService {
 
   // Update record
   async update(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     id: string,
     data: Record<string, unknown>,
@@ -1688,7 +1688,7 @@ export class CollectionDataService {
   }
 
   // Delete record
-  async delete(ctx: RequestContext, collectionCode: string, id: string): Promise<{ success: boolean }> {
+  async delete(ctx: UserRequestContext, collectionCode: string, id: string): Promise<{ success: boolean }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(context, collection.id, 'delete');
@@ -1779,7 +1779,7 @@ export class CollectionDataService {
 
   // Bulk operations
   async bulkUpdate(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     ids: string[],
     data: Record<string, unknown>
@@ -1883,7 +1883,7 @@ export class CollectionDataService {
   }
 
   async bulkDelete(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     ids: string[],
   ): Promise<{ success: boolean; deletedCount: number; skippedCount: number; skippedIds: string[] }> {
@@ -2002,7 +2002,7 @@ export class CollectionDataService {
    * RLS predicates used by getList are applied to constrain the id set.
    */
   private async filterIdsByRowLevel(
-    context: RequestContext,
+    context: UserRequestContext,
     tableName: string,
     ids: string[],
     operation: 'read' | 'update' | 'delete',
@@ -2083,7 +2083,7 @@ export class CollectionDataService {
 
   // Get reference data (for dropdowns)
   async getReferenceOptions(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     displayProperty: string,
     search?: string,
@@ -2128,7 +2128,7 @@ export class CollectionDataService {
    * This is optimized for large datasets - only returns group summaries, not all data
    */
   async listGrouped(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     groupByField: string,
     options: Omit<QueryOptions, 'groupBy' | 'page' | 'pageSize'> = {}
@@ -2341,7 +2341,7 @@ export class CollectionDataService {
    * Get paginated children within a group
    */
   async getGroupChildren(
-    ctx: RequestContext,
+    ctx: UserRequestContext,
     collectionCode: string,
     groupByField: string,
     groupValue: unknown,

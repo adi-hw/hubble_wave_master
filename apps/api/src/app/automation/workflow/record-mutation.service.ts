@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import {
   CollectionDefinition,
   PropertyDefinition,
@@ -374,9 +374,10 @@ export class RecordMutationService {
     return changes;
   }
 
-  private async buildRequestContext(userId: string | null): Promise<RequestContext> {
+  private async buildRequestContext(userId: string | null): Promise<UserRequestContext> {
     if (!userId) {
       return {
+        kind: 'user',
         userId: this.systemUserId,
         roles: [],
         permissions: [],
@@ -385,6 +386,7 @@ export class RecordMutationService {
     }
 
     return {
+      kind: 'user',
       userId,
       roles: [],
       permissions: [],

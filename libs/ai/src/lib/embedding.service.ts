@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { VectorStoreService } from './vector-store.service';
 
 export interface TextChunk {
@@ -39,7 +39,7 @@ export class EmbeddingService {
    * a permission boundary.
    */
   private async ensureSourceReadable(
-    ctx: RequestContext | undefined,
+    ctx: UserRequestContext | undefined,
     sourceCollection: string,
   ): Promise<void> {
     if (!ctx || !this.authorizationService) {
@@ -145,7 +145,7 @@ export class EmbeddingService {
       categoryId?: string;
       tags?: string[];
     },
-    requestContext?: RequestContext,
+    requestContext?: UserRequestContext,
   ): Promise<IndexingResult> {
     try {
       await this.ensureSourceReadable(requestContext, 'knowledge_articles');
@@ -212,7 +212,7 @@ export class EmbeddingService {
       categoryId?: string;
       categoryLabel?: string;
     },
-    requestContext?: RequestContext,
+    requestContext?: UserRequestContext,
   ): Promise<IndexingResult> {
     try {
       await this.ensureSourceReadable(requestContext, 'catalog_items');
@@ -276,7 +276,7 @@ export class EmbeddingService {
       displayValue: string;
       searchableFields: Record<string, string>;
     },
-    requestContext?: RequestContext,
+    requestContext?: UserRequestContext,
   ): Promise<IndexingResult> {
     try {
       await this.ensureSourceReadable(requestContext, record.collectionName);

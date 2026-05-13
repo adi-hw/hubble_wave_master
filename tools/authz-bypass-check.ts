@@ -64,8 +64,14 @@ const KNOWN_BYPASSES: ReadonlyArray<{
   followUp: string;
 }> = [];
 
+// Match `RequestContext`, `UserRequestContext`, or `ServiceRequestContext`
+// as a standalone identifier — i.e. the file consumes per-caller identity
+// state. The earlier loose pattern matched the substring inside other
+// identifiers and produced false positives once the canon §29.7 PR-D
+// landing renamed many parameter types from `RequestContext` to
+// `UserRequestContext`; both names now flag for the same reason.
 const NEEDS_AUTHZ_PATTERNS = [
-  /RequestContext/,
+  /\b(?:User|Service)?RequestContext\b/,
 ];
 
 const DATA_ACCESS_PATTERNS = [

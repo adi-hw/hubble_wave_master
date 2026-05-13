@@ -29,7 +29,7 @@ import {
   hashToken,
 } from './token-issuer.service';
 import { JwtRevocationAdapter } from './jwt-revocation.adapter';
-import { RefreshToken } from '@hubblewave/instance-db';
+import { RefreshToken, ServicePrincipal } from '@hubblewave/instance-db';
 
 /**
  * `TokenIssuerService` spec — canon §29.3 (claims contract), §29.4 (TTL
@@ -247,6 +247,23 @@ function buildDataSourceMock(repo: ReturnType<typeof buildRefreshTokenRepoMock>)
   } as unknown as DataSource;
 }
 
+function buildServicePrincipalRepoMock(
+  principals: ServicePrincipal[] = [],
+): Repository<ServicePrincipal> {
+  const store = new Map<string, ServicePrincipal>();
+  for (const p of principals) {
+    store.set(p.serviceId, p);
+  }
+  return {
+    findOne: jest.fn(async (opts: { where: { serviceId: string; active: boolean } }) => {
+      const p = store.get(opts.where.serviceId);
+      if (!p) return null;
+      if (opts.where.active === true && !p.active) return null;
+      return p;
+    }),
+  } as unknown as Repository<ServicePrincipal>;
+}
+
 function buildSessionRevokerMock(): JwtRevocationAdapter {
   return {
     revokeSession: jest.fn().mockResolvedValue(undefined),
@@ -274,7 +291,11 @@ interface BuiltService {
 async function buildService(
   configOverrides: Record<string, unknown> = {},
   identityOverrides: Partial<ResolvedIdentity> = {},
-  options: { withInit?: boolean; audit?: AccessAuditPort | null } = {},
+  options: {
+    withInit?: boolean;
+    audit?: AccessAuditPort | null;
+    principals?: ServicePrincipal[];
+  } = {},
 ): Promise<BuiltService> {
   const signer = await buildKeySigner();
   const identity = buildIdentity(identityOverrides);
@@ -282,6 +303,9 @@ async function buildService(
   const config = buildConfig(configOverrides);
   const refreshRepo = buildRefreshTokenRepoMock();
   const dataSource = buildDataSourceMock(refreshRepo);
+  const servicePrincipalRepo = buildServicePrincipalRepoMock(
+    options.principals ?? [],
+  );
   const sessionRevoker = buildSessionRevokerMock();
   const audit =
     options.audit === undefined ? buildAuditPortMock() : options.audit;
@@ -291,6 +315,7 @@ async function buildService(
     resolver,
     config,
     refreshRepo as unknown as Repository<RefreshToken>,
+    servicePrincipalRepo,
     dataSource,
     sessionRevoker,
     audit,
@@ -476,6 +501,7 @@ describe('TokenIssuerService', () => {
         buildIdentityResolver(null),
         buildConfig(),
         refreshRepo as unknown as Repository<RefreshToken>,
+        buildServicePrincipalRepoMock(),
         buildDataSourceMock(refreshRepo),
         buildSessionRevokerMock(),
         buildAuditPortMock(),
@@ -803,6 +829,150 @@ describe('TokenIssuerService', () => {
       const a = generateRefreshToken();
       const b = generateRefreshToken();
       expect(a).not.toBe(b);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Service-token issuance (canon §29.7)
+  // ─────────────────────────────────────────────────────────────────
+
+  describe('issueServiceToken', () => {
+    function buildPrincipal(
+      overrides: Partial<ServicePrincipal> = {},
+    ): ServicePrincipal {
+      return {
+        serviceId: 'svc-worker',
+        displayName: 'BullMQ background worker',
+        allowedAudiences: ['svc-api'],
+        allowedScopes: ['work_order:read', 'work_order:write', 'audit:write'],
+        k8sServiceAccount:
+          'system:serviceaccount:hubblewave-system:svc-worker-sa',
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      } as ServicePrincipal;
+    }
+
+    it('mints an ES256 token with sub=service:<id>, aud=<audience>, scope=allowed_scopes (5min TTL)', async () => {
+      const principal = buildPrincipal();
+      const { svc, signer } = await buildService({}, {}, {
+        principals: [principal],
+      });
+      const { token, expiresIn } = await svc.issueServiceToken({
+        serviceId: 'svc-worker',
+        audience: 'svc-api',
+        instanceId: TEST_INSTANCE_ID,
+      });
+      expect(expiresIn).toBe(300);
+
+      const header = decodeProtectedHeader(token) as { alg?: string };
+      expect(header.alg).toBe('ES256');
+
+      const publicKey = await importJWK(
+        await exportJWK(createPublicKey(signer.privateKey)),
+        'ES256',
+      );
+      const verified = await jwtVerify(token, publicKey, {
+        audience: 'svc-api',
+        algorithms: ['ES256'],
+      });
+      const payload = verified.payload as Record<string, unknown>;
+      expect(payload['sub']).toBe('service:svc-worker');
+      expect(payload['aud']).toBe('svc-api');
+      expect(payload['iss']).toBe(`hubblewave-${TEST_INSTANCE_ID}`);
+      expect(payload['scope']).toEqual([
+        'work_order:read',
+        'work_order:write',
+        'audit:write',
+      ]);
+      expect(payload['instance_id']).toBe(TEST_INSTANCE_ID);
+    });
+
+    it('NEVER carries a token_version claim — service tokens have no security_stamp', async () => {
+      const { svc } = await buildService({}, {}, {
+        principals: [buildPrincipal()],
+      });
+      const { token } = await svc.issueServiceToken({
+        serviceId: 'svc-worker',
+        audience: 'svc-api',
+        instanceId: TEST_INSTANCE_ID,
+      });
+      const payload = decodeJwt(token) as Record<string, unknown>;
+      expect(payload['token_version']).toBeUndefined();
+    });
+
+    it('session_id is a fresh UUID per mint (not tied to a user session)', async () => {
+      const { svc } = await buildService({}, {}, {
+        principals: [buildPrincipal()],
+      });
+      const first = await svc.issueServiceToken({
+        serviceId: 'svc-worker',
+        audience: 'svc-api',
+        instanceId: TEST_INSTANCE_ID,
+      });
+      const second = await svc.issueServiceToken({
+        serviceId: 'svc-worker',
+        audience: 'svc-api',
+        instanceId: TEST_INSTANCE_ID,
+      });
+      const sid1 = (decodeJwt(first.token) as Record<string, unknown>)[
+        'session_id'
+      ];
+      const sid2 = (decodeJwt(second.token) as Record<string, unknown>)[
+        'session_id'
+      ];
+      expect(sid1).not.toBe(sid2);
+      expect(typeof sid1).toBe('string');
+      expect(String(sid1)).toMatch(/[0-9a-f-]{36}/);
+    });
+
+    it('throws UnauthorizedException when the principal does not exist', async () => {
+      const { svc } = await buildService({}, {}, { principals: [] });
+      await expect(
+        svc.issueServiceToken({
+          serviceId: 'svc-ghost',
+          audience: 'svc-api',
+          instanceId: TEST_INSTANCE_ID,
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException when the principal is inactive', async () => {
+      const { svc } = await buildService({}, {}, {
+        principals: [buildPrincipal({ active: false })],
+      });
+      await expect(
+        svc.issueServiceToken({
+          serviceId: 'svc-worker',
+          audience: 'svc-api',
+          instanceId: TEST_INSTANCE_ID,
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('throws ForbiddenException when audience is not in allowed_audiences', async () => {
+      const { svc } = await buildService({}, {}, {
+        principals: [buildPrincipal({ allowedAudiences: ['svc-api'] })],
+      });
+      await expect(
+        svc.issueServiceToken({
+          serviceId: 'svc-worker',
+          audience: 'svc-attacker',
+          instanceId: TEST_INSTANCE_ID,
+        }),
+      ).rejects.toThrow(/not allowed to call audience/);
+    });
+
+    it('throws UnauthorizedException when serviceId is empty', async () => {
+      const { svc } = await buildService({}, {}, { principals: [] });
+      await expect(
+        svc.issueServiceToken({
+          serviceId: '',
+          audience: 'svc-api',
+          instanceId: TEST_INSTANCE_ID,
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 });

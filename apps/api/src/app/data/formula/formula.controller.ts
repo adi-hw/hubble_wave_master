@@ -17,7 +17,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestContext, RequestUser } from '@hubblewave/auth-guard';
+import { CurrentUser, JwtAuthGuard, UserRequestContext, RequestUser } from '@hubblewave/auth-guard';
 import { FormulaService } from './formula.service';
 import { RollupService } from './rollup.service';
 import { LookupService } from './lookup.service';
@@ -67,8 +67,9 @@ export class FormulaController {
     private readonly dependencyService: DependencyService
   ) {}
 
-  private buildContext(user: RequestUser): RequestContext {
+  private buildContext(user: RequestUser): UserRequestContext {
     return {
+      kind: 'user',
       userId: user.id,
       roles: user.roles,
       permissions: user.permissions,

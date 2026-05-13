@@ -482,4 +482,187 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       expect(userCtx.userId).toBe('u-bare');
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Service-token branch (canon §29.7 PR-D)
+  // ───────────────────────────────────────────────────────────────────
+
+  describe('service tokens (canon §29.7)', () => {
+    const KID = 'hwk_2026_05_11_svc11111';
+    const SERVICE_AUDIENCE = 'svc-api';
+
+    async function buildGuardForServiceClaims(
+      claims: Record<string, unknown>,
+      options: {
+        allowServiceToken?: boolean;
+        identity?: IdentityResolverPort;
+        revocation?: JwtRevocationPort;
+      } = {},
+    ) {
+      const { token, publicJwk } = await issueTestToken(KID, {
+        iss: ISS,
+        aud: SERVICE_AUDIENCE,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 300,
+        instance_id: 'inst-1',
+        ...claims,
+      });
+      const jwks: Record<string, PublicJwk> = { [KID]: publicJwk };
+      const keySigning = buildKeySigning(jwks);
+
+      const reflector = new Reflector();
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockImplementation((key: unknown) => {
+          if (key === IS_PUBLIC_KEY) return false;
+          if (key === 'ALLOW_SERVICE_TOKEN')
+            return options.allowServiceToken === true;
+          return undefined;
+        });
+
+      const guard = new JwtAuthGuard(
+        keySigning,
+        silentLogger,
+        reflector,
+        options.identity,
+        options.revocation,
+      );
+      const { ctx, request } = buildContext({
+        authHeader: `Bearer ${token}`,
+      });
+      return { guard, ctx, request, keySigning, token };
+    }
+
+    beforeEach(() => {
+      process.env['SERVICE_AUDIENCE'] = SERVICE_AUDIENCE;
+    });
+
+    it('populates a ServiceRequestContext when @AllowServiceToken() is set', async () => {
+      const { guard, ctx, request } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read', 'audit:write'],
+        },
+        { allowServiceToken: true },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const serviceCtx = request['context'] as {
+        kind: string;
+        serviceId: string;
+        audience: string;
+        scopes: string[];
+        instanceId: string;
+        bearerToken: string;
+      };
+      expect(serviceCtx.kind).toBe('service');
+      expect(serviceCtx.serviceId).toBe('svc-worker');
+      expect(serviceCtx.audience).toBe(SERVICE_AUDIENCE);
+      expect(serviceCtx.scopes).toEqual(['work_order:read', 'audit:write']);
+      expect(serviceCtx.instanceId).toBe('inst-1');
+      expect(typeof serviceCtx.bearerToken).toBe('string');
+    });
+
+    it('rejects a service token at a non-opted-in endpoint (default-deny)', async () => {
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read'],
+        },
+        { allowServiceToken: false },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        /Service tokens are not accepted at this endpoint/,
+      );
+    });
+
+    it('rejects a service token whose aud does not match SERVICE_AUDIENCE', async () => {
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          aud: 'svc-attacker',
+          scope: ['work_order:read'],
+        },
+        { allowServiceToken: true },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        /audience mismatch/,
+      );
+    });
+
+    it('does NOT consult the IdentityResolverPort for service tokens', async () => {
+      const identity = {
+        resolveIdentity: jest.fn(),
+      } as unknown as IdentityResolverPort;
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read'],
+        },
+        { allowServiceToken: true, identity },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      expect(identity.resolveIdentity).not.toHaveBeenCalled();
+    });
+
+    it('does NOT consult the JwtRevocationPort for service tokens', async () => {
+      const revocation = {
+        isRevoked: jest.fn().mockResolvedValue(false),
+        revokeSession: jest.fn(),
+        revokeAllUserTokens: jest.fn(),
+      } as unknown as JwtRevocationPort;
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read'],
+        },
+        { allowServiceToken: true, revocation },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      expect(revocation.isRevoked).not.toHaveBeenCalled();
+    });
+
+    it('a USER token at an @AllowServiceToken endpoint still goes through the user path', async () => {
+      const identity = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-1',
+          roles: ['member'],
+          permissions: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-1',
+        }),
+      } as unknown as IdentityResolverPort;
+      // Re-issue a user-token shape against the user audience.
+      const { token, publicJwk } = await issueTestToken(KID, {
+        iss: ISS,
+        aud: 'hubblewave-instance',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 600,
+        instance_id: 'inst-1',
+        sub: 'user:u-1',
+        token_version: 'stamp-1',
+      });
+      const reflector = new Reflector();
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockImplementation((key: unknown) => {
+          if (key === IS_PUBLIC_KEY) return false;
+          if (key === 'ALLOW_SERVICE_TOKEN') return true;
+          return undefined;
+        });
+      const guard = new JwtAuthGuard(
+        buildKeySigning({ [KID]: publicJwk }),
+        silentLogger,
+        reflector,
+        identity,
+      );
+      const { ctx, request } = buildContext({
+        authHeader: `Bearer ${token}`,
+      });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const userCtx = request['context'] as { kind: string; userId: string };
+      expect(userCtx.kind).toBe('user');
+      expect(userCtx.userId).toBe('u-1');
+    });
+  });
 });

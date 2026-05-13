@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
-import { RequestContext } from '@hubblewave/auth-guard';
+import { UserRequestContext } from '@hubblewave/auth-guard';
 import { SyncTriggerClientService } from './sync-trigger-client.service';
 
 /**
@@ -23,7 +23,8 @@ describe('SyncTriggerClientService', () => {
   let warnSpy: jest.SpyInstance;
   let errorSpy: jest.SpyInstance;
 
-  const ctx = (overrides: Partial<RequestContext> = {}): RequestContext => ({
+  const ctx = (overrides: Partial<UserRequestContext> = {}): UserRequestContext => ({
+    kind: 'user',
     userId: 'user-1',
     roles: ['admin'],
     permissions: [],
