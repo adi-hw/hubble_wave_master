@@ -590,6 +590,22 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (W5.G / Plan Fix 25): scanner-precision improvements.
+  `tools/audit-bypass-check.ts` REPO_SAVE_PATTERN widened to catch
+  `.update/.delete/.insert/.softDelete/.softRemove/.remove/.upsert`
+  mutation methods (previously only `.save` matched). New export
+  `REPO_MUTATE_PATTERN`; `hasNonAuditRepoSave` renamed to
+  `hasNonAuditRepoMutate`. Audit-bypass self-test: 17 assertions (up
+  from 11). N=0 new audit-mutation violations beyond existing 4
+  deferred W5.B sites. New scanner `tools/silent-skip-check.ts`
+  (`npm run silent-skip:check`) flags `logger.warn|error + continue`
+  patterns in service methods that lack a `RuntimeAnomalyService.record()`
+  call — closes the silent-skip auditability gap noted in the §10
+  amendment. Silent-skip self-test: 15 assertions (all pass). Both
+  scanners wired into CI as required jobs. M=19 silent-skip violations
+  captured in `KNOWN_DEFERRED_OFFENDERS` with `followUp: 'W5.I'` for
+  subsequent sweep PRs. Refs F044 (extended) and §10 silent-skip clause.
+
 - 2026-05-13 (canon §29 PR-E / W6.D / Plan Fix 26 / F047): batched
   group resolution + correctness fix. UserRequestContext.groupCache
   was declared but never populated — §28 evaluator loops called

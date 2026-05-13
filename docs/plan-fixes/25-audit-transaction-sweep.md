@@ -70,9 +70,63 @@ Same shape, areas = `apps/api/src/app/automation/**` + `apps/api/src/app/ava/**`
 
 Same shape, areas = `apps/api/src/app/{views,notifications,instance-api,analytics}/**` + `apps/control-plane/**` for any flagged files.
 
-### W5.G — silent-skip → runtime_anomaly migration (deferred)
+### W5.G — scanner precision improvements + silent-skip scanner (this PR)
 
-Canon §10 also requires that silent skips (`logger.warn` + `continue`) write a `runtime_anomaly` row via `RuntimeAnomalyService`. Separate scanner extension + sweep. Tracked but out of scope for W5.A-F.
+Two scanner gaps closed:
+
+**Gap 1 — `REPO_SAVE_PATTERN` was save-only.** W5.B's agent caught `deviceRepo.update(...)` + `auditLogRepo.save(...)` in `revokeAllDevices` via manual inspection. TypeORM's `Repository` exposes multiple mutation methods beyond `.save()`: `.update()`, `.delete()`, `.insert()`, `.softDelete()`, `.softRemove()`, `.remove()`, `.upsert()`. The previous regex silently missed all of them.
+
+Fix: new `REPO_MUTATE_PATTERN` exported from `tools/audit-bypass-check.ts`:
+```ts
+export const REPO_MUTATE_PATTERN =
+  /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*(?:save|insert|update|delete|softDelete|softRemove|remove|upsert)\s*\(/g;
+```
+`hasNonAuditRepoSave` renamed to `hasNonAuditRepoMutate`, using the wider pattern. Self-test updated: 17 assertions (up from 11, adding Positive-3/4 for `.update`/`.delete` cases and Negative-7 for wrapped `.update`).
+
+Result: N=0 new audit-mutation violations discovered beyond the existing 4 deferred W5.B sites — the wider pattern does not trigger false positives against the current codebase.
+
+**Gap 2 — Silent-skip scanner.** Canon §10 amendment: "Silent skips (`logger.warn` followed by `continue`) are also auditability violations. They MUST also write a `runtime_anomaly` row via `RuntimeAnomalyService` so operators can query and alert on them."
+
+New scanner: `tools/silent-skip-check.ts` (`npm run silent-skip:check`).
+
+Patterns:
+```ts
+export const LOGGER_WARN_PATTERN = /\blogger\s*\.\s*(?:warn|error)\s*\(/;
+export const CONTINUE_PATTERN = /\bcontinue\s*;/;
+export const RUNTIME_ANOMALY_WRITE_PATTERN =
+  /(?:runtimeAnomalyService|runtimeAnomaly|anomalyService|(?:this\.[A-Za-z_$][\w$]*[Aa]nomaly(?:[A-Za-z_$][\w$]*)?))\s*\.\s*(?:record|save|create)\s*\(/;
+```
+
+Method-body extraction reuses the same `extractMethodBodies` brace-matching logic from `audit-bypass-check.ts`.
+
+Self-test: `tools/silent-skip-check-selftest.ts`, 15 assertions (8 unit + 3 integration, all pass).
+
+Result: M=19 silent-skip violations discovered, all added to `KNOWN_DEFERRED_OFFENDERS` with `followUp: 'W5.I'`. No inline fixes — this PR is scanner-only per the W5.G scope boundary.
+
+**Files:**
+- Modified: `tools/audit-bypass-check.ts` (REPO_MUTATE_PATTERN + hasNonAuditRepoMutate)
+- Modified: `tools/audit-bypass-check-selftest.ts` (17 assertions, +6 for W5.G)
+- New: `tools/silent-skip-check.ts`
+- New: `tools/silent-skip-check-selftest.ts` (15 assertions)
+- Modified: `package.json` (`silent-skip:check`, `selftest:silent-skip`, wired into `selftest:scanners`)
+- Modified: `.github/workflows/ci.yml` (Silent-skip check step + updated assertion counts)
+- Modified: `CLAUDE.md` (§24 amendment)
+
+**Out of scope:** Fixing the actual silent-skip violations in service files. That is W5.I work.
+
+**Verification:**
+- `npm run audit:check` → green, 4 deferred W5.B sites
+- `npm run silent-skip:check` → green, 19 deferred W5.I sites
+- `npx ts-node tools/audit-bypass-check-selftest.ts` → 17/17 assertions pass
+- `npx ts-node tools/silent-skip-check-selftest.ts` → 15/15 assertions pass
+
+### W5.H — audit-mutation sweep (follow-on to W5.G widening)
+
+If W5.G's wider REPO_MUTATE_PATTERN surfaces new violations in W5.H-I service sweeps, add them to the W5.B-F wave sequence or as a dedicated W5.H pass. Currently: 0 new violations beyond existing W5.B allowlist.
+
+### W5.I — silent-skip sweep
+
+Sweep all 19 W5.G deferred silent-skip sites, adding `RuntimeAnomalyService.record(...)` adjacent to each `logger.warn/error + continue` pattern. Remove entries from `KNOWN_DEFERRED_OFFENDERS` as sites are fixed. The enterprise `libs/enterprise/src/lib/audit.service.ts` site requires evaluating whether to inject `RuntimeAnomalyService` or refactor the loop pattern.
 
 ## Acceptance
 

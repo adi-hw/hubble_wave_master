@@ -1,15 +1,16 @@
 #!/usr/bin/env ts-node
 /**
- * Self-test for tools/audit-bypass-check.ts (W5.A / Plan Fix 25 / F044).
+ * Self-test for tools/audit-bypass-check.ts (W5.A / W5.G / Plan Fix 25 / F044).
  *
  * Tests two surfaces:
  *   A. Direct unit tests against the core analysis logic using synthetic TS
  *      string fixtures. These assert the widened regex (W5.A: <varName>Repo.save /
  *      <varName>Repository.save patterns that the original leading `\b` word-boundary
- *      missed). The scanner exports `methodHasUnsafePattern`, `extractMethodBodies`,
- *      and `REPO_SAVE_PATTERN`; this suite mirrors those exported functions inline
- *      to avoid ts-node ESM cross-file resolution issues (per scanner-self-test.ts
- *      contract: framework helpers are duplicated, not imported).
+ *      missed; W5.G: <varName>Repo.update/delete/insert/softDelete/softRemove/remove/
+ *      upsert patterns). The scanner exports `methodHasUnsafePattern`, `extractMethodBodies`,
+ *      `REPO_SAVE_PATTERN`, and `REPO_MUTATE_PATTERN`; this suite mirrors those exported
+ *      functions inline to avoid ts-node ESM cross-file resolution issues (per
+ *      scanner-self-test.ts contract: framework helpers are duplicated, not imported).
  *   B. Integration tests via `execSync` that plant fixture files and run
  *      `npm run audit:check` to confirm end-to-end scanner behaviour.
  *
@@ -17,12 +18,15 @@
  *   Positive-1: sessionRepo.save(s) + auditLogRepo.save(a) in one method body,
  *               no wrapper → flagged
  *   Positive-2: userRepo.save() + auditLog.save() in one method body → flagged
+ *   Positive-3 (W5.G): deviceRepo.update(...) + auditLogRepo.save(a) → flagged
+ *   Positive-4 (W5.G): userRepo.delete(...) + auditLogRepo.save(a) → flagged
  *   Negative-1: same pattern inside withAudit(...) → NOT flagged
  *   Negative-2: same pattern inside dataSource.transaction(...) → NOT flagged
  *   Negative-3: same pattern inside manager.transaction(...) → NOT flagged
  *   Negative-4: only sessionRepo.save() with no audit write → NOT flagged
  *   Negative-5: only auditLogRepo.save() with no record write → NOT flagged
  *   Negative-6: // sessionRepo.save() + auditLogRepo.save() comment-only → NOT flagged
+ *   Negative-7 (W5.G): deviceRepo.update wrapped in withAudit → NOT flagged
  *   Integration-1: master tree is clean after W5.A allowlist is populated
  *   Integration-2: planted unsafe fixture in identity area is caught
  *   Integration-3: planted safe fixture (wrapped in withAudit) is accepted
@@ -49,9 +53,13 @@ const AUDIT_WRITE_PATTERNS_TEST = [
 ];
 
 // Matches any identifier ending in Repo or Repository followed by .save(.
-// This is the widened pattern (W5.A fix): the original used /\b(?:Repo|...)/ which
-// missed mid-identifier occurrences like sessionRepo, userRepo, auditLogRepo.
+// Retained for backward compat (W5.A test coverage).
 const REPO_SAVE_PATTERN_TEST = /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*save\s*\(/g;
+
+// Widened in W5.G: matches any TypeORM Repository mutation method (save, insert,
+// update, delete, softDelete, softRemove, remove, upsert).
+const REPO_MUTATE_PATTERN_TEST =
+  /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*(?:save|insert|update|delete|softDelete|softRemove|remove|upsert)\s*\(/g;
 
 // Audit-log repo names are excluded from the RECORD_WRITE check (they are captured
 // by AUDIT_WRITE_PATTERNS already; double-counting them as record writes would
@@ -69,8 +77,8 @@ const TRANSACTIONAL_WRAPPER_PATTERNS_TEST = [
   /\bentityManager\s*\.\s*transaction\s*\(/,
 ];
 
-function hasNonAuditRepoSaveTest(methodBody: string): boolean {
-  const pattern = new RegExp(REPO_SAVE_PATTERN_TEST.source, 'g');
+function hasNonAuditRepoMutateTest(methodBody: string): boolean {
+  const pattern = new RegExp(REPO_MUTATE_PATTERN_TEST.source, 'g');
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(methodBody)) !== null) {
     if (!AUDIT_REPO_NAME_PATTERN_TEST.test(match[0])) {
@@ -86,7 +94,7 @@ function methodHasUnsafePatternTest(methodBody: string): boolean {
 
   const hasRecordWrite =
     RECORD_WRITE_EXTRA_PATTERNS_TEST.some((p) => p.test(methodBody)) ||
-    hasNonAuditRepoSaveTest(methodBody);
+    hasNonAuditRepoMutateTest(methodBody);
   if (!hasRecordWrite) return false;
 
   const hasWrapper = TRANSACTIONAL_WRAPPER_PATTERNS_TEST.some((p) => p.test(methodBody));
@@ -289,6 +297,38 @@ console.log('\n--- Part A: unit tests on methodHasUnsafePattern (inlined logic) 
 }
 
 // -----------------------------------------------------------------------
+// Positive-3 (W5.G): deviceRepo.update + auditLogRepo.save, no wrapper
+// -----------------------------------------------------------------------
+{
+  const UNSAFE_BODY_UPDATE = `
+  await this.deviceRepo.update({ id: deviceId }, { active: false });
+  await this.auditLogRepo.save(this.auditLogRepo.create({ action: 'device_revoke', userId }));
+`;
+  const bodies = extractMethodBodiesTest(wrapInMethod(UNSAFE_BODY_UPDATE));
+  const flagged = bodies.some(methodHasUnsafePatternTest);
+  t.assert(
+    flagged,
+    'Positive-3 (W5.G): deviceRepo.update + auditLogRepo.save without wrapper → flagged',
+  );
+}
+
+// -----------------------------------------------------------------------
+// Positive-4 (W5.G): userRepo.delete + auditLogRepo.save, no wrapper
+// -----------------------------------------------------------------------
+{
+  const UNSAFE_BODY_DELETE = `
+  await this.userRepo.delete({ id: userId });
+  await this.auditLogRepo.save(this.auditLogRepo.create({ action: 'user_delete', userId }));
+`;
+  const bodies = extractMethodBodiesTest(wrapInMethod(UNSAFE_BODY_DELETE));
+  const flagged = bodies.some(methodHasUnsafePatternTest);
+  t.assert(
+    flagged,
+    'Positive-4 (W5.G): userRepo.delete + auditLogRepo.save without wrapper → flagged',
+  );
+}
+
+// -----------------------------------------------------------------------
 // Negative-1: same pattern inside withAudit(...)
 // -----------------------------------------------------------------------
 {
@@ -376,6 +416,22 @@ export class CommentOnlyService {}
   t.assert(
     !flagged,
     'Negative-6: comment-only references at file level (no method bodies) → NOT flagged',
+  );
+}
+
+// -----------------------------------------------------------------------
+// Negative-7 (W5.G): deviceRepo.update + auditLogRepo.save inside withAudit → NOT flagged
+// -----------------------------------------------------------------------
+{
+  const BODY_UPDATE_WRAPPED = `
+  await this.deviceRepo.update({ id: deviceId }, { active: false });
+  await this.auditLogRepo.save(this.auditLogRepo.create({ action: 'device_revoke', userId }));
+`;
+  const bodies = extractMethodBodiesTest(wrapInWithAudit(BODY_UPDATE_WRAPPED));
+  const flagged = bodies.some(methodHasUnsafePatternTest);
+  t.assert(
+    !flagged,
+    'Negative-7 (W5.G): deviceRepo.update + auditLogRepo.save inside withAudit → NOT flagged',
   );
 }
 
