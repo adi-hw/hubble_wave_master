@@ -590,6 +590,23 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-12 (Plan Fix 29 — §29.9 violation closed):
+  `apps/api/src/app/instance-api/identity/auth/` parallel HS256 path
+  DELETED (8 files). Replaced with a thin alias controller
+  (`identity-auth-alias.controller.ts`) at `@Controller('identity/auth')`
+  that delegates to the canonical `AuthService` → `TokenIssuerService`
+  (ES256 / KMS-backed in production, `LocalEs256KeySigningService` in
+  development). Web client routes (`/api/identity/auth/*`) preserved
+  unchanged. `identity.module.ts` now imports canonical `AuthModule`
+  instead of registering `JwtModule` with a symmetric secret.
+  `tools/security-bypass-check.ts` `PUBLIC_ALLOWLIST` updated; 4 entries
+  added to `tools/service-boundary-check.ts` `KNOWN_VIOLATIONS` for the
+  deliberate inward delegation imports. Codebase-wide grep confirms zero
+  remaining HS256 signing code paths. `KeySigningService` remains the
+  single ES256 path via `AwsKmsEs256KeySigningService` (production) or
+  `LocalEs256KeySigningService` (development). Refs Item 13 of pending
+  Phase 2 backlog.
+
 - 2026-05-13 (W5.G / Plan Fix 25): scanner-precision improvements.
   `tools/audit-bypass-check.ts` REPO_SAVE_PATTERN widened to catch
   `.update/.delete/.insert/.softDelete/.softRemove/.remove/.upsert`

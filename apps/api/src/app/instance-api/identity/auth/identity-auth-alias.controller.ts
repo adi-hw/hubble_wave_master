@@ -1,3 +1,20 @@
+/**
+ * Thin alias controller — mounts the canonical AuthService methods on
+ * `identity/auth/*` so the web client's base-URL convention
+ * (`VITE_IDENTITY_API_URL = '/api/identity'` + `/auth/...`) resolves to
+ * the canonical ES256 token-issuance path (TokenIssuerService / KMS).
+ *
+ * The canonical AuthController lives at `@Controller('auth')` →
+ * `/api/auth/*`. This alias sits at `@Controller('identity/auth')` →
+ * `/api/identity/auth/*`. Both controllers call the same AuthService;
+ * no business logic lives here.
+ *
+ * Canon §29.9: HS256 is forbidden everywhere. The previously-existing
+ * parallel AuthService that called `JwtService.sign(payload)` (HS256)
+ * is deleted as part of Plan Fix 29. All signing flows through
+ * TokenIssuerService (ES256, KMS-backed in production /
+ * LocalEs256KeySigningService in development).
+ */
 import {
   Controller,
   Post,
@@ -9,18 +26,18 @@ import {
   UnauthorizedException,
   Res,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto } from './dto/login.dto';
-import { UserProfileDto } from './dto/user-profile.dto';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Public, JwtAuthGuard, AuthenticatedRequest, PublicRequest } from '@hubblewave/auth-guard';
 import { Response, Request } from 'express';
+import { AuthService } from '../../../identity/auth/auth.service';
+import { LoginDto } from '../../../identity/auth/dto/login.dto';
+import { UserProfileDto } from '../../../identity/auth/dto/user-profile.dto';
 
 type SameSiteOption = 'lax' | 'strict' | 'none';
 
 @Controller('identity/auth')
-export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
+export class IdentityAuthAliasController {
+  private readonly logger = new Logger(IdentityAuthAliasController.name);
   private readonly useRefreshCookie = process.env.USE_REFRESH_TOKEN_COOKIE !== 'false';
   private readonly cookiePath = process.env.REFRESH_COOKIE_PATH || '/';
 
@@ -48,12 +65,12 @@ export class AuthController {
   async login(
     @Req() req: PublicRequest,
     @Body() loginDto: LoginDto,
-    @Res({ passthrough: true }) res: Response
+    @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(
       loginDto,
       req.ip,
-      req.headers['user-agent']
+      req.headers['user-agent'],
     );
 
     if (this.useRefreshCookie && result.refreshToken) {
@@ -79,8 +96,8 @@ export class AuthController {
   @Post('refresh')
   async refresh(
     @Req() req: PublicRequest,
-    @Body() body: RefreshTokenDto,
-    @Res({ passthrough: true }) res: Response
+    @Body() body: { refreshToken?: string },
+    @Res({ passthrough: true }) res: Response,
   ) {
     const refreshToken = body.refreshToken || this.parseRefreshFromCookie(req as Request);
 
@@ -92,8 +109,9 @@ export class AuthController {
     try {
       const result = await this.authService.refreshAccessToken(
         refreshToken,
+        undefined,
         req.ip,
-        req.headers['user-agent']
+        req.headers['user-agent'],
       );
 
       if (this.useRefreshCookie && result.refreshToken) {
@@ -127,16 +145,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(
     @Req() req: AuthenticatedRequest,
-    @Res({ passthrough: true }) res: Response
+    @Res({ passthrough: true }) res: Response,
   ) {
-    // F002: forward sessionId so AuthService can write the per-session
-    // revocation key — the live access token must stop working at logout,
-    // not at natural exp.
     const response = await this.authService.logout(
       req.user.userId,
       req.user.sessionId,
       req.ip,
-      req.headers['user-agent']
+      req.headers['user-agent'],
     );
 
     if (this.useRefreshCookie) {
@@ -160,7 +175,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @SkipThrottle()
-  async getProfile(@Req() req: AuthenticatedRequest): Promise<UserProfileDto> {
+  async getProfile(@Req() req: AuthenticatedRequest): Promise<UserProfileDto & { isAdmin: boolean }> {
     const { userId } = req.user;
     if (!userId) {
       throw new UnauthorizedException('Invalid user context');
@@ -175,7 +190,10 @@ export class AuthController {
       displayName: profile.displayName,
       roles: profile.roles,
       permissions: profile.permissions,
-      isAdmin: profile.isAdmin,
+      // Preserve the isAdmin field that the web client relies on for admin
+      // UI visibility. The canonical AuthService.getProfile() doesn't return
+      // it directly, so we derive it from the resolved role list.
+      isAdmin: profile.roles.includes('admin') || profile.roles.includes('super_admin'),
     };
   }
 }
