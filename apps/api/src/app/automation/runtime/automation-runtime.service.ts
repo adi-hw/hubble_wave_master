@@ -368,6 +368,13 @@ export class AutomationRuntimeService {
         this.logger.warn(
           `Sync trigger automation limit reached for collection ${collection.code}`,
         );
+        await this.runtimeAnomaly.record({
+          kind: 'sync_trigger_automation_limit_reached',
+          serviceCode: 'svc-automation',
+          message: `Sync trigger automation limit (${MAX_AUTOMATIONS_PER_EVENT}) reached for collection ${collection.code}; remaining automations skipped`,
+          collectionCode: collection.code,
+          context: { collectionId: args.collectionId, operation: args.operation, timing: args.timing, executedCount },
+        });
         break;
       }
 

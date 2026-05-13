@@ -10,6 +10,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { UserRequestContext } from '@hubblewave/auth-guard';
+import { RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface RollupConfig {
@@ -37,6 +38,7 @@ export class RollupService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly cacheService: FormulaCacheService,
     private readonly authz: AuthorizationService,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {}
 
   /**
@@ -247,6 +249,14 @@ export class RollupService {
         // SECURITY: Validate identifiers from database before using in query
         if (!this.validateIdentifier(dep.source_collection) || !this.validateIdentifier(dep.source_property)) {
           this.logger.warn(`SECURITY: Invalid identifier in property_dependencies: collection=${dep.source_collection}, property=${dep.source_property}`);
+          await this.runtimeAnomalyService.record({
+            kind: 'rollup_invalid_identifier_rejected',
+            serviceCode: 'svc-data',
+            message: `SECURITY: Invalid identifier rejected in recalculateRollupsForSource for collection=${dep.source_collection}, property=${dep.source_property}`,
+            collectionCode: sourceCollection,
+            recordId: changedRecordId,
+            context: { sourceCollection: dep.source_collection, sourceProperty: dep.source_property },
+          });
           continue;
         }
 

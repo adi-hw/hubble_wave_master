@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { InstanceEventOutbox, PropertyDefinition } from '@hubblewave/instance-db';
+import { InstanceEventOutbox, PropertyDefinition, RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { DataSource, Repository } from 'typeorm';
 import { FormulaService } from '../formula/formula.service';
 import { LookupService } from '../formula/lookup.service';
@@ -50,6 +50,7 @@ export class ComputedPropertyDispatcher {
     @InjectRepository(InstanceEventOutbox)
     private readonly outboxRepo: Repository<InstanceEventOutbox>,
     private readonly dataSource: DataSource,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {}
 
   /**
@@ -170,6 +171,15 @@ export class ComputedPropertyDispatcher {
           `Computed property "${property.code}" (${typeCode}) failed: ${(error as Error).message}`,
           (error as Error).stack,
         );
+        await this.runtimeAnomalyService.record({
+          kind: 'computed_property_evaluation_failed',
+          serviceCode: 'svc-data',
+          message: `Computed property "${property.code}" (${typeCode}) failed on collection ${args.collectionCode} record ${args.recordId}: ${(error as Error).message}`,
+          collectionCode: args.collectionCode,
+          recordId: args.recordId,
+          context: { propertyCode: property.code, typeCode, operation: args.operation },
+          error: error as Error,
+        });
       }
     }
 
@@ -231,6 +241,13 @@ export class ComputedPropertyDispatcher {
         this.logger.warn(
           `Rollup property ${row.property_code} on collection ${row.collection_id} is missing relationProperty config; skipping`,
         );
+        await this.runtimeAnomalyService.record({
+          kind: 'rollup_missing_relation_property',
+          serviceCode: 'svc-data',
+          message: `Rollup property ${row.property_code} on collection ${row.collection_id} is missing relationProperty config; parent rollup enqueue skipped for child collection ${childCollectionCode}`,
+          collectionCode: childCollectionCode,
+          context: { rollupPropertyId: row.property_id, rollupPropertyCode: row.property_code, collectionId: row.collection_id },
+        });
         continue;
       }
       const newParentId = childRecord[row.relation_property] as string | null | undefined;

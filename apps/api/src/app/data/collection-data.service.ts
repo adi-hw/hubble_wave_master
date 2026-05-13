@@ -335,6 +335,14 @@ export class CollectionDataService {
           const values = (out.values ?? config.values ?? config.data ?? {}) as Record<string, unknown>;
           if (!targetCollection) {
             this.logger.warn(`CreateRecord action missing collectionCode; skipped`);
+            await this.runtimeAnomaly.record({
+              kind: 'queued_action_missing_collection',
+              serviceCode: 'svc-data',
+              message: `CreateRecord queued action missing collectionCode; action skipped for parent record ${parentRecordId ?? 'unknown'}`,
+              collectionCode: parentCollection.code,
+              recordId: parentRecordId,
+              context: { actionType: type, canonical, parentCollectionCode: parentCollection.code },
+            });
             continue;
           }
           // Recursive create — propagate the executor's depth and
@@ -390,6 +398,15 @@ export class CollectionDataService {
         // already captured per-action status.
         const msg = err instanceof Error ? err.message : 'unknown';
         this.logger.error(`Queued automation action ${queued.action.type} failed: ${msg}`);
+        await this.runtimeAnomaly.record({
+          kind: 'queued_action_execution_failed',
+          serviceCode: 'svc-data',
+          message: `Queued automation action ${queued.action.type} failed for parent record ${parentRecordId ?? 'unknown'}: ${msg}`,
+          collectionCode: parentCollection.code,
+          recordId: parentRecordId,
+          context: { actionType: queued.action.type, errorMessage: msg },
+          error: err instanceof Error ? err : undefined,
+        });
       }
     }
   }

@@ -8,6 +8,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { RuntimeAnomalyService } from '@hubblewave/instance-db';
 
 interface PropertyDefinition {
   code: string;
@@ -39,7 +40,10 @@ const SAFE_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 export class DependencyService {
   private readonly logger = new Logger(DependencyService.name);
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
+  ) {}
 
   /**
    * Validate SQL identifier to prevent SQL injection
@@ -156,6 +160,14 @@ export class DependencyService {
         // SECURITY: Validate identifiers from database before using in query
         if (!this.validateIdentifier(dep.source_collection) || !this.validateIdentifier(dep.source_property)) {
           this.logger.warn(`SECURITY: Invalid identifier in property_dependencies: collection=${dep.source_collection}, property=${dep.source_property}`);
+          await this.runtimeAnomalyService.record({
+            kind: 'dependency_invalid_identifier_rejected',
+            serviceCode: 'svc-data',
+            message: `SECURITY: Invalid identifier rejected in getDependentRecords for collection=${dep.source_collection}, property=${dep.source_property}`,
+            collectionCode: collectionCode,
+            recordId: recordId,
+            context: { sourceCollection: dep.source_collection, sourceProperty: dep.source_property },
+          });
           continue;
         }
 

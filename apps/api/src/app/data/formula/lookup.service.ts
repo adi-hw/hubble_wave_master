@@ -10,6 +10,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuthorizationService } from '@hubblewave/authorization';
 import { UserRequestContext } from '@hubblewave/auth-guard';
+import { RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { FormulaCacheService } from './formula-cache.service';
 
 interface LookupConfig {
@@ -35,6 +36,7 @@ export class LookupService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly cacheService: FormulaCacheService,
     private readonly authz: AuthorizationService,
+    private readonly runtimeAnomalyService: RuntimeAnomalyService,
   ) {}
 
   /**
@@ -125,6 +127,13 @@ export class LookupService {
       // SECURITY: Validate identifiers to prevent SQL injection
       if (!this.validateIdentifier(sourceCollection) || !this.validateIdentifier(sourceProperty)) {
         this.logger.warn(`SECURITY: Invalid identifier rejected in getLookupValue: collection=${sourceCollection}, property=${sourceProperty}`);
+        await this.runtimeAnomalyService.record({
+          kind: 'lookup_invalid_identifier_rejected',
+          serviceCode: 'svc-data',
+          message: `SECURITY: Invalid identifier rejected in getLookupValue for collection=${sourceCollection}, property=${sourceProperty}`,
+          collectionCode: sourceCollection,
+          context: { sourceCollection, sourceProperty },
+        });
         return null;
       }
 
@@ -236,6 +245,14 @@ export class LookupService {
         // SECURITY: Validate identifiers from database before using in query
         if (!this.validateIdentifier(dep.source_collection) || !this.validateIdentifier(dep.source_property)) {
           this.logger.warn(`SECURITY: Invalid identifier in property_dependencies: collection=${dep.source_collection}, property=${dep.source_property}`);
+          await this.runtimeAnomalyService.record({
+            kind: 'lookup_invalid_identifier_rejected',
+            serviceCode: 'svc-data',
+            message: `SECURITY: Invalid identifier rejected in invalidateLookupCache for collection=${dep.source_collection}, property=${dep.source_property}`,
+            collectionCode: sourceCollection,
+            recordId: sourceRecordId,
+            context: { sourceCollection: dep.source_collection, sourceProperty: dep.source_property },
+          });
           continue;
         }
 
