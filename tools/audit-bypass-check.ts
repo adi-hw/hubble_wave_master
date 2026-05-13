@@ -65,6 +65,13 @@ const AUDIT_WRITE_PATTERNS = [
 // Exported for use by the self-test.
 export const REPO_SAVE_PATTERN = /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*save\s*\(/g;
 
+// Matches any identifier ending in Repo or Repository followed by ANY TypeORM Repository
+// mutation method. Widened in W5.G to catch .update/.delete/.insert/.softDelete/
+// .softRemove/.remove/.upsert — the previous REPO_SAVE_PATTERN only caught .save.
+// Exported for use by the self-test.
+export const REPO_MUTATE_PATTERN =
+  /[A-Za-z_$][\w$]*[Rr]epo(?:sitory)?\s*\.\s*(?:save|insert|update|delete|softDelete|softRemove|remove|upsert)\s*\(/g;
+
 // Identifiers that represent audit-log repos (not record repos). These match
 // AUDIT_WRITE_PATTERNS[0] and must be excluded from record-write detection to
 // avoid false-positives when a method writes only to the audit repo.
@@ -127,11 +134,14 @@ function hasAnyMatch(content: string, patterns: RegExp[]): boolean {
 }
 
 /**
- * Returns true if the method body contains at least one Repo/Repository .save() call
+ * Returns true if the method body contains at least one Repo/Repository mutation call
  * that is NOT an audit-log repo write (i.e., a state-changing record mutation).
+ *
+ * W5.G: widened from save-only (REPO_SAVE_PATTERN) to all TypeORM mutation methods
+ * (REPO_MUTATE_PATTERN): save, insert, update, delete, softDelete, softRemove, remove, upsert.
  */
-function hasNonAuditRepoSave(methodBody: string): boolean {
-  const pattern = new RegExp(REPO_SAVE_PATTERN.source, 'g');
+function hasNonAuditRepoMutate(methodBody: string): boolean {
+  const pattern = new RegExp(REPO_MUTATE_PATTERN.source, 'g');
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(methodBody)) !== null) {
     const token = match[0];
@@ -153,9 +163,9 @@ export function methodHasUnsafePattern(methodBody: string): boolean {
   if (!hasAuditWrite) return false;
 
   // Check both the RECORD_WRITE_PATTERNS (createQueryBuilder chains) and the
-  // Repo/Repository .save() pattern with audit-repo exclusion.
+  // Repo/Repository mutation pattern with audit-repo exclusion.
   const hasRecordWrite =
-    hasAnyMatch(methodBody, RECORD_WRITE_PATTERNS) || hasNonAuditRepoSave(methodBody);
+    hasAnyMatch(methodBody, RECORD_WRITE_PATTERNS) || hasNonAuditRepoMutate(methodBody);
   if (!hasRecordWrite) return false;
 
   const hasWrapper = hasAnyMatch(methodBody, TRANSACTIONAL_WRAPPER_PATTERNS);

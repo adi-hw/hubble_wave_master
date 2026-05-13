@@ -104,18 +104,22 @@ jobs:
       - name: Migration blocking-index check (F046 / W6.A)
         run: npm run migrations:check
 
+      - name: Silent-skip check (canon §10 amendment / W5.G)
+        run: npm run silent-skip:check
+
       - name: Scanner self-tests (W0 task 2 + per-scanner suites)
         # Each scanner ships with a self-test that proves it catches the
         # patterns it claims to. Without this gate, future scanner edits
         # could silently regress detection (cf. F151 — broken
         # compliance:check went unnoticed for some unknown duration).
-        # Currently 51 assertions across 6 suites:
+        # Currently 63 assertions across 7 suites (W5.G adds silent-skip):
         #   - framework (7)
         #   - security-bypass (7)
-        #   - authz-bypass (7)
+        #   - authz-bypass (17)
         #   - service-boundary (12)
         #   - dead-code (11)
         #   - migrations-blocking-index (7)
+        #   - silent-skip (12) — W5.G
         run: npm run selftest:scanners
 
   # SBOM generation and vulnerability scan (F119 / W0 task 9).
