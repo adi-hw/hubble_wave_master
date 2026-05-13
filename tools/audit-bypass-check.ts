@@ -27,29 +27,8 @@ const IGNORE_DIRS = new Set(['__tests__', 'test', 'dist', 'tmp', 'node_modules']
  * accepted as deferred work. Listed by relative path. Each entry must be
  * accompanied by a follow-up reference (Wave/Fix/issue).
  */
-const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [
-  // W5.A baseline inventory — discovered when RECORD_WRITE_PATTERNS[0] regex was widened
-  // to catch <varName>Repo.save() / <varName>Repository.save() identifiers (the original
-  // \b word-boundary matched standalone Repo.save but not sessionRepo.save, userRepo.save,
-  // alertRepo.save, etc. which are mid-identifier). All four sites are in the identity/auth
-  // area and are scheduled for the W5.B identity sweep.
-  {
-    file: 'apps/api/src/app/identity/auth/behavioral-analytics.service.ts',
-    followUp: 'W5.B',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/delegation.service.ts',
-    followUp: 'W5.B',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/device-trust.service.ts',
-    followUp: 'W5.B',
-  },
-  {
-    file: 'apps/api/src/app/identity/auth/impersonation.service.ts',
-    followUp: 'W5.B',
-  },
-];
+// W5.B completed: all 4 identity/auth sites refactored to withAudit(). Scanner reports zero deferred sites.
+const KNOWN_DEFERRED_OFFENDERS: Array<{ file: string; followUp: string }> = [];
 
 const AUDIT_WRITE_PATTERNS = [
   /\bauditLog(?:Repo|Repository)?\s*\.\s*save\s*\(/,

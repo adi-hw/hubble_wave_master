@@ -734,6 +734,15 @@ Past amendments (most recent first):
   service consolidation and had zero live consumers post-arc-w1-complete
   (PR #35). Refs Item 12 of pending Phase 2 backlog.
 
+- 2026-05-13 (Plan Fix 34 — W5.B reconciliation): §10 enforcement
+  applied to identity/auth services on master. Refactored 4 services
+  to use `withAudit(...)`: behavioral-analytics, delegation,
+  device-trust, impersonation. Removed all 4 entries from
+  `KNOWN_DEFERRED_OFFENDERS` — scanner now reports zero deferred
+  sites. Added integration test asserting atomic rollback when audit
+  write fails. (W5.B merged to worktree branch only; this PR
+  reconciles the code to master.) Refs Plan Fix 25.
+
 - 2026-05-13 (Plan Fix 27): F054 audit hash chain backfill landed.
   One-shot idempotent migration that walks audit_logs in canonical
   order, recomputes hash + previousHash for missing/inconsistent

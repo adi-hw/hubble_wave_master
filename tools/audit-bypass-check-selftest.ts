@@ -27,7 +27,7 @@
  *   Negative-5: only auditLogRepo.save() with no record write → NOT flagged
  *   Negative-6: // sessionRepo.save() + auditLogRepo.save() comment-only → NOT flagged
  *   Negative-7 (W5.G): deviceRepo.update wrapped in withAudit → NOT flagged
- *   Integration-1: master tree is clean after W5.A allowlist is populated
+ *   Integration-1: master tree is clean after W5.B (KNOWN_DEFERRED_OFFENDERS empty)
  *   Integration-2: planted unsafe fixture in identity area is caught
  *   Integration-3: planted safe fixture (wrapped in withAudit) is accepted
  *
@@ -442,7 +442,8 @@ export class CommentOnlyService {}
 console.log('\n--- Part B: integration tests via npm run audit:check ---\n');
 
 // -----------------------------------------------------------------------
-// Integration-1: Master tree is clean (allowlist matches reality post-W5.A).
+// Integration-1: Master tree is clean (W5.B complete: KNOWN_DEFERRED_OFFENDERS
+// is now empty after refactoring all 4 identity/auth sites to withAudit).
 // -----------------------------------------------------------------------
 {
   let exitCode = 0;
@@ -466,8 +467,8 @@ console.log('\n--- Part B: integration tests via npm run audit:check ---\n');
     'Integration-1: scanner reports clean status',
   );
   t.assert(
-    /4 deferred site/.test(stdout),
-    'Integration-1: scanner lists 4 deferred W5.B sites',
+    !/deferred site/.test(stdout),
+    'Integration-1: scanner reports zero deferred sites (W5.B complete)',
   );
 }
 
