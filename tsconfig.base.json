@@ -86,6 +86,9 @@
       ],
       "@hubblewave/search-typesense": [
         "libs/search/typesense/src/index.ts"
+      ],
+      "@hubblewave/search-authz": [
+        "libs/search-authz/src/index.ts"
       ]
     }
   },

@@ -1,0 +1,95 @@
+# Plan Fix 30 — Search Authz Pre-Filter
+
+**Status:** In progress (PR-1 — DSL + compiler primitives complete)
+**Owner:** adi-hw
+**Effort:** 3 PRs (PR-1 DSL/compiler, PR-2 Typesense emitter + indexer projection updater, PR-3 vector pre-filter)
+**Related canon clauses:** §9 (centralized authz), §11 (AVA), §28 (resolution model)
+**Triggering audit:** F136 — search authz post-filter (pagination + facet leak)
+
+## Context
+
+The platform's vector + keyword search currently applies authorization as a post-filter: the search engine returns N hits, then `authzCheck` is evaluated per-hit to drop forbidden records. This design is broken at scale for four reasons:
+
+1. **Pagination is wrong.** Page count is computed from the raw hit count before the post-filter runs. A user sees "page 1 of 5" but only 3 hits are visible — the other 7 on the page were silently filtered out.
+2. **Facets leak.** Facet aggregations (counts, ranges) are computed from the full result set, so forbidden records inflate visible facet counts.
+3. **Top-N degrades.** A search returning 10 hits per page may show 0 visible results if all 10 are forbidden for the active user. The user must page forward to find anything, and the UI gives no indication of why.
+4. **Wasted work.** Computing vector similarity / BM25 scores for records the user can never see burns CPU and KV I/O for zero value.
+
+The fix is to push authorization into the search engine as a pre-filter rather than a post-filter:
+
+```
+[§28 CollectionAccessRule evaluator]
+  → [Filter AST]
+  → engine-specific emitters
+      ├─→ Typesense filter_by clause (PR-2)
+      └─→ pgvector SQL WHERE clause (PR-3)
+```
+
+The compiler translates `CollectionAccessRule[]` for the active user into an engine-neutral filter AST. Per-engine emitters (in subsequent PRs) render the AST into Typesense `filter_by` syntax and pgvector SQL. The AST is the contract; neither emitter contains authorization logic.
+
+## PR sequence
+
+### PR-1 (this PR): DSL + compiler primitives
+
+Lands the engine-neutral filter AST type definitions and the compiler that maps §28 collection access rules to that AST. No engine wiring.
+
+**Algorithm:**
+- Filters all collection rules to those that match the user's identity (userId, roleId, groupId, or public/no-principal rules).
+- Groups matching rules by collection.
+- For each collection, applies §28.3 record-decision precedence:
+  - Level 1: an unconditional deny rule (no row-condition, canRead=true, effect='deny') excludes the collection from the AST entirely — §28.4 deny-wins applies.
+  - Level 2: allow rules with `canRead=true` contribute their row-conditions. Multiple allows UNION (§28.4 rule 5).
+  - Level 3 (default deny): no matching allow → collection not included.
+- Row-condition translation:
+  - No condition → `in_collection` (unconditional access to that collection's records).
+  - `{ operator: 'equals', value: '@currentUser' }` → `attribute_match` (deferred ABAC substitution).
+  - `{ operator: 'equals', value: '@currentUser.xxx' }` → `attribute_match` with `userAttribute: 'xxx'`.
+  - `{ operator: 'equals', value: <literal> }` → `eq`.
+  - `{ operator: 'in', value: [...] }` → `in`.
+  - Unsupported operator (gt, lt, starts_with, etc.) → degrades to `in_collection` (broader); post-filter still applies for that collection.
+- Per-collection ASTs are OR-combined (user can see records from any allowed collection).
+
+**`attribute_match` nodes** defer user-attribute substitution to the emitter so the AST is user-agnostic and cacheable at the role/collection level.
+
+**Files:**
+- New: `libs/search-authz/src/lib/ast.ts` — FilterAst discriminated union type
+- New: `libs/search-authz/src/lib/compiler.ts` — compileSearchAuthz() function
+- New: `libs/search-authz/src/lib/compiler.spec.ts` — 15 test assertions
+- New: `libs/search-authz/src/index.ts` — public barrel
+- New: `libs/search-authz/project.json` — Nx project config
+- New: `libs/search-authz/tsconfig.json`, `tsconfig.lib.json`, `tsconfig.spec.json`, `jest.config.ts`
+- Updated: `tsconfig.base.json` — `@hubblewave/search-authz` path mapping
+
+**Out of scope:** Typesense wiring, vector pre-filter, indexer projection updater. Those land in PR-2 and PR-3.
+
+### PR-2 (next): Typesense filter_by + indexer projection updater
+
+- `TypesenseFilterEmitter` — translates FilterAst to a Typesense `filter_by` string.
+- Indexer projection updater — ensures `collectionId` (and any ABAC fields used in `attribute_match` nodes) are indexed as filterable fields in Typesense.
+- Wires the emitter into the AVA vector + keyword search path in `apps/api/src/app/ava/search/`.
+- Removes the post-filter authzCheck call from the Typesense search pipeline.
+
+### PR-3 (next): pgvector pre-filter SQL
+
+- `PgvectorFilterEmitter` — translates FilterAst to a parameterized SQL WHERE clause.
+- Wires the emitter into the pgvector cosine-similarity search path.
+- Resolves `attribute_match` nodes using the active `RequestContext` (user or service context via §29 discriminated union).
+- Removes the post-filter authzCheck call from the pgvector search pipeline.
+
+## Acceptance
+
+- `libs/search-authz/` builds clean (`tsc --noEmit` on both lib and spec).
+- 15 compiler test assertions pass (all green).
+- AST is engine-neutral — no Typesense / pgvector / SQL / HTTP imports anywhere in the lib.
+- ABAC predicates compile to `attribute_match` (deferred resolution to emitter layer).
+- Public (no-principal) allow rules match any user.
+- §28.3 level-1 deny rules exclude collections even when a co-matching allow rule exists.
+- Unsupported row-condition operators degrade to `in_collection` (fail-broader, documented).
+
+## Out of scope (PR-1)
+
+- Engine emitters (PR-2, PR-3)
+- Field-level pre-filter (orthogonal — post-fetch masking pipeline still applies for PropertyAccessRules)
+- Compiled effective permission graphs (Cedar/OPA-style materialization) — canon §28.8 explicitly deferred
+- ACL re-projection on index update — PR-2's indexer projection updater
+- PropertyAccessRule compilation — field visibility is post-search masking, not record pre-filter
