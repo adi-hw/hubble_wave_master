@@ -594,6 +594,22 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 39): bootstrap leftover cleanup. Two issues
+  surfaced after Plan Fix 38 was already dispatched: (1) env var name
+  mismatch — setup.ts emitted `ADMIN_PASSWORD` while the seed migration
+  and generate-local-dev-secrets.ts both read `DEFAULT_ADMIN_PASSWORD`.
+  Aligned to `DEFAULT_ADMIN_PASSWORD` as the canonical name (the migration
+  is the authoritative bootstrap point; the prefix "DEFAULT_" accurately
+  names the bootstrap admin's password). Changed in `scripts/setup.ts`
+  (env generation) and `scripts/seed-admin-user.ts` (env read).
+  (2) Plan Fix 33's admin bypass removal left one unused `ctx` parameter
+  in `libs/authorization/src/lib/authorization.service.ts` —
+  `maskCollectionRecord` — underscore-prefixed to `_ctx` to match the
+  ESLint argsIgnorePattern convention without changing the method
+  signature. `libs/auth-guard/src/lib/permissions.guard.ts` audited;
+  no orphaned `ctx` parameters found. Net result: `npm run setup:minimal`
+  + `npm run dev:platform` complete end-to-end without TS6133 warnings.
+
 - 2026-05-13 (Plan Fix 38): migration runner hardening + setup UX.
   End-to-end bootstrap testing surfaced 5 issues that compile-only
   verification missed: (1) migrationsTransactionMode='all' default

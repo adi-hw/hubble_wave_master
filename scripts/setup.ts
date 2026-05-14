@@ -160,7 +160,7 @@ API_PORT=3000
 
 # Admin Bootstrap
 ADMIN_EMAIL=${adminEmail}
-ADMIN_PASSWORD=${adminPassword}
+DEFAULT_ADMIN_PASSWORD=${adminPassword}
 ADMIN_FIRST_NAME=${adminFirstName}
 ADMIN_LAST_NAME=${adminLastName}
 ADMIN_DISPLAY_NAME=${adminDisplayName}
