@@ -30,7 +30,7 @@ function generateEd25519PemPair(): { publicKey: string; privateKey: string } {
   };
 }
 
-const jwtSecret = hex(64);
+const jwtBootstrapSecret = hex(32);
 const packInstallToken = hex(32);
 const backupSigningKey = base64(48);
 const controlPlaneInstanceToken = hex(32);
@@ -50,8 +50,16 @@ const out = `
 # hand.
 # ===========================================================================
 
-JWT_SECRET=${jwtSecret}
-IDENTITY_JWT_SECRET=${jwtSecret}
+# JWT signing — canon §29.9: HS256 forbidden; signing routes through KeySigningService.
+# In development, JWT_KEY_PROVIDER=local-es256 uses a file-backed ES256 keypair under
+# .dev/keys/. In production, set JWT_KEY_PROVIDER=aws-kms; startup fails fast if
+# misconfigured.
+JWT_KEY_PROVIDER=local-es256
+JWT_ACCESS_TTL_SECONDS=600
+JWT_REFRESH_TTL_DAYS=14
+# canon §29.7: dev-only service-token bootstrap secret. Production startup rejects
+# this var; defense-in-depth against accidental dev-mode deploys.
+JWT_BOOTSTRAP_SECRET=${jwtBootstrapSecret}
 
 DEFAULT_ADMIN_PASSWORD=${defaultAdminPassword}
 

@@ -594,6 +594,35 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 36): JWT_SECRET leftovers from Plan Fix 29/35
+  closed. Two §29.9 violations remediated:
+  (1) `apps/api/src/app/identity/oidc/oidc.module.ts` —
+  `JwtModule.registerAsync({ secret: JWT_SECRET || 'dev-secret-key', ... })`
+  block deleted along with the `JwtModule`, `ConfigModule`,
+  `ConfigService` imports it required. The registration was dead code
+  (no provider in OidcModule's scope injected `JwtService`); the
+  hardcoded `'dev-secret-key'` fallback was a §29.9 violation that
+  would silently mint forgeable tokens if `JWT_SECRET` were unset.
+  Canonical token issuance flows through `AuthModule` →
+  `TokenIssuerService` → `KeySigningService` (ES256), which is still
+  available to `OidcModule`'s scope via the retained `AuthModule`
+  import.
+  (2) `scripts/generate-local-dev-secrets.ts` — emission of
+  `JWT_SECRET=${hex(64)}` and `IDENTITY_JWT_SECRET=${hex(64)}` replaced
+  with the canon §29 variable set: `JWT_KEY_PROVIDER=local-es256`,
+  `JWT_ACCESS_TTL_SECONDS=600`, `JWT_REFRESH_TTL_DAYS=14`,
+  `JWT_BOOTSTRAP_SECRET=${hex(32)}`. Pattern matches Plan Fix 35's
+  `scripts/setup.ts` migration. Side effect: a fresh dev checkout
+  running this script no longer satisfies
+  `apps/api/src/app/data/integration/oauth2.service.ts`'s fail-closed
+  `JWT_SECRET` check — that service remains a §29.9 violation tracked
+  for follow-up. Other JWT_SECRET sites (canonical AuthModule
+  transitional shell, control-plane HS256 path, infrastructure
+  terraform/helm, CI workflows) are out of scope and enumerated in
+  the Plan Fix 36 doc. The `apps/api/src/app/instance-api/identity/`
+  paths flagged by the triggering audit were verified clean — Plan
+  Fix 29 cleanup was complete there. Refs Plan Fix 36.
+
 - 2026-05-13 (Plan Fix 35): setup script cleanup. `scripts/setup.ts`'s
   generated `.env` brought in line with canon §29 + W6.C PgBouncer +
   modular monolith. Removed unused HS256-era vars (`JWT_SECRET`,
