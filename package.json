@@ -60,7 +60,9 @@
     "migrations:check": "npx tsx tools/migration-blocking-index-check.ts",
     "selftest:migrations": "npx tsx tools/migration-blocking-index-check-selftest.ts",
     "entity-schema:check": "npx tsx tools/scanners/entity-schema-ownership-check.ts",
-    "selftest:entity-schema": "npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts"
+    "selftest:entity-schema": "npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts",
+    "cross-domain:check": "npx tsx tools/scanners/cross-domain-import-check.ts",
+    "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts"
   },
   "private": true,
   "dependencies": {
