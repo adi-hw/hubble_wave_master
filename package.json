@@ -62,7 +62,9 @@
     "entity-schema:check": "npx tsx tools/scanners/entity-schema-ownership-check.ts",
     "selftest:entity-schema": "npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts",
     "cross-domain:check": "npx tsx tools/scanners/cross-domain-import-check.ts",
-    "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts"
+    "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts",
+    "migration-filename:check": "npx tsx tools/scanners/migration-filename-check.ts",
+    "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts"
   },
   "private": true,
   "dependencies": {
