@@ -7,18 +7,20 @@ import {
 
 @Injectable()
 export class ConnectorCredentialsService {
-  private readonly client: SecretsManagerClient;
   private readonly secretPrefix?: string;
 
   constructor(private readonly configService: ConfigService) {
+    this.secretPrefix = this.configService.get<string>('CONNECTOR_CREDENTIALS_SECRET_PREFIX') || undefined;
+  }
+
+  private getClient(): SecretsManagerClient {
     const region =
       this.configService.get<string>('CONNECTOR_SECRETS_REGION') ||
       this.configService.get<string>('AWS_REGION');
     if (!region) {
-      throw new Error('CONNECTOR_SECRETS_REGION or AWS_REGION is required for connector credentials');
+      throw new Error('CONNECTOR_SECRETS_REGION or AWS_REGION is required to resolve connector credentials');
     }
-    this.client = new SecretsManagerClient({ region });
-    this.secretPrefix = this.configService.get<string>('CONNECTOR_CREDENTIALS_SECRET_PREFIX') || undefined;
+    return new SecretsManagerClient({ region });
   }
 
   async resolveCredentials(credentialRef: string): Promise<Record<string, unknown>> {
@@ -29,7 +31,7 @@ export class ConnectorCredentialsService {
       throw new Error('Credential reference is outside the allowed prefix');
     }
 
-    const response = await this.client.send(
+    const response = await this.getClient().send(
       new GetSecretValueCommand({ SecretId: credentialRef }),
     );
     const secretString = this.extractSecretString(response);

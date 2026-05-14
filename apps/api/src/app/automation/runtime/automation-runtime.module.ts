@@ -48,6 +48,10 @@ import { AvaAutomationController } from './ava-automation.controller';
     // - RulesController injects ExecutionLogService for log read endpoints
     // - AvaAutomationService injects ConditionEvaluatorService for AVA-driven
     //   condition checks
+    // - SchedulerService injects ActionHandlerService, ScriptSandboxService,
+    //   and ExecutionLogService for scheduled job execution
+    ActionHandlerService,
+    ScriptSandboxService,
     ExecutionLogService,
     ConditionEvaluatorService,
   ],
