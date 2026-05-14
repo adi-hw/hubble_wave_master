@@ -30,7 +30,7 @@ function generateEd25519PemPair(): { publicKey: string; privateKey: string } {
   };
 }
 
-const jwtSecret = hex(64);
+const jwtBootstrapSecret = hex(64);
 const packInstallToken = hex(32);
 const backupSigningKey = base64(48);
 const controlPlaneInstanceToken = hex(32);
@@ -50,8 +50,7 @@ const out = `
 # hand.
 # ===========================================================================
 
-JWT_SECRET=${jwtSecret}
-IDENTITY_JWT_SECRET=${jwtSecret}
+JWT_BOOTSTRAP_SECRET=${jwtBootstrapSecret}
 
 DEFAULT_ADMIN_PASSWORD=${defaultAdminPassword}
 

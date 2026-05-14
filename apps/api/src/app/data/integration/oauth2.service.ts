@@ -1,15 +1,24 @@
 /**
- * OAuth2 Service
- * HubbleWave Platform - Phase 5
+ * OAuth2 Service — OAuth2/OIDC authorization server.
  *
- * OAuth2/OIDC authorization server implementation.
+ * Token signing was migrated from HS256 (jwt.sign + JWT_SECRET) to ES256 via
+ * `KeySigningService` in Plan Fix 36 (canon §29.9 — HS256 forbidden
+ * everywhere). `generateAccessToken` is async; callers that previously used
+ * the sync return value must await it.
+ *
+ * For `validateAccessToken`: the DB row already enforces revocation and
+ * expiry, so `decodeJwt` (no signature re-verification) is sufficient —
+ * re-verifying the ES256 signature would require the JWKS round-trip that
+ * `JwtAuthGuard` owns for inbound user tokens. The DB lookup IS the
+ * revocation check.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
 import * as crypto from 'crypto';
-import * as jwt from 'jsonwebtoken';
+import { decodeJwt } from 'jose';
+import { KEY_SIGNING_SERVICE, KeySigningService } from '@hubblewave/auth-guard';
 import {
   OAuthClient,
   OAuthAuthorizationCode,
@@ -64,9 +73,9 @@ interface TokenResponse {
 
 @Injectable()
 export class OAuth2Service {
-  private readonly jwtSecret: string;
-
   constructor(
+    @Inject(KEY_SIGNING_SERVICE)
+    private readonly keySigning: KeySigningService,
     @InjectRepository(OAuthClient)
     private readonly clientRepo: Repository<OAuthClient>,
     @InjectRepository(OAuthAuthorizationCode)
@@ -75,18 +84,7 @@ export class OAuth2Service {
     private readonly accessTokenRepo: Repository<OAuthAccessToken>,
     @InjectRepository(OAuthRefreshToken)
     private readonly refreshTokenRepo: Repository<OAuthRefreshToken>,
-  ) {
-    // Fail-closed: never sign tokens with an ephemeral random secret — that
-    // would silently produce tokens unverifiable across processes/restarts.
-    const secret = process.env.JWT_SECRET || process.env.IDENTITY_JWT_SECRET;
-    if (!secret) {
-      throw new Error(
-        'OAuth2Service requires JWT_SECRET (or IDENTITY_JWT_SECRET) to be configured. ' +
-        'Generate with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"'
-      );
-    }
-    this.jwtSecret = secret;
-  }
+  ) {}
 
   // Client Management
 
@@ -299,7 +297,7 @@ export class OAuth2Service {
   }
 
   private async generateTokens(client: OAuthClient, userId: string | undefined, scope: string): Promise<TokenResponse> {
-    const accessTokenValue = this.generateAccessToken(client.id, userId, scope, client.accessTokenLifetimeSeconds);
+    const accessTokenValue = await this.generateAccessToken(client.id, userId, scope, client.accessTokenLifetimeSeconds);
     const refreshTokenValue = crypto.randomBytes(32).toString('base64url');
 
     const accessTokenExpiry = new Date(Date.now() + client.accessTokenLifetimeSeconds * 1000);
@@ -337,15 +335,19 @@ export class OAuth2Service {
     };
   }
 
-  private generateAccessToken(clientId: string, userId: string | undefined, scope: string, expiresIn: number): string {
-    const payload = {
+  private async generateAccessToken(clientId: string, userId: string | undefined, scope: string, expiresIn: number): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    const payload: Record<string, unknown> = {
       client_id: clientId,
-      sub: userId,
       scope,
       type: 'access',
+      iat: now,
+      exp: now + expiresIn,
     };
-
-    return jwt.sign(payload, this.jwtSecret, { expiresIn });
+    if (userId !== undefined) {
+      payload['sub'] = userId;
+    }
+    return this.keySigning.sign(payload);
   }
 
   async validateAccessToken(token: string): Promise<{
@@ -356,10 +358,14 @@ export class OAuth2Service {
     error?: string;
   }> {
     try {
-      const decoded = jwt.verify(token, this.jwtSecret) as {
-        client_id: string;
+      // The DB row is the authoritative revocation + expiry check.
+      // `decodeJwt` extracts claims without re-verifying the ES256 signature;
+      // the token was self-issued via `keySigning.sign()` and the DB lookup
+      // below proves it was issued by this instance.
+      const claims = decodeJwt(token) as {
+        client_id?: string;
         sub?: string;
-        scope: string;
+        scope?: string;
       };
 
       const accessToken = await this.accessTokenRepo.findOne({
@@ -372,9 +378,9 @@ export class OAuth2Service {
 
       return {
         valid: true,
-        clientId: decoded.client_id,
-        userId: decoded.sub,
-        scope: decoded.scope,
+        clientId: claims.client_id,
+        userId: claims.sub,
+        scope: claims.scope,
       };
     } catch (_error) {
       return { valid: false, error: 'Invalid token' };
@@ -490,7 +496,7 @@ export class OAuth2Service {
       grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
       token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
       subject_types_supported: ['public'],
-      id_token_signing_alg_values_supported: ['RS256', 'HS256'],
+      id_token_signing_alg_values_supported: ['ES256'],
       code_challenge_methods_supported: ['plain', 'S256'],
     };
   }

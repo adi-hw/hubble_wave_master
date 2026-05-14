@@ -594,6 +594,23 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 36): canon §29.9 closure — HS256 elimination
+  across identity surfaces. Plan Fix 29 (PR #43) deleted the parallel
+  HS256 auth stack but left several leftovers:
+  `scripts/generate-local-dev-secrets.ts` and `scripts/setup.ts` emitted
+  stale `JWT_SECRET`/`IDENTITY_JWT_SECRET` (replaced with
+  `JWT_BOOTSTRAP_SECRET`, the canon §29.7 dev-bootstrap variable);
+  `apps/api/src/app/identity/oidc/oidc.module.ts` registered a
+  `JwtModule` with HS256 + hardcoded `'dev-secret-key'` fallback (removed
+  — `OidcService` and `SsoAdminController` do not inject `JwtService`);
+  `apps/api/src/app/data/integration/oauth2.service.ts` called
+  `jwt.sign`/`jwt.verify` (HS256 jsonwebtoken) — MIGRATED to
+  `KeySigningService.sign()` (ES256) + `decodeJwt` (jose). Also deleted
+  `scripts/tmpclaude-8c30-cwd` (Claude session debris) and removed its
+  allowlist entry from `tools/dead-code-allowlist.json`. Codebase-wide
+  grep confirms zero HS256 signing code paths in the instance plane.
+  `KeySigningService` remains the single ES256 signing path.
+
 - 2026-05-13 (Plan Fix 35): setup script cleanup. `scripts/setup.ts`'s
   generated `.env` brought in line with canon §29 + W6.C PgBouncer +
   modular monolith. Removed unused HS256-era vars (`JWT_SECRET`,

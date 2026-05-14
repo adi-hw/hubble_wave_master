@@ -33,14 +33,6 @@
   },
   {
     "type": "trash-pattern",
-    "path": "scripts/tmpclaude-8c30-cwd",
-    "reason": "Empty directory left over from a terminated agent session. Documented in master roadmap §D.1.",
-    "addedBy": "W0 task 10",
-    "addedAt": "2026-05-09",
-    "owedTo": "W4"
-  },
-  {
-    "type": "trash-pattern",
     "path": "canon-cleanup-ralph-loop.md",
     "reason": "AI-tooling artifact at repo root. Describes a Phase 0–7 ralph-loop scaffolding that conflicts with the actual W1–W7 wave structure. Documented in master roadmap §D.1; W4 moves to .claude/internal/ or external tooling repo.",
     "addedBy": "W0 task 10",
