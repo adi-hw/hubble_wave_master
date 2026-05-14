@@ -1,8 +1,5 @@
-import {
-  AuditLog,
-  buildAuditLogHash,
-  buildAuditLogHashPayload,
-} from '@hubblewave/instance-db';
+import { AuditLog } from '../entities';
+import { buildAuditLogHash, buildAuditLogHashPayload } from '../audit-log-hash';
 
 /**
  * Determinism test for the F054 backfill migration.

@@ -594,6 +594,28 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 38): migration runner hardening + setup UX.
+  End-to-end bootstrap testing surfaced 5 issues that compile-only
+  verification missed: (1) migrationsTransactionMode='all' default
+  rejects CONCURRENTLY migrations — fixed with 'each' in both
+  datasource configs; (2) `@hubblewave/instance-db` imports unresolved
+  in TypeORM CLI ts-node — fixed via `tsconfig-paths/register` in
+  tsconfig.migration.json `ts-node.require` + `-r` flag on migration
+  run scripts; (3) co-located *.spec.ts loaded by migrations glob —
+  spec moved via `git mv` to `libs/instance-db/src/lib/migrations/`
+  with relative imports + negative glob in datasource configs as
+  defense-in-depth; (4) stale .env silently used — setup now checks
+  REQUIRED_ENV_VARS list and exits with explicit message; (5) stale
+  Postgres volume produces cryptic 28P01 — setup now attempts a
+  credentialed pg.Client connection after pg_isready and emits a
+  clear recovery hint on 28P01. New `setup:fresh` script for
+  clean-slate bootstrap (docker-compose down -v + rm .env + setup).
+  Note: agents who shipped Plan Fix 27/35/36 verified compile +
+  scanners but never ran migrations end-to-end against a real
+  Postgres — this PR is the cost of that gap. Follow-up: add
+  `migrations:type-check` CI scanner that runs `tsc --noEmit` on
+  the migrations dir as if loaded by the runner.
+
 - 2026-05-13 (Plan Fix 36): canon §29.9 closure — HS256 elimination
   across identity surfaces. Plan Fix 29 (PR #43) deleted the parallel
   HS256 auth stack but left several leftovers:
