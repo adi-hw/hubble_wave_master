@@ -893,7 +893,7 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
    * identifier. Provided alongside the *Collection variants for symmetry.
    */
   async maskCollectionRecord(
-    ctx: UserRequestContext,
+    _ctx: UserRequestContext,
     record: Record<string, unknown>,
     fields: AuthorizedPropertyMeta[],
   ): Promise<Record<string, unknown>> {

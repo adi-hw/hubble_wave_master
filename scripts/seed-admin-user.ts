@@ -126,7 +126,7 @@ async function seed() {
 
     // 3. Create requested user
     const email = requireEnv('ADMIN_EMAIL');
-    const password = requireEnv('ADMIN_PASSWORD');
+    const password = requireEnv('DEFAULT_ADMIN_PASSWORD');
     const firstName = requireEnv('ADMIN_FIRST_NAME');
     const lastName = requireEnv('ADMIN_LAST_NAME');
     const displayName = process.env.ADMIN_DISPLAY_NAME || `${firstName} ${lastName}`;
