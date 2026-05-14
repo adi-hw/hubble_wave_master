@@ -75,6 +75,7 @@ const REQUIRED_ENV_VARS = [
   'REDIS_HOST',
   'REDIS_PORT',
   'API_PORT',
+  'AWS_REGION',
 ];
 
 async function setupEnvFiles(): Promise<void> {
@@ -199,6 +200,11 @@ REFRESH_COOKIE_SECURE=false
 # Account lockout settings
 MAX_FAILED_LOGIN_ATTEMPTS=5
 ACCOUNT_LOCKOUT_DURATION_MINUTES=30
+
+# AWS region — used by ConnectorCredentialsService (Secrets Manager) and any
+# other AWS SDK client. us-east-1 is the dev default; production instances
+# set this via their deployment environment.
+AWS_REGION=us-east-1
 
 # Node Environment
 NODE_ENV=development

@@ -7,6 +7,7 @@
 
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import {
   IntegrationApiKey,
   OAuthClient,
@@ -42,6 +43,7 @@ import { EventOutboxService } from '../events/event-outbox.service';
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([
       IntegrationApiKey,
       OAuthClient,
