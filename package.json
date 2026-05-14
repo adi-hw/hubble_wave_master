@@ -5,6 +5,7 @@
   "scripts": {
     "setup": "npx tsx scripts/setup.ts",
     "setup:skip-docker": "npx tsx scripts/setup.ts --skip-docker",
+    "setup:minimal": "npx tsx scripts/setup.ts --skip-ava --skip-search",
     "pack:build": "npx tsx scripts/build-pack.ts",
     "dev:web": "nx serve web-client",
     "dev:web-control-plane": "nx serve web-control-plane",

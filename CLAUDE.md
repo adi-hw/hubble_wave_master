@@ -594,6 +594,22 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-13 (Plan Fix 35): setup script cleanup. `scripts/setup.ts`'s
+  generated `.env` brought in line with canon §29 + W6.C PgBouncer +
+  modular monolith. Removed unused HS256-era vars (`JWT_SECRET`,
+  `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`) and pre-monolith
+  `PORT_IDENTITY/DATA/METADATA/AVA/AUTOMATION/VIEW_ENGINE/INSIGHTS` vars.
+  Added `JWT_KEY_PROVIDER=local-es256`, `JWT_ACCESS_TTL_SECONDS=600`
+  (canon §29.4; runtime var name is `JWT_ACCESS_TTL_SECONDS` not
+  `JWT_ACCESS_TTL_MINUTES`), `JWT_REFRESH_TTL_DAYS=14`,
+  `JWT_BOOTSTRAP_SECRET=<random>`, `DIRECT_DB_HOST/PORT`,
+  `DIRECT_CONTROL_PLANE_DB_HOST/PORT`, `API_PORT=3000`. Summary output
+  now points at `dev:api/worker/web/control-plane/web-control-plane/
+  platform/all` (the pre-arc-w1-complete `dev:identity/data/metadata`
+  refs were dead). New `--skip-ava` and `--skip-search` flags +
+  `setup:minimal` script for login-only bootstrap. Internal `ts-node`
+  invocations inside setup.ts switched to `tsx` (Plan Fix 31 alignment).
+
 - 2026-05-13 (Plan Fix 33): canon §28.6 admin bypass retirement.
   Deleted `if (ctx.isAdmin) return true` at 9 sites in
   `libs/authorization/src/lib/authorization.service.ts` and 1 site in
