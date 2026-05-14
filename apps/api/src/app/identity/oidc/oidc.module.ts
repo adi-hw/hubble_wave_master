@@ -1,6 +1,12 @@
+/**
+ * OidcModule — SSO configuration management and stub OIDC/SAML controllers.
+ *
+ * `JwtModule` (HS256 / JWT_SECRET) was removed in Plan Fix 36 (canon §29.9).
+ * Neither `OidcService` nor `SsoAdminController` inject or use `JwtService`.
+ * All HubbleWave-internal token issuance flows through `TokenIssuerService`
+ * → `KeySigningService` (ES256) in `apps/api/src/app/identity/auth/`.
+ */
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { OidcService } from './oidc.service';
 import { OidcController } from './oidc.controller';
@@ -14,14 +20,6 @@ import { InstanceDbModule } from '@hubblewave/instance-db';
     HttpModule.register({
       timeout: 10000,
       maxRedirects: 5,
-    }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'dev-secret-key',
-        signOptions: { expiresIn: '15m' },
-      }),
-      inject: [ConfigService],
     }),
     AuthModule,
   ],
