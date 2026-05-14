@@ -39,8 +39,20 @@ const dataSource = new DataSource({
       }
     : false,
   entities: [],
-  migrations: [migrationsPath],
+  migrations: [
+    migrationsPath,
+    // Exclude co-located spec files so TypeORM does not attempt to load them
+    // as migrations. Defense-in-depth: the spec file should live in
+    // libs/instance-db/src/lib/migrations/ but this guard survives drift.
+    `!${isProduction
+      ? migrationsPath.replace('*.js', '*.spec.js')
+      : migrationsPath.replace('*.ts', '*.spec.ts')}`,
+  ],
   migrationsTableName: 'migrations',
+  // 'each' allows individual migrations to declare `transaction = false`
+  // (required for CREATE INDEX CONCURRENTLY — canon W6.B, F136 PR-3).
+  // With 'all', TypeORM rejects any migration that overrides the mode.
+  migrationsTransactionMode: 'each',
 });
 
 module.exports = dataSource;

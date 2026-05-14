@@ -24,6 +24,7 @@
     "../migrations/**/*.ts"
   ],
   "ts-node": {
-    "ignoreDiagnostics": [2451, 7006, 6133]
+    "ignoreDiagnostics": [2451, 7006, 6133],
+    "require": ["tsconfig-paths/register"]
   }
 }

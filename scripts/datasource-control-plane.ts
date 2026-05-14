@@ -36,8 +36,17 @@ const dataSource = new DataSource({
   password: dbPassword,
   database: process.env.CONTROL_PLANE_DB_NAME || 'hubblewave_control_plane',
   entities: controlPlaneEntities,
-  migrations: [migrationsGlob],
+  migrations: [
+    migrationsGlob,
+    // Exclude co-located spec files so TypeORM does not attempt to load them
+    // as migrations. Defense-in-depth against future drift.
+    `!${migrationsGlob.replace('*.ts', '*.spec.ts').replace('*.js', '*.spec.js')}`,
+  ],
   migrationsTableName: 'migrations',
+  // 'each' allows individual migrations to declare `transaction = false`
+  // (required for CREATE INDEX CONCURRENTLY — canon W6.B, F136 PR-3).
+  // With 'all', TypeORM rejects any migration that overrides the mode.
+  migrationsTransactionMode: 'each',
   ssl: useSsl
     ? {
         rejectUnauthorized: sslRejectUnauthorized,
