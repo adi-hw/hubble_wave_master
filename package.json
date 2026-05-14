@@ -58,7 +58,9 @@
     "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx tsx tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json",
     "dead-code:check": "npx tsx tools/dead-code-check.ts",
     "migrations:check": "npx tsx tools/migration-blocking-index-check.ts",
-    "selftest:migrations": "npx tsx tools/migration-blocking-index-check-selftest.ts"
+    "selftest:migrations": "npx tsx tools/migration-blocking-index-check-selftest.ts",
+    "entity-schema:check": "npx tsx tools/scanners/entity-schema-ownership-check.ts",
+    "selftest:entity-schema": "npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts"
   },
   "private": true,
   "dependencies": {
