@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Update
 
 export type AVAToolApprovalPolicy = 'always' | 'never' | 'auto';
 
-@Entity('ava_tools')
+@Entity({ name: 'ava_tools', schema: 'ava' })
 @Index(['code'], { unique: true })
 export class AVATool {
   @PrimaryGeneratedColumn('uuid')
@@ -48,7 +48,7 @@ export class AVATool {
   updatedAt!: Date;
 }
 
-@Entity('ava_topics')
+@Entity({ name: 'ava_topics', schema: 'ava' })
 @Index(['code'], { unique: true })
 export class AVATopic {
   @PrimaryGeneratedColumn('uuid')
@@ -88,7 +88,7 @@ export class AVATopic {
   updatedAt!: Date;
 }
 
-@Entity('ava_cards')
+@Entity({ name: 'ava_cards', schema: 'ava' })
 @Index(['code'], { unique: true })
 export class AVACard {
   @PrimaryGeneratedColumn('uuid')
@@ -128,7 +128,7 @@ export class AVACard {
   updatedAt!: Date;
 }
 
-@Entity('ava_prompt_policies')
+@Entity({ name: 'ava_prompt_policies', schema: 'ava' })
 @Index(['code'], { unique: true })
 export class AVAPromptPolicy {
   @PrimaryGeneratedColumn('uuid')

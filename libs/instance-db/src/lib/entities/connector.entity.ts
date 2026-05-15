@@ -21,7 +21,7 @@ export type ConnectorStatus = 'active' | 'disabled';
  * referenced by `credentialRef`; the connector row never persists
  * raw secrets.
  */
-@Entity('connectors')
+@Entity({ name: 'connectors', schema: 'automation' })
 @Index(['code'], { unique: true })
 @Index(['kind', 'status'])
 export class Connector {

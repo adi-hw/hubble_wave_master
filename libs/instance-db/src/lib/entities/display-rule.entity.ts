@@ -46,7 +46,7 @@ export interface DisplayAction {
  * with operator) so the same evaluator can run server-side at form
  * load and client-side on field change.
  */
-@Entity('display_rules')
+@Entity({ name: 'display_rules', schema: 'metadata' })
 @Index(['collectionId', 'isActive'])
 @Index(['applicationId'])
 @Index(['status'])
@@ -120,7 +120,7 @@ export class DisplayRule {
  * pattern used by CollectionDefinitionRevision /
  * PropertyDefinitionRevision so authoring lifecycle is uniform.
  */
-@Entity('display_rule_revisions')
+@Entity({ name: 'display_rule_revisions', schema: 'metadata' })
 @Index(['displayRuleId'])
 @Index(['status'])
 @Index(['displayRuleId', 'revision'], { unique: true })

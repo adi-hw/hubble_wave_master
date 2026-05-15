@@ -34,7 +34,7 @@ export enum GroupType {
  * NOTE: This is NOT "tenant_groups" - we don't use tenant terminology!
  * This table exists in each customer's isolated database.
  */
-@Entity('groups')
+@Entity({ name: 'groups', schema: 'identity' })
 @Index(['code'], { unique: true })
 @Index(['parentId'])
 @Index(['type'])
@@ -159,7 +159,7 @@ export class Group {
  * 
  * NOTE: This is NOT "tenant_group_members" - we don't use tenant terminology!
  */
-@Entity('group_members')
+@Entity({ name: 'group_members', schema: 'identity' })
 @Unique(['groupId', 'userId'])
 @Index(['groupId'])
 @Index(['userId'])
@@ -223,7 +223,7 @@ export class GroupMember {
  * 
  * NOTE: This is NOT "tenant_group_roles" - we don't use tenant terminology!
  */
-@Entity('group_roles')
+@Entity({ name: 'group_roles', schema: 'identity' })
 @Unique(['groupId', 'roleId'])
 @Index(['groupId'])
 @Index(['roleId'])

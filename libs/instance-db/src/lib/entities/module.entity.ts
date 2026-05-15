@@ -19,7 +19,7 @@ export interface ModuleTargetConfig {
   params?: Record<string, any>;
 }
 
-@Entity('modules')
+@Entity({ name: 'modules', schema: 'metadata' })
 @Index(['key'], { unique: true })
 export class ModuleEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -68,7 +68,7 @@ export class ModuleEntity {
   updatedAt!: Date;
 }
 
-@Entity('module_security')
+@Entity({ name: 'module_security', schema: 'metadata' })
 export class ModuleSecurity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

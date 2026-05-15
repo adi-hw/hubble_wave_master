@@ -15,7 +15,7 @@ import { RolePermission } from './role-permission.entity';
  * This table exists in each customer's isolated database.
  * There is NO tenant_id column.
  */
-@Entity('permissions')
+@Entity({ name: 'permissions', schema: 'identity' })
 @Index(['code'], { unique: true })
 @Index(['category'])
 @Index(['resourceType'])

@@ -23,7 +23,7 @@ import {
  * `tokenHash` stores SHA-256 of the raw refresh token; the raw value is
  * never persisted server-side.
  */
-@Entity('refresh_tokens')
+@Entity({ name: 'refresh_tokens', schema: 'identity' })
 @Index(['tokenHash'], { unique: true })
 @Index(['family'])
 @Index(['userId'])

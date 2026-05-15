@@ -42,7 +42,7 @@ export interface Holiday {
   name: string;
 }
 
-@Entity('business_hours')
+@Entity({ name: 'business_hours', schema: 'automation' })
 export class BusinessHours {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -98,7 +98,7 @@ export interface SLAEscalation {
   }>;
 }
 
-@Entity('sla_definitions')
+@Entity({ name: 'sla_definitions', schema: 'automation' })
 @Index(['collectionId'], { where: '"is_active" = true' })
 export class SLADefinition {
   @PrimaryGeneratedColumn('uuid')
@@ -176,7 +176,7 @@ export class SLADefinition {
 
 export type SLAInstanceState = 'active' | 'paused' | 'completed' | 'breached' | 'cancelled';
 
-@Entity('sla_instances')
+@Entity({ name: 'sla_instances', schema: 'automation' })
 @Index(['collectionId', 'recordId'])
 @Index(['state'])
 @Index(['targetTime'], { where: '"state" = \'active\'' })
@@ -257,7 +257,7 @@ export class SLAInstance {
 // SLA BREACH
 // ═══════════════════════════════════════════════════════════════════
 
-@Entity('sla_breaches')
+@Entity({ name: 'sla_breaches', schema: 'automation' })
 @Index(['collectionId', 'recordId'])
 @Index(['createdAt'])
 export class SLABreach {
@@ -333,7 +333,7 @@ export interface StateMachineTransition {
   actions?: Array<{ type: string; config: Record<string, unknown> }>;
 }
 
-@Entity('state_machine_definitions')
+@Entity({ name: 'state_machine_definitions', schema: 'automation' })
 @Index(['collectionId'], { where: '"is_active" = true' })
 export class StateMachineDefinition {
   @PrimaryGeneratedColumn('uuid')
@@ -384,7 +384,7 @@ export class StateMachineDefinition {
 // STATE CHANGE HISTORY
 // ═══════════════════════════════════════════════════════════════════
 
-@Entity('state_change_history')
+@Entity({ name: 'state_change_history', schema: 'automation' })
 @Index(['collectionId', 'recordId', 'createdAt'])
 export class StateChangeHistory {
   @PrimaryGeneratedColumn('uuid')

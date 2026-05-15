@@ -32,7 +32,7 @@ export interface ModuleSecurity {
 /**
  * AuthSettings entity - instance-level authentication configuration
  */
-@Entity('auth_settings')
+@Entity({ name: 'auth_settings', schema: 'identity' })
 export class AuthSettings {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -155,7 +155,7 @@ export class AuthSettings {
 /**
  * AuthEvent entity - audit log for authentication events
  */
-@Entity('auth_events')
+@Entity({ name: 'auth_events', schema: 'identity' })
 @Index(['userId'])
 @Index(['eventType'])
 @Index(['createdAt'])
@@ -275,7 +275,7 @@ export class AuditLog {
  * 
  * NOTE: This is NOT "tenant_nav_profiles" - we don't use tenant terminology!
  */
-@Entity('nav_profiles')
+@Entity({ name: 'nav_profiles', schema: 'identity' })
 @Index(['code'], { unique: true })
 @Index(['scope'])
 @Index(['isDefault'])
@@ -390,7 +390,7 @@ export class NavProfile {
  * 
  * NOTE: This is NOT "tenant_nav_profile_items" - we don't use tenant terminology!
  */
-@Entity('nav_profile_items')
+@Entity({ name: 'nav_profile_items', schema: 'identity' })
 @Index(['profileId'])
 @Index(['parentId'])
 export class NavProfileItem {

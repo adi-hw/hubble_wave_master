@@ -21,7 +21,7 @@ import { Permission } from './permission.entity';
  * 
  * NOTE: This is NOT "tenant_role_permissions" - we don't use tenant terminology!
  */
-@Entity('role_permissions')
+@Entity({ name: 'role_permissions', schema: 'identity' })
 @Unique(['roleId', 'permissionId'])
 @Index(['roleId'])
 @Index(['permissionId'])
@@ -75,7 +75,7 @@ export type AssignmentSource = 'direct' | 'group' | 'rule' | 'sso';
  * 
  * NOTE: This is NOT "tenant_user_roles" - we don't use tenant terminology!
  */
-@Entity('user_roles')
+@Entity({ name: 'user_roles', schema: 'identity' })
 @Unique(['userId', 'roleId'])
 @Index(['userId'])
 @Index(['roleId'])

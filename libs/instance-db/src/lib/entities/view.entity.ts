@@ -14,7 +14,7 @@ export type ViewScope = 'system' | 'instance' | 'role' | 'group' | 'personal';
 export type ViewKind = 'form' | 'list' | 'page';
 export type ViewRevisionStatus = 'draft' | 'published';
 
-@Entity('view_definitions')
+@Entity({ name: 'view_definitions', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['kind'])
 @Index(['targetCollectionCode'])
@@ -77,7 +77,7 @@ export class ViewDefinition {
   source!: string;
 }
 
-@Entity('view_definition_revisions')
+@Entity({ name: 'view_definition_revisions', schema: 'metadata' })
 @Index(['definitionId'])
 @Index(['status'])
 @Index(['definitionId', 'revision'], { unique: true })
@@ -128,7 +128,7 @@ export class ViewDefinitionRevision {
   createdAt!: Date;
 }
 
-@Entity('view_variants')
+@Entity({ name: 'view_variants', schema: 'metadata' })
 @Index(['definitionId'])
 @Index(['scope'])
 @Index(['scopeKey'])
@@ -176,7 +176,7 @@ export class ViewVariant {
   updatedAt!: Date;
 }
 
-@Entity('widget_catalog')
+@Entity({ name: 'widget_catalog', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['applicationId'])
 export class WidgetCatalog {

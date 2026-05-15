@@ -35,7 +35,7 @@ export interface DriftDetails {
  * A singleton table (only one row ever exists) that tracks the state of
  * schema synchronization between metadata and physical PostgreSQL schema.
  */
-@Entity('schema_sync_state')
+@Entity({ name: 'schema_sync_state', schema: 'metadata' })
 @Index('idx_schema_sync_lock', ['syncLockExpiresAt'])
 export class SchemaSyncState {
   @PrimaryGeneratedColumn('uuid')

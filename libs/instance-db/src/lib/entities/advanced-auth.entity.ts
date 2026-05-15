@@ -17,7 +17,7 @@ import { User } from './user.entity';
 /**
  * WebAuthnCredential entity - stores FIDO2/WebAuthn credentials (passkeys)
  */
-@Entity('webauthn_credentials')
+@Entity({ name: 'webauthn_credentials', schema: 'identity' })
 @Index(['userId'])
 @Index(['credentialId'], { unique: true })
 export class WebAuthnCredential {
@@ -97,7 +97,7 @@ export class WebAuthnCredential {
 /**
  * WebAuthnChallenge entity - stores temporary challenges for WebAuthn ceremonies
  */
-@Entity('webauthn_challenges')
+@Entity({ name: 'webauthn_challenges', schema: 'identity' })
 @Index(['challenge'], { unique: true })
 @Index(['userId'])
 @Index(['expiresAt'])
@@ -140,7 +140,7 @@ export class WebAuthnChallenge {
 /**
  * MagicLinkToken entity - passwordless login via email
  */
-@Entity('magic_link_tokens')
+@Entity({ name: 'magic_link_tokens', schema: 'identity' })
 @Index(['token'], { unique: true })
 @Index(['email'])
 @Index(['expiresAt'])
@@ -197,7 +197,7 @@ export type DeviceTrustStatus = 'pending' | 'trusted' | 'untrusted' | 'revoked';
 /**
  * TrustedDevice entity - device trust management
  */
-@Entity('trusted_devices')
+@Entity({ name: 'trusted_devices', schema: 'identity' })
 @Index(['userId'])
 @Index(['deviceFingerprint'])
 @Index(['status'])
@@ -282,7 +282,7 @@ export class TrustedDevice {
 /**
  * ImpersonationSession entity - tracks admin impersonation of users
  */
-@Entity('impersonation_sessions')
+@Entity({ name: 'impersonation_sessions', schema: 'identity' })
 @Index(['impersonatorId'])
 @Index(['targetUserId'])
 @Index(['isActive'])
@@ -356,7 +356,7 @@ export type DelegationStatus = 'pending' | 'active' | 'expired' | 'revoked';
 /**
  * Delegation entity - temporary authority delegation between users
  */
-@Entity('delegations')
+@Entity({ name: 'delegations', schema: 'identity' })
 @Index(['delegatorId'])
 @Index(['delegateId'])
 @Index(['status'])
@@ -458,7 +458,7 @@ export class Delegation {
 /**
  * BehavioralProfile entity - learned user behavior patterns for anomaly detection
  */
-@Entity('behavioral_profiles')
+@Entity({ name: 'behavioral_profiles', schema: 'identity' })
 @Index(['userId'], { unique: true })
 export class BehavioralProfile {
   @PrimaryGeneratedColumn('uuid')
@@ -545,7 +545,7 @@ export type AlertStatus = 'new' | 'acknowledged' | 'investigating' | 'resolved' 
 /**
  * SecurityAlert entity - tracks security anomalies and alerts
  */
-@Entity('security_alerts')
+@Entity({ name: 'security_alerts', schema: 'identity' })
 @Index(['userId'])
 @Index(['severity'])
 @Index(['status'])

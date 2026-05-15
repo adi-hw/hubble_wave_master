@@ -67,7 +67,7 @@ export interface MetadataChange {
   capturedAt: string;
 }
 
-@Entity('change_packages')
+@Entity({ name: 'change_packages', schema: 'metadata' })
 @Index(['applicationId'])
 @Index(['status'])
 @Index(['code'], { unique: true })

@@ -28,7 +28,7 @@ import { User } from './user.entity';
 export type ApplicationStatus = 'draft' | 'published' | 'deprecated';
 export type ApplicationRevisionStatus = 'draft' | 'published';
 
-@Entity('applications')
+@Entity({ name: 'applications', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['status'])
 export class Application {
@@ -101,7 +101,7 @@ export class Application {
  * consistent with the existing platform surface, ahead of the
  * broader ADR-5 rollout in Slice C.
  */
-@Entity('application_revisions')
+@Entity({ name: 'application_revisions', schema: 'metadata' })
 @Index(['applicationId'])
 @Index(['status'])
 @Index(['applicationId', 'revision'], { unique: true })

@@ -13,7 +13,7 @@ import { User } from './user.entity';
 export type NavigationScope = 'system' | 'instance' | 'role' | 'group' | 'personal';
 export type NavigationRevisionStatus = 'draft' | 'published';
 
-@Entity('navigation_modules')
+@Entity({ name: 'navigation_modules', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['applicationId'])
 export class NavigationModule {
@@ -63,7 +63,7 @@ export class NavigationModule {
   updatedAt!: Date;
 }
 
-@Entity('navigation_module_revisions')
+@Entity({ name: 'navigation_module_revisions', schema: 'metadata' })
 @Index(['moduleId'])
 @Index(['status'])
 @Index(['moduleId', 'revision'], { unique: true })
@@ -108,7 +108,7 @@ export class NavigationModuleRevision {
   createdAt!: Date;
 }
 
-@Entity('navigation_variants')
+@Entity({ name: 'navigation_variants', schema: 'metadata' })
 @Index(['moduleId'])
 @Index(['scope'])
 @Index(['scopeKey'])

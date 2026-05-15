@@ -64,7 +64,8 @@
     "cross-domain:check": "npx tsx tools/scanners/cross-domain-import-check.ts",
     "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts",
     "migration-filename:check": "npx tsx tools/scanners/migration-filename-check.ts",
-    "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts"
+    "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts",
+    "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts"
   },
   "private": true,
   "dependencies": {

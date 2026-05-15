@@ -40,7 +40,7 @@ export type AvaProposalState =
  * proposal through the state machine, and only an 'approved' proposal is
  * eligible for execution.
  */
-@Entity('ava_proposal')
+@Entity({ name: 'ava_proposal', schema: 'ava' })
 @Index(['state', 'createdAt'])
 @Index(['actorId', 'state'])
 export class AvaProposal {

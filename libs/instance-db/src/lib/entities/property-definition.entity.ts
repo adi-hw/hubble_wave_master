@@ -51,7 +51,7 @@ export interface PropertyBehavioralAttributes {
  * This is the schema engine's entity for defining what fields/columns
  * exist on each collection.
  */
-@Entity('property_definitions')
+@Entity({ name: 'property_definitions', schema: 'metadata' })
 @Unique(['collectionId', 'code'])
 @Index(['collectionId'])
 @Index(['propertyTypeId'])
@@ -338,7 +338,7 @@ export class PropertyDefinition {
  * definition. Mirrors CollectionDefinitionRevision and ApplicationRevision
  * so the lifecycle pattern is uniform across metadata entities (ADR-5).
  */
-@Entity('property_definition_revisions')
+@Entity({ name: 'property_definition_revisions', schema: 'metadata' })
 @Index(['propertyId'])
 @Index(['status'])
 @Index(['propertyId', 'revision'], { unique: true })

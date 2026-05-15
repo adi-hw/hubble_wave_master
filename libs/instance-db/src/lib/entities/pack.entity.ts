@@ -27,7 +27,7 @@ export type PackObjectType =
   | 'ava'
   | 'seed';
 
-@Entity('pack_release_records')
+@Entity({ name: 'pack_release_records', schema: 'metadata' })
 @Index(['packCode', 'packReleaseId'])
 @Index(['status'])
 export class PackReleaseRecord {
@@ -81,7 +81,7 @@ export class PackReleaseRecord {
   updatedAt!: Date;
 }
 
-@Entity('pack_object_revisions')
+@Entity({ name: 'pack_object_revisions', schema: 'metadata' })
 @Index(['objectType', 'objectKey'])
 @Index(['releaseRecordId'])
 export class PackObjectRevision {
@@ -117,7 +117,7 @@ export class PackObjectRevision {
   createdAt!: Date;
 }
 
-@Entity('pack_object_states')
+@Entity({ name: 'pack_object_states', schema: 'metadata' })
 @Index(['objectType', 'objectKey'], { unique: true })
 @Index(['packCode'])
 export class PackObjectState {
@@ -156,7 +156,7 @@ export class PackObjectState {
   updatedAt!: Date;
 }
 
-@Entity('pack_install_locks')
+@Entity({ name: 'pack_install_locks', schema: 'metadata' })
 export class PackInstallLock {
   @PrimaryColumn({ name: 'lock_key', type: 'varchar', length: 100 })
   lockKey!: string;

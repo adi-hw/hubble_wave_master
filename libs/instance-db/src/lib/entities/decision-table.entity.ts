@@ -51,7 +51,7 @@ export interface DecisionRowCondition {
  * Answer rows live in the configurable answerCollection (any
  * Collection in the instance) — the table doesn't own them.
  */
-@Entity('decision_tables')
+@Entity({ name: 'decision_tables', schema: 'automation' })
 @Index(['code'], { unique: true })
 @Index(['collectionId'])
 @Index(['applicationId'])
@@ -147,7 +147,7 @@ export type DecisionTableRevisionStatus = 'draft' | 'published';
  * pattern used by CollectionDefinitionRevision so authoring
  * lifecycle is uniform across metadata entities.
  */
-@Entity('decision_table_revisions')
+@Entity({ name: 'decision_table_revisions', schema: 'automation' })
 @Index(['tableId'])
 @Index(['status'])
 @Index(['tableId', 'revision'], { unique: true })
@@ -192,7 +192,7 @@ export class DecisionTableRevision {
   createdAt!: Date;
 }
 
-@Entity('decision_inputs')
+@Entity({ name: 'decision_inputs', schema: 'automation' })
 @Index(['tableId', 'position'], { unique: true })
 export class DecisionInput {
   @PrimaryGeneratedColumn('uuid')
@@ -229,7 +229,7 @@ export class DecisionInput {
   createdAt!: Date;
 }
 
-@Entity('decision_rows')
+@Entity({ name: 'decision_rows', schema: 'automation' })
 @Index(['tableId', 'position'])
 export class DecisionRow {
   @PrimaryGeneratedColumn('uuid')

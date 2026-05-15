@@ -16,7 +16,7 @@ export type AVAActionStatus = 'pending' | 'confirmed' | 'completed' | 'failed' |
 /**
  * AVA Audit Trail - Records all actions performed by AVA
  */
-@Entity('ava_audit_trail')
+@Entity({ name: 'ava_audit_trail', schema: 'ava' })
 @Index(['userId'])
 @Index(['actionType'])
 @Index(['status'])
@@ -126,7 +126,7 @@ export class AVAAuditTrail {
 /**
  * AVA Permission Configuration
  */
-@Entity('ava_permission_configs')
+@Entity({ name: 'ava_permission_configs', schema: 'ava' })
 @Index(['collectionCode', 'actionType'], { unique: true })
 export class AVAPermissionConfig {
   @PrimaryGeneratedColumn('uuid')
@@ -166,7 +166,7 @@ export class AVAPermissionConfig {
 /**
  * AVA Global Settings
  */
-@Entity('ava_global_settings')
+@Entity({ name: 'ava_global_settings', schema: 'ava' })
 export class AVAGlobalSettings {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -215,7 +215,7 @@ export class AVAGlobalSettings {
 /**
  * AVA Conversation - Tracks multi-turn conversations
  */
-@Entity('ava_conversations')
+@Entity({ name: 'ava_conversations', schema: 'ava' })
 @Index(['userId'])
 @Index(['organizationId'])
 @Index(['status'])
@@ -270,7 +270,7 @@ export class AVAConversation {
 /**
  * AVA Message - Individual messages in a conversation
  */
-@Entity('ava_messages')
+@Entity({ name: 'ava_messages', schema: 'ava' })
 @Index(['conversationId'])
 @Index(['role'])
 @Index(['createdAt'])
@@ -319,7 +319,7 @@ export class AVAMessage {
 /**
  * AVA Intent - Records intent classification
  */
-@Entity('ava_intents')
+@Entity({ name: 'ava_intents', schema: 'ava' })
 @Index(['messageId'])
 @Index(['category'])
 @Index(['intentName'])
@@ -362,7 +362,7 @@ export class AVAIntent {
 /**
  * AVA Context - Stores session/user context
  */
-@Entity('ava_contexts')
+@Entity({ name: 'ava_contexts', schema: 'ava' })
 @Index(['userId'])
 @Index(['contextType'])
 @Index(['expiresAt'])
@@ -402,7 +402,7 @@ export class AVAContext {
 /**
  * AVA Prediction - Stores predictive analytics results
  */
-@Entity('ava_predictions')
+@Entity({ name: 'ava_predictions', schema: 'ava' })
 @Index(['predictionType'])
 @Index(['targetDate'])
 @Index(['isActive'])
@@ -447,7 +447,7 @@ export class AVAPrediction {
 /**
  * AVA Anomaly - Detected anomalies
  */
-@Entity('ava_anomalies')
+@Entity({ name: 'ava_anomalies', schema: 'ava' })
 @Index(['anomalyType'])
 @Index(['severity'])
 @Index(['isResolved'])
@@ -512,7 +512,7 @@ export class AVAAnomaly {
 /**
  * AVA Suggestion - Smart suggestions provided by AVA
  */
-@Entity('ava_suggestions')
+@Entity({ name: 'ava_suggestions', schema: 'ava' })
 @Index(['userId'])
 @Index(['suggestionType'])
 @Index(['targetEntity'])
@@ -564,7 +564,7 @@ export class AVASuggestion {
 /**
  * AVA Feedback - User feedback for learning
  */
-@Entity('ava_feedback')
+@Entity({ name: 'ava_feedback', schema: 'ava' })
 @Index(['userId'])
 @Index(['messageId'])
 @Index(['feedbackType'])
@@ -603,7 +603,7 @@ export class AVAFeedback {
 /**
  * AVA Knowledge Embedding - Vector embeddings for knowledge search
  */
-@Entity('ava_knowledge_embeddings')
+@Entity({ name: 'ava_knowledge_embeddings', schema: 'ava' })
 @Index(['sourceType'])
 @Index(['sourceId'])
 export class AVAKnowledgeEmbedding {
@@ -641,7 +641,7 @@ export class AVAKnowledgeEmbedding {
 /**
  * AVA Usage Metrics - Track AVA usage for analytics
  */
-@Entity('ava_usage_metrics')
+@Entity({ name: 'ava_usage_metrics', schema: 'ava' })
 @Index(['userId'])
 @Index(['metricDate'])
 @Index(['metricType'])

@@ -32,7 +32,7 @@ export type PropertyTypeCategory =
  * 
  * These are seeded during instance setup and rarely changed.
  */
-@Entity('property_types')
+@Entity({ name: 'property_types', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['category'])
 export class PropertyType {
@@ -102,7 +102,7 @@ export class PropertyType {
 /**
  * ChoiceList entity - defines choice lists for choice-type properties
  */
-@Entity('choice_lists')
+@Entity({ name: 'choice_lists', schema: 'metadata' })
 @Index(['code'], { unique: true })
 export class ChoiceList {
   @PrimaryGeneratedColumn('uuid')
@@ -157,7 +157,7 @@ export class ChoiceList {
 /**
  * ChoiceItem entity - defines items in a choice list
  */
-@Entity('choice_items')
+@Entity({ name: 'choice_items', schema: 'metadata' })
 @Unique(['choiceListId', 'value'])
 @Index(['choiceListId'])
 export class ChoiceItem {

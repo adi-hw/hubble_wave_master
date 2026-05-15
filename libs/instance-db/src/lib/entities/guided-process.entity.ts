@@ -34,7 +34,7 @@ export type GuidedActivityKind = 'flow' | 'manual_task' | 'decision';
  * (Phase 5); this slice ships only the metadata model, service,
  * and CRUD endpoints so the runtime is a frontend-only follow-up.
  */
-@Entity('guided_processes')
+@Entity({ name: 'guided_processes', schema: 'automation' })
 @Index(['code'], { unique: true })
 @Index(['collectionId'])
 @Index(['applicationId'])
@@ -105,7 +105,7 @@ export type GuidedProcessRevisionStatus = 'draft' | 'published';
  * ADR-5 pattern used by CollectionDefinitionRevision so authoring
  * lifecycle is uniform across metadata entities.
  */
-@Entity('guided_process_revisions')
+@Entity({ name: 'guided_process_revisions', schema: 'automation' })
 @Index(['processId'])
 @Index(['status'])
 @Index(['processId', 'revision'], { unique: true })
@@ -150,7 +150,7 @@ export class GuidedProcessRevision {
   createdAt!: Date;
 }
 
-@Entity('guided_process_stages')
+@Entity({ name: 'guided_process_stages', schema: 'automation' })
 @Index(['processId', 'position'], { unique: true })
 export class GuidedProcessStage {
   @PrimaryGeneratedColumn('uuid')
@@ -188,7 +188,7 @@ export class GuidedProcessStage {
   activities?: GuidedProcessActivity[];
 }
 
-@Entity('guided_process_activities')
+@Entity({ name: 'guided_process_activities', schema: 'automation' })
 @Index(['stageId', 'position'], { unique: true })
 export class GuidedProcessActivity {
   @PrimaryGeneratedColumn('uuid')

@@ -26,7 +26,7 @@ export type WorkspaceStatus = 'draft' | 'published' | 'deprecated';
  * / DecisionTable / GuidedProcess: draft / published / deprecated
  * with publishedAt + isActive operational gate.
  */
-@Entity('workspace_definitions')
+@Entity({ name: 'workspace_definitions', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['applicationId'])
 @Index(['status'])
@@ -129,7 +129,7 @@ export interface PanelLayout {
   h: number;
 }
 
-@Entity('workspace_pages')
+@Entity({ name: 'workspace_pages', schema: 'metadata' })
 @Index(['workspaceId', 'code'], { unique: true })
 @Index(['workspaceId', 'position'])
 export class WorkspacePage {
@@ -195,7 +195,7 @@ export class WorkspacePage {
  */
 export type WorkspaceVariantScope = 'system' | 'instance' | 'role' | 'group' | 'personal';
 
-@Entity('workspace_variants')
+@Entity({ name: 'workspace_variants', schema: 'metadata' })
 @Index(['workspaceId', 'pageId'])
 @Index(['scope', 'scopeRef'])
 export class WorkspaceVariant {
