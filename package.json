@@ -65,6 +65,8 @@
     "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts",
     "migration-filename:check": "npx tsx tools/scanners/migration-filename-check.ts",
     "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts",
+    "permissions-coverage:check": "npx tsx tools/scanners/permissions-annotation-coverage.ts --report=docs/permissions-rollout-coverage.md",
+    "selftest:permissions-coverage": "npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts",
     "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts"
   },
   "private": true,
