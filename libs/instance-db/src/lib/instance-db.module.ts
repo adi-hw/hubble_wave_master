@@ -99,8 +99,19 @@ import { AvaProposalService } from './ava-proposal/ava-proposal.service';
           // with pg_advisory_lock; app pods boot read-only by default.
           // W6.C: migration runner uses DIRECT_DB_HOST/DIRECT_DB_PORT (above)
           // so DDL statements bypass PgBouncer transaction-pooling mode.
+          //
+          // The glob `dist/migrations/instance/*.js` is only loaded when
+          // `RUN_MIGRATIONS=true`. App pods (apps/api, apps/worker) boot
+          // with `migrationsRun=false` and don't need to register any
+          // migrations with TypeORM — registering them would still trigger
+          // `require()` of the compiled migration files, and the one that
+          // imports `@hubblewave/instance-db` cannot resolve that package
+          // at pure-Node runtime because TypeScript path mapping is a
+          // compile-time concept. The conditional below keeps app pods
+          // immune to that path entirely; only the svc-migrations Job
+          // (RUN_MIGRATIONS=true) loads the compiled migrations.
           migrationsRun,
-          migrations: ['dist/migrations/instance/*.js'],
+          migrations: migrationsRun ? ['dist/migrations/instance/*.js'] : [],
           // W1.7: IdentityCacheInvalidationSubscriber publishes identity.*
           // events on UserRole/RolePermission/GroupRole/GroupMember changes
           // so permission caches invalidate immediately (~1s end-to-end).
