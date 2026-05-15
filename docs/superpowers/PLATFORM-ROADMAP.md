@@ -14,6 +14,32 @@ The Phase 3 roadmap is governed by **`docs/superpowers/specs/2026-05-14-phase3-r
 
 Phase 3 Prelude landed on master via PR #60 (merge commit `0cde604`) on 2026-05-15. The Prelude restored a deterministic runtime baseline before W2 starts: schema split finalized, every entity declares its domain schema, runtime `search_path` bridge removed, compatibility shims deleted, obsolete product surfaces removed via founder-approved deletion ledger, end-to-end validation harness + CI gates wired. See the merge commit + the ledger at `docs/superpowers/plans/2026-05-14-phase3-prelude-stream3-deletion-ledger.md` for what was approved/deferred. W2 (Platform Integrity) is next; brainstorm + spec + plan that wave in its own cycle.
 
+**Tag `phase3-prelude-complete` points at HEAD `13b55a9`** (advanced from the merge commit through 6 audit-driven cleanups, see below). The tag annotation enumerates scope LIMITS explicitly: this milestone certifies the FOUNDATION only, not Platform Integrity (W2) or full default-deny (W3+).
+
+### Foundation-only — what this milestone does NOT certify
+
+The post-merge audit (2026-05-15) surfaced authz correctness gaps that are real W2 work, not Prelude regressions. They are tracked here for W2 planning intake:
+
+- **Role-code vs role-id mismatch.** `IdentityResolverAdapter.getUserContext` returns role CODES (`r.code`); `AuthorizationService.toAbacPrincipal` falls back to `ctx.roles` as if they were role IDs (UUIDs) when `attributes.roleIds` is absent. Production JWT path mismatches role-based ACL rules; tests inject `attributes.roleIds` and hide the regression. Files: `apps/api/src/app/identity/auth/identity-resolver.adapter.ts:81` ↔ `libs/authorization/src/lib/authorization.service.ts:1369` ↔ `libs/instance-db/src/lib/entities/access-rule.entity.ts`.
+- **PermissionsGuard is warn-and-allow on unannotated handlers by design** during the Prelude transition. Coverage is at 207/804 (25.7%); flipping to deny-by-default is W2's milestone, gated on coverage approaching 100%. See `docs/permissions-rollout-coverage.md` for live coverage; the guard's own header doc-comment at `libs/auth-guard/src/lib/permissions.guard.ts:68` records the rationale.
+- **Search authz keeps an admin `allow_all` short-circuit** in `apps/api/src/app/ava/search/search-query.service.ts:179`, parallel to canon §28.6's admin-bypass retirement. The search-side bypass has not shipped (W2 scope).
+- **Full default-deny is NOT enabled.** `secureFieldsByDefault` defaults `false` on `CollectionDefinition`; property authorization default-allows when the flag is off. Spec §28.9 explicitly defers platform-wide default-deny to W3+.
+- **svc-migrations `workspace_modules` is not wired.** The `nx run svc-migrations:prune` target chain fails (executor expects `apps/svc-migrations/package.json` which doesn't exist), so `copy-workspace-modules` doesn't materialize `workspace_modules/` next to `dist/apps/svc-migrations/main.js`. That blocks `migration 1930900000001-backfill-audit-log-hash-chain` from `require('@hubblewave/instance-db')` at runtime in the K8s Job (the other 48 migrations run fine after the post-merge packaging fix).
+- **Baseline squash NOT performed.** The committed .ts migration chain (98 instance migrations + 8 control-plane migrations) is preserved as-is. The K8s Job now packages it correctly (post-merge fix at `0ec51fe`), so fresh-DB bootstrap works. A future fresh-baseline squash is W2+ scope per founder direction.
+
+### Post-merge audit-driven cleanups (5 commits on master after `0cde604`)
+
+| Commit | What |
+|---|---|
+| `d4772c3` | Task 34: roadmap + RESUME-CONTEXT updated for Prelude close (this entry) |
+| `07e08ca` | service-boundary regression fix — Task 18 had imported `AuthModule` from `apps/api/src/app/identity/auth/auth.module` into `apps/api/src/app/metadata/access/access.module.ts`, violating the metadata ↔ identity service boundary. Fix: annotate `AuthModule` with `@Global()` so cross-domain consumers get `IDENTITY_RESOLVER_PORT` via DI; remove the cross-service import. Scanner now exits 0. |
+| `4e021ac` | authorization tests aligned with Plan Fix 33 (canon §28.6 admin-bypass retirement) — 7 stale 7-arg constructor sites repaired, 1 stale `admins bypass tableName resolution entirely` test rewritten to assert the post-§28.6 reality (admin throws `NotFoundException` for unknown tables like every other role). `nx test authorization` → 115/115. |
+| `0ec51fe` | svc-migrations K8s Job packaging fix. Two P0s: (a) `dist/migrations/instance/*.js` never produced — webpack only bundles `main.ts`, not the migration `.ts` files loaded at runtime via TypeORM glob. Fix: new `apps/svc-migrations/tsconfig.migrations.json` + Dockerfile `RUN npx tsc -p apps/svc-migrations/tsconfig.migrations.json` step. (b) `migrationsTransactionMode: 'each'` missing from `apps/svc-migrations/src/main.ts` — without it, the 2 migrations that declare `transaction = false` (jsonb-gin-indexes, search-acl-fields) get rejected at runtime. Fix: mirror `scripts/datasource-instance.ts`. |
+| `762dd6b` | InstanceCustomization entity ↔ schema alignment. Migration `1813000000000-upgrade-assistant-tables.ts` recreated `instance_customizations` with snake_case columns + 4 columns the entity didn't model (`instance_id`, `customization_type`, `original_value`, `description`); the codebase wires no `SnakeNamingStrategy` globally, so entity queries failed at runtime with "column configType does not exist". Fix: explicit `name:` overrides on every `@Column` + 4 missing properties added. Sibling entity `ConfigChangeHistory` documented as intentionally retaining its unquoted camelCase columns (from `InitialSchema1766696011515` TypeORM-generated DDL). |
+| `13b55a9` | orphan `seed:test-user` npm script removed (pointed at `scripts/seed-test-user.ts` deleted in `a7cac0f`; referenced an `eam_global` schema that predates the HubbleWave rename). 4 stale gitignored `.js`/`.js.map` artifacts deleted from `scripts/` for the same hygiene reason as the libs/ + migrations/ cleanup (282 files removed total — TypeORM was resolving stale `.js` before `.ts` and breaking `migration:show`). |
+
+These were direct-pushes to master (not via PR). The work is small + atomic + each commit is independently revertable. Future substantive code changes should go through the PR workflow per repo convention.
+
 ---
 
 ## State of play
