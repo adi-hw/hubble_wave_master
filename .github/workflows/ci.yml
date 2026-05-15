@@ -122,6 +122,37 @@ jobs:
         #   - silent-skip (12) — W5.G
         run: npm run selftest:scanners
 
+      # Phase 3 Prelude scanners (canon §21 / Stream 4).
+      # entity-schema, cross-domain, migration-filename, abac-coverage all
+      # fail CI on violation. permissions-coverage is report-only (exits 0
+      # with a coverage report; the output is informational for the rollout
+      # dashboard, not a hard gate).
+      - name: Entity-schema ownership check (Phase 3 Prelude)
+        run: npm run entity-schema:check
+
+      - name: Cross-domain import check (Phase 3 Prelude)
+        run: npm run cross-domain:check
+
+      - name: Migration filename check (Phase 3 Prelude)
+        run: npm run migration-filename:check
+
+      - name: Permissions annotation coverage (Phase 3 Prelude — report only)
+        run: npm run permissions-coverage:check
+
+      - name: ABAC coverage check (Phase 3 Prelude)
+        run: npm run abac-coverage:check
+
+      - name: Scanner self-tests — Phase 3 Prelude scanners
+        # Self-tests prove each Prelude scanner catches its claimed patterns.
+        # Consistent with the W0 scanner self-test discipline: every scanner
+        # ships its own self-test so detection regressions fail CI immediately.
+        run: |
+          npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts
+          npx tsx tools/scanners/cross-domain-import-check-selftest.ts
+          npx tsx tools/scanners/migration-filename-check-selftest.ts
+          npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts
+          npx tsx tools/scanners/abac-coverage-check-selftest.ts
+
   # SBOM generation and vulnerability scan (F119 / W0 task 9).
   #
   # Uploads a SPDX-format SBOM as a workflow artifact (consumed by
