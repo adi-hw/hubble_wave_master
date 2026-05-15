@@ -67,6 +67,8 @@
     "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts",
     "permissions-coverage:check": "npx tsx tools/scanners/permissions-annotation-coverage.ts --report=docs/permissions-rollout-coverage.md",
     "selftest:permissions-coverage": "npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts",
+    "abac-coverage:check": "npx tsx tools/scanners/abac-coverage-check.ts",
+    "selftest:abac-coverage": "npx tsx tools/scanners/abac-coverage-check-selftest.ts",
     "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts"
   },
   "private": true,
