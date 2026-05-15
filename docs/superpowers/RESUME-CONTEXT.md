@@ -4,7 +4,9 @@
 >
 > **Master roadmap:** `docs/superpowers/PLATFORM-ROADMAP.md` — single source of truth coordinating BOTH the architectural reshape and the parallel security audit remediation. Read PLATFORM-ROADMAP.md FIRST for the bigger picture, then this file for the architecture-specific lessons + cheat sheet.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-complete` — Phase 1 complete; all 11 instance/control-plane services migrated and svc-* thin adapters deleted)
+> **Phase 3 governance baseline:** `docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md` governs Phase 3 work; Prelude implementation plan at `docs/superpowers/plans/2026-05-14-phase3-prelude-implementation.md`. Read those before starting any W2+ task.
+>
+> **Last updated:** 2026-05-15 (after `phase3-prelude-complete` — Phase 3 Prelude complete; schema split finalized, compatibility shims removed, obsolete surfaces deleted via founder-approved ledger, validation harness wired)
 
 ## Working directory
 
@@ -44,7 +46,7 @@ Founder-approved architectural decisions baked into the spec:
 | Vertical pack deferred | Platform-first discipline for solo execution; first customer's pilot is stronger when they build their own pack on the platform |
 | LLM provider per customer (BAA-controlled) | Hospitals require data-residency control |
 
-## Completed work (13 git tags, all on master)
+## Completed work (14 git tags, all on master)
 
 ### Foundation + Phase 0 reconciliation
 
@@ -83,6 +85,14 @@ git log --oneline arc-w1-foldins-complete..arc-w1-complete                    # 
 git tag --list 'arc-*'                                                        # all 13 tags
 ```
 
+### Phase 3 Prelude (2026-05-15)
+
+| Tag | What |
+|---|---|
+| `phase3-prelude-complete` | 16+ commits across 4 streams landed via PR #60 (merge `0cde604`). Schema model finalized: 10 schema-split migrations, 45 entity decorators declare their domain schema, runtime `search_path` bridge removed. Compatibility shims removed: duplicate `apps/api PermissionsGuard` deleted in favor of canonical `@hubblewave/auth-guard`, permissions-annotation-coverage scanner (reporting-only) and abac-coverage scanner (fails CI) added, Vite proxy annotated as transitional. Obsolete product surfaces removed via founder-approved deletion ledger: 11 untracked svc-* dirs (incl. svc-identity RS256 OAuth path that violated canon §29.9, svc-metadata v1 API), 5 Phase D scaffolding libs (libs/{automation-runtime, http-client, observability, metadata-reader, service-auth}), 9 unused hooks, libs/ui-components + libs/enterprise, 4 phase7 orphan exports, scripts/seed-platform-knowledge.ts, hygiene cleanup (1 .bak, 5 tmpclaude breadcrumbs, .env.example corrections), + 2 follow-up migrations (1943000000000-remove-orphan-studio-views-nav-node, 1943100000000-dedup-nav-nodes). Net: 62 file deletions, ~5,548 net LoC removed. End-to-end validation harness `scripts/prelude-validate.ts` (11 assertions) + 5 Prelude scanners wired as required CI status checks. **DEFERRED to W3 per founder direction:** A4 (`IdentityAuthAliasController` — Vite proxy still load-bearing), A7 (`phase7/` rename — SDK/runtime stabilization wave), D3 (`cross_domain_read_diff` table drop — proof of shadow-mode closure required first). |
+
+Phase 3 governing spec: `docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md`. Implementation plan: `docs/superpowers/plans/2026-05-14-phase3-prelude-implementation.md` (34 tasks). Deletion ledger with founder per-category approvals: `docs/superpowers/plans/2026-05-14-phase3-prelude-stream3-deletion-ledger.md`. Pre-deletion proof artifact (B1 hook audit + Nx dependency graph snapshot evidencing zero coupling): `docs/superpowers/plans/prelude-deletion-proof.md`.
+
 ## Implementation plans (executed)
 
 - `docs/superpowers/plans/2026-05-09-platform-w0-w1-foundation.md` — W0 + W1 foundation slice
@@ -90,6 +100,7 @@ git tag --list 'arc-*'                                                        # 
 - `docs/superpowers/plans/2026-05-10-platform-w1-metadata-migration.md` — metadata migration
 - `docs/superpowers/plans/2026-05-10-platform-w1-data-migration.md` — data migration
 - `docs/superpowers/plans/2026-05-10-phase0-branch-reconciliation.md` — Phase 0 W0+W1 cherry-pick reconciliation
+- `docs/superpowers/plans/2026-05-14-phase3-prelude-implementation.md` — Phase 3 Prelude (34 tasks across 4 streams)
 
 ## Migration pattern (battle-tested across identity + metadata)
 

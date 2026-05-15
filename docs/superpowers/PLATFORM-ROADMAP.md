@@ -4,7 +4,15 @@
 >
 > **Read this file at the start of any session** to understand state, priorities, and what to do next. Update when a new tag lands or a major decision changes.
 >
-> **Last updated:** 2026-05-10 (after `arc-w1-complete` — Phase 1 COMPLETE)
+> **Last updated:** 2026-05-15 (after `phase3-prelude-complete` — Phase 3 Prelude COMPLETE)
+
+---
+
+## Phase 3 governance baseline
+
+The Phase 3 roadmap is governed by **`docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md`**. That document supersedes any "Phase 3" framing in this legacy roadmap below. Update sequencing decisions, exit criteria, and scope changes there — not here.
+
+Phase 3 Prelude landed on master via PR #60 (merge commit `0cde604`) on 2026-05-15. The Prelude restored a deterministic runtime baseline before W2 starts: schema split finalized, every entity declares its domain schema, runtime `search_path` bridge removed, compatibility shims deleted, obsolete product surfaces removed via founder-approved deletion ledger, end-to-end validation harness + CI gates wired. See the merge commit + the ledger at `docs/superpowers/plans/2026-05-14-phase3-prelude-stream3-deletion-ledger.md` for what was approved/deferred. W2 (Platform Integrity) is next; brainstorm + spec + plan that wave in its own cycle.
 
 ---
 
@@ -106,6 +114,16 @@ From the spec + founder direction (2026-05-09):
 - F014 — JWT secret in `.env.backup` (gitleaks visibility, force-rewrite owed to ops)
 
 **Total W0+W1**: 27 commits, ~6,500 LoC additions / ~50 LoC deletions across 5 new scanners + custom ESLint rule + 7 new security primitive modules + 8 new spec files (148 W1-specific assertions) + CI/CD config.
+
+### Phase 3 Prelude — **COMPLETE** ✓ (2026-05-15)
+
+Landed via PR #60 (merge commit `0cde604`). 16+ commits across 4 streams that restored a deterministic runtime baseline before W2 work begins. Governing spec: `docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md`. Implementation plan: `docs/superpowers/plans/2026-05-14-phase3-prelude-implementation.md` (34 tasks).
+
+| Tag | What |
+|---|---|
+| `phase3-prelude-complete` | **Phase 3 Prelude FINAL.** Stream 1: 10 schema-split migrations (notify/insights/ava/automation/integrations/identity/app_builder/metadata + service-token-tables + cross-domain-read-diff) + 45 entity-decorator schema declarations + 39-entry cross-domain allowlist + generated schema-ownership-map.md + runtime `search_path` bridge removed. Stream 2: duplicate PermissionsGuard deleted + canonical lib `@hubblewave/auth-guard` warn-and-allow + permissions-coverage scanner (reporting-only) + abac-coverage scanner (fails CI) + Vite proxy transitional annotation + 8 pre-Prelude smoke bridges committed. Stream 3: founder-approved deletion ledger applied — 17 categories executed (11 svc-* dirs incl. svc-identity/svc-metadata RS256 cleanup, 2 api-clients subdirs, 5 Phase D scaffolding libs, 9 unused hooks, libs/ui-components + libs/enterprise, 4 phase7 orphan exports, scripts/seed-platform-knowledge.ts, navigation-legacy.bak, 5 tmpclaude breadcrumbs, .env.example cleanup, +2 follow-up migrations 1943000000000-remove-orphan-studio-views-nav-node + 1943100000000-dedup-nav-nodes). 3 categories DEFERRED to W3: A4 alias controller (Vite proxy still load-bearing), A7 phase7 rename (SDK/runtime stabilization wave), D3 cross_domain_read_diff table drop (proof of shadow-mode closure required first). Stream 4: scripts/prelude-validate.ts harness (11 assertions, fresh-DB rebuild → boot → dual-route login + ES256 JWT + scanner gates) + GitHub Actions CI wiring + 5 Prelude scanners as required status checks. Net: 62 file deletions, ~5,548 net LoC removed, scanners green, fresh-DB rebuild + login validated end-to-end. |
+
+**Founder gates in this stream**: deletion ledger explicit per-category approval at Task 26 (hard stop). Three founder-locked decisions captured in the canon-amendment style: (1) Plan Fix 33 admin-bypass retirement applied uniformly through §28 evaluator; (2) RS256 forbidden everywhere via canon §29.9 — eliminates the `apps/svc-identity/service-tokens/` parallel OAuth path; (3) seed manifest restricted to one row (svc-worker → svc-api), explicitly rejecting speculative seeding of `apps/svc-{automation,data,workflow,notify,view-engine,insights,ava}` accounts that were carried in the original 1941100000000-seed-initial-service-accounts.ts.
 
 ---
 
