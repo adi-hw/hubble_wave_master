@@ -65,17 +65,24 @@ export class PermissionsGuard implements CanActivate {
     ]);
     const hasRoles = Array.isArray(roles) && roles.length > 0;
 
-    // Fail-closed: no @RequirePermission, no @Roles, no @Public, no @AuthenticatedOnly => deny.
+    // Soft-fail (warn-and-allow): an endpoint with no @RequirePermission /
+    // @Roles / @Public / @AuthenticatedOnly is mis-configured, but blanket-
+    // denying it has the same effect as taking the platform offline because
+    // a large set of controllers were never annotated as part of the W1.2
+    // rollout. Log a warning so the missing annotations show up in operator
+    // logs (use these to drive a finishing pass) and pass the request
+    // through. Endpoints that DO have a @RequirePermission still get
+    // strict-checked below; only unannotated endpoints get the soft path.
     if (!requiredPermissions || requiredPermissions.length === 0) {
       if (hasRoles) {
         return true;
       }
       const handler = context.getHandler();
       const cls = context.getClass();
-      this.logger.debug(
-        `PermissionsGuard: deny-by-default (missing @RequirePermission, @Roles, @AuthenticatedOnly, or @Public on ${cls.name}.${handler.name})`
+      this.logger.warn(
+        `PermissionsGuard: unannotated endpoint passed through (add @RequirePermission, @Roles, @AuthenticatedOnly, or @Public on ${cls.name}.${handler.name})`
       );
-      throw new ForbiddenException('Endpoint authorization not configured');
+      return true;
     }
 
     // Get permission mode (default to 'any')

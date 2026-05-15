@@ -54,6 +54,8 @@ import { AvaAutomationController } from './ava-automation.controller';
     ScriptSandboxService,
     ExecutionLogService,
     ConditionEvaluatorService,
+    ActionHandlerService,
+    ScriptSandboxService,
   ],
 })
 export class AutomationRuntimeModule {}
