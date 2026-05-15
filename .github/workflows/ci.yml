@@ -538,12 +538,15 @@ jobs:
           JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
           API_PORT: 3000
           ADMIN_EMAIL: admin@hubblewave.local
-          ADMIN_PASSWORD: ci-admin-password
+          ADMIN_PASSWORD: ci-admin-password-1234
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
           ADMIN_FIRST_NAME: HubbleWave
           ADMIN_LAST_NAME: Admin
 
       - name: Write .env for harness password lookup
-        run: echo "ADMIN_PASSWORD=ci-admin-password" > .env
+        # Match the password used in the migration + seed step env block.
+        # Must be ≥12 chars per the SeedAdminUser1818000000000 migration guard.
+        run: echo "ADMIN_PASSWORD=ci-admin-password-1234" > .env
 
       - name: Prelude validate
         run: npm run prelude:validate -- --skip-rebuild
@@ -569,6 +572,7 @@ jobs:
           JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
           API_PORT: 3000
           ADMIN_EMAIL: admin@hubblewave.local
-          ADMIN_PASSWORD: ci-admin-password
+          ADMIN_PASSWORD: ci-admin-password-1234
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
           ADMIN_FIRST_NAME: HubbleWave
           ADMIN_LAST_NAME: Admin
