@@ -33,7 +33,6 @@
     "migration:generate:control-plane": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:generate -d scripts/datasource-control-plane.ts",
     "migration:run:control-plane": "ts-node -r tsconfig-paths/register -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:run -d scripts/datasource-control-plane.ts",
     "migration:revert:control-plane": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:revert -d scripts/datasource-control-plane.ts",
-    "seed:test-user": "npx tsx scripts/seed-test-user.ts",
     "password:hash": "npx tsx scripts/generate-password-hash.ts",
     "compliance:check": "npx tsx tools/design-compliance/terminology-scanner.ts",
     "compliance:check:strict": "npx tsx tools/design-compliance/terminology-scanner.ts --strict",
