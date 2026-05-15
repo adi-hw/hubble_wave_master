@@ -452,11 +452,12 @@ export class TokenIssuerService implements OnModuleInit {
       // every row). Rotation does NOT extend the family lifetime.
       const newExpiresAt = row.expiresAt;
 
-      await repo.update(
-        { tokenHash: presentedHash },
-        { lastUsedAt: now, replacedByTokenId: newTokenHash },
-      );
-
+      // Order matters: the `refresh_tokens_replaced_by_token_id_fkey`
+      // constraint requires `replaced_by_token_id` to point at an
+      // existing `token_hash`. INSERT the successor first so its
+      // token_hash exists, THEN UPDATE the predecessor to point at it.
+      // The transaction is atomic — observers outside still see a
+      // consistent rotation, but the FK check inside fires per-statement.
       await repo.insert({
         tokenHash: newTokenHash,
         familyId: row.familyId,
@@ -474,6 +475,11 @@ export class TokenIssuerService implements OnModuleInit {
         createdAt: now,
         expiresAt: newExpiresAt,
       });
+
+      await repo.update(
+        { tokenHash: presentedHash },
+        { lastUsedAt: now, replacedByTokenId: newTokenHash },
+      );
 
       return {
         refreshToken: newToken,
