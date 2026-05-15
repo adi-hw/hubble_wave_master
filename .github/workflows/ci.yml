@@ -422,3 +422,111 @@ jobs:
           name: dist
           path: dist/
           retention-days: 1
+
+  # Phase 3 Prelude — validation harness (canon §21 / Stream 4).
+  #
+  # Runs the end-to-end assertion harness that verifies the Prelude exit
+  # criterion: "Fresh database boot produces only valid platform experiences
+  # and a deterministic runtime baseline." Services are provisioned by the
+  # GitHub Actions services block; --skip-rebuild tells the harness not to
+  # call docker-compose (which would tear down those services).
+  prelude-validate:
+    name: Phase 3 Prelude — validation harness
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: hubblewave
+          POSTGRES_PASSWORD: hubblewave
+          POSTGRES_DB: hubblewave
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migrations + seed admin user
+        run: |
+          npm run migration:run:control-plane
+          npm run migration:run:instance
+          npx tsx scripts/seed-admin-user.ts
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: hubblewave
+          DB_PASSWORD: hubblewave
+          DB_NAME: hubblewave
+          CONTROL_PLANE_DB_HOST: localhost
+          CONTROL_PLANE_DB_PORT: 5432
+          CONTROL_PLANE_DB_USER: hubblewave
+          CONTROL_PLANE_DB_PASSWORD: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave
+          DIRECT_DB_HOST: localhost
+          DIRECT_DB_PORT: 5432
+          DIRECT_CONTROL_PLANE_DB_HOST: localhost
+          DIRECT_CONTROL_PLANE_DB_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: development
+          JWT_KEY_PROVIDER: local-es256
+          JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
+          API_PORT: 3000
+          ADMIN_EMAIL: admin@hubblewave.local
+          ADMIN_PASSWORD: ci-admin-password
+          ADMIN_FIRST_NAME: HubbleWave
+          ADMIN_LAST_NAME: Admin
+
+      - name: Write .env for harness password lookup
+        run: echo "ADMIN_PASSWORD=ci-admin-password" > .env
+
+      - name: Prelude validate
+        run: npm run prelude:validate -- --skip-rebuild
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: hubblewave
+          DB_PASSWORD: hubblewave
+          DB_NAME: hubblewave
+          CONTROL_PLANE_DB_HOST: localhost
+          CONTROL_PLANE_DB_PORT: 5432
+          CONTROL_PLANE_DB_USER: hubblewave
+          CONTROL_PLANE_DB_PASSWORD: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave
+          DIRECT_DB_HOST: localhost
+          DIRECT_DB_PORT: 5432
+          DIRECT_CONTROL_PLANE_DB_HOST: localhost
+          DIRECT_CONTROL_PLANE_DB_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: development
+          JWT_KEY_PROVIDER: local-es256
+          JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
+          API_PORT: 3000
+          ADMIN_EMAIL: admin@hubblewave.local
+          ADMIN_PASSWORD: ci-admin-password
+          ADMIN_FIRST_NAME: HubbleWave
+          ADMIN_LAST_NAME: Admin
