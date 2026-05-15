@@ -1,4 +1,4 @@
-import { Logger, Module } from '@nestjs/common';
+import { Global, Logger, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -88,6 +88,13 @@ import { TokenIssuerService } from './token-issuer.service';
 import { ServiceBootstrapService } from './service-bootstrap.service';
 import { ServiceTokenController } from './service-token.controller';
 
+// AuthModule is `@Global()` so its exported tokens — IDENTITY_RESOLVER_PORT,
+// JWT_REVOCATION_PORT, the JwtAuthGuard, the strategies — are available to
+// any module in the app graph without an explicit `imports: [AuthModule]`
+// cross-service import. This is canon §3 service-boundary compliance: other
+// service areas (metadata.access, etc.) can consume identity primitives via
+// DI tokens rather than reaching into the identity source tree.
+@Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([

@@ -1,7 +1,6 @@
 import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
-import { AuthModule } from '../../identity/auth/auth.module';
 import {
   AccessRuleCacheInvalidationSubscriber,
   CollectionAccessRule,
@@ -44,13 +43,14 @@ import { ExplainController } from './explain.controller';
       User,
     ]),
     CacheModule.register(),
-    AuthModule,
   ],
   // §28.7: explain endpoint exposed via ExplainController. The controller
-  // depends on the AuthorizationService (already injected from the
-  // authorization lib) and the IdentityResolverPort (bound in AuthModule
-  // and exported as a global token, so it resolves without extra imports
-  // when the auth stack is up).
+  // depends on AuthorizationService (already injected from the authorization
+  // lib) and IDENTITY_RESOLVER_PORT (bound + exported by `@Global()`
+  // AuthModule — see apps/api/src/app/identity/auth/auth.module.ts. The
+  // global registration means we get the port via DI without a cross-
+  // service `imports: [AuthModule]` line, which would violate canon §3
+  // service-boundary topology — caught by tools/service-boundary-check.ts).
   controllers: [ExplainController],
   providers: [
     AccessRuleService,
