@@ -500,6 +500,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Initialize databases (run scripts/init-db/*.sql)
+        # Docker compose runs these via docker-entrypoint-initdb.d, but the
+        # GitHub Actions services: block does not honor that mount. Run the
+        # same SQL manually so the hubblewave_control_plane DB + pgvector
+        # extension + roles are all in place before migrations.
+        run: |
+          for f in scripts/init-db/*.sql; do
+            echo "Applying $f..."
+            PGPASSWORD=hubblewave psql -h localhost -U hubblewave -d postgres -f "$f"
+          done
+
       - name: Run migrations + seed admin user
         run: |
           npm run migration:run:control-plane
@@ -515,7 +526,7 @@ jobs:
           CONTROL_PLANE_DB_PORT: 5432
           CONTROL_PLANE_DB_USER: hubblewave
           CONTROL_PLANE_DB_PASSWORD: hubblewave
-          CONTROL_PLANE_DB_NAME: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave_control_plane
           DIRECT_DB_HOST: localhost
           DIRECT_DB_PORT: 5432
           DIRECT_CONTROL_PLANE_DB_HOST: localhost
@@ -546,7 +557,7 @@ jobs:
           CONTROL_PLANE_DB_PORT: 5432
           CONTROL_PLANE_DB_USER: hubblewave
           CONTROL_PLANE_DB_PASSWORD: hubblewave
-          CONTROL_PLANE_DB_NAME: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave_control_plane
           DIRECT_DB_HOST: localhost
           DIRECT_DB_PORT: 5432
           DIRECT_CONTROL_PLANE_DB_HOST: localhost
