@@ -1,6 +1,7 @@
 # Phase 3 Prelude Stream 3 — Deletion Ledger (Proposed)
 
-**Status:** Awaiting founder approval. Nothing in this ledger is deleted until approved.
+**Status:** FINALIZED — approved entries marked [x]. Deferred entries (A4, A7, D3) retained with founder rationale. B1 awaits per-hook verification.
+**Finalized:** 2026-05-14
 **Author:** adi-hw
 **Date:** 2026-05-14
 **HEAD when assembled:** `8011d02 phase3-prelude: remove residual compatibility shims`
@@ -19,7 +20,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### A1. `apps/svc-{10 sibling dirs}/` — untracked Phase D scaffolding
 
-- [ ] Approve deletion of all 10 untracked `svc-*` directories listed below.
+- [x] APPROVED: Approve deletion of all 10 untracked `svc-*` directories listed below.
 - **Status:** Fully untracked (0 git-tracked files each). Present on disk only.
 - **Rationale:** Phase 1 thin-adapter / Phase D distributed-services scaffolding. The arc-w1-complete tag consolidated all instance-plane business logic into the modular monolith at `apps/api/`. These directories contain stubs (`.env`, `src/instrumentation.ts`) left over from the pre-monolith service topology. They are invisible to git, but their presence on disk creates confusion and risks accidental execution.
 - **Replacement state:** Full functionality lives in the `apps/api/src/app/{area}/` modules listed below.
@@ -43,7 +44,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### A2. `apps/svc-identity/` — SEPARATE APPROVAL (canon §29.9 conflict)
 
-- [ ] Approve deletion of `apps/svc-identity/`.
+- [x] APPROVED: Approve deletion of `apps/svc-identity/`.
 - **Status:** Untracked. 10 substantive files on disk under `src/app/service-tokens/`.
 - **Rationale:** Contains a `service-tokens/` sub-module implementing the ADR D1c RS256 OAuth path (`POST /v1/oauth/token`, `GET /.well-known/jwks.json`). Canon §29.9 explicitly forbids RS256 everywhere. This surface has no git-tracked migration, no entity registration in `libs/instance-db`, and no tracked importer. It is dead code that also represents a latent architectural violation — RS256 signing code in the repo, even untracked, is drift that could be accidentally resurrected.
 - **Replacement state:** Canonical service-token path is `POST /internal/service-token` in `apps/api/src/app/identity/` + `KeySigningService` (ES256/KMS).
@@ -53,7 +54,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### A3. `apps/svc-metadata/` — SEPARATE APPROVAL (large surface, v1 API risk)
 
-- [ ] Approve deletion of `apps/svc-metadata/`.
+- [x] APPROVED: Approve deletion of `apps/svc-metadata/`.
 - **Status:** Untracked. 22 substantive files on disk.
 - **Rationale:** Contains a full v1 synchronous-read API surface (`apps/svc-metadata/src/app/v1/` — controllers, services, openapi spec) targeting the svc-metadata separate-process architecture superseded by the monolith. References `@hubblewave/service-auth` (ADR D1c RS256 path — canon §29.9 violation). The `api/openapi.yaml` and `api/README.md` describe svc-metadata as a separate process, which conflicts with canon §17 UPDATE (modular monolith).
 - **Replacement state:** `apps/api/src/app/metadata/` in the monolith.
@@ -63,6 +64,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 ### A4. `apps/api/src/app/instance-api/identity/auth/identity-auth-alias.controller.ts` — **[CONDITIONAL — SEE CAVEAT]**
 
 - [ ] Approve deletion — **RECOMMENDED DEFERRAL TO W3** (leave unchecked unless explicitly accepting the caveat below)
+**FOUNDER DECISION:** Deferred to W3. The alias controller stays until Vite proxy is no longer compatibility infrastructure.
 - **Status:** Git-tracked, live, registered in the instance-api module.
 - **Rationale:** Mounts `AuthService` at `@Controller('identity/auth')` → `/api/identity/auth/*`. The canonical `AuthController` lives at `@Controller('auth')` → `/api/auth/*`. The Vite proxy in `apps/web-client/vite.config.mts` rewrites `/api/identity` → `/api`, so web-client calls work against the canonical route during dev. The alias was introduced by Plan Fix 29 to preserve backward compatibility when the parallel HS256 `identity/auth/` path was deleted.
 - **CAVEAT:** Deleting this controller makes the Vite proxy the load-bearing path for any direct API consumer that calls `/api/identity/auth/login`. Task 19's smoke test verified both routes work; deleting the alias would break that second route unless the web client is first updated to call `/api/auth/*` directly.
@@ -72,7 +74,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### A5. `libs/api-clients/identity-client/` and `libs/api-clients/metadata-client/`
 
-- [ ] Approve deletion of both libs under `libs/api-clients/`.
+- [x] APPROVED: Approve deletion of both libs under `libs/api-clients/`.
 - **Status:** Fully untracked (0 git-tracked files). 20 files on disk total.
 - **Rationale:** Generated orval SDK clients targeting the deleted `svc-identity` (`POST /v1/oauth/token`) and `svc-metadata` (`GET /v1/metadata/collections/{id}`) separate-process endpoints — the Phase D distributed-services architecture that was superseded before these libs were committed. Both READMEs reference ADR D1c/D1a and future PRs (D.3a, D.4) that were never started. The `http-mutator.ts` in both throws "transport not yet wired." Zero git-tracked importers.
 - **Replacement state:** No replacement — the modular monolith does not need cross-service HTTP clients for internal module communication.
@@ -81,7 +83,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### A6. Untracked Phase D scaffolding libs (5 dirs)
 
-- [ ] Approve deletion of all 5 untracked libs listed below.
+- [x] APPROVED: Approve deletion of all 5 untracked libs listed below.
 - **Status:** Fully untracked (0 git-tracked files each). All are Phase D ADR work (D1a/D1c/D3a) that pre-dates or was concurrent with arc-w1-complete and was never committed to git.
 - **Replacement state:** Capabilities exist natively in `apps/api/` modules.
 
@@ -100,6 +102,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 ### A7. `phase7/` naming violations — **[RENAME, NOT DELETE — separate decision]**
 
 - [ ] Approve rename pass for `phase7/` directories and `@ApiTags('Phase 7 - ...')` strings
+**FOUNDER DECISION:** Rename conceptually approved but execution deferred to W3 (SDK/runtime stabilization wave). Not Prelude scope.
 - **Status:** Tracked, live, wired into `AvaModule`. This is NOT a deletion — the controllers contain real business logic.
 - **Canon violation:** Canon §1 prohibits lifecycle/version/phase naming. The `phase7/` directory name and `@ApiTags('Phase 7 - ...')` strings in 11 controllers violate this rule.
 - **Affected files (12 total):** `apps/api/src/app/ava/phase7/` (11 controllers + 1 barrel) and `apps/web-client/src/features/phase7/` + `apps/web-client/src/services/phase7Api.ts`.
@@ -125,6 +128,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 ### B1. 9 unused hooks in `apps/web-client/src/hooks/`
 
 - [ ] Approve deletion of all 9 hook files listed below.
+**FOUNDER DECISION:** Conditionally approved. Per-hook visual/manual verification required during Task 27. Any hook that is dynamically imported, Storybook-only, or indirectly referenced stays. Final delete/keep list is determined by the Task 27 audit pass; the audit's hook-by-hook conclusions will be appended to docs/superpowers/plans/prelude-deletion-proof.md.
 - **Status:** Git-tracked. Zero importers outside each file's own definition (confirmed via codebase-wide `git grep`).
 - **Rationale:** These hooks are defined but never consumed. Canon §14 ("delete ruthlessly") and §1 (no dead code) require removal.
 
@@ -146,7 +150,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### B2. `apps/web-client/src/services/modules.service.ts`
 
-- [ ] Approve deletion.
+- [x] APPROVED: Approve deletion.
 - **Status:** Git-tracked. Zero importers outside its own file.
 - **Rationale:** `modulesService` calls `/modules` endpoint. No backend controller implementing `GET /modules` was found in `apps/api/`. The service is unconnected at both ends.
 - **Replacement state:** No replacement — the endpoint does not exist in the monolith.
@@ -155,7 +159,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### B3. `apps/web-client/src/features/commitment/` (4 components + API service)
 
-- [ ] Approve deletion of all 5 files listed below.
+- [x] APPROVED: Approve deletion of all 5 files listed below.
 - **Status:** Git-tracked. No route in `app.tsx`. No backend controller (`git grep` for `commitment` in `apps/api/src/` returns nothing). Zero consumers outside the directory itself.
 - **Rationale:** Unrouted, unwired feature with no backend. Speculative scaffolding — canon §1 prohibits it.
 - **Replacement state:** No replacement — this feature was never shipped.
@@ -170,7 +174,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### B4. `libs/ui-components/` — already in dead-code-allowlist
 
-- [ ] Approve deletion (closes `owedTo: W4` allowlist entry).
+- [x] APPROVED: Approve deletion (closes `owedTo: W4` allowlist entry).
 - **Status:** Git-tracked. Already in `tools/dead-code-allowlist.json` with `owedTo: W4`. Zero importers of `@hubblewave/ui-components` anywhere in the codebase.
 - **Rationale:** Library contains local copies of components that have live canonical implementations in `apps/web-client/src/components/`. The lib is entirely superseded and its allowlist entry should be closed rather than perpetuated.
 - **Files (6):** `DataPillPicker.tsx`, `DataPillButton.tsx`, `ConditionBuilder.tsx`, `CodeEditor.tsx`, `ApplicationPicker.tsx`, `useDataPillCategories.ts`.
@@ -180,7 +184,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### B5. `libs/enterprise/` — already in dead-code-allowlist
 
-- [ ] Approve deletion (closes `owedTo: W4` allowlist entry).
+- [x] APPROVED: Approve deletion (closes `owedTo: W4` allowlist entry).
 - **Status:** Git-tracked. Already in `tools/dead-code-allowlist.json` with `owedTo: W4`. Zero importers of `@hubblewave/enterprise` outside the lib itself.
 - **Rationale:** `EnterpriseModule`, `SSOService`, `AuditService`, `ComplianceService`, `saml-assertion-gate.ts` were superseded by W1: live SSO path lives in `apps/api/src/app/identity/oidc/`; audit path uses `withAudit()` in `libs/instance-db`. The lib is dead.
 - **Replacement state:** `apps/api/src/app/identity/oidc/` (SSO), `libs/instance-db/src/lib/` (audit).
@@ -189,7 +193,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### B6. 4 orphan `phase7` barrel exports (dead components)
 
-- [ ] Approve deletion of 4 component files and their barrel re-exports.
+- [x] APPROVED: Approve deletion of 4 component files and their barrel re-exports.
 - **Status:** Git-tracked. Exported from `apps/web-client/src/features/phase7/index.ts` barrel but never imported by any route or shell component (confirmed via `git grep`).
 - **Rationale:** These components duplicate canonical implementations in `features/voice/` and `features/predictive/`. They are dead exports in the phase7 barrel — the canonical replacements are used instead.
 - **Files:**
@@ -211,7 +215,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### C1. Orphan `studio.views` nav node — follow-up migration required
 
-- [ ] Approve authoring a follow-up DELETE migration to remove the orphan `studio.views` navigation entry.
+- [x] APPROVED: Approve authoring a follow-up DELETE migration to remove the orphan `studio.views` navigation entry.
 - **Status:** The `studio.views` node is seeded by migration `1819000000000-seed-default-navigation-module.ts` into `navigation_module_revisions`. No `<Route path="/studio/views">` exists in `apps/web-client/src/app/app.tsx`. Views are accessed via `/studio/collections/:id/views` (per-collection context), not a standalone `/studio/views` listing.
 - **Rationale:** An orphan nav node produces a dead menu entry that navigates to a 404. Users clicking it in the sidebar will see a blank/broken page.
 - **Action:** Author migration (suggested name: `1943000000000-remove-orphan-studio-views-nav-node.ts`) that removes the `studio.views` entry from the published `navigation_module_revisions` layout JSON. The node is a child of the `studio` group; the migration SQL must recurse into the `children` array.
@@ -234,7 +238,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### D1. `scripts/seed-platform-knowledge.ts` + `package.json` `seed:knowledge` entry
 
-- [ ] Approve deletion of the script and removal of the npm script entry.
+- [x] APPROVED: Approve deletion of the script and removal of the npm script entry.
 - **Status:** Git-tracked. Wired to `npm run seed:knowledge` in `package.json`.
 - **Rationale:** The script inserts `document_chunks` rows with `sourceType = 'platform_docs'`. `VectorStoreService.DocumentChunk.sourceType` is a discriminated union restricted to `'knowledge_article' | 'catalog_item' | 'record' | 'comment' | 'attachment'` — `'platform_docs'` is not in the union. Rows inserted by this script are **phantom rows** — invisible to any typed query through `VectorStoreService`. Additionally, the content is ITSM-domain ServiceNow-style knowledge (Incident Management, Service Request, Change Management) that does not match the platform's current vertical.
 - **Replacement state:** `libs/ai/src/lib/platform-knowledge.service.ts` provides platform self-knowledge via code rather than DB rows (already exists). Any future platform-knowledge seeding must use a `DocumentChunk` source type in the canonical union.
@@ -246,7 +250,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### D2. `nav_nodes` duplicate rows — follow-up dedup migration
 
-- [ ] Approve authoring a follow-up dedup migration for `nav_nodes`.
+- [x] APPROVED: Approve authoring a follow-up dedup migration for `nav_nodes`.
 - **Status:** Migration `1807000000000-seed-default-navigation.ts` uses `ON CONFLICT DO NOTHING` with `uuid_generate_v4()` IDs for child node inserts. Since `uuid_generate_v4()` generates a new UUID on each run, the conflict clause can never fire — repeated migration runs produce duplicate rows in `nav_nodes`.
 - **Rationale:** Data quality defect. Duplicate nav nodes cause multiple identical entries in the navigation sidebar.
 - **Action:** Author a dedup migration: `DELETE FROM nav_nodes WHERE ctid NOT IN (SELECT min(ctid) FROM nav_nodes GROUP BY key, profile_id)`.
@@ -257,6 +261,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 ### D3. `cross-domain-read-diff` table — conditional evaluation
 
 - [ ] Approve evaluation of `cross-domain-read-diff` table status (CONDITIONAL — see below)
+**FOUNDER DECISION:** Do NOT drop the table or entity in Prelude. Table removal requires later proof of: no runtime writes, no subscribers depend, no operational use, shadow-mode formally closed. In Task 27, ONLY clean the canon-§1 violating comment/migration language in 1942000000000-cross-domain-read-diff-table.ts — leave table and entity intact.
 - **Status:** Migration `1942000000000-cross-domain-read-diff-table.ts` contains migration-era language ("migration window", "legacy DB read alongside a new cross-service HTTP read") violating canon §1. The table `cross_domain_read_diff` IS live and referenced by `libs/instance-db/src/lib/entities/cross-domain-read-diff.entity.ts` and `libs/instance-db/src/lib/subscribers/metadata-cache-invalidation.subscriber.ts`.
 - **CAVEAT:** This item requires a judgment call: if the shadow-mode diffing operation it supports is complete, both the table and migration are deletion candidates. If the diff operation is still in progress or planned, only the comment language needs updating.
 - **Conditional actions:**
@@ -274,7 +279,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### E1. `apps/web-client/src/types/navigation-legacy.ts.bak`
 
-- [ ] Approve deletion.
+- [x] APPROVED: Approve deletion.
 - **Status:** Git-tracked. Not imported anywhere in the codebase (zero `import`/`require` references found).
 - **Rationale:** A `.bak` file containing TypeScript interface definitions (`NavItem`, `NavSection`, `NavigationResponse`) superseded by the live `navigation.ts` next to it. Tracked `.bak` files are canon §1 violations (dead code).
 - **Replacement state:** `apps/web-client/src/types/navigation.ts` (live, richer type set).
@@ -283,7 +288,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### E2. 5 tracked `tmpclaude-*` session breadcrumb files
 
-- [ ] Approve deletion of all 5 tracked session breadcrumb files listed below.
+- [x] APPROVED: Approve deletion of all 5 tracked session breadcrumb files listed below.
 - **Status:** Git-tracked. Each file contains a single absolute directory path as text — these are Claude Code session CWD markers accidentally committed. They carry no code, no tests, no configuration.
 - **Rationale:** Session debris. Canon §1 (no dead code). Already in `tools/dead-code-allowlist.json` with `owedTo: W4`. Plan Fix 36 already deleted `scripts/tmpclaude-8c30-cwd`; these 5 remain.
 - **Files:**
@@ -300,7 +305,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### E3. `.env.example` — dead / mismatched variable names (corrections only, no deletions)
 
-- [ ] Approve 3 corrections to `.env.example` listed below.
+- [x] APPROVED: Approve 3 corrections to `.env.example` listed below.
 - **Status:** Git-tracked. Mismatch between `.env.example` variable names and the names the source code actually reads.
 - **Actions (3 items):**
 
@@ -317,7 +322,7 @@ Conditional / deferral items are marked **[CONDITIONAL — SEE CAVEAT]** and def
 
 ### E4. `.env.example` — missing variable documentation (additions only)
 
-- [ ] Approve additions of 6 missing variable entries to `.env.example`.
+- [x] APPROVED: Approve additions of 6 missing variable entries to `.env.example`.
 - **Status:** Variables are used in source code but absent from `.env.example`, creating a silent failure mode for new developers.
 - **Variables to add:**
 
@@ -374,3 +379,27 @@ The following items were reported by multiple scan tasks and are consolidated as
 - `studio.views` orphan nav: Tasks 22 + 23 → consolidated into C1
 
 Reply with which categories or items you approve. Default = nothing is approved or executed.
+
+---
+
+## Founder Decisions — 2026-05-14
+
+### Approved for Task 27 execution
+A1, A2, A3, A5, A6, B2, B3, B4, B5, B6, C1, D1, D2, E1, E2, E3, E4
+
+### Conditionally approved (per-item verification required)
+B1 — 9 unused hooks. Per-hook visual/manual verification required during Task 27. Any hook dynamically imported, Storybook-only, or indirectly referenced stays. Audit conclusions append to `docs/superpowers/plans/prelude-deletion-proof.md`.
+
+### Deferred to W3
+A4 (alias controller), A7 (phase7 rename)
+
+### Deferred — Prelude does comment-language cleanup only
+D3 (cross-domain-read-diff table) — table and entity stay. Only canon-§1 violating comment/migration language in 1942000000000-cross-domain-read-diff-table.ts is cleaned during Prelude.
+
+### Founder-required pre-deletion artifact
+Before executing A1, A2, A3, A5, A6 deletions, Task 27 MUST generate `docs/superpowers/plans/prelude-deletion-proof.md` with:
+- grep/import graph for each candidate
+- Nx dependency graph snapshot
+- remaining references count
+
+This artifact commits BEFORE the deletion commit, so the evidence of disconnection survives the deletion.
