@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2019",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "strictNullChecks": false,
+    "outDir": "../../dist",
+    "rootDir": "../..",
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "composite": false
+  },
+  "include": ["../../migrations/instance/**/*.ts"],
+  "exclude": ["**/*.spec.ts", "**/node_modules/**"]
+}

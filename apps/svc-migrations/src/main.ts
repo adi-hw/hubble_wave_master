@@ -80,6 +80,13 @@ async function main(): Promise<void> {
     entities: instanceEntities,
     migrations: ['dist/migrations/instance/*.js'],
     migrationsTableName: 'migrations',
+    // 'each' allows individual migrations to declare `transaction = false`
+    // (required for CREATE INDEX CONCURRENTLY — see migrations
+    // 1930900000000-add-jsonb-gin-indexes.ts and 1931000000000-
+    // add-search-acl-fields.ts). With the TypeORM default 'all', those
+    // migrations are rejected at runtime. Mirrors scripts/datasource-
+    // instance.ts which already sets this for the dev/CLI path.
+    migrationsTransactionMode: 'each',
     ssl: buildSslConfig(),
   });
 
