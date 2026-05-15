@@ -39,6 +39,7 @@ const minioRootPassword = hex(24);
 const postgresPassword = hex(24);
 const defaultAdminPassword = base64(16).replace(/[+/=]/g, '').slice(0, 16);
 const packKeys = generateEd25519PemPair();
+const packPublicKeyJson = JSON.stringify({ default: packKeys.publicKey.trim() });
 
 const out = `
 # ===========================================================================
@@ -67,7 +68,7 @@ PACK_INSTALL_TOKEN=${packInstallToken}
 BACKUP_SIGNING_KEY=${backupSigningKey}
 CONTROL_PLANE_INSTANCE_TOKEN=${controlPlaneInstanceToken}
 
-PACK_SIGNING_PUBLIC_KEY="${packKeys.publicKey.trim()}"
+PACK_SIGNING_PUBLIC_KEYS=${packPublicKeyJson}
 PACK_SIGNING_PRIVATE_KEY="${packKeys.privateKey.trim()}"
 `;
 

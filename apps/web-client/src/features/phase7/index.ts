@@ -1,5 +1,3 @@
-// Phase 7: Revolutionary Features - Frontend Exports
-
 // Predictive Operations
 export { PredictiveOpsDashboard } from './predictive-ops/PredictiveOpsDashboard';
 
@@ -26,9 +24,3 @@ export { AppBuilderPage } from './app-builder/AppBuilderPage';
 
 // Upgrade Assistant
 export { UpgradeAssistantPage } from './upgrade-assistant/UpgradeAssistantPage';
-
-// Voice Control
-export { VoiceControlPanel, VoiceControlButton } from './voice-control';
-
-// Predictive UI
-export { PredictiveUIPanel, PredictiveUIButton } from './predictive-ui';

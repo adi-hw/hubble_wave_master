@@ -8,17 +8,17 @@ import {
 } from 'typeorm';
 
 /**
- * Service-to-service authentication entities (ADR D1c).
+ * Service-to-service authentication entities.
  *
  * `ServiceAccount` rows represent the workload identities that
  * exchange OAuth client credentials for service tokens.
  * `ServiceTokenSigningKey` rows are the metadata + audit trail for
  * the signing keys; the actual private material lives in the
- * pluggable `KeyStorageBackend` (AWS Secrets Manager in production,
+ * signing-key backend (AWS Secrets Manager in production,
  * gitignored local file in dev).
  *
- * Both tables are owned by svc-identity and live in the `identity`
- * Postgres schema (Plan Fix 24 / W9 Phase C).
+ * Both tables are owned by the identity module and live in the `identity`
+ * Postgres schema.
  */
 
 /**
@@ -27,8 +27,7 @@ import {
 export type ServiceAccountStatus = 'active' | 'suspended' | 'revoked';
 
 /**
- * Lifecycle status for a signing key. Mirrors the values used by the
- * `KeyStorageBackend` interface in `@hubblewave/service-auth`.
+ * Lifecycle status for a signing key.
  *
  * - `active`: currently signing new tokens.
  * - `retired`: previous active key still in JWKS for the 24h overlap
@@ -67,8 +66,8 @@ export class ServiceAccount {
 
   /**
    * OAuth scopes this account is permitted to request. Tokens are
-   * issued with the intersection of (allowed, requested) — see
-   * `intersectRequestedScopes` in @hubblewave/service-auth.
+   * issued with the intersection of the allowed scopes and the scopes
+   * requested by the caller on the OAuth client_credentials grant.
    */
   @Column({ name: 'allowed_scopes', type: 'jsonb', default: () => "'[]'::jsonb" })
   allowedScopes!: string[];

@@ -3,14 +3,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * CrossDomainReadDiffTable1942000000000
  *
- * Phase D D.4 — shadow-mode diff log. Creates `cross_domain_read_diff`
- * in the `automation` schema. The table records every payload
- * mismatch observed during the migration window when call sites
- * run their legacy DB read alongside a new cross-service HTTP read.
+ * Creates `cross_domain_read_diff` in the `automation` schema. The table
+ * records payload mismatches observed when a caller service compares its
+ * primary DB read result against a cross-domain HTTP read for the same
+ * record (cross-domain consistency diffing). Each row captures the caller,
+ * callsite, lookup key, diff kind, and the delta payload.
  *
- * Per ADR D1a §C migration plan: operators flip call sites' primary
- * path to HTTP only after 30 consecutive days of zero rows in this
- * table per `(caller_service, callsite)` pair.
+ * Operators query this table to assess cross-domain read consistency. Rows
+ * with `diff_kind = 'value-mismatch'` require investigation; a sustained
+ * period of zero new rows per `(caller_service, callsite)` pair indicates
+ * the two read paths are in agreement.
  *
  * TTL-based archival is operator-driven; not enforced here. A simple
  * weekly cron (`DELETE FROM cross_domain_read_diff WHERE detected_at < now() - interval '90 days'`)
