@@ -161,20 +161,34 @@ assert('nonexistent route returns 404 (not 500)', async () => {
 });
 
 assert('navigation seed contains no rows pointing to deleted modules', async () => {
-  // psql via env vars works in both local docker-compose and GitHub Actions
-  // service-container environments. PGHOST/PGUSER/PGPASSWORD/PGDATABASE map
-  // from the standard DB_* env block the harness's CI job already provides;
-  // we also accept DB_* as a fallback for local dev where PG* aren't set.
-  const env = process.env;
-  const host = env.PGHOST ?? env.DB_HOST ?? 'localhost';
-  const port = env.PGPORT ?? env.DB_PORT ?? '5432';
-  const user = env.PGUSER ?? env.DB_USER ?? 'hubblewave';
-  const password = env.PGPASSWORD ?? env.DB_PASSWORD ?? 'hubblewave';
-  const database = env.PGDATABASE ?? env.DB_NAME ?? 'hubblewave';
-  const r = sh(
-    `PGPASSWORD='${password}' psql -h ${host} -p ${port} -U ${user} -d ${database} -t -c "SELECT count(*) FROM metadata.navigation_module_revisions WHERE layout::text LIKE '%studio.views%' OR layout::text LIKE '%/legacy/%'"`,
+  // Two execution forms so the assertion runs in both environments:
+  // (1) Local docker-compose dev: `docker exec hw_postgres psql ...` works on
+  //     Windows/Mac/Linux without needing a local psql binary on PATH.
+  // (2) CI (GitHub Actions service container): no container named
+  //     `hw_postgres`, but psql is on the runner image's PATH and the
+  //     PGHOST/PGUSER/etc env vars are set by the workflow.
+  // Try (1) first because it covers the local-dev common case; fall back to
+  // (2) only when docker exec is unavailable or the container isn't named.
+  const query = "SELECT count(*) FROM metadata.navigation_module_revisions WHERE layout::text LIKE '%studio.views%' OR layout::text LIKE '%/legacy/%'";
+
+  let r = sh(
+    `docker exec hw_postgres psql -U hubblewave -d hubblewave -t -c "${query}"`,
     { allowFail: true }
   );
+
+  if (r.code !== 0 || Number.isNaN(parseInt(r.stdout.trim(), 10))) {
+    const env = process.env;
+    const host = env.PGHOST ?? env.DB_HOST ?? 'localhost';
+    const port = env.PGPORT ?? env.DB_PORT ?? '5432';
+    const user = env.PGUSER ?? env.DB_USER ?? 'hubblewave';
+    const password = env.PGPASSWORD ?? env.DB_PASSWORD ?? 'hubblewave';
+    const database = env.PGDATABASE ?? env.DB_NAME ?? 'hubblewave';
+    r = sh(
+      `PGPASSWORD='${password}' psql -h ${host} -p ${port} -U ${user} -d ${database} -t -c "${query}"`,
+      { allowFail: true }
+    );
+  }
+
   const count = parseInt(r.stdout.trim(), 10);
   if (Number.isNaN(count)) return { ok: false, detail: `psql output not numeric: ${r.stdout}` };
   return count === 0
