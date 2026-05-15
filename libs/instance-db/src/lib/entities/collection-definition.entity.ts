@@ -35,7 +35,7 @@ export type CollectionDefinitionRevisionStatus = 'draft' | 'published';
  * This is the schema engine's core entity for defining what data
  * structures exist in the system.
  */
-@Entity('collection_definitions')
+@Entity({ name: 'collection_definitions', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['tableName'], { unique: true })
 @Index(['category'])
@@ -254,7 +254,7 @@ export class CollectionDefinition {
  * Mirrors ApplicationRevision so the lifecycle pattern is uniform across
  * metadata entities (ADR-5).
  */
-@Entity('collection_definition_revisions')
+@Entity({ name: 'collection_definition_revisions', schema: 'metadata' })
 @Index(['collectionId'])
 @Index(['status'])
 @Index(['collectionId', 'revision'], { unique: true })

@@ -17,7 +17,7 @@ import { User } from './user.entity';
 /**
  * PasswordHistory entity - tracks password history for policy enforcement
  */
-@Entity('password_history')
+@Entity({ name: 'password_history', schema: 'identity' })
 @Index(['userId'])
 export class PasswordHistory {
   @PrimaryGeneratedColumn('uuid')
@@ -46,7 +46,7 @@ export class PasswordHistory {
 /**
  * PasswordResetToken entity - tracks password reset requests
  */
-@Entity('password_reset_tokens')
+@Entity({ name: 'password_reset_tokens', schema: 'identity' })
 @Index(['userId'])
 @Index(['token'], { unique: true })
 @Index(['expiresAt'])
@@ -85,7 +85,7 @@ export class PasswordResetToken {
 /**
  * EmailVerificationToken entity - tracks email verification requests
  */
-@Entity('email_verification_tokens')
+@Entity({ name: 'email_verification_tokens', schema: 'identity' })
 @Index(['userId'])
 @Index(['token'], { unique: true })
 @Index(['expiresAt'])
@@ -162,7 +162,7 @@ export type RefreshTokenRevokedReason =
  *
  * `instance_id` is NULL in single-tenant mode per canon §5 SOFTEN.
  */
-@Entity('refresh_tokens')
+@Entity({ name: 'refresh_tokens', schema: 'identity' })
 @Index('idx_refresh_tokens_family_id', ['familyId'])
 @Index('idx_refresh_tokens_user_session', ['userId', 'sessionId'])
 export class RefreshToken {
@@ -265,7 +265,7 @@ export class RefreshToken {
 /**
  * ApiKey entity - API keys for programmatic access
  */
-@Entity('api_keys')
+@Entity({ name: 'api_keys', schema: 'integrations' })
 @Index(['userId'])
 @Index(['keyHash'], { unique: true })
 @Index(['isActive'])
@@ -328,7 +328,7 @@ export class ApiKey {
 /**
  * UserInvitation entity - tracks pending user invitations
  */
-@Entity('user_invitations')
+@Entity({ name: 'user_invitations', schema: 'identity' })
 @Index(['email'])
 @Index(['token'], { unique: true })
 @Index(['status'])
@@ -392,7 +392,7 @@ export class UserInvitation {
 /**
  * MfaMethod entity - tracks user MFA methods
  */
-@Entity('mfa_methods')
+@Entity({ name: 'mfa_methods', schema: 'identity' })
 @Index(['userId'])
 export class MfaMethod {
   @PrimaryGeneratedColumn('uuid')
@@ -444,7 +444,7 @@ export class MfaMethod {
  * Stored in database instead of memory to support multi-instance deployments
  * and survive service restarts.
  */
-@Entity('saml_auth_states')
+@Entity({ name: 'saml_auth_states', schema: 'identity' })
 @Index(['relayState'], { unique: true })
 @Index(['expiresAt'])
 export class SAMLAuthState {
@@ -490,7 +490,7 @@ export type LoginAttemptResult = 'success' | 'invalid_credentials' | 'account_lo
  * Provides per-attempt audit trail with IP/device analysis capability
  * instead of just a counter on the user record.
  */
-@Entity('login_attempts')
+@Entity({ name: 'login_attempts', schema: 'identity' })
 @Index(['userId'])
 @Index(['ipAddress'])
 @Index(['email'])

@@ -86,10 +86,14 @@ async function seed() {
     console.log('✅ Database connection established');
 
     // 1. Seed permissions
+    // Plan Fix 24 / W9 Phase C moved RBAC tables out of `public` into the
+    // `identity` schema. `users` and `audit_logs` stayed in `public`.
+    // Reference all tables with their owning schema explicitly so this
+    // script does not depend on session-scoped search_path.
     console.log('\n📋 Seeding permissions...');
     for (const perm of DEFAULT_PERMISSIONS) {
       await dataSource.query(
-        `INSERT INTO permissions (id, code, name, description, category, is_system, is_dangerous, display_order, created_at)
+        `INSERT INTO identity.permissions (id, code, name, description, category, is_system, is_dangerous, display_order, created_at)
          VALUES ($1, $2, $3, $4, $5, true, false, 0, NOW())
          ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name`,
         [uuidv4(), perm.code, perm.name, perm.description, perm.category]
@@ -99,7 +103,7 @@ async function seed() {
     // 2. Create admin role
     const roleCode = 'admin';
     let roleId: string;
-    const roleRes = await dataSource.query(`SELECT id FROM roles WHERE code = $1`, [roleCode]);
+    const roleRes = await dataSource.query(`SELECT id FROM identity.roles WHERE code = $1`, [roleCode]);
 
     if (roleRes.length > 0) {
       roleId = roleRes[0].id;
@@ -107,7 +111,7 @@ async function seed() {
     } else {
       roleId = uuidv4();
       await dataSource.query(
-        `INSERT INTO roles (id, code, name, description, is_system, is_active, created_at)
+        `INSERT INTO identity.roles (id, code, name, description, is_system, is_active, created_at)
          VALUES ($1, $2, 'Administrator', 'Full Access', true, true, NOW())`,
         [roleId, roleCode]
       );
@@ -115,10 +119,10 @@ async function seed() {
     }
 
     // Assign all permissions to admin
-    const allPerms = await dataSource.query(`SELECT id FROM permissions`);
+    const allPerms = await dataSource.query(`SELECT id FROM identity.permissions`);
     for (const perm of allPerms) {
       await dataSource.query(
-        `INSERT INTO role_permissions (role_id, permission_id, created_at)
+        `INSERT INTO identity.role_permissions (role_id, permission_id, created_at)
          VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
         [roleId, perm.id]
       );
@@ -133,14 +137,14 @@ async function seed() {
     console.log(`\n👤 Creating user: ${email}...`);
 
     let userId: string;
-    const userRes = await dataSource.query(`SELECT id FROM users WHERE email = $1`, [email]);
+    const userRes = await dataSource.query(`SELECT id FROM public.users WHERE email = $1`, [email]);
 
     const passwordHash = await argon2.hash(password);
 
     if (userRes.length > 0) {
       userId = userRes[0].id;
       await dataSource.query(
-        `UPDATE users
+        `UPDATE public.users
          SET password_hash = $1,
              status = 'active',
              display_name = $2,
@@ -155,8 +159,8 @@ async function seed() {
     } else {
       userId = uuidv4();
       await dataSource.query(
-        `INSERT INTO users (
-           id, email, password_hash, status, 
+        `INSERT INTO public.users (
+           id, email, password_hash, status,
            display_name, first_name, last_name,
            email_verified, is_admin, failed_login_attempts, created_at, updated_at
          )
@@ -168,7 +172,7 @@ async function seed() {
 
     // 4. Assign admin role
     await dataSource.query(
-      `INSERT INTO user_roles (user_id, role_id, created_at)
+      `INSERT INTO identity.user_roles (user_id, role_id, created_at)
        VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
       [userId, roleId]
     );

@@ -10,7 +10,7 @@ import {
 /**
  * Analytics Event - Tracks user interactions and system events
  */
-@Entity('analytics_events')
+@Entity({ name: 'analytics_events', schema: 'insights' })
 @Index(['eventType', 'timestamp'])
 @Index(['userId', 'timestamp'])
 @Index(['collectionId', 'timestamp'])
@@ -79,7 +79,7 @@ export class AnalyticsEvent {
 /**
  * Aggregated Metric - Pre-computed metrics for dashboards
  */
-@Entity('aggregated_metrics')
+@Entity({ name: 'aggregated_metrics', schema: 'insights' })
 @Index(['metricCode', 'periodType', 'periodStart'])
 export class AggregatedMetric {
   @PrimaryGeneratedColumn('uuid')
@@ -130,7 +130,7 @@ export type MetricCadence = 'hourly' | 'daily' | 'weekly' | 'monthly';
 export type MetricAggregation = 'count' | 'sum' | 'avg' | 'min' | 'max';
 export type MetricSourceType = 'collection' | 'analytics_event';
 
-@Entity('metric_definitions')
+@Entity({ name: 'metric_definitions', schema: 'insights' })
 @Index(['code'], { unique: true })
 export class MetricDefinition {
   @PrimaryGeneratedColumn('uuid')
@@ -188,7 +188,7 @@ export class MetricDefinition {
   updatedAt!: Date;
 }
 
-@Entity('metric_points')
+@Entity({ name: 'metric_points', schema: 'insights' })
 @Index(['metricCode', 'periodStart'])
 export class MetricPoint {
   @PrimaryGeneratedColumn('uuid')
@@ -224,7 +224,7 @@ export class MetricPoint {
  */
 export type DashboardScope = 'system' | 'tenant' | 'role' | 'personal';
 
-@Entity('dashboard_definitions')
+@Entity({ name: 'dashboard_definitions', schema: 'insights' })
 @Index(['code'], { unique: true })
 export class DashboardDefinition {
   @PrimaryGeneratedColumn('uuid')
@@ -264,7 +264,7 @@ export class DashboardDefinition {
   updatedAt!: Date;
 }
 
-@Entity('alert_definitions')
+@Entity({ name: 'alert_definitions', schema: 'insights' })
 @Index(['code'], { unique: true })
 export class AlertDefinition {
   @PrimaryGeneratedColumn('uuid')
@@ -356,7 +356,7 @@ export interface ReportDataSource {
 /**
  * Report - Saved report definitions
  */
-@Entity('reports')
+@Entity({ name: 'reports', schema: 'insights' })
 @Index(['moduleId', 'isActive'])
 export class Report {
   @PrimaryGeneratedColumn('uuid')

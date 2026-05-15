@@ -84,7 +84,7 @@ export type ColorScheme = 'dark' | 'light';
 export type ColorSchemePref = 'dark' | 'light' | 'auto';
 export type PreferenceSource = 'manual' | 'suggested' | 'imported' | 'default';
 
-@Entity('theme_definitions')
+@Entity({ name: 'theme_definitions', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['isDefault'])
 @Index(['themeType'])
@@ -137,7 +137,7 @@ export class ThemeDefinition {
   updatedAt!: Date;
 }
 
-@Entity('user_theme_preferences')
+@Entity({ name: 'user_theme_preferences', schema: 'metadata' })
 @Index(['userId'], { unique: true })
 export class UserThemePreference {
   @PrimaryGeneratedColumn('uuid')
@@ -179,7 +179,7 @@ export class UserThemePreference {
   updatedAt!: Date;
 }
 
-@Entity('instance_branding')
+@Entity({ name: 'instance_branding', schema: 'metadata' })
 export class InstanceBranding {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

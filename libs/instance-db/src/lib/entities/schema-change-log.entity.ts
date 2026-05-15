@@ -47,7 +47,7 @@ export type PerformedByType = 'user' | 'system' | 'migration';
  *
  * Provides a complete audit trail of all schema modifications in HubbleWave.
  */
-@Entity('schema_change_log')
+@Entity({ name: 'schema_change_log', schema: 'metadata' })
 @Index('idx_schema_change_entity', ['entityType', 'entityId'])
 @Index('idx_schema_change_entity_code', ['entityType', 'entityCode'])
 @Index('idx_schema_change_created', ['createdAt'])

@@ -73,7 +73,7 @@ export interface SyncLogEntry {
 // API Key (Extended from auth-tokens.entity)
 // ============================================================
 
-@Entity('api_keys')
+@Entity({ name: 'api_keys', schema: 'integrations' })
 export class IntegrationApiKey {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -131,7 +131,7 @@ export class IntegrationApiKey {
 // OAuth2 Client
 // ============================================================
 
-@Entity('oauth_clients')
+@Entity({ name: 'oauth_clients', schema: 'integrations' })
 export class OAuthClient {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -195,7 +195,7 @@ export class OAuthClient {
 // OAuth2 Authorization Code
 // ============================================================
 
-@Entity('oauth_authorization_codes')
+@Entity({ name: 'oauth_authorization_codes', schema: 'integrations' })
 export class OAuthAuthorizationCode {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -242,7 +242,7 @@ export class OAuthAuthorizationCode {
 // OAuth2 Access Token
 // ============================================================
 
-@Entity('oauth_access_tokens')
+@Entity({ name: 'oauth_access_tokens', schema: 'integrations' })
 export class OAuthAccessToken {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -280,7 +280,7 @@ export class OAuthAccessToken {
 // OAuth2 Refresh Token
 // ============================================================
 
-@Entity('oauth_refresh_tokens')
+@Entity({ name: 'oauth_refresh_tokens', schema: 'integrations' })
 export class OAuthRefreshToken {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -325,7 +325,7 @@ export class OAuthRefreshToken {
 // Webhook Subscription
 // ============================================================
 
-@Entity('webhook_subscriptions')
+@Entity({ name: 'webhook_subscriptions', schema: 'integrations' })
 export class WebhookSubscription {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -401,7 +401,7 @@ export class WebhookSubscription {
 // Webhook Delivery
 // ============================================================
 
-@Entity('webhook_deliveries')
+@Entity({ name: 'webhook_deliveries', schema: 'integrations' })
 export class WebhookDelivery {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -466,7 +466,7 @@ export class WebhookDelivery {
 // External Connector
 // ============================================================
 
-@Entity('external_connectors')
+@Entity({ name: 'external_connectors', schema: 'integrations' })
 export class ExternalConnector {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -527,7 +527,7 @@ export class ExternalConnector {
 // Connector Connection
 // ============================================================
 
-@Entity('connector_connections')
+@Entity({ name: 'connector_connections', schema: 'integrations' })
 export class ConnectorConnection {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -592,7 +592,7 @@ export class ConnectorConnection {
 // Property Mapping (maps external source fields to collection properties)
 // ============================================================
 
-@Entity('property_mappings')
+@Entity({ name: 'property_mappings', schema: 'integrations' })
 export class PropertyMapping {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -657,7 +657,7 @@ export class PropertyMapping {
 // Import Job
 // ============================================================
 
-@Entity('import_jobs')
+@Entity({ name: 'import_jobs', schema: 'integrations' })
 export class ImportJob {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -736,7 +736,7 @@ export class ImportJob {
 // Export Job
 // ============================================================
 
-@Entity('export_jobs')
+@Entity({ name: 'export_jobs', schema: 'integrations' })
 export class ExportJob {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -806,7 +806,7 @@ export class ExportJob {
 // Sync Configuration
 // ============================================================
 
-@Entity('sync_configurations')
+@Entity({ name: 'sync_configurations', schema: 'integrations' })
 export class SyncConfiguration {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -887,7 +887,7 @@ export class SyncConfiguration {
 // Sync Run
 // ============================================================
 
-@Entity('sync_runs')
+@Entity({ name: 'sync_runs', schema: 'integrations' })
 export class SyncRun {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -955,7 +955,7 @@ export class SyncRun {
 // API Request Log
 // ============================================================
 
-@Entity('api_request_logs')
+@Entity({ name: 'api_request_logs', schema: 'integrations' })
 export class ApiRequestLog {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

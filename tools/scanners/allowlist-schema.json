@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Scanner Allowlist",
+  "description": "Schema for scanner allowlist files under tools/scanners/. The file wraps a list of allowlist entries. Each entry is either a single-identifier form (uses `target`) or a relational form (uses `from`+`to`). Every entry MUST include `rationale`, `addedBy`, and `addedAt`.",
+  "type": "object",
+  "required": ["entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rationale", "addedBy", "addedAt"],
+        "properties": {
+          "target": { "type": "string", "description": "Single-identifier form: what is being allowlisted (file path, symbol, table name, etc.)" },
+          "from": { "type": "string", "description": "Relational form: source side of the relation being allowlisted (logical identifier such as `<domain>.<entity-name>`)" },
+          "to": { "type": "string", "description": "Relational form: target side of the relation being allowlisted (logical identifier such as `<domain>.<entity-name>`)" },
+          "rationale": { "type": "string", "description": "Why this exception is acceptable" },
+          "addedBy": { "type": "string", "description": "GitHub handle or full name" },
+          "addedAt": { "type": "string", "format": "date", "description": "YYYY-MM-DD" },
+          "followUp": { "type": "string", "description": "Optional: wave or plan reference for closure" }
+        },
+        "oneOf": [
+          { "required": ["target"] },
+          { "required": ["from", "to"] }
+        ]
+      }
+    }
+  }
+}

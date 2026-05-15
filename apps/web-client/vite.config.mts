@@ -20,102 +20,47 @@ export default defineConfig(() => ({
     port: 4200,
     // Allow access from any host (localhost, acme.localhost, etc.)
     host: true,
-    // Proxy API requests through dev server to avoid cross-origin cookie issues.
-    // Service ports: svc-identity=3001, svc-data=3002, svc-metadata=3003, svc-ava=3004.
+    // TRANSITIONAL (Phase 3 Prelude → finalized in a later wave):
+    // The strip-prefix rewrites below bridge the web client's per-service
+    // URL convention (VITE_*_API_URL = '/api/identity', etc.) to apps/api's
+    // unified URL space. This proxy stays as dev convenience until the web
+    // client's VITE_*_API_URL defaults are aligned with apps/api's routes
+    // directly (a later wave decides timing).
     //
-    // Cookie Path/Domain rewrite rationale (dev-only):
-    // The identity and auth services set their cookies with service-scoped
-    // paths (e.g. Path=/api/identity, Path=/api/auth) and a backend-specific
-    // Domain. In dev the entire app runs on a single origin (localhost:4200)
-    // and React-Router pages need to read XSRF-TOKEN from any path, so we
-    // strip Domain= and widen Path to '/'. Production deployments terminate
-    // each service behind its own ingress route — they keep their natural
-    // service-scoped cookie paths and this rewrite is irrelevant.
     proxy: {
-      // Service-prefixed routes (primary pattern)
       '/api/identity': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/identity/, '/api'),
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             const setCookie = proxyRes.headers['set-cookie'];
             proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
-      },
-      '/api/data': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
       },
       '/api/metadata': {
-        target: 'http://localhost:3003',
+        target: 'http://localhost:3000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/metadata/, '/api'),
       },
       '/api/ai': {
-        target: 'http://localhost:3004',
+        target: 'http://localhost:3000',
         changeOrigin: true,
-      },
-      // Studio routes go to svc-data
-      '/api/studio': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/studio/, '/api/studio'),
-      },
-      // Admin routes (roles, permissions, groups) go to svc-identity
-      '/api/admin': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/admin/, '/api/admin'),
-      },
-      // Direct API routes (for pages using simple /api/... paths)
-      // Applications, Collections, Properties, Themes → svc-metadata
-      '/api/applications': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
-      },
-      '/api/collections': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
-      },
-      '/api/properties': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
-      },
-      '/api/themes': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
-      },
-      '/api/views': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
-      },
-      '/api/navigation/resolve': {
-        target: 'http://localhost:3006',
-        changeOrigin: true,
-        rewrite: (path) =>
-          path.replace(/^\/api\/navigation\/resolve/, '/api/view-engine/navigation/resolve'),
-      },
-      '/api/navigation': {
-        target: 'http://localhost:3003',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/metadata'),
+        rewrite: (path) => path.replace(/^\/api\/ai/, '/api/ava'),
       },
       '/api/view-engine': {
-        target: 'http://localhost:3006',
+        target: 'http://localhost:3000',
         changeOrigin: true,
+        // Web client posts `/api/view-engine/views/resolve` (baseURL
+        // `/api/view-engine` + `/views/resolve`). apps/api views module
+        // serves at `/api/views/resolve` via @Controller('views'). Strip
+        // `/api/view-engine` (don't add `/api/views`) so the suffix
+        // `/views/resolve` lands on the right route.
+        rewrite: (path) => path.replace(/^\/api\/view-engine/, '/api'),
       },
-      // User management & Auth → svc-identity
-      '/api/tenant-users': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/api/auth': {
-        target: 'http://localhost:3001',
+      '/api': {
+        target: 'http://localhost:3000',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
@@ -123,40 +68,6 @@ export default defineConfig(() => ({
             proxyRes.headers['set-cookie'] = rewriteDevSetCookieHeader(setCookie);
           });
         },
-      },
-      '/api/iam': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      // AVA governance → svc-ava
-      '/api/ava': {
-        target: 'http://localhost:3004',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
-      },
-      '/api/workflows': {
-        target: 'http://localhost:3007',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/workflows/, '/api/workflows'),
-      },
-      '/api/insights': {
-        // svc-insights runs on INSIGHTS_PORT (3009 per .env). Earlier
-        // mis-target sent these to 3007 (WORKFLOW_PORT) so workspace
-        // analytics calls landed on the wrong service in dev.
-        target: 'http://localhost:3009',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/insights/, '/api/insights'),
-      },
-      '/api/notifications': {
-        target: 'http://localhost:3008',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/notifications/, '/api/notifications'),
-      },
-      // Phase 7 AI endpoints → svc-ava
-      '/api/phase7': {
-        target: 'http://localhost:3004',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api/ai'),
       },
     },
   },

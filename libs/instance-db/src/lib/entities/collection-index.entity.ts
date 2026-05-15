@@ -15,7 +15,7 @@ import { User } from './user.entity';
 export type CollectionIndexType = 'btree' | 'gin' | 'trigram' | 'vector';
 export type CollectionConstraintType = 'unique' | 'check';
 
-@Entity('collection_indexes')
+@Entity({ name: 'collection_indexes', schema: 'metadata' })
 @Unique(['collectionId', 'code'])
 @Index(['collectionId'])
 @Index(['indexType'])
@@ -72,7 +72,7 @@ export class CollectionIndex {
   updatedAt!: Date;
 }
 
-@Entity('collection_constraints')
+@Entity({ name: 'collection_constraints', schema: 'metadata' })
 @Unique(['collectionId', 'code'])
 @Index(['collectionId'])
 @Index(['constraintType'])

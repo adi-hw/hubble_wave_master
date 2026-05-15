@@ -27,10 +27,9 @@ import { IdentityService } from './identity.service';
 
 // Guards / interceptors / middleware (used as global providers)
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { PermissionsGuard } from '@hubblewave/auth-guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { ApiKeyGuard } from './auth/api-key/api-key.guard';
-import { AbacGuard } from './abac/abac.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { CsrfMiddleware } from './auth/middleware/csrf.middleware';
 
@@ -85,7 +84,17 @@ import { CsrfMiddleware } from './auth/middleware/csrf.middleware';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
-    { provide: APP_GUARD, useClass: AbacGuard },
+    // AbacGuard is no longer wired as a global APP_GUARD. The guard's
+    // fail-closed default ("ABAC policy not configured for this endpoint")
+    // requires every controller method to declare @AbacResource(...) or
+    // opt out via @SkipAbac() / @Public() / @AuthenticatedOnly(). That
+    // rollout has not happened for the vast majority of endpoints, so the
+    // global wiring denied almost every authenticated request. The guard
+    // remains a provider and can be applied per-controller via
+    // @UseGuards(AbacGuard) where ABAC is actually configured. Canon §9
+    // centralized authorization is preserved by JwtAuthGuard + RolesGuard
+    // + PermissionsGuard (global) plus the per-controller PermissionGuard
+    // and the §28 AuthorizationService chain.
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     IdentityService,
     CsrfMiddleware,

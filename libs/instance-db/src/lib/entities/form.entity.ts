@@ -45,7 +45,7 @@ export interface FormLayoutField {
 export type FormDefinitionStatus = 'draft' | 'published' | 'deprecated';
 export type FormVersionStatus = 'draft' | 'published';
 
-@Entity('form_definitions')
+@Entity({ name: 'form_definitions', schema: 'metadata' })
 @Index(['collectionId'])
 @Index(['applicationId'])
 @Index(['status'])
@@ -101,7 +101,7 @@ export class FormDefinition {
   updatedAt!: Date;
 }
 
-@Entity('form_versions')
+@Entity({ name: 'form_versions', schema: 'metadata' })
 @Index(['formId'])
 @Index(['status'])
 export class FormVersion {

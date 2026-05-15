@@ -7,7 +7,7 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 
-@Entity('password_policies')
+@Entity({ name: 'password_policies', schema: 'identity' })
 export class PasswordPolicy {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -46,7 +46,7 @@ export class PasswordPolicy {
   updatedAt!: Date;
 }
 
-@Entity('ldap_configs')
+@Entity({ name: 'ldap_configs', schema: 'identity' })
 export class LdapConfig {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -91,7 +91,7 @@ export class LdapConfig {
   updatedAt!: Date;
 }
 
-@Entity('sso_providers')
+@Entity({ name: 'sso_providers', schema: 'identity' })
 export class SsoProvider {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

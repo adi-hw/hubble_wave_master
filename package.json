@@ -34,7 +34,6 @@
     "migration:run:control-plane": "ts-node -r tsconfig-paths/register -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:run -d scripts/datasource-control-plane.ts",
     "migration:revert:control-plane": "ts-node -P scripts/tsconfig.migration.json ./node_modules/typeorm/cli.js migration:revert -d scripts/datasource-control-plane.ts",
     "seed:test-user": "npx tsx scripts/seed-test-user.ts",
-    "seed:knowledge": "npx tsx scripts/seed-platform-knowledge.ts",
     "password:hash": "npx tsx scripts/generate-password-hash.ts",
     "compliance:check": "npx tsx tools/design-compliance/terminology-scanner.ts",
     "compliance:check:strict": "npx tsx tools/design-compliance/terminology-scanner.ts --strict",
@@ -58,7 +57,19 @@
     "license:check": "npx --yes license-checker --production --excludePackages \"@hw-platform/source\" --json > tmp/licenses.json && npx tsx tools/validate-licenses.ts tmp/licenses.json tools/license-allowlist.json",
     "dead-code:check": "npx tsx tools/dead-code-check.ts",
     "migrations:check": "npx tsx tools/migration-blocking-index-check.ts",
-    "selftest:migrations": "npx tsx tools/migration-blocking-index-check-selftest.ts"
+    "selftest:migrations": "npx tsx tools/migration-blocking-index-check-selftest.ts",
+    "entity-schema:check": "npx tsx tools/scanners/entity-schema-ownership-check.ts",
+    "selftest:entity-schema": "npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts",
+    "cross-domain:check": "npx tsx tools/scanners/cross-domain-import-check.ts",
+    "selftest:cross-domain": "npx tsx tools/scanners/cross-domain-import-check-selftest.ts",
+    "migration-filename:check": "npx tsx tools/scanners/migration-filename-check.ts",
+    "selftest:migration-filename": "npx tsx tools/scanners/migration-filename-check-selftest.ts",
+    "permissions-coverage:check": "npx tsx tools/scanners/permissions-annotation-coverage.ts --report=docs/permissions-rollout-coverage.md",
+    "selftest:permissions-coverage": "npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts",
+    "abac-coverage:check": "npx tsx tools/scanners/abac-coverage-check.ts",
+    "selftest:abac-coverage": "npx tsx tools/scanners/abac-coverage-check-selftest.ts",
+    "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts",
+    "prelude:validate": "npx tsx scripts/prelude-validate.ts"
   },
   "private": true,
   "dependencies": {

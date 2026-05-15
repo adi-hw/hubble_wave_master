@@ -24,7 +24,7 @@ export type RoleScope = 'global' | 'collection' | 'record';
  * This table exists in each customer's isolated database.
  * There is NO tenant_id column.
  */
-@Entity('roles')
+@Entity({ name: 'roles', schema: 'identity' })
 @Index(['code'], { unique: true })
 @Index(['parentId'])
 @Index(['isSystem'])

@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { NavProfile } from './settings.entity';
 
-@Entity('nav_nodes')
+@Entity({ name: 'nav_nodes', schema: 'metadata' })
 @Index(['profileId'])
 @Index(['parentId'])
 @Index(['key'])
@@ -63,7 +63,7 @@ export class NavNode {
   updatedAt!: Date;
 }
 
-@Entity('nav_patches')
+@Entity({ name: 'nav_patches', schema: 'metadata' })
 @Index(['profileId'])
 export class NavPatch {
   @PrimaryGeneratedColumn('uuid')

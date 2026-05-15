@@ -1,6 +1,7 @@
 import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
+import { AuthModule } from '../../identity/auth/auth.module';
 import {
   AccessRuleCacheInvalidationSubscriber,
   CollectionAccessRule,
@@ -43,6 +44,7 @@ import { ExplainController } from './explain.controller';
       User,
     ]),
     CacheModule.register(),
+    AuthModule,
   ],
   // §28.7: explain endpoint exposed via ExplainController. The controller
   // depends on the AuthorizationService (already injected from the

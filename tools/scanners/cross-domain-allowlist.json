@@ -1,0 +1,289 @@
+{
+  "$schema": "./allowlist-schema.json",
+  "entries": [
+    {
+      "from": "identity.web-authn-credential",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "app_builder.sprint-recording",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.application",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "identity.password-history",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "automation.automation-rule",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.change-package",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.collection-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.collection-index",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "automation.connector",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "automation.decision-table",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.dependent-review-queue-entry",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.display-rule",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.form-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "identity.group",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "automation.guided-process-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.locale",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "ava.dataset-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.navigation-module",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.pack-release-record",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "automation.process-flow-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.property-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "identity.role-permission",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "identity.role",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.search-experience",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "identity.auth-settings",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.theme-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.view-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "metadata.workspace-definition",
+      "to": "public.user",
+      "rationale": "FK to public.users; users intentionally stays in public per the schema-split design — users are shared across all domains.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14"
+    },
+    {
+      "from": "public.collection-access-rule",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "public.collection-access-rule",
+      "to": "metadata.property-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "automation.decision-table",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "automation.guided-process-definition",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "automation.process-flow-definition",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "automation.business-hours",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "notify.notification-template",
+      "to": "metadata.collection-definition",
+      "rationale": "Cross-domain reference to canonical metadata; collections/properties are the platform's metadata layer that automation, access-rule, and notification entities reference by FK. Refactoring out of scope for Prelude; W2 boundary-consistency wave addresses if a cleaner pattern is identified.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "public.collection-access-rule",
+      "to": "identity.role",
+      "rationale": "Cross-domain reference to identity primitives (roles/groups/auth-settings); these are the platform's identity layer that access-rule, module, and navigation entities reference for authorization context. Refactoring out of scope for Prelude; W2 boundary-consistency wave reviews if cleaner separation is possible.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "public.collection-access-rule",
+      "to": "identity.group",
+      "rationale": "Cross-domain reference to identity primitives (roles/groups/auth-settings); these are the platform's identity layer that access-rule, module, and navigation entities reference for authorization context. Refactoring out of scope for Prelude; W2 boundary-consistency wave reviews if cleaner separation is possible.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "metadata.module-entity",
+      "to": "identity.role",
+      "rationale": "Cross-domain reference to identity primitives (roles/groups/auth-settings); these are the platform's identity layer that access-rule, module, and navigation entities reference for authorization context. Refactoring out of scope for Prelude; W2 boundary-consistency wave reviews if cleaner separation is possible.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    },
+    {
+      "from": "metadata.nav-node",
+      "to": "identity.auth-settings",
+      "rationale": "Cross-domain reference to identity primitives (roles/groups/auth-settings); these are the platform's identity layer that access-rule, module, and navigation entities reference for authorization context. Refactoring out of scope for Prelude; W2 boundary-consistency wave reviews if cleaner separation is possible.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-14",
+      "followUp": "W2"
+    }
+  ]
+}

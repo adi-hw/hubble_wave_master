@@ -17,7 +17,7 @@ export type ModelEvaluationStatus = 'completed' | 'failed';
 export type ModelTrainingStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type ModelDeploymentStatus = 'pending_approval' | 'approved' | 'rejected' | 'active' | 'inactive' | 'failed';
 
-@Entity('dataset_definitions')
+@Entity({ name: 'dataset_definitions', schema: 'ava' })
 @Index(['code'], { unique: true })
 @Index(['isActive'])
 export class DatasetDefinition {
@@ -78,7 +78,7 @@ export class DatasetDefinition {
   updatedAt!: Date;
 }
 
-@Entity('dataset_snapshots')
+@Entity({ name: 'dataset_snapshots', schema: 'ava' })
 @Index(['datasetDefinitionId'])
 @Index(['status'])
 export class DatasetSnapshot {
@@ -130,7 +130,7 @@ export class DatasetSnapshot {
   updatedAt!: Date;
 }
 
-@Entity('model_artifacts')
+@Entity({ name: 'model_artifacts', schema: 'ava' })
 @Index(['code', 'version'], { unique: true })
 @Index(['status'])
 export class ModelArtifact {
@@ -198,7 +198,7 @@ export class ModelArtifact {
   updatedAt!: Date;
 }
 
-@Entity('model_evaluations')
+@Entity({ name: 'model_evaluations', schema: 'ava' })
 @Index(['modelArtifactId'])
 @Index(['status'])
 export class ModelEvaluation {
@@ -248,7 +248,7 @@ export class ModelEvaluation {
   updatedAt!: Date;
 }
 
-@Entity('model_training_jobs')
+@Entity({ name: 'model_training_jobs', schema: 'ava' })
 @Index(['status'])
 @Index(['modelCode', 'modelVersion'])
 export class ModelTrainingJob {
@@ -319,7 +319,7 @@ export class ModelTrainingJob {
   updatedAt!: Date;
 }
 
-@Entity('model_deployments')
+@Entity({ name: 'model_deployments', schema: 'ava' })
 @Index(['modelArtifactId'])
 @Index(['status'])
 export class ModelDeployment {

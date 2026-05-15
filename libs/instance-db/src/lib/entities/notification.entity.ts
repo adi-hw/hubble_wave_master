@@ -47,7 +47,7 @@ export interface InAppAction {
   icon?: string;
 }
 
-@Entity('notification_templates')
+@Entity({ name: 'notification_templates', schema: 'notify' })
 @Index(['category'], { where: '"is_active" = true' })
 export class NotificationTemplate {
   @PrimaryGeneratedColumn('uuid')
@@ -152,7 +152,7 @@ export class NotificationTemplate {
 
 export type NotificationQueueStatus = 'pending' | 'processing' | 'sent' | 'failed' | 'cancelled';
 
-@Entity('notification_queue')
+@Entity({ name: 'notification_queue', schema: 'notify' })
 @Index(['status', 'scheduledFor'])
 @Index(['recipientId'])
 export class NotificationQueue {
@@ -219,7 +219,7 @@ export class NotificationQueue {
 // NOTIFICATION HISTORY
 // ═══════════════════════════════════════════════════════════════════
 
-@Entity('notification_history')
+@Entity({ name: 'notification_history', schema: 'notify' })
 @Index(['notificationQueueId'])
 @Index(['recipientId', 'sentAt'])
 export class NotificationHistory {
@@ -271,7 +271,7 @@ export class NotificationHistory {
 // IN-APP NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════════
 
-@Entity('in_app_notifications')
+@Entity({ name: 'in_app_notifications', schema: 'notify' })
 @Index(['userId', 'read', 'createdAt'])
 @Index(['userId'], { where: '"read" = false AND "dismissed" = false' })
 export class InAppNotification {
@@ -338,7 +338,7 @@ export interface ChannelPreferences {
   [category: string]: NotificationChannel[];
 }
 
-@Entity('user_notification_preferences')
+@Entity({ name: 'user_notification_preferences', schema: 'notify' })
 export class UserNotificationPreferences {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -395,7 +395,7 @@ export class UserNotificationPreferences {
 
 export type DevicePlatform = 'ios' | 'android' | 'web';
 
-@Entity('device_tokens')
+@Entity({ name: 'device_tokens', schema: 'notify' })
 @Index(['userId'], { where: '"is_active" = true' })
 export class DeviceToken {
   @PrimaryGeneratedColumn('uuid')

@@ -60,9 +60,6 @@
       "@hubblewave/ai": [
         "libs/ai/src/index.ts"
       ],
-      "@hubblewave/enterprise": [
-        "libs/enterprise/src/index.ts"
-      ],
       "@hubblewave/redis": [
         "libs/redis/src/index.ts"
       ],
@@ -71,9 +68,6 @@
       ],
       "@hubblewave/ui": [
         "libs/ui/src/index.ts"
-      ],
-      "@hubblewave/ui-components": [
-        "libs/ui-components/src/index.ts"
       ],
       "@hubblewave/formula-parser": [
         "libs/formula-parser/src/index.ts"

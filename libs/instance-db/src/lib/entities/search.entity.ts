@@ -12,7 +12,7 @@ import { User } from './user.entity';
 
 export type SearchScope = 'system' | 'instance' | 'role' | 'group' | 'personal';
 
-@Entity('search_experiences')
+@Entity({ name: 'search_experiences', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['scope'])
 @Index(['scopeKey'])
@@ -65,7 +65,7 @@ export class SearchExperience {
   updatedAt!: Date;
 }
 
-@Entity('search_sources')
+@Entity({ name: 'search_sources', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['collectionCode'])
 export class SearchSource {
@@ -114,7 +114,7 @@ export class SearchSource {
   updatedAt!: Date;
 }
 
-@Entity('search_dictionaries')
+@Entity({ name: 'search_dictionaries', schema: 'metadata' })
 @Index(['code'], { unique: true })
 @Index(['locale'])
 export class SearchDictionary {
@@ -162,7 +162,7 @@ export class SearchDictionary {
 
 export type SearchIndexStatus = 'idle' | 'running' | 'failed' | 'paused';
 
-@Entity('search_index_state')
+@Entity({ name: 'search_index_state', schema: 'metadata' })
 @Index(['collectionCode'], { unique: true })
 export class SearchIndexState {
   @PrimaryGeneratedColumn('uuid')

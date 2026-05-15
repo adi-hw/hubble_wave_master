@@ -1,0 +1,47 @@
+{
+  "$schema": "./allowlist-schema.json",
+  "entries": [
+    {
+      "target": "migrations/instance/1766696011515-InitialSchema.ts",
+      "rationale": "Initial schema migration from project bootstrap (2025); predates the kebab-case naming convention introduced in Phase 3 Prelude. Renaming would rewrite committed history.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    },
+    {
+      "target": "migrations/instance/1787000010003-fix-owner-type-values.ts",
+      "rationale": "Pre-Wave-1 historical fix migration. Predates the 'fix' forbidden-token rule introduced in Phase 3 Prelude. Renaming would rewrite committed history.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    },
+    {
+      "target": "migrations/instance/1799000000000-fix-reference-properties.ts",
+      "rationale": "Pre-Wave-1 historical fix migration. Predates the 'fix' forbidden-token rule.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    },
+    {
+      "target": "migrations/instance/1811000000001-fix-digital-twin-asset-id-type.ts",
+      "rationale": "Pre-Wave-1 historical fix migration. Predates the 'fix' forbidden-token rule.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    },
+    {
+      "target": "migrations/instance/1815000000000-fix-digital-twins-schema.ts",
+      "rationale": "Pre-Wave-1 historical fix migration. Predates the 'fix' forbidden-token rule.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    },
+    {
+      "target": "migrations/instance/1816000000000-fix-view-definitions-unique-constraint.ts",
+      "rationale": "Pre-Wave-1 historical fix migration. Predates the 'fix' forbidden-token rule.",
+      "addedBy": "phase3-prelude",
+      "addedAt": "2026-05-14",
+      "followUp": "permanent"
+    }
+  ]
+}

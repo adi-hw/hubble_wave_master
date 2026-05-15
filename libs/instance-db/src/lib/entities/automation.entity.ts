@@ -44,7 +44,7 @@ export type AutomationRuleRevisionStatus = 'draft' | 'published';
 // Automation Rule Entity
 // ─────────────────────────────────────────────────────────────────
 
-@Entity('automation_rules')
+@Entity({ name: 'automation_rules', schema: 'automation' })
 @Index(['collectionId', 'isActive'])
 @Index(['triggerTiming', 'isActive'])
 @Index(['applicationId'])
@@ -156,7 +156,7 @@ export class AutomationRule {
  * CollectionDefinitionRevision so the lifecycle pattern is uniform
  * across metadata entities (ADR-5).
  */
-@Entity('automation_rule_revisions')
+@Entity({ name: 'automation_rule_revisions', schema: 'automation' })
 @Index(['automationRuleId'])
 @Index(['status'])
 @Index(['automationRuleId', 'revision'], { unique: true })
@@ -217,7 +217,7 @@ export interface AutomationAction {
 // Scheduled Job Entity
 // ─────────────────────────────────────────────────────────────────
 
-@Entity('scheduled_jobs')
+@Entity({ name: 'scheduled_jobs', schema: 'automation' })
 @Index(['isActive', 'nextRunAt'])
 export class ScheduledJob {
   @PrimaryGeneratedColumn('uuid')
@@ -291,7 +291,7 @@ export class ScheduledJob {
 // Automation Execution Log Entity
 // ─────────────────────────────────────────────────────────────────
 
-@Entity('automation_execution_logs')
+@Entity({ name: 'automation_execution_logs', schema: 'automation' })
 @Index(['automationRuleId', 'createdAt'])
 @Index(['recordId', 'createdAt'])
 @Index(['status', 'createdAt'])
@@ -367,7 +367,7 @@ export class AutomationExecutionLog {
 
 export type ClientScriptTrigger = 'onLoad' | 'onChange' | 'onSubmit' | 'onCellEdit';
 
-@Entity('client_scripts')
+@Entity({ name: 'client_scripts', schema: 'automation' })
 @Index(['collectionId', 'isActive'])
 export class ClientScript {
   @PrimaryGeneratedColumn('uuid')

@@ -85,7 +85,7 @@ export interface ProcessFlowCanvas {
   connections: ProcessFlowConnection[];
 }
 
-@Entity('process_flow_definitions')
+@Entity({ name: 'process_flow_definitions', schema: 'automation' })
 @Index(['collectionId'], { where: '"is_active" = true' })
 @Index(['applicationId'])
 @Index(['status'])
@@ -207,7 +207,7 @@ export type ProcessFlowInstanceState =
   | 'cancelled'
   | 'timed_out';
 
-@Entity('process_flow_instances')
+@Entity({ name: 'process_flow_instances', schema: 'automation' })
 @Index(['processFlowId'])
 @Index(['collectionId', 'recordId'])
 @Index(['state'], { where: '"state" IN (\'running\', \'waiting_approval\')' })
@@ -281,7 +281,7 @@ export class ProcessFlowInstance {
 
 export type ExecutionHistoryStatus = 'started' | 'completed' | 'failed' | 'skipped' | 'waiting';
 
-@Entity('process_flow_execution_history')
+@Entity({ name: 'process_flow_execution_history', schema: 'automation' })
 @Index(['instanceId', 'createdAt'])
 export class ProcessFlowExecutionHistory {
   @PrimaryGeneratedColumn('uuid')
@@ -336,7 +336,7 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'delegated' |
 export type ApproverType = 'user' | 'group' | 'role';
 export type ApprovalType = 'sequential' | 'parallel_any' | 'parallel_all';
 
-@Entity('approvals')
+@Entity({ name: 'approvals', schema: 'automation' })
 @Index(['approverId', 'status'])
 @Index(['processFlowInstanceId'])
 @Index(['dueDate'], { where: '"status" = \'pending\'' })
@@ -406,7 +406,7 @@ export class Approval {
  * CollectionDefinitionRevision so the lifecycle pattern is uniform
  * across metadata entities.
  */
-@Entity('process_flow_definition_revisions')
+@Entity({ name: 'process_flow_definition_revisions', schema: 'automation' })
 @Index(['processFlowId'])
 @Index(['status'])
 @Index(['processFlowId', 'revision'], { unique: true })

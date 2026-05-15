@@ -122,6 +122,37 @@ jobs:
         #   - silent-skip (12) — W5.G
         run: npm run selftest:scanners
 
+      # Phase 3 Prelude scanners (canon §21 / Stream 4).
+      # entity-schema, cross-domain, migration-filename, abac-coverage all
+      # fail CI on violation. permissions-coverage is report-only (exits 0
+      # with a coverage report; the output is informational for the rollout
+      # dashboard, not a hard gate).
+      - name: Entity-schema ownership check (Phase 3 Prelude)
+        run: npm run entity-schema:check
+
+      - name: Cross-domain import check (Phase 3 Prelude)
+        run: npm run cross-domain:check
+
+      - name: Migration filename check (Phase 3 Prelude)
+        run: npm run migration-filename:check
+
+      - name: Permissions annotation coverage (Phase 3 Prelude — report only)
+        run: npm run permissions-coverage:check
+
+      - name: ABAC coverage check (Phase 3 Prelude)
+        run: npm run abac-coverage:check
+
+      - name: Scanner self-tests — Phase 3 Prelude scanners
+        # Self-tests prove each Prelude scanner catches its claimed patterns.
+        # Consistent with the W0 scanner self-test discipline: every scanner
+        # ships its own self-test so detection regressions fail CI immediately.
+        run: |
+          npx tsx tools/scanners/entity-schema-ownership-check-selftest.ts
+          npx tsx tools/scanners/cross-domain-import-check-selftest.ts
+          npx tsx tools/scanners/migration-filename-check-selftest.ts
+          npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts
+          npx tsx tools/scanners/abac-coverage-check-selftest.ts
+
   # SBOM generation and vulnerability scan (F119 / W0 task 9).
   #
   # Uploads a SPDX-format SBOM as a workflow artifact (consumed by
@@ -422,3 +453,126 @@ jobs:
           name: dist
           path: dist/
           retention-days: 1
+
+  # Phase 3 Prelude — validation harness (canon §21 / Stream 4).
+  #
+  # Runs the end-to-end assertion harness that verifies the Prelude exit
+  # criterion: "Fresh database boot produces only valid platform experiences
+  # and a deterministic runtime baseline." Services are provisioned by the
+  # GitHub Actions services block; --skip-rebuild tells the harness not to
+  # call docker-compose (which would tear down those services).
+  prelude-validate:
+    name: Phase 3 Prelude — validation harness
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: hubblewave
+          POSTGRES_PASSWORD: hubblewave
+          POSTGRES_DB: hubblewave
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize databases (run scripts/init-db/*.sql)
+        # Docker compose runs these via docker-entrypoint-initdb.d, but the
+        # GitHub Actions services: block does not honor that mount. Run the
+        # same SQL manually so the hubblewave_control_plane DB + pgvector
+        # extension + roles are all in place before migrations.
+        run: |
+          for f in scripts/init-db/*.sql; do
+            echo "Applying $f..."
+            PGPASSWORD=hubblewave psql -h localhost -U hubblewave -d postgres -f "$f"
+          done
+
+      - name: Run migrations + seed admin user
+        run: |
+          npm run migration:run:control-plane
+          npm run migration:run:instance
+          npx tsx scripts/seed-admin-user.ts
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: hubblewave
+          DB_PASSWORD: hubblewave
+          DB_NAME: hubblewave
+          CONTROL_PLANE_DB_HOST: localhost
+          CONTROL_PLANE_DB_PORT: 5432
+          CONTROL_PLANE_DB_USER: hubblewave
+          CONTROL_PLANE_DB_PASSWORD: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave_control_plane
+          DIRECT_DB_HOST: localhost
+          DIRECT_DB_PORT: 5432
+          DIRECT_CONTROL_PLANE_DB_HOST: localhost
+          DIRECT_CONTROL_PLANE_DB_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: development
+          JWT_KEY_PROVIDER: local-es256
+          JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
+          API_PORT: 3000
+          ADMIN_EMAIL: admin@hubblewave.local
+          ADMIN_PASSWORD: ci-admin-password-1234
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
+          ADMIN_FIRST_NAME: HubbleWave
+          ADMIN_LAST_NAME: Admin
+
+      - name: Write .env for harness password lookup
+        # Match the password used in the migration + seed step env block.
+        # Must be ≥12 chars per the SeedAdminUser1818000000000 migration guard.
+        run: echo "ADMIN_PASSWORD=ci-admin-password-1234" > .env
+
+      - name: Prelude validate
+        run: npm run prelude:validate -- --skip-rebuild
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: hubblewave
+          DB_PASSWORD: hubblewave
+          DB_NAME: hubblewave
+          CONTROL_PLANE_DB_HOST: localhost
+          CONTROL_PLANE_DB_PORT: 5432
+          CONTROL_PLANE_DB_USER: hubblewave
+          CONTROL_PLANE_DB_PASSWORD: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave_control_plane
+          DIRECT_DB_HOST: localhost
+          DIRECT_DB_PORT: 5432
+          DIRECT_CONTROL_PLANE_DB_HOST: localhost
+          DIRECT_CONTROL_PLANE_DB_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: development
+          JWT_KEY_PROVIDER: local-es256
+          JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
+          API_PORT: 3000
+          ADMIN_EMAIL: admin@hubblewave.local
+          ADMIN_PASSWORD: ci-admin-password-1234
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
+          ADMIN_FIRST_NAME: HubbleWave
+          ADMIN_LAST_NAME: Admin

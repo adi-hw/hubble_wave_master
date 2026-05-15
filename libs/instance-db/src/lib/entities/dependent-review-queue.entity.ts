@@ -24,7 +24,7 @@ export type DependentReviewClassification = 'structural' | 'breaking';
  * bypassed for cosmetic-only publishes by PublishImpactService, so
  * there are no rows to persist.
  */
-@Entity('dependent_review_queue')
+@Entity({ name: 'dependent_review_queue', schema: 'metadata' })
 @Index(['collectionId', 'status'])
 @Index(['status', 'createdAt'])
 @Index(['entityType', 'entityId'])

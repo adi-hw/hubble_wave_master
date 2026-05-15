@@ -20,7 +20,7 @@ export type TranslationRequestStatus =
   | 'cancelled'
   | 'failed';
 
-@Entity('locales')
+@Entity({ name: 'locales', schema: 'metadata' })
 @Index(['code'], { unique: true })
 export class Locale {
   @PrimaryGeneratedColumn('uuid')
@@ -62,7 +62,7 @@ export class Locale {
   updatedAt!: Date;
 }
 
-@Entity('translation_keys')
+@Entity({ name: 'translation_keys', schema: 'metadata' })
 @Index(['namespace', 'key'], { unique: true })
 export class TranslationKey {
   @PrimaryGeneratedColumn('uuid')
@@ -107,7 +107,7 @@ export class TranslationKey {
   updatedAt!: Date;
 }
 
-@Entity('translation_values')
+@Entity({ name: 'translation_values', schema: 'metadata' })
 @Index(['translationKeyId', 'localeId'], { unique: true })
 @Index(['translationKeyId'])
 @Index(['localeId'])
@@ -162,7 +162,7 @@ export class TranslationValue {
   updatedAt!: Date;
 }
 
-@Entity('localization_bundles')
+@Entity({ name: 'localization_bundles', schema: 'metadata' })
 @Index(['localeCode'], { unique: true })
 @Index(['localeId'])
 export class LocalizationBundle {
@@ -205,7 +205,7 @@ export class LocalizationBundle {
   updatedAt!: Date;
 }
 
-@Entity('translation_requests')
+@Entity({ name: 'translation_requests', schema: 'metadata' })
 @Index(['status'])
 @Index(['localeId'])
 @Index(['translationKeyId'])
