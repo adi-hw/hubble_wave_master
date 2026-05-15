@@ -260,14 +260,19 @@ describe('AuthorizationService — table-name wrappers (deprecated)', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('admins bypass tableName resolution entirely (no DB lookup, no throw)', async () => {
+  // Plan Fix 33 / canon §28.6 retired the admin short-circuit: admin role
+  // now goes through the §28 evaluator like every other role, with broad
+  // allow rules seeded by 1931100000000-seed-admin-policies.ts. Unknown
+  // tables therefore throw NotFoundException for admins too — the old
+  // "bypass tableName resolution entirely" guarantee is gone by design.
+  it('admins still throw NotFoundException for unknown tableName (no §28.6 short-circuit)', async () => {
     const { service, collectionDefinitionRepo } = buildService({ tableNameToId: {} });
 
     await expect(
       service.ensureTableAccess(buildContext({ isAdmin: true }), 'mystery_table', 'read'),
-    ).resolves.toBeUndefined();
+    ).rejects.toBeInstanceOf(NotFoundException);
 
-    expect(collectionDefinitionRepo.findOne).not.toHaveBeenCalled();
+    expect(collectionDefinitionRepo.findOne).toHaveBeenCalled();
   });
 });
 
@@ -726,7 +731,6 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       null,
       policyCompiler,
       null,
-      null,
     );
 
     await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
@@ -751,7 +755,6 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       null,
       policyCompiler,
       null,
-      null,
     );
 
     await service.canAccessCollection(buildContext(), COLLECTION_ID, 'read');
@@ -768,7 +771,6 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       null,
       null,
       policyCompiler,
-      null,
       null,
     );
 
@@ -805,7 +807,6 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       null,
       null,
       policyCompiler,
-      null,
       null,
     );
 
@@ -852,7 +853,6 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
       null,
       null,
       policyCompiler,
-      null,
       null,
     );
 
@@ -929,7 +929,6 @@ describe('AuthorizationService — cache invalidation (F025)', () => {
       cache as unknown as ConstructorParameters<typeof AuthorizationService>[2],
       null,
       policyCompiler,
-      null,
       null,
     );
   }
