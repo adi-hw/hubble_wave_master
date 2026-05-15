@@ -24,10 +24,11 @@ export class RemoveOrphanStudioViewsNavNode1943000000000
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Remove studio.views from the children array of every node in
     // layout->nodes that has key = 'studio' and carries the orphan child.
-    // Uses a CTE to identify the target node index and jsonb_agg to rebuild
-    // the children array without the studio.views entry.
+    // Uses a CTE to identify the target node index (cast to int4 — Postgres
+    // jsonb -> operator accepts int4, not the int8 that WITH ORDINALITY emits)
+    // and jsonb_agg to rebuild the children array without the studio.views entry.
     await queryRunner.query(`
-      UPDATE navigation_module_revisions
+      UPDATE metadata.navigation_module_revisions
          SET layout = jsonb_set(
            layout,
            ARRAY['nodes', node_idx::text, 'children'],
@@ -43,14 +44,14 @@ export class RemoveOrphanStudioViewsNavNode1943000000000
          )
         FROM (
           SELECT nmr.id,
-                 (idx - 1) AS node_idx
-            FROM navigation_module_revisions nmr,
+                 (idx - 1)::int AS node_idx
+            FROM metadata.navigation_module_revisions nmr,
                  jsonb_array_elements(nmr.layout -> 'nodes')
                  WITH ORDINALITY AS t(node, idx)
            WHERE node ->> 'key' = 'studio'
              AND node -> 'children' @> '[{"key": "studio.views"}]'::jsonb
         ) target
-       WHERE navigation_module_revisions.id = target.id
+       WHERE metadata.navigation_module_revisions.id = target.id
     `);
   }
 
@@ -58,7 +59,7 @@ export class RemoveOrphanStudioViewsNavNode1943000000000
     // Restore the studio.views child after the studio.audit node in every
     // studio group that is missing it (idempotent — skips if already present).
     await queryRunner.query(`
-      UPDATE navigation_module_revisions
+      UPDATE metadata.navigation_module_revisions
          SET layout = jsonb_set(
            layout,
            ARRAY['nodes', node_idx::text, 'children'],
@@ -67,14 +68,14 @@ export class RemoveOrphanStudioViewsNavNode1943000000000
          )
         FROM (
           SELECT nmr.id,
-                 (idx - 1) AS node_idx
-            FROM navigation_module_revisions nmr,
+                 (idx - 1)::int AS node_idx
+            FROM metadata.navigation_module_revisions nmr,
                  jsonb_array_elements(nmr.layout -> 'nodes')
                  WITH ORDINALITY AS t(node, idx)
            WHERE node ->> 'key' = 'studio'
              AND NOT (node -> 'children' @> '[{"key": "studio.views"}]'::jsonb)
         ) target
-       WHERE navigation_module_revisions.id = target.id
+       WHERE metadata.navigation_module_revisions.id = target.id
     `);
   }
 }

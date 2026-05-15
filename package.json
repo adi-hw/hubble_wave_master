@@ -68,7 +68,8 @@
     "selftest:permissions-coverage": "npx tsx tools/scanners/permissions-annotation-coverage-selftest.ts",
     "abac-coverage:check": "npx tsx tools/scanners/abac-coverage-check.ts",
     "selftest:abac-coverage": "npx tsx tools/scanners/abac-coverage-check-selftest.ts",
-    "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts"
+    "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts",
+    "prelude:validate": "npx tsx scripts/prelude-validate.ts"
   },
   "private": true,
   "dependencies": {
