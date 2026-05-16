@@ -101,7 +101,7 @@ Baseline uses normal `CREATE INDEX` (transactional, correct on empty tables). Th
 ### Validation
 
 - `npm run db:reset:instance && npm run migrate:instance && npm run seed:instance` succeeds with zero errors.
-- Compact **schema manifest + hash** comparison: baseline DDL output matches the master-state DB schema (after running the 98 incremental migrations) modulo cosmetic differences. Manifest committed for archaeology; raw `pg_dump` diff only if it stays small.
+- Compact **schema manifest + hash** committed for archaeology. The manifest captures the baseline's intended end-state schema. A separate "intentional deltas" note enumerates places where baseline differs from master-state-after-98-migrations (the known list: `identity.platform_permissions` replaces `identity.permissions`; `identity.role_permissions.permission_code` replaces `permission_id`; `CollectionDefinition.secure_fields_by_default DEFAULT TRUE` replaces `DEFAULT FALSE`). Cosmetic differences also surface in the manifest and are reviewed but not blocking. Raw `pg_dump` diff only if it stays small.
 - `prelude-validate.ts` happy + negative paths green.
 
 ### Archival
@@ -111,13 +111,28 @@ Baseline uses normal `CREATE INDEX` (transactional, correct on empty tables). Th
 
 ### Baseline is the foundation, not the end state
 
-The Pre-W2 baseline is a one-time jump from the 98-migration archaeology to a clean starting point. Subsequent W2 streams ADD schema changes forward on top of the baseline as normal evolution:
+The Pre-W2 baseline is a one-time jump from the 98-migration archaeology to a clean starting point. The baseline reflects the **end-state schema for known W2 reshapes**:
 
-- Stream 1 adds `control_plane.key_metadata` table (control-plane ES256 migration).
-- Stream 2 reshapes `identity.permissions` → `identity.platform_permissions` (code-keyed PK) and rewires `identity.role_permissions` to FK on `permission_code text`. (This reshape may also land in the baseline itself if it's clearly the end-state shape — Stream 2's planning settles which side of the line; either choice is consistent with this section.)
-- Stream 2 changes `CollectionDefinition.secure_fields_by_default` default to `TRUE`.
+- `identity.platform_permissions` (code-keyed PK) is in the baseline. The old `identity.permissions` table does not exist.
+- `identity.role_permissions` is created with `permission_code text` FK in the baseline. No UUID `permission_id` ever exists post-baseline.
+- `CollectionDefinition.secure_fields_by_default DEFAULT TRUE` is in the baseline DDL.
+
+Subsequent W2 streams ADD schema changes forward on top of the baseline as normal evolution. The known forward migration:
+
+- Stream 1 adds the control-plane `key_metadata` table (control-plane ES256 migration). See "Control-plane schema policy" below for placement.
 
 **There is no W2-close re-squash.** The baseline ships as-is and remains the foundation; W2 migrations are normal forward evolution. The final fresh-DB validation in `scripts/w2-validate.ts` runs the full chain: **baseline → all W2 migrations → bootstrap scripts → assertions**.
+
+### Control-plane schema policy
+
+**Control-plane baseline tables stay in the `public` schema.** The control-plane is a small bounded domain (admin users, refresh tokens, revoked tokens, customers, instances, packs, licenses, telemetry). Domain schemas add ceremony without operational benefit there.
+
+This means:
+- Stream 1's new control-plane `key_metadata` table is created in `public` (no `control_plane.` prefix in the DDL — the database is itself the control-plane DB).
+- The current `refresh-token.entity.ts:26` `schema: 'identity'` declaration is a bug — control-plane has no `identity` schema. Stream 1's control-plane ES256 PR also fixes this entity declaration to either `schema: 'public'` or no `schema` field (TypeORM default).
+- Spec references to "`control_plane.key_metadata`" elsewhere in this document should be read as the control-plane DB's `key_metadata` table, not as a schema-qualified name.
+
+The instance plane retains its 10 domain schemas from the Prelude.
 
 ### Deliverable
 
@@ -186,8 +201,8 @@ The ambiguous `roles: string[]` field is **deleted**. The ambiguous `permissions
 **File:** `libs/authorization/src/lib/authorization.service.ts:1369` and call sites.
 
 - `toAbacPrincipal` asserts `ctx.roleIds` populated; throws on absence. No `ctx.roles`-as-UUIDs fallback branch.
-- `CollectionAccessRule.principalIds` and `PropertyAccessRule.principalIds` matching is UUID-only.
-- Tests that inject `attributes.roleIds` directly are rewritten to use a fixture that goes through `IdentityResolverAdapter` to populate both fields together.
+- ACL rule matching is UUID-only across all three principal-kind columns: `CollectionAccessRule.roleId` / `groupId` / `userId` (and same on `PropertyAccessRule`) are matched against the principal's `roleIds[]` / `groupIds[]` / `userId` respectively. No code-based fallback at any principal-kind column.
+- Tests that inject `attributes.roleIds` directly are rewritten to use a fixture that goes through `IdentityResolverAdapter` to populate `roleIds` + `roleCodes` together.
 
 ### 1.3 Control-plane HS256 → ES256 migration
 
@@ -437,8 +452,8 @@ This is the upstream change Stream 4 depends on: the unified Typesense + pgvecto
 - Any code site explicitly passing `false` is reviewed. Greenfield expectation: zero legitimate cases.
 
 **Test sweep:**
-- Existing tests relying on `secureFieldsByDefault=false`'s legacy-allow fallback are rewritten to test the deny path.
-- The two tests protecting the legacy-allow branch itself stay (the branch remains in the evaluator for explicit per-collection opt-out, which is a customer-facing capability).
+- Existing tests relying on `secureFieldsByDefault=false`'s explicit opt-out default-allow branch are rewritten to test the deny path.
+- The two tests protecting the explicit opt-out default-allow branch itself stay (the branch remains in the evaluator for explicit per-collection opt-out, which is a customer-facing capability for low-sensitivity collections).
 - New test: `secureFieldsByDefault=true` + no rules → field denied + provenance level-7.
 
 ### 2.9 `/authorization/explain` endpoint + audit provenance integration
@@ -478,10 +493,10 @@ All PRs green at HEAD. PR #3 depends on #1 + #2.
 - `apps/api/src/app/ava/search/search-query.service.ts:179` admin `allow_all` branch.
 - Ad-hoc permission strings in controllers not aligned to registry.
 - Stale frontend permission constants in `apps/web-client/**` and `apps/web-control-plane/**` — replaced by registry codegen typed enum.
-- `secureFieldsByDefault: false` defaults in entity definitions / DTOs (excluding the two tests protecting the legacy-allow branch).
-- Existing `identity.permissions` UUID-keyed table — replaced by `identity.platform_permissions` (code-keyed) in baseline.
-- UUID `permission_id` columns on `role_permissions` — replaced by `permission_code text`.
+- `secureFieldsByDefault: false` defaults in entity definitions / DTOs (excluding the two tests protecting the explicit opt-out default-allow branch).
 - Any wildcard-style permission expansion logic in `PermissionsGuard` (canon §28.6 forbids; verify deleted).
+
+(The `identity.permissions` table and UUID `permission_id` columns on `role_permissions` are not Stream-2 deletions — they are absent from the Pre-W2 baseline. See Pre-W2 gate ledger in §6.4.)
 
 ---
 
@@ -495,7 +510,7 @@ All PRs green at HEAD. PR #3 depends on #1 + #2.
 
 Uses TypeScript compiler API (`ts-morph` or raw `typescript.createProgram`) to walk:
 - Every class decorated with `@Controller(...)` in `apps/api/src/**` AND `apps/control-plane/src/**`.
-- Every method on that class decorated with an HTTP method decorator (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@All`, `@Options`, `@Head`).
+- Every method on that class decorated with an HTTP-handler decorator: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@All`, `@Options`, `@Head`, **`@Sse`**. SSE endpoints (Stream 4's `/identity/me/events` and `/auth/me/events`) are within scanner scope and require a primary boundary decision like any other endpoint.
 
 For each handler, the scanner:
 1. Collects class-level + method-level decorators.
@@ -515,7 +530,7 @@ Per handler, the primary decorator is selected by route shape:
 - **User identity** (e.g., `/users/me`, `/auth/profile`, `/sessions/me`) → `@AuthenticatedOnly()`.
 - **Public** (e.g., `/health`, `/.well-known/jwks.json`, `/api/auth/login`) → `@Public()` with one-line rationale comment.
 
-**Redundant `@Roles`** (where `@RequirePermission` already expresses the capability) is **deleted**. Capability is the contract; role is one way a user receives it. Exception: routes that genuinely depend on a control-plane role hierarchy or temporary class-level narrowing not expressible as a platform capability. Such cases are rare and scanner-visible as auxiliary, never primary.
+**Redundant `@Roles`** (where `@RequirePermission` already expresses the capability) is **deleted**. Capability is the contract; role is one way a user receives it. Exception: routes that genuinely depend on a control-plane role hierarchy or rare class-level narrowing not expressible as a platform capability. Such cases are scanner-visible as auxiliary, never primary.
 
 ### 3.3 `PermissionsGuard` runtime flip
 
@@ -528,10 +543,10 @@ After all 597 handlers are annotated and the AST coverage scanner is at 100%, th
 - `@RequireCollectionAccess(opts)` → handled by `CollectionAccessGuard` (Stream 2); `PermissionsGuard` defers.
 
 **Unannotated handler fallback** (should be unreachable due to scanner CI gate):
-- **Production:** returns minimal 403, logs `ERROR` level with route + handler name, records `RuntimeAnomalyService.record(...)` event. User does NOT see "server error" for authorization misconfiguration.
-- **Non-production / test:** throws `InternalServerErrorException('Handler missing boundary decision: <name>')` for loud config failure.
+- **Test + local dev:** throws `InternalServerErrorException('Handler missing boundary decision: <name>')` for loud config failure. Developers see the error immediately.
+- **All other environments (staging, prod, demo, sandbox, any shared deploy):** returns minimal closed 403, logs `ERROR` level with route + handler name, records `RuntimeAnomalyService.record(...)` event. Users never see "server error" for an authorization misconfiguration.
 
-The check is `process.env.NODE_ENV !== 'production'`.
+The trigger is an explicit env flag `HW_LOUD_AUTH_MISCONFIG=true`, set only in test/local-dev profiles. Defaults to false. `NODE_ENV` is not used for this decision because staging is `NODE_ENV=production` but should not surface 500s to operators or users.
 
 **403 response shape:**
 
@@ -762,7 +777,8 @@ No new top-level audit column. Standardized shape inside existing `additionalDat
 - Login as non-admin (no `identity:user:manage`) → `GET /api/users` → 403 with body matching `{ statusCode: 403, message: "Permission denied", code: "PERMISSION_DENIED" }` exactly.
 - Admin → `GET /authorization/explain?userId=X&collectionId=Y` → 200 with provenance.
 - `GET /collections/:id/records/:recordId` → response carries `permissions.fields` map.
-- Service token (svc-worker → svc-api audience) → `GET /api/work-orders` with `@AllowServiceToken + @RequireServiceScope('automation:invoke')` → 200. Without scope → 403. Without `@AllowServiceToken` → 401.
+- Service-token scope test: svc-worker → svc-api audience hits an automation endpoint (e.g., `POST /api/automation/rules/:id/invoke`) decorated `@AllowServiceToken + @RequireServiceScope('automation:invoke')`. With the scope claim → 200. Without the scope claim → 403. Without `@AllowServiceToken` on the endpoint → 401.
+- Service-token data-access test (separate concern from scope): svc-worker presents a token with `automation:invoke` scope and hits a data-ACL route like `GET /api/collections/work_order/records`. Access is determined by the service principal's `CollectionAccessRule` grants via the §28 evaluator, not by the JWT scope claim. Scope says "can call automation"; ACL says "can read work orders." Both layers apply independently.
 - Admin role retired → `permissionCodes` cache invalidates within 1s → next request to admin-only endpoint → 403.
 
 **Additional negative-case assertions:**
@@ -854,11 +870,13 @@ Properties that must hold across more than one stream. Verified by integration t
 
 ## Aggregate deletion ledger
 
-Single accounting across all streams. Excludes pre-W2 baseline deletions (98+8 incremental migrations, demo seed scripts).
+Single accounting across all streams.
 
-**Stream 1:** control-plane HS256 / `JWT_SECRET` paths; `UserRequestContext.roles` ambiguous field; `UserRequestContext.permissions` renamed; `AuthorizationService.toAbacPrincipal` `ctx.roles`-as-UUIDs fallback; `JwtAuthGuard` JWT-embedded-roles fallback; test fixtures injecting `attributes.roleIds`; security-bypass PUBLIC_ALLOWLIST entries for pre-ES256 control-plane paths.
+**Pre-W2 baseline (absent from the squashed baseline DDL — these don't exist post-baseline):** 98 instance migrations + 8 control-plane migrations from the pre-baseline archaeology; demo/sample seed scripts; `identity.permissions` UUID-keyed table (replaced by `identity.platform_permissions` code-keyed); UUID `permission_id` columns on `identity.role_permissions` (replaced by `permission_code text` FK); `CollectionDefinition.secure_fields_by_default DEFAULT FALSE` (replaced by `DEFAULT TRUE`).
 
-**Stream 2:** `search-query.service.ts:179` admin `allow_all` branch; ad-hoc permission strings not aligned to registry; stale frontend permission constants; `secureFieldsByDefault: false` defaults in entity/DTO definitions; existing `identity.permissions` table; UUID `permission_id` columns on `role_permissions`; wildcard-style permission expansion logic (if present).
+**Stream 1:** control-plane HS256 / `JWT_SECRET` paths; `UserRequestContext.roles` ambiguous field; `UserRequestContext.permissions` renamed; `AuthorizationService.toAbacPrincipal` `ctx.roles`-as-UUIDs fallback; `JwtAuthGuard` JWT-embedded-roles fallback; test fixtures injecting `attributes.roleIds`; security-bypass PUBLIC_ALLOWLIST entries for pre-ES256 control-plane paths; `refresh-token.entity.ts:26` erroneous `schema: 'identity'` declaration (control-plane has no `identity` schema).
+
+**Stream 2:** `search-query.service.ts:179` admin `allow_all` branch; ad-hoc permission strings not aligned to registry; stale frontend permission constants; `secureFieldsByDefault: false` defaults in entity/DTO definitions; wildcard-style permission expansion logic (if present).
 
 **Stream 3:** `tools/scanners/permissions-annotation-coverage.ts` (regex); `permissions.guard.ts` warn-and-allow branch; `docs/permissions-rollout-coverage.md`; `KNOWN_DEFERRED_OFFENDERS` entries for unannotated handlers; bare `@Roles('admin')` decorators where permission expresses the capability; duplicate `@RequirePermission` decorator at `apps/api/src/app/identity/roles/decorators/permission.decorator.ts` (if duplicate).
 
