@@ -5,7 +5,9 @@
  * Generates a deterministic schema manifest for the running instance and
  * control-plane databases. The manifest lists every table, column,
  * constraint, and index in sorted order, then emits a SHA-256 hash of
- * the full listing.
+ * the introspection content. The date header (line 2 of the output) is
+ * excluded from the hash so the hash is stable across calendar-day
+ * boundaries.
  *
  * Running this script twice against the same database should produce
  * byte-identical output — any drift between runs indicates a
@@ -236,11 +238,28 @@ function buildIntrospectionContent(): string {
 }
 
 /**
+ * Builds the full manifest including date header and hash in a single call.
+ * Returns the complete content string, introspection-only content, and hash.
+ */
+function buildFullManifest(): { content: string; introspectionContent: string; hash: string } {
+  const introspectionContent = buildIntrospectionContent();
+  const hash = createHash('sha256').update(introspectionContent).digest('hex');
+  const header = [
+    '# HubbleWave Schema Manifest',
+    `# Generated: ${new Date().toISOString().split('T')[0]}`,
+    '# Deterministic schema snapshot for baseline audit and drift detection.',
+    `# SHA-256 (of introspection content below): ${hash}`,
+    '',
+  ].join('\n');
+  return { content: header + introspectionContent, introspectionContent, hash };
+}
+
+/**
  * Self-validation: runs the same full manifest generation twice and verifies
  * the outputs are byte-identical. Exits 1 if they differ (indicates
  * non-deterministic query output or connection noise).
  *
- * Both introspection runs and the final rendered manifest (including the date
+ * Both introspection content and the final rendered manifest (including the date
  * header) must match — the date header is identical within a single calendar
  * day, and the SHA-256 is computed over the date-header-free introspection
  * content so it is stable across day boundaries.
@@ -250,33 +269,25 @@ function buildIntrospectionContent(): string {
 function runSelfTest(): void {
   process.stderr.write('Running self-test: two consecutive manifest generations should be byte-identical...\n');
 
-  const run1 = buildIntrospectionContent();
-  const run2 = buildIntrospectionContent();
+  const m1 = buildFullManifest();
+  const m2 = buildFullManifest();
 
-  if (run1 !== run2) {
+  if (m1.introspectionContent !== m2.introspectionContent) {
     process.stderr.write('FAIL: introspection content differs between run 1 and run 2.\n');
     process.exit(1);
   }
 
-  // Verify the full rendered manifest (including date header) is also byte-identical.
-  const date = new Date().toISOString().split('T')[0];
-  const header = [
-    '# HubbleWave Schema Manifest',
-    `# Generated: ${date}`,
-    '# Deterministic schema snapshot for baseline audit and drift detection.',
-    `# SHA-256 (of introspection content below): ${createHash('sha256').update(run1).digest('hex')}`,
-    '',
-  ].join('\n');
-
-  const manifest1 = header + run1;
-  const manifest2 = header + run2;
-
-  if (manifest1 !== manifest2) {
+  if (m1.content !== m2.content) {
     process.stderr.write('FAIL: full manifest output differs between run 1 and run 2.\n');
     process.exit(1);
   }
 
-  process.stderr.write('PASS: introspection content and full manifest output are byte-identical across both runs.\n');
+  if (m1.hash !== m2.hash) {
+    process.stderr.write('FAIL: hash differs between run 1 and run 2.\n');
+    process.exit(1);
+  }
+
+  process.stderr.write(`Self-test PASS — introspection, full manifest, and hash all byte-identical across two independent calls. SHA-256: ${m1.hash}\n`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -296,28 +307,13 @@ function main(): void {
     return;
   }
 
-  // The introspection content is the deterministic, date-header-free portion
-  // that the SHA-256 is computed over. The date header is written for human
-  // readability but deliberately excluded from hashing so the hash is stable
-  // across calendar-day boundaries.
-  const introspectionContent = buildIntrospectionContent();
-  const hash = createHash('sha256').update(introspectionContent).digest('hex');
-
-  const header = [
-    '# HubbleWave Schema Manifest',
-    `# Generated: ${new Date().toISOString().split('T')[0]}`,
-    '# Deterministic schema snapshot for baseline audit and drift detection.',
-    `# SHA-256 (of introspection content below): ${hash}`,
-    '',
-  ].join('\n');
-
-  const fullOutput = header + introspectionContent;
+  const manifest = buildFullManifest();
 
   // Emit the manifest
-  process.stdout.write(fullOutput);
+  process.stdout.write(manifest.content);
 
   // Echo the hash to stderr as a convenience for capture in CI logs
-  process.stderr.write(`\nSHA-256: ${hash}\n`);
+  process.stderr.write(`\nSHA-256: ${manifest.hash}\n`);
 }
 
 main();
