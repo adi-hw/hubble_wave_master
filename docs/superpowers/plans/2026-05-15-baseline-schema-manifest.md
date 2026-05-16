@@ -1,7 +1,7 @@
-# HubbleWave Schema Manifest
+﻿# HubbleWave Schema Manifest
 # Generated: 2026-05-16
 # Deterministic schema snapshot for baseline audit and drift detection.
-
+# SHA-256 (of introspection content below): 11a9920b356501fe61466e55e1a6f82da3e04650106291f8115282d8f8972b69
 # Instance database: hubblewave
 
 ## Tables and Columns

@@ -211,21 +211,72 @@ function introspectDatabase(dbName: string): string {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Self-validation: runs the same introspection twice for the instance DB and
- * verifies the outputs are byte-identical. Exits 1 if they differ (indicates
+ * Builds the deterministic introspection content string (the portion that is
+ * hashed). This is the same content emitted after the date header in the
+ * manifest, and is what `--self-test` compares across runs.
+ *
+ * Keeping the hashed portion separate from the date header means the SHA-256
+ * is stable across calendar-day boundaries — only the database schema drives
+ * the hash.
+ */
+function buildIntrospectionContent(): string {
+  const parts: string[] = [];
+
+  parts.push(`# Instance database: ${INSTANCE_DB}`);
+  parts.push('');
+  parts.push(introspectDatabase(INSTANCE_DB));
+  parts.push('');
+
+  parts.push(`# Control-plane database: ${CP_DB}`);
+  parts.push('');
+  parts.push(introspectDatabase(CP_DB));
+  parts.push('');
+
+  return parts.join('\n');
+}
+
+/**
+ * Self-validation: runs the same full manifest generation twice and verifies
+ * the outputs are byte-identical. Exits 1 if they differ (indicates
  * non-deterministic query output or connection noise).
+ *
+ * Both introspection runs and the final rendered manifest (including the date
+ * header) must match — the date header is identical within a single calendar
+ * day, and the SHA-256 is computed over the date-header-free introspection
+ * content so it is stable across day boundaries.
  *
  * Activated when --self-test flag is passed.
  */
 function runSelfTest(): void {
-  process.stderr.write('Running self-test: two consecutive introspections should be identical...\n');
-  const run1 = introspectDatabase(INSTANCE_DB);
-  const run2 = introspectDatabase(INSTANCE_DB);
+  process.stderr.write('Running self-test: two consecutive manifest generations should be byte-identical...\n');
+
+  const run1 = buildIntrospectionContent();
+  const run2 = buildIntrospectionContent();
+
   if (run1 !== run2) {
-    process.stderr.write('FAIL: outputs differ between run 1 and run 2.\n');
+    process.stderr.write('FAIL: introspection content differs between run 1 and run 2.\n');
     process.exit(1);
   }
-  process.stderr.write('PASS: outputs are byte-identical.\n');
+
+  // Verify the full rendered manifest (including date header) is also byte-identical.
+  const date = new Date().toISOString().split('T')[0];
+  const header = [
+    '# HubbleWave Schema Manifest',
+    `# Generated: ${date}`,
+    '# Deterministic schema snapshot for baseline audit and drift detection.',
+    `# SHA-256 (of introspection content below): ${createHash('sha256').update(run1).digest('hex')}`,
+    '',
+  ].join('\n');
+
+  const manifest1 = header + run1;
+  const manifest2 = header + run2;
+
+  if (manifest1 !== manifest2) {
+    process.stderr.write('FAIL: full manifest output differs between run 1 and run 2.\n');
+    process.exit(1);
+  }
+
+  process.stderr.write('PASS: introspection content and full manifest output are byte-identical across both runs.\n');
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -245,34 +296,27 @@ function main(): void {
     return;
   }
 
-  const lines: string[] = [];
+  // The introspection content is the deterministic, date-header-free portion
+  // that the SHA-256 is computed over. The date header is written for human
+  // readability but deliberately excluded from hashing so the hash is stable
+  // across calendar-day boundaries.
+  const introspectionContent = buildIntrospectionContent();
+  const hash = createHash('sha256').update(introspectionContent).digest('hex');
 
-  lines.push('# HubbleWave Schema Manifest');
-  lines.push(`# Generated: ${new Date().toISOString().split('T')[0]}`);
-  lines.push('# Deterministic schema snapshot for baseline audit and drift detection.');
-  lines.push('');
+  const header = [
+    '# HubbleWave Schema Manifest',
+    `# Generated: ${new Date().toISOString().split('T')[0]}`,
+    '# Deterministic schema snapshot for baseline audit and drift detection.',
+    `# SHA-256 (of introspection content below): ${hash}`,
+    '',
+  ].join('\n');
 
-  // Instance database
-  lines.push(`# Instance database: ${INSTANCE_DB}`);
-  lines.push('');
-  const instanceContent = introspectDatabase(INSTANCE_DB);
-  lines.push(instanceContent);
-  lines.push('');
-
-  // Control-plane database
-  lines.push(`# Control-plane database: ${CP_DB}`);
-  lines.push('');
-  const cpContent = introspectDatabase(CP_DB);
-  lines.push(cpContent);
-  lines.push('');
-
-  const fullOutput = lines.join('\n');
+  const fullOutput = header + introspectionContent;
 
   // Emit the manifest
   process.stdout.write(fullOutput);
 
-  // Emit hash to stderr so it doesn't pollute the file when redirecting stdout
-  const hash = createHash('sha256').update(fullOutput).digest('hex');
+  // Echo the hash to stderr as a convenience for capture in CI logs
   process.stderr.write(`\nSHA-256: ${hash}\n`);
 }
 
