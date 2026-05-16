@@ -16,6 +16,14 @@
  *     transaction).
  *   - If the table is NOT a growth table, blocking CREATE INDEX is
  *     acceptable (reference / config tables are bounded in size).
+ *   - EXCEPTION (Pre-W2): If the migration ALSO creates the growth table
+ *     in its own DDL via `CREATE TABLE`, blocking CREATE INDEX on it is
+ *     allowed. The table is empty at index-build time, so ACCESS EXCLUSIVE
+ *     contention is impossible. Squash baselines and fresh-install seeds
+ *     all match this pattern. The exception applies only to Check 1
+ *     (blocking vs CONCURRENTLY); Check 2 (`static transaction = false`
+ *     when CONCURRENTLY is used) is independent of when the table was
+ *     created — CONCURRENTLY can never run inside a transaction.
  *
  * Growth tables (configurable GROWTH_TABLE_PATTERNS below):
  *   audit_logs, collection_records, automation_execution_logs,
@@ -25,9 +33,13 @@
  * Pre-existing (legacy) migration files that violate the rule are tracked
  * in LEGACY_ALLOWLIST below. Each entry requires a rationale. Adding a
  * NEW entry to this allowlist is forbidden — only existing migrations
- * (already shipped to customer instances) may be listed here.
+ * (already shipped to customer instances) may be listed here. The
+ * same-migration-table-creation exception above subsumes several existing
+ * entries; Task 4 (incremental-migration deletion) is the natural place
+ * to shrink the allowlist once the entries' underlying files are removed.
  *
  * Refs: F046, W6.A, Plan Fix 26 — performance wave.
+ *       Phase 3 W2 Task 3 — Pre-W2 baseline scanner exception.
  */
 
 import { readdirSync, readFileSync, statSync } from 'fs';
@@ -126,21 +138,36 @@ const LEGACY_ALLOWLIST: Array<{
  * Matches a blocking CREATE INDEX statement — i.e., CREATE INDEX (optionally
  * UNIQUE) that is NOT immediately followed by the word CONCURRENTLY.
  *
- * Captures the ON "tableName" / ON tableName clause so we can check
- * whether the table is a growth table.
+ * Captures the ON clause's table name. Accepts unqualified (`ON tablename`),
+ * quoted (`ON "tablename"`), or schema-qualified (`ON schema.tablename` /
+ * `ON "schema"."tablename"`) references — capturing just the table name in
+ * the named group. The optional `(?:ONLY\s+)?` accepts `CREATE INDEX ... ON
+ * ONLY <table>` (PG partition-table syntax).
  *
  * Uses `[\s\S]*?` (lazy) so it matches across lines without crossing to
  * a second CREATE INDEX statement on the same file. The negative lookahead
  * `(?!\s+CONCURRENTLY)` ensures `CREATE INDEX CONCURRENTLY` is skipped.
  */
 const BLOCKING_CREATE_INDEX_RE =
-  /CREATE\s+(?:UNIQUE\s+)?INDEX\b(?!\s+CONCURRENTLY)([\s\S]*?)ON\s+"?(\w+)"?/gi;
+  /CREATE\s+(?:UNIQUE\s+)?INDEX\b(?!\s+CONCURRENTLY)([\s\S]*?)ON\s+(?:ONLY\s+)?(?:"?\w+"?\.)?"?(\w+)"?/gi;
 
 /**
  * Detects the presence of `static transaction = false` (with or without
  * `public`, `readonly`, or type annotation variants TypeORM supports).
  */
 const TRANSACTION_FALSE_RE = /static\s+transaction\s*=\s*false/;
+
+/**
+ * Matches a CREATE TABLE statement and captures the table name. Accepts
+ * `IF NOT EXISTS`, schema-qualified or unqualified table names, quoted or
+ * unquoted identifiers. Used to build the set of tables created in a
+ * migration for the same-migration exception (see file header).
+ *
+ * Does NOT match `CREATE TEMP TABLE`, `CREATE UNLOGGED TABLE`, etc. — those
+ * aren't growth tables that need protection.
+ */
+const CREATE_TABLE_RE =
+  /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?\w+"?\.)?"?(\w+)"?/gi;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -171,6 +198,21 @@ function isLegacyAllowlisted(filePath: string): boolean {
   return LEGACY_ALLOWLIST.some((entry) => entry.file === rel);
 }
 
+/**
+ * Returns the set of table names this migration creates via CREATE TABLE,
+ * normalized to lowercase + schema-stripped. Used to apply the
+ * same-migration-table-creation exception in Check 1.
+ */
+function tablesCreatedInMigration(content: string): Set<string> {
+  const created = new Set<string>();
+  const re = new RegExp(CREATE_TABLE_RE.source, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    if (m[1]) created.add(m[1].toLowerCase());
+  }
+  return created;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,16 +239,20 @@ function analyzeFile(filePath: string): Violation[] {
   }
 
   const violations: Violation[] = [];
+  const createdHere = tablesCreatedInMigration(content);
 
   // ── Check 1: blocking CREATE INDEX on a growth table ──────────────────────
   const createRe = new RegExp(BLOCKING_CREATE_INDEX_RE.source, 'gi');
   let m: RegExpExecArray | null;
   while ((m = createRe.exec(content)) !== null) {
     // Group 1 = the content between INDEX and ON (not used for table name).
-    // Group 2 = the table name captured after ON "tableName".
+    // Group 2 = the table name captured after ON [schema.]table.
     const rawTable = m[2];
     if (!rawTable) continue;
     if (!isGrowthTable(rawTable)) continue;
+    // Same-migration-table-creation exception: empty-at-index-build-time
+    // means no ACCESS EXCLUSIVE contention possible.
+    if (createdHere.has(rawTable.toLowerCase())) continue;
 
     const hasTransactionFalse = TRANSACTION_FALSE_RE.test(content);
 
@@ -227,8 +273,11 @@ function analyzeFile(filePath: string): Violation[] {
 
   // ── Check 2: CONCURRENTLY used but transaction = false is absent ──────────
   //    Only applies if the file has CREATE INDEX CONCURRENTLY on a growth table.
+  //    The same-migration-table-creation exception does NOT apply here:
+  //    CONCURRENTLY can never run inside a transaction regardless of when the
+  //    target table was created.
   const concurrentRe =
-    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b([\s\S]*?)ON\s+"?(\w+)"?/gi;
+    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b([\s\S]*?)ON\s+(?:ONLY\s+)?(?:"?\w+"?\.)?"?(\w+)"?/gi;
   while ((m = concurrentRe.exec(content)) !== null) {
     const rawTable = m[2];
     if (!rawTable) continue;
