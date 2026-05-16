@@ -28,19 +28,30 @@
 
 - [ ] **Step 1: Confirm starting commit + clean tree**
 
-Run:
 ```
-git rev-parse HEAD && git status --short
+git rev-parse HEAD
+git status --short
 ```
 Expected: HEAD at `a1446c8` or later (spec commit); only `.claude/settings.local.json` and untracked `AGENTS.md` in working tree (founder-known noise).
 
 - [ ] **Step 2: Confirm Prelude scanners + tests green**
 
-Run:
+Each scanner on its own line; PowerShell 5.1 doesn't support `&&` chaining. If any throws or returns non-zero `$LASTEXITCODE`, STOP — Prelude regression must be resolved before W2 starts.
+
 ```
-npm run authz:check && npm run audit:check && npm run security:check && npm run service-boundary:check && npm run deps:check && npm run dead-code:check
+npm run authz:check
+if ($LASTEXITCODE -ne 0) { throw 'authz:check failed' }
+npm run audit:check
+if ($LASTEXITCODE -ne 0) { throw 'audit:check failed' }
+npm run security:check
+if ($LASTEXITCODE -ne 0) { throw 'security:check failed' }
+npm run service-boundary:check
+if ($LASTEXITCODE -ne 0) { throw 'service-boundary:check failed' }
+npm run deps:check
+if ($LASTEXITCODE -ne 0) { throw 'deps:check failed' }
+npm run dead-code:check
+if ($LASTEXITCODE -ne 0) { throw 'dead-code:check failed' }
 ```
-Expected: all six exit 0. If any fails, STOP — Prelude regression must be resolved before W2 starts.
 
 - [ ] **Step 3: Confirm prelude-validate.ts happy + negative paths**
 
@@ -95,9 +106,20 @@ Add-Content -Path .gitignore -Value '.dev/baseline/'
 
 The Docker container name from `docker-compose.yml:6` is `hw_postgres` (underscore, not hyphen). Use `Out-File -Encoding utf8` rather than Unix-style `>`:
 ```
-docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_instance | Out-File -Encoding utf8 .dev/baseline/instance-schema.sql
+$pgUser = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { 'hubblewave' }
+$instanceDb = if ($env:DB_NAME) { $env:DB_NAME } else { 'hubblewave' }
+$cpDb = if ($env:CONTROL_PLANE_DB_NAME) { $env:CONTROL_PLANE_DB_NAME } else { 'hubblewave_control_plane' }
+
+# Confirm both databases exist before dumping. setup.ts creates them; if you skipped setup, create them manually:
+#   docker exec hw_postgres psql -U $pgUser -c "CREATE DATABASE $cpDb;" -d postgres
+docker exec hw_postgres psql -U $pgUser -lqt | Select-String -Pattern $instanceDb | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "instance DB '$instanceDb' missing — run npm run setup first" }
+docker exec hw_postgres psql -U $pgUser -lqt | Select-String -Pattern $cpDb | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "control-plane DB '$cpDb' missing — run npm run setup first" }
+
+docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U $pgUser -d $instanceDb | Out-File -Encoding utf8 .dev/baseline/instance-schema.sql
 if ($LASTEXITCODE -ne 0) { throw 'instance pg_dump failed' }
-docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_control_plane | Out-File -Encoding utf8 .dev/baseline/control-plane-schema.sql
+docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U $pgUser -d $cpDb | Out-File -Encoding utf8 .dev/baseline/control-plane-schema.sql
 if ($LASTEXITCODE -ne 0) { throw 'control-plane pg_dump failed' }
 ```
 Expected: two SQL files written; both exit checks pass.
@@ -178,8 +200,8 @@ Note: no `.sql` files are staged — the DDL is embedded inline in the migration
 - Create: `migrations/instance/0000000000004-seed-system-collections.ts`
 - Create: `migrations/instance/0000000000005-seed-default-navigation.ts`
 - Keep: `scripts/seed-admin-user.ts` (post-migration bootstrap — exists today)
-- **Create (W2 new deliverable):** `scripts/seed-instance-key-bootstrap.ts` (post-migration bootstrap for instance-plane ES256 keys per canon §29.9; does NOT exist today — scripts/ has bootstrap-buckets.ts, bootstrap-typesense.ts, generate-pack-signing-keypair.ts, seed-admin-user.ts only)
-- **Create (W2 new deliverable, Stream 1 PR3):** `scripts/seed-control-plane-key-bootstrap.ts` (control-plane analog)
+
+Pre-W2 does NOT create or invoke instance/control-plane key bootstrap scripts. Canon §29.9's `LocalEs256KeySigningService` auto-generates `.dev/keys/` on first `npm run dev:api` for the instance plane today; control-plane joins that pattern via Stream 1 PR3 (new `scripts/seed-control-plane-key-bootstrap.ts` and the control-plane `key_metadata` migration both ship in Stream 1).
 
 - [ ] **Step 1: Extract structural seed SQL from current state**
 
@@ -207,7 +229,7 @@ Same shape for the other four seeds.
 
 - [ ] **Step 3: Verify bootstrap scripts are env-dependent only**
 
-`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration), unchanged from current code. **Create new** `scripts/seed-instance-key-bootstrap.ts` (env/filesystem-dependent — reads/writes `.dev/keys/`; idempotent if a keypair already exists; matches canon §29.9 `LocalEs256KeySigningService` pattern). This is a NEW script — scripts/ currently has only bootstrap-buckets.ts, bootstrap-typesense.ts, generate-pack-signing-keypair.ts, seed-admin-user.ts.
+`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration), unchanged from current code. No other bootstrap scripts are added in Pre-W2 — the instance plane's `LocalEs256KeySigningService` per canon §29.9 auto-generates `.dev/keys/` on first run of `npm run dev:api`, so no explicit instance key bootstrap script is needed at this gate. (Stream 1 PR3 adds the control-plane analog script and the control-plane `key_metadata` migration as part of the HS256→ES256 migration.)
 
 - [ ] **Step 4: Delete demo/sample seed scripts**
 
@@ -279,18 +301,20 @@ Expected: tag pushed to origin.
 
 - [ ] **Step 2: List files to delete (PowerShell)**
 
+The Pre-W2 keep-list contains only baseline + deterministic seed migrations. Stream 1 migrations (e.g. control-plane `0000000000010-add-key-metadata.ts`, instance `0000000000020-role-code-immutable-trigger.ts`) do not yet exist and will be added by Stream 1 PRs; they don't need to be in the Pre-W2 keep-list.
+
 ```
-$keepPrefixes = @('0000000000000','0000000000001','0000000000002','0000000000003','0000000000004','0000000000005','0000000000020')
+$keepPrefixes = @('0000000000000','0000000000001','0000000000002','0000000000003','0000000000004','0000000000005')
 git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) }
-git ls-files migrations/control-plane/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($name.StartsWith('0000000000000') -or $name.StartsWith('0000000000010')) }
+git ls-files migrations/control-plane/ | Where-Object { -not ((Split-Path $_ -Leaf).StartsWith('0000000000000')) }
 ```
-Expected: ~98 instance files + ~8 control-plane files listed. The baseline + seed + Stream-1-added migration files (0000000000020-role-code-immutable-trigger for instance; 0000000000010-add-key-metadata for control-plane) are excluded from deletion.
+Expected: ~98 instance files + ~8 control-plane files listed. The baseline + seed migrations are excluded from deletion.
 
 - [ ] **Step 3: Delete the listed files**
 
 ```
 git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) } | ForEach-Object { git rm $_ }
-git ls-files migrations/control-plane/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($name.StartsWith('0000000000000') -or $name.StartsWith('0000000000010')) } | ForEach-Object { git rm $_ }
+git ls-files migrations/control-plane/ | Where-Object { -not ((Split-Path $_ -Leaf).StartsWith('0000000000000')) } | ForEach-Object { git rm $_ }
 ```
 Reuse the same Where-Object filter so deletion matches Step 2's listing exactly. Confirm via `git status --short migrations/` before commit.
 
@@ -298,24 +322,24 @@ Reuse the same Where-Object filter so deletion matches Step 2's listing exactly.
 
 Each command on its own line with explicit exit-status check; a semicolon-chained one-liner would let a mid-chain failure silently mask under a later command's success.
 
+Pre-W2 does NOT invoke `seed-instance-key-bootstrap.ts` or `seed-control-plane-key-bootstrap.ts`. Those scripts and the control-plane `key_metadata` table are Stream 1 deliverables — they don't exist at the Pre-W2 gate. The instance plane's `LocalEs256KeySigningService` auto-generates `.dev/keys/` on first `npm run dev:api` per canon §29.9; control-plane still runs on HS256 (`JWT_SECRET`) until Stream 1 PR3 lands. Pre-W2 verifies migrations + admin seed only.
+
 ```
 docker-compose down -v
 if ($LASTEXITCODE -ne 0) { throw 'docker-compose down failed' }
 docker-compose up -d postgres redis
 if ($LASTEXITCODE -ne 0) { throw 'docker-compose up failed' }
 Start-Sleep -Seconds 5
+npm run setup:skip-docker      # ensures both DBs are created; idempotent
+if ($LASTEXITCODE -ne 0) { throw 'setup:skip-docker failed' }
 npm run migration:run:instance
 if ($LASTEXITCODE -ne 0) { throw 'instance migration failed' }
 npm run migration:run:control-plane
 if ($LASTEXITCODE -ne 0) { throw 'control-plane migration failed' }
 npx tsx scripts/seed-admin-user.ts
 if ($LASTEXITCODE -ne 0) { throw 'seed-admin-user failed' }
-npx tsx scripts/seed-instance-key-bootstrap.ts
-if ($LASTEXITCODE -ne 0) { throw 'instance key bootstrap failed' }
-npx tsx scripts/seed-control-plane-key-bootstrap.ts
-if ($LASTEXITCODE -ne 0) { throw 'control-plane key bootstrap failed' }
 ```
-Expected: all 7 commands succeed; baseline + seeds + bootstrap produce a fully-booted DB.
+Expected: all 5 commands succeed; baseline + structural seeds produce a fully-migrated DB ready for Stream 1 work to extend.
 
 - [ ] **Step 5: Run prelude-validate**
 
@@ -448,11 +472,31 @@ For each file in the Step 1 inventory, rewrite: `ctx.roles` → `ctx.roleCodes` 
 
 - [ ] **Step 8: Run lib + app builds**
 
-Run `npx nx build authorization && npx nx build auth-guard && npx nx build api && npx nx build control-plane`. Expected: all four green.
+Run each on its own line (PowerShell 5.1 has no `&&`):
+```
+npx nx build authorization
+if ($LASTEXITCODE -ne 0) { throw 'authorization build failed' }
+npx nx build auth-guard
+if ($LASTEXITCODE -ne 0) { throw 'auth-guard build failed' }
+npx nx build api
+if ($LASTEXITCODE -ne 0) { throw 'api build failed' }
+npx nx build control-plane
+if ($LASTEXITCODE -ne 0) { throw 'control-plane build failed' }
+```
+Expected: all four green.
 
 - [ ] **Step 9: Run lib + app tests**
 
-Run `npx nx test authorization && npx nx test auth-guard && npx nx test api`. Expected: all green (~115 authorization tests, ~50 auth-guard tests, ~600 api tests).
+Run each on its own line:
+```
+npx nx test authorization
+if ($LASTEXITCODE -ne 0) { throw 'authorization tests failed' }
+npx nx test auth-guard
+if ($LASTEXITCODE -ne 0) { throw 'auth-guard tests failed' }
+npx nx test api
+if ($LASTEXITCODE -ne 0) { throw 'api tests failed' }
+```
+Expected: all green (~115 authorization tests, ~50 auth-guard tests, ~600 api tests).
 
 - [ ] **Step 10: Commit + PR**
 
@@ -1028,7 +1072,10 @@ it('new default-deny: secureFieldsByDefault=true + no rules → field denied + p
 - [ ] **Step 5: Run authorization + api tests**
 
 ```
-npx nx test authorization && npx nx test api
+npx nx test authorization
+if ($LASTEXITCODE -ne 0) { throw 'authorization tests failed' }
+npx nx test api
+if ($LASTEXITCODE -ne 0) { throw 'api tests failed' }
 ```
 Expected: all green.
 
@@ -1145,7 +1192,11 @@ Add to `apps/api/test/integration/audit-provenance.spec.ts`: hit a `@RequirePerm
 
 ```
 npx nx run-many --target=build --projects=auth-guard,authorization,api,control-plane
-npx nx test auth-guard && npx nx test authorization && npx nx test api
+npx nx test auth-guard
+if ($LASTEXITCODE -ne 0) { throw 'auth-guard tests failed' }
+npx nx test authorization
+if ($LASTEXITCODE -ne 0) { throw 'authorization tests failed' }
+npx nx test api
 ```
 Expected: all green.
 
@@ -1703,7 +1754,9 @@ Edit `tools/authz-bypass-check.ts`: remove the F146 entry from `KNOWN_BYPASSES`.
 - [ ] **Step 6: Run scanner + test**
 
 ```
-npm run authz:check && npx nx test api --testPathPattern=dashboard-widget-authz
+npm run authz:check
+if ($LASTEXITCODE -ne 0) { throw 'authz:check failed' }
+npx nx test api --testPathPattern=dashboard-widget-authz
 ```
 Expected: both green.
 
@@ -2081,7 +2134,16 @@ After all 9 PRs (Tasks 32-40) merged:
 
 Run all scanners + harness:
 ```
-npm run authz:check && npm run audit:check && npm run security:check && npm run service-boundary:check && npm run deps:check && npm run dead-code:check && npm run permission-registry:check && npm run route-boundary:check && npm run no-hs256:check && npm run service-token:check && npm run no-untyped-req:check && npm run prelude:validate && npm run w2:validate
+$checks = @(
+  'authz:check', 'audit:check', 'security:check', 'service-boundary:check',
+  'deps:check', 'dead-code:check', 'permission-registry:check',
+  'route-boundary:check', 'no-hs256:check', 'service-token:check',
+  'no-untyped-req:check', 'prelude:validate', 'w2:validate'
+)
+foreach ($c in $checks) {
+  npm run $c
+  if ($LASTEXITCODE -ne 0) { throw "$c failed — W2 close blocked" }
+}
 ```
 Expected: all green.
 
