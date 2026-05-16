@@ -463,24 +463,35 @@ git commit -m "phase3-w2-pregate: TypeScript entity-model alignment with baselin
 
 In `scripts/prelude-validate.ts`, add three new assertions:
 
+Concrete shape (no extracted-helper API needed — query directly via the same dual-path docker / CI-fallback pattern the nav-seed assertion uses; a small `runDbScalar(query)` helper at the top of the file lets the three new assertions stay 5-line bodies):
+
 ```ts
-assert(await tableExists('identity.platform_permissions'), 'platform_permissions table present');
-assert(!(await tableExists('identity.permissions')), 'old permissions table absent');
-assert(await columnDefault('metadata.collection_definitions', 'secure_fields_by_default') === 'true', 'secureFieldsByDefault default flipped');
+assert('identity.platform_permissions table present', async () => {
+  const v = runDbScalar("SELECT count(*) FROM information_schema.tables WHERE table_schema='identity' AND table_name='platform_permissions'");
+  return v === '1' ? { ok: true } : { ok: false, detail: `expected count=1, got ${v}` };
+});
+assert('old identity.permissions table absent', async () => { /* count = 0 */ });
+assert('metadata.collection_definitions.secure_fields_by_default default = true', async () => { /* column_default === 'true' */ });
 ```
 
-- [ ] **Step 2: Run extended harness**
+- [ ] **Step 2: Fix the harness's `spawn` hang on Windows**
+
+The pre-Pre-W2 harness spawned apps/api with `stdio: ['ignore', 'pipe', 'pipe']` + `shell: true`. nx serve emits volumes of output during cold compile; the OS pipe buffer fills (~4KB) and cmd.exe-wrapped pipes block the child on the next write because the JS-side `.on('data', …)` drain doesn't keep up. The result: `npm run prelude:validate` hangs reliably on Windows.
+
+Switch to `stdio: 'ignore'`. Health is the primary readiness signal — and the only one, since there's no longer a startup-log buffer to scan. The pre-existing forbidden-pattern check (`UnhandledPromiseRejection`, `FATAL`, `unannotated endpoint passed through`) was already documented as "best-effort — buffer may be empty"; deleting it removes dead code per canon §1 + §14 rather than keeping a no-op with a "future PR will wire this" comment. The assertion description also tightens from `apps/api boots without ERROR/UnhandledPromiseRejection in startup log` to `apps/api boots and reports healthy within 180s` so the description matches the actual check.
+
+- [ ] **Step 3: Run extended harness**
 
 ```
 npm run prelude:validate
 ```
-Expected: 14 assertions pass (11 from Prelude + 3 new).
+Expected: 14 assertions pass (11 from Prelude including the assertion 5 swap from Task 4.5 + 3 new baseline-state). End-to-end with full rebuild + spawn — no `--skip-rebuild`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```
 git add scripts/prelude-validate.ts
-git commit -m "phase3-w2-pregate: prelude-validate asserts baseline reshape end-state"
+git commit -m "phase3-w2-pregate: prelude-validate baseline-reshape assertions + Windows spawn fix"
 ```
 
 ### Task 6: Open Pre-W2 Gate PR
