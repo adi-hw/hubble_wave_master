@@ -162,7 +162,7 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
 - [ ] **Step 2: Run tests, verify they fail**
 
 ```bash
-npx nx test authorization --testPathPattern=authorization.service.spec
+npx nx test authorization --testPathPatterns=authorization.service.spec
 ```
 
 Expected: 4 new tests fail (F003 logic not yet implemented).
@@ -255,7 +255,7 @@ async getSafeRowLevelPredicatesForCollection(
 - [ ] **Step 2: Run tests, verify they pass**
 
 ```bash
-npx nx test authorization --testPathPattern=authorization.service.spec
+npx nx test authorization --testPathPatterns=authorization.service.spec
 ```
 
 Expected: all tests pass (existing tests still green + 4 new tests pass).

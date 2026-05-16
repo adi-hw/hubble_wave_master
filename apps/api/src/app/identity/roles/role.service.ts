@@ -8,7 +8,7 @@ import {
 import { In, Repository } from 'typeorm';
 import {
   Role,
-  Permission,
+  PlatformPermission,
   RolePermission,
   UserRole,
 } from '@hubblewave/instance-db';
@@ -51,8 +51,8 @@ export class RoleService {
   constructor(
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
-    @InjectRepository(Permission)
-    private readonly permissionRepo: Repository<Permission>,
+    @InjectRepository(PlatformPermission)
+    private readonly permissionRepo: Repository<PlatformPermission>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepo: Repository<RolePermission>,
     @InjectRepository(UserRole)
@@ -301,7 +301,7 @@ export class RoleService {
     }
 
     const assignments = permissions.map((perm) =>
-      this.rolePermissionRepo.create({ roleId, permissionId: perm.id }),
+      this.rolePermissionRepo.create({ roleId, permissionCode: perm.code }),
     );
     await this.rolePermissionRepo.save(assignments);
     await this.permissionResolver.invalidateRoleCache(roleId);
@@ -320,13 +320,13 @@ export class RoleService {
 
     const existing = await this.rolePermissionRepo.find({
       where: { roleId },
-      select: ['permissionId'],
+      select: ['permissionCode'],
     });
-    const existingIds = new Set(existing.map((e) => e.permissionId));
+    const existingCodes = new Set(existing.map((e) => e.permissionCode));
 
     const newAssignments = permissions
-      .filter((perm) => !existingIds.has(perm.id))
-      .map((perm) => this.rolePermissionRepo.create({ roleId, permissionId: perm.id }));
+      .filter((perm) => !existingCodes.has(perm.code))
+      .map((perm) => this.rolePermissionRepo.create({ roleId, permissionCode: perm.code }));
 
     if (newAssignments.length > 0) {
       await this.rolePermissionRepo.save(newAssignments);
@@ -341,22 +341,16 @@ export class RoleService {
   ): Promise<void> {
     await this.getRoleById(roleId);
 
-    const permissions = await this.permissionRepo.find({
-      where: { code: In(permissionCodes) },
-      select: ['id'],
-    });
+    if (permissionCodes.length === 0) return;
 
-    if (permissions.length > 0) {
-      const permIds = permissions.map((p) => p.id);
-      await this.rolePermissionRepo.delete({ roleId, permissionId: In(permIds) });
-      await this.permissionResolver.invalidateRoleCache(roleId);
-      this.logger.log(`Removed ${permissions.length} permissions from role ${roleId}`);
-    }
+    await this.rolePermissionRepo.delete({ roleId, permissionCode: In(permissionCodes) });
+    await this.permissionResolver.invalidateRoleCache(roleId);
+    this.logger.log(`Removed ${permissionCodes.length} permission codes from role ${roleId}`);
   }
 
   async getRoleEffectivePermissions(
     roleId: string,
-  ): Promise<{ direct: Permission[]; inherited: Permission[] }> {
+  ): Promise<{ direct: PlatformPermission[]; inherited: PlatformPermission[] }> {
     const directPerms = await this.rolePermissionRepo.find({
       where: { roleId },
       relations: ['permission'],
@@ -365,8 +359,8 @@ export class RoleService {
       .filter((rp) => rp.permission)
       .map((rp) => rp.permission!);
 
-    const inherited: Permission[] = [];
-    const directIds = new Set(direct.map((p) => p.id));
+    const inherited: PlatformPermission[] = [];
+    const directCodes = new Set(direct.map((p) => p.code));
 
     const role = await this.roleRepo.findOne({ where: { id: roleId } });
     let currentParentId = role?.parentId;
@@ -378,9 +372,9 @@ export class RoleService {
       });
 
       for (const rp of parentPerms) {
-        if (rp.permission && !directIds.has(rp.permission.id)) {
+        if (rp.permission && !directCodes.has(rp.permission.code)) {
           inherited.push(rp.permission);
-          directIds.add(rp.permission.id);
+          directCodes.add(rp.permission.code);
         }
       }
 

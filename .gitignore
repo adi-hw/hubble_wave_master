@@ -71,6 +71,7 @@ servicenow-*.pdf
 # MUST NEVER be committed.
 .dev/keys/
 .dev/keys/*
+.dev/baseline/
 
 # Local Claude Code settings (machine-local, never committed)
 .claude/settings.local.json

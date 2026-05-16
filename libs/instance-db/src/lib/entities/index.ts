@@ -35,7 +35,7 @@ export * from './integrations';
 
 import { User } from './user.entity';
 import { Role } from './role.entity';
-import { Permission } from './permission.entity';
+import { PlatformPermission } from './platform-permission.entity';
 import { RolePermission, UserRole } from './role-permission.entity';
 import { Group, GroupMember, GroupRole } from './group.entity';
 import { Application, ApplicationRevision } from './application.entity';
@@ -264,7 +264,7 @@ export const instanceEntities = [
 
   // RBAC
   Role,
-  Permission,
+  PlatformPermission,
   RolePermission,
   UserRole,
   Group,

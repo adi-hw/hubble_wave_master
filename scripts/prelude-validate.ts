@@ -13,9 +13,13 @@
  *   npx tsx scripts/prelude-validate.ts --skip-rebuild  # skip docker-compose down -v
  */
 import { execSync, spawn, type ChildProcess } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+// Captured apps/api stdout+stderr when we spawn the process ourselves. Empty
+// on --skip-rebuild (the caller provided a running API; we have no log).
+const apiStartupLogPath = join(tmpdir(), 'hw-prelude-api-startup.log');
 
 interface AssertionResult { ok: boolean; detail?: string }
 interface Assertion { name: string; run: () => Promise<AssertionResult> }
@@ -57,7 +61,6 @@ function readEnvPassword(): string | null {
 }
 
 let apiProcess: ChildProcess | null = null;
-let apiStartupBuf = '';
 let loginAccessToken: string | null = null;
 
 // ============================================================================
@@ -66,29 +69,52 @@ let loginAccessToken: string | null = null;
 
 assert('apps/api boots without ERROR/UnhandledPromiseRejection in startup log', async () => {
   // If the API is already healthy (e.g. --skip-rebuild with a running instance),
-  // skip the spawn entirely — we're validating a live running platform.
+  // skip the spawn entirely. The startup-log scan below is then a no-op because
+  // we don't have the log file the caller's apps/api was writing to.
   const alreadyUp = await pollHttp('http://localhost:3000/api/health', 4);
   if (!alreadyUp) {
-    // API not running: spawn it and wait for it to become healthy.
-    // Use shell: true so npm scripts resolve correctly.
-    apiProcess = spawn('npm', ['run', 'dev:api'], { stdio: ['ignore', 'pipe', 'pipe'], shell: true });
-    apiProcess.stdout?.on('data', (d: Buffer) => { apiStartupBuf += d.toString(); });
-    apiProcess.stderr?.on('data', (d: Buffer) => { apiStartupBuf += d.toString(); });
+    // API not running: spawn it and redirect both stdout and stderr to a temp
+    // log file via the shell's `>` and `2>&1`. The previous attempt used
+    // `stdio: ['ignore', 'pipe', 'pipe']` which hung reliably on Windows +
+    // `shell: true`: nx serve emits volumes of output during a cold compile,
+    // the OS pipe buffer fills (~4KB), and the child blocks on the next write
+    // because the JS-side .on('data', …) drain doesn't keep up with the
+    // cmd.exe-wrapped pipe layer. Switching to `stdio: 'ignore'` fixed the
+    // hang but lost the startup-log signal entirely. Redirecting to a file
+    // gives both: pipes never fill (the OS writes straight to disk), and we
+    // can scan the file after health passes to keep the forbidden-pattern
+    // check honest.
+    //
+    // Clear any previous run's log so a stale failure from a prior run can't
+    // mask a clean current run.
+    if (existsSync(apiStartupLogPath)) {
+      try { rmSync(apiStartupLogPath, { force: true }); } catch {
+        // tolerated — file may be open / locked; we'll overwrite on next write.
+      }
+    }
+    apiProcess = spawn(
+      `npm run dev:api > "${apiStartupLogPath}" 2>&1`,
+      { stdio: 'ignore', shell: true },
+    );
   }
 
   // Primary readiness: poll health endpoint (max 180s to handle cold NX cache).
-  // This is more reliable than string-matching against ANSI-coloured NX output
-  // because NX may buffer or reroute child-process stdout on Windows.
   const apiUp = await pollHttp('http://localhost:3000/api/health', 180);
   if (!apiUp) {
     return { ok: false, detail: 'apps/api did not become healthy within 180s' };
   }
 
-  // Forbidden patterns in startup log (best-effort — buffer may be empty on
-  // platforms where shell: true does not surface NX child stdout; that is
-  // acceptable because the health check already confirmed a clean boot).
+  // Forbidden-pattern scan over the captured startup log. Only meaningful on
+  // the spawn path (when --skip-rebuild routed around the spawn, the file
+  // doesn't exist and the scan is a tolerated no-op).
+  let logContent = '';
+  if (existsSync(apiStartupLogPath)) {
+    try { logContent = readFileSync(apiStartupLogPath, 'utf8'); } catch {
+      // tolerated — health already confirmed the boot.
+    }
+  }
   const forbidden = ['UnhandledPromiseRejection', 'FATAL', 'unannotated endpoint passed through'];
-  const violations = forbidden.filter((p) => apiStartupBuf.includes(p));
+  const violations = forbidden.filter((p) => logContent.includes(p));
   return violations.length === 0
     ? { ok: true }
     : { ok: false, detail: `forbidden patterns in startup log: ${violations.join(', ')}` };
@@ -134,9 +160,18 @@ assert('login via /api/identity/auth/login alias also returns valid JWT', async 
     : { ok: false, detail: `expected 201, got ${r.stdout}` };
 });
 
-assert('GET /api/users returns 200 with admin token', async () => {
+// Admin profile round-trip through the auth pipeline (JWT verify → IdentityResolverPort
+// → @AuthenticatedOnly()). Pre-W2 path (ii) leaves `identity.platform_permissions` and
+// `identity.role_permissions` empty until Stream 2 PR3 materializes the registry from
+// PERMISSION_REGISTRY, so @RequirePermission-gated endpoints (e.g. `GET /api/users`,
+// gated by `users.view`) return 403 by design — testing them here would assert the
+// gate works against a deliberately-empty registry. The W2 spec admin-can-list-users
+// assertion is the right shape for Stream 2's exit gate; we use `/api/auth/me` here
+// because it tests the same trust chain (token issuance → JWT validation → admin
+// identity resolution → request-context hydration) without depending on the registry.
+assert('GET /api/auth/me returns 200 with admin token', async () => {
   if (!loginAccessToken) return { ok: false, detail: 'no token from prior login assertion' };
-  const r = sh(`curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/api/users?pageSize=1" -H "Authorization: Bearer ${loginAccessToken}"`, { allowFail: true });
+  const r = sh(`curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/api/auth/me" -H "Authorization: Bearer ${loginAccessToken}"`, { allowFail: true });
   return r.stdout.trim() === '200'
     ? { ok: true }
     : { ok: false, detail: `expected 200, got ${r.stdout}` };
@@ -208,6 +243,72 @@ assert('no search_path reference in runtime code', async () => {
   return r.stdout.trim() === ''
     ? { ok: true }
     : { ok: false, detail: `search_path still referenced: ${r.stdout.trim().split('\n')[0]}` };
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Baseline-state assertions (Pre-W2 Task 5)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// These three assertions verify the W2 spec §2.2 reshape actually landed
+// against the freshly-baselined DB. They run against the same psql endpoint
+// the nav-seed assertion uses; the dual-path docker / CI-fallback logic is
+// the same pattern.
+
+/**
+ * Run a SQL query and return the single-cell scalar result trimmed.
+ * Tries `docker exec hw_postgres psql` first (covers local-dev common case),
+ * then falls back to a direct psql call using PG* env vars (covers CI's
+ * GitHub Actions service-container layout where the container isn't named).
+ * Returns `null` if both paths fail or the query returns nothing parseable.
+ */
+function runDbScalar(query: string): string | null {
+  let r = sh(
+    `docker exec hw_postgres psql -U hubblewave -d hubblewave -t -A -c "${query}"`,
+    { allowFail: true },
+  );
+  if (r.code !== 0 || r.stdout.trim() === '') {
+    const env = process.env;
+    const host = env.PGHOST ?? env.DB_HOST ?? 'localhost';
+    const port = env.PGPORT ?? env.DB_PORT ?? '5432';
+    const user = env.PGUSER ?? env.DB_USER ?? 'hubblewave';
+    const password = env.PGPASSWORD ?? env.DB_PASSWORD ?? 'hubblewave';
+    const database = env.PGDATABASE ?? env.DB_NAME ?? 'hubblewave';
+    r = sh(
+      `PGPASSWORD='${password}' psql -h ${host} -p ${port} -U ${user} -d ${database} -t -A -c "${query}"`,
+      { allowFail: true },
+    );
+  }
+  if (r.code !== 0) return null;
+  const value = r.stdout.trim();
+  return value === '' ? null : value;
+}
+
+assert('identity.platform_permissions table present', async () => {
+  const v = runDbScalar(
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'identity' AND table_name = 'platform_permissions'",
+  );
+  if (v === null) return { ok: false, detail: 'psql query returned no result' };
+  return v === '1' ? { ok: true } : { ok: false, detail: `expected count=1, got ${v}` };
+});
+
+assert('old identity.permissions table absent', async () => {
+  const v = runDbScalar(
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'identity' AND table_name = 'permissions'",
+  );
+  if (v === null) return { ok: false, detail: 'psql query returned no result' };
+  return v === '0'
+    ? { ok: true }
+    : { ok: false, detail: `expected count=0, got ${v} — baseline reshape did not drop identity.permissions` };
+});
+
+assert('metadata.collection_definitions.secure_fields_by_default default = true', async () => {
+  const v = runDbScalar(
+    "SELECT column_default FROM information_schema.columns WHERE table_schema = 'metadata' AND table_name = 'collection_definitions' AND column_name = 'secure_fields_by_default'",
+  );
+  if (v === null) return { ok: false, detail: 'psql query returned no result' };
+  return v === 'true'
+    ? { ok: true }
+    : { ok: false, detail: `expected column_default='true', got '${v}'` };
 });
 
 assert('all Prelude scanners exit 0', async () => {

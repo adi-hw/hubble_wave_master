@@ -13,7 +13,7 @@ import { ServiceTokenClient } from '@hubblewave/auth-guard';
  * HTTP callbacks from a BullMQ consumer into apps/api can mint a
  * short-lived ES256 service token (no shared secrets, no static API
  * keys). The seeded principal is `svc-worker` (see
- * `migrations/instance/1930800000001-seed-service-principals.ts`).
+ * `migrations/instance/1000000000004-seed-service-principals.ts`).
  * Today no consumer in this module actually makes outbound HTTP calls
  * — the client is wired for parity with the canon §29.7 contract so
  * the first consumer to ship can inject it directly.

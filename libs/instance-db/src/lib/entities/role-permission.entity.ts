@@ -1,64 +1,65 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   CreateDateColumn,
   Index,
   ManyToOne,
   JoinColumn,
+  PrimaryGeneratedColumn,
   Unique,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Role } from './role.entity';
-import { Permission } from './permission.entity';
+import { PlatformPermission } from './platform-permission.entity';
 
 // ============================================================
 // ROLE PERMISSION ENTITY
 // ============================================================
 
 /**
- * RolePermission entity - maps permissions to roles
- * 
- * NOTE: This is NOT "tenant_role_permissions" - we don't use tenant terminology!
+ * RolePermission entity — maps roles to permission codes.
+ *
+ * The baseline schema uses a composite primary key on (role_id, permission_code).
+ * Permission identity is the colon-segment code string (W2 spec §2.1), not a
+ * UUID — the FK targets `identity.platform_permissions(code)` directly.
+ *
+ * Per W2 spec §2.3 this table is empty at Pre-W2 baseline. Stream 2 PR3's
+ * `seed-permission-registry-sync` script populates both the registry and
+ * the role grants from `PERMISSION_REGISTRY` constant + the role-grant
+ * declarations also in source.
  */
 @Entity({ name: 'role_permissions', schema: 'identity' })
-@Unique(['roleId', 'permissionId'])
 @Index(['roleId'])
-@Index(['permissionId'])
+@Index(['permissionCode'])
 export class RolePermission {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
-
-  /** Role ID */
-  @Column({ name: 'role_id', type: 'uuid' })
+  /** Composite PK part 1. */
+  @PrimaryColumn({ name: 'role_id', type: 'uuid' })
   roleId!: string;
 
   @ManyToOne(() => Role, (role) => role.rolePermissions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'role_id' })
   role?: Role;
 
-  /** Permission ID */
-  @Column({ name: 'permission_id', type: 'uuid' })
-  permissionId!: string;
+  /** Composite PK part 2. References `platform_permissions.code`. */
+  @PrimaryColumn({ name: 'permission_code', type: 'text' })
+  permissionCode!: string;
 
-  @ManyToOne(() => Permission, (perm) => perm.rolePermissions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'permission_id' })
-  permission?: Permission;
+  @ManyToOne(() => PlatformPermission, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'permission_code', referencedColumnName: 'code' })
+  permission?: PlatformPermission;
 
-  /** ABAC conditions (optional - for conditional permissions) */
-  @Column({ type: 'jsonb', nullable: true })
-  conditions?: Record<string, unknown> | null;
+  /** When the grant was recorded. */
+  @CreateDateColumn({ name: 'granted_at', type: 'timestamptz' })
+  grantedAt!: Date;
 
-  /** Granted by user */
-  @Column({ name: 'created_by', type: 'uuid', nullable: true })
-  createdBy?: string | null;
+  /** Who granted it (nullable for seeded / structural grants). */
+  @Column({ name: 'granted_by', type: 'uuid', nullable: true })
+  grantedBy?: string | null;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'created_by' })
-  createdByUser?: User | null;
-
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  @JoinColumn({ name: 'granted_by' })
+  grantedByUser?: User | null;
 }
 
 // ============================================================
@@ -72,8 +73,6 @@ export type AssignmentSource = 'direct' | 'group' | 'rule' | 'sso';
 
 /**
  * UserRole entity - assigns roles to users
- * 
- * NOTE: This is NOT "tenant_user_roles" - we don't use tenant terminology!
  */
 @Entity({ name: 'user_roles', schema: 'identity' })
 @Unique(['userId', 'roleId'])

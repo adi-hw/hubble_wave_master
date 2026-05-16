@@ -16,6 +16,19 @@
  *   5. CONCURRENTLY + `static transaction = false` on audit_logs → NOT flagged.
  *   6. Blocking CREATE INDEX on a cust__ table (prefix match) → flagged.
  *   7. Fully-correct refresh_tokens index → NOT flagged.
+ *   8. Same-migration-table-creation exception (Pre-W2 / Task 3): a migration
+ *      that BOTH creates a growth table AND creates a blocking index on it →
+ *      NOT flagged (table is empty at index-build time).
+ *   9. Schema-qualified blocking CREATE INDEX (`ON identity.refresh_tokens`)
+ *      → flagged (regex previously captured the schema name `identity` and
+ *      silently passed; W2 Task 3 regex fix catches this).
+ *  10. Same-migration exception with schema-qualified refs: creates
+ *      `CREATE TABLE identity.audit_logs ...` + `CREATE INDEX ... ON
+ *      identity.audit_logs ...` → NOT flagged.
+ *  11. Same-migration exception does NOT cover Check 2: a migration that
+ *      creates a growth table AND uses CONCURRENTLY on it but omits
+ *      `static transaction = false` → still flagged (CONCURRENTLY can never
+ *      run inside a transaction regardless of when the table was created).
  *
  * Per scanner-self-test.ts contract: framework helpers are duplicated
  * here rather than imported (~70 lines), to avoid ts-node ESM
@@ -343,6 +356,147 @@ const t = createSelfTest('migration-blocking-index-check');
   t.assert(
     result.exitCode === 0,
     `compliant refresh_tokens migration passes scanner (got exit ${result.exitCode})`,
+  );
+}
+
+// ── Test 8: Same-migration-table-creation exception (unqualified) ────────────
+//   A migration that creates a growth table AND a blocking index on it in
+//   the same DDL is allowed: the table is empty at index-build time so
+//   ACCESS EXCLUSIVE contention is impossible. Pre-W2 baselines depend on
+//   this exception.
+{
+  const result = runScannerOnFixture({
+    scannerCommand: 'npm run migrations:check',
+    fixturePath: 'migrations/instance/9999900000006-selftest-baseline-create-table-and-index.ts',
+    fixtureContent: [
+      "import { MigrationInterface, QueryRunner } from 'typeorm';",
+      '',
+      'export class SelftestBaselineCreateTableAndIndex9999900000006 implements MigrationInterface {',
+      "  name = 'SelftestBaselineCreateTableAndIndex9999900000006';",
+      '',
+      '  public async up(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`CREATE TABLE audit_logs (id uuid PRIMARY KEY, created_at timestamptz NOT NULL)`);',
+      '    await queryRunner.query(`CREATE INDEX "idx_audit_logs_baseline" ON audit_logs (created_at)`);',
+      '  }',
+      '',
+      '  public async down(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`DROP TABLE audit_logs`);',
+      '  }',
+      '}',
+    ].join('\n'),
+  });
+  t.assert(
+    result.exitCode === 0,
+    `same-migration table+index on growth table is allowed (got exit ${result.exitCode})`,
+  );
+  t.assert(
+    /migrations:check: ok/.test(result.stdout + result.stderr),
+    'scanner reports clean for same-migration table creation pattern',
+  );
+}
+
+// ── Test 9: Schema-qualified blocking CREATE INDEX is now caught ─────────────
+//   Pre-Task-3 regex captured only the FIRST identifier after ON, which for
+//   `ON identity.refresh_tokens` was `identity` (schema name) — silently
+//   passed because `identity` isn't a growth table. The fixed regex extracts
+//   the table name regardless of schema qualification.
+{
+  const result = runScannerOnFixture({
+    scannerCommand: 'npm run migrations:check',
+    fixturePath: 'migrations/instance/9999900000007-selftest-schema-qualified-bad-index.ts',
+    fixtureContent: [
+      "import { MigrationInterface, QueryRunner } from 'typeorm';",
+      '',
+      'export class SelftestSchemaQualifiedBadIndex9999900000007 implements MigrationInterface {',
+      "  name = 'SelftestSchemaQualifiedBadIndex9999900000007';",
+      '',
+      '  public async up(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(',
+      '      `CREATE INDEX "idx_schema_qualified_selftest" ON identity.refresh_tokens (user_id)`,',
+      '    );',
+      '  }',
+      '',
+      '  public async down(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`DROP INDEX IF EXISTS "idx_schema_qualified_selftest"`);',
+      '  }',
+      '}',
+    ].join('\n'),
+  });
+  t.assert(
+    result.exitCode !== 0,
+    `schema-qualified blocking index on growth table fails scanner (got exit ${result.exitCode})`,
+  );
+  t.assert(
+    /refresh_tokens/.test(result.stdout + result.stderr),
+    'scanner output names the table (not the schema)',
+  );
+}
+
+// ── Test 10: Same-migration exception works with schema-qualified refs ───────
+//   Same as Test 8 but with `identity.audit_logs` — exercises both the
+//   regex fix and the CREATE TABLE detector on schema-qualified names.
+{
+  const result = runScannerOnFixture({
+    scannerCommand: 'npm run migrations:check',
+    fixturePath: 'migrations/instance/9999900000008-selftest-schema-qualified-baseline.ts',
+    fixtureContent: [
+      "import { MigrationInterface, QueryRunner } from 'typeorm';",
+      '',
+      'export class SelftestSchemaQualifiedBaseline9999900000008 implements MigrationInterface {',
+      "  name = 'SelftestSchemaQualifiedBaseline9999900000008';",
+      '',
+      '  public async up(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`CREATE TABLE identity.audit_logs (id uuid PRIMARY KEY)`);',
+      '    await queryRunner.query(`CREATE INDEX "idx_audit_logs_schema_baseline" ON identity.audit_logs (id)`);',
+      '  }',
+      '',
+      '  public async down(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`DROP TABLE identity.audit_logs`);',
+      '  }',
+      '}',
+    ].join('\n'),
+  });
+  t.assert(
+    result.exitCode === 0,
+    `same-migration exception applies to schema-qualified refs (got exit ${result.exitCode})`,
+  );
+}
+
+// ── Test 11: Same-migration exception does NOT cover Check 2 ─────────────────
+//   A migration creates a growth table AND uses CONCURRENTLY on it but omits
+//   `static transaction = false`. Still flagged: CONCURRENTLY can never run
+//   inside a transaction regardless of when the table was created.
+{
+  const result = runScannerOnFixture({
+    scannerCommand: 'npm run migrations:check',
+    fixturePath: 'migrations/instance/9999900000009-selftest-concurrent-newtable-no-flag.ts',
+    fixtureContent: [
+      "import { MigrationInterface, QueryRunner } from 'typeorm';",
+      '',
+      'export class SelftestConcurrentNewTableNoFlag9999900000009 implements MigrationInterface {',
+      "  name = 'SelftestConcurrentNewTableNoFlag9999900000009';",
+      '  // transaction = false is intentionally absent here.',
+      '',
+      '  public async up(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`CREATE TABLE audit_logs (id uuid PRIMARY KEY)`);',
+      '    await queryRunner.query(',
+      '      `CREATE INDEX CONCURRENTLY "idx_audit_logs_cnt_newtable" ON audit_logs (id)`,',
+      '    );',
+      '  }',
+      '',
+      '  public async down(queryRunner: QueryRunner): Promise<void> {',
+      '    await queryRunner.query(`DROP TABLE audit_logs`);',
+      '  }',
+      '}',
+    ].join('\n'),
+  });
+  t.assert(
+    result.exitCode !== 0,
+    `same-migration exception does NOT cover CONCURRENTLY-without-flag check (got exit ${result.exitCode})`,
+  );
+  t.assert(
+    /transaction = false/.test(result.stdout + result.stderr),
+    'scanner output still mentions the missing transaction = false',
   );
 }
 

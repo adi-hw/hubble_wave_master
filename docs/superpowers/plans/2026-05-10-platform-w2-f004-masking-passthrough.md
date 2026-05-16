@@ -148,7 +148,7 @@ describe('PropertyAclRepository — mapToData (F004)', () => {
 - [ ] **Step 2: Run, verify the PARTIAL + FULL tests fail**
 
 ```bash
-npx nx test authorization --testPathPattern=property-acl.repository.spec
+npx nx test authorization --testPathPatterns=property-acl.repository.spec
 ```
 
 Expected: 2 of 4 fail (`PARTIAL`/`FULL` return `'NONE'` today).
