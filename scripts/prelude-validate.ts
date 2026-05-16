@@ -13,9 +13,13 @@
  *   npx tsx scripts/prelude-validate.ts --skip-rebuild  # skip docker-compose down -v
  */
 import { execSync, spawn, type ChildProcess } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+// Captured apps/api stdout+stderr when we spawn the process ourselves. Empty
+// on --skip-rebuild (the caller provided a running API; we have no log).
+const apiStartupLogPath = join(tmpdir(), 'hw-prelude-api-startup.log');
 
 interface AssertionResult { ok: boolean; detail?: string }
 interface Assertion { name: string; run: () => Promise<AssertionResult> }
@@ -63,30 +67,57 @@ let loginAccessToken: string | null = null;
 // HAPPY PATH ASSERTIONS
 // ============================================================================
 
-assert('apps/api boots and reports healthy within 180s', async () => {
+assert('apps/api boots without ERROR/UnhandledPromiseRejection in startup log', async () => {
   // If the API is already healthy (e.g. --skip-rebuild with a running instance),
-  // skip the spawn entirely — we're validating a live running platform.
+  // skip the spawn entirely. The startup-log scan below is then a no-op because
+  // we don't have the log file the caller's apps/api was writing to.
   const alreadyUp = await pollHttp('http://localhost:3000/api/health', 4);
   if (!alreadyUp) {
-    // API not running: spawn it and wait for it to become healthy.
+    // API not running: spawn it and redirect both stdout and stderr to a temp
+    // log file via the shell's `>` and `2>&1`. The previous attempt used
+    // `stdio: ['ignore', 'pipe', 'pipe']` which hung reliably on Windows +
+    // `shell: true`: nx serve emits volumes of output during a cold compile,
+    // the OS pipe buffer fills (~4KB), and the child blocks on the next write
+    // because the JS-side .on('data', …) drain doesn't keep up with the
+    // cmd.exe-wrapped pipe layer. Switching to `stdio: 'ignore'` fixed the
+    // hang but lost the startup-log signal entirely. Redirecting to a file
+    // gives both: pipes never fill (the OS writes straight to disk), and we
+    // can scan the file after health passes to keep the forbidden-pattern
+    // check honest.
     //
-    // `stdio: 'ignore'` is intentional. The previous `['ignore', 'pipe', 'pipe']`
-    // layout hung reliably on Windows + `shell: true`: nx serve emits volumes of
-    // output during a cold compile, the OS pipe buffer fills (~4KB), and the
-    // child blocks on the next write because the JS-side .on('data', …) drain
-    // doesn't keep up with cmd.exe-wrapped pipes. Health is the primary
-    // readiness signal; the forbidden-pattern scan below was already documented
-    // as best-effort because nx routinely buffers / colours its output.
-    apiProcess = spawn('npm', ['run', 'dev:api'], { stdio: 'ignore', shell: true });
+    // Clear any previous run's log so a stale failure from a prior run can't
+    // mask a clean current run.
+    if (existsSync(apiStartupLogPath)) {
+      try { rmSync(apiStartupLogPath, { force: true }); } catch {
+        // tolerated — file may be open / locked; we'll overwrite on next write.
+      }
+    }
+    apiProcess = spawn(
+      `npm run dev:api > "${apiStartupLogPath}" 2>&1`,
+      { stdio: 'ignore', shell: true },
+    );
   }
 
   // Primary readiness: poll health endpoint (max 180s to handle cold NX cache).
-  // Health is the only readiness signal — `stdio: 'ignore'` means there's no
-  // startup-log buffer to scan.
   const apiUp = await pollHttp('http://localhost:3000/api/health', 180);
-  return apiUp
+  if (!apiUp) {
+    return { ok: false, detail: 'apps/api did not become healthy within 180s' };
+  }
+
+  // Forbidden-pattern scan over the captured startup log. Only meaningful on
+  // the spawn path (when --skip-rebuild routed around the spawn, the file
+  // doesn't exist and the scan is a tolerated no-op).
+  let logContent = '';
+  if (existsSync(apiStartupLogPath)) {
+    try { logContent = readFileSync(apiStartupLogPath, 'utf8'); } catch {
+      // tolerated — health already confirmed the boot.
+    }
+  }
+  const forbidden = ['UnhandledPromiseRejection', 'FATAL', 'unannotated endpoint passed through'];
+  const violations = forbidden.filter((p) => logContent.includes(p));
+  return violations.length === 0
     ? { ok: true }
-    : { ok: false, detail: 'apps/api did not become healthy within 180s' };
+    : { ok: false, detail: `forbidden patterns in startup log: ${violations.join(', ')}` };
 });
 
 assert('GET /api/health returns 200', async () => {

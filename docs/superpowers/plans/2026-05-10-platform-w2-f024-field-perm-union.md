@@ -219,7 +219,7 @@ describe('AuthorizationService — multi-rule field permissions (F024)', () => {
 - [ ] **Step 2: Run tests, verify the multi-rule tests fail**
 
 ```bash
-npx nx test authorization --testPathPattern=authorization.service.spec
+npx nx test authorization --testPathPatterns=authorization.service.spec
 ```
 
 Expected: tests for `canRead union`, `canWrite union`, `maskingStrategy LEAST-restrictive` should fail (current first-match-wins picks the priority-1 restrictive rule). The "non-matching ignored" and "fallback default" tests should pass (unchanged behavior).
@@ -301,7 +301,7 @@ private leastRestrictiveMask(a: MaskingStrategy, b: MaskingStrategy): MaskingStr
 - [ ] **Step 3: Run tests, verify all pass**
 
 ```bash
-npx nx test authorization --testPathPattern=authorization.service.spec
+npx nx test authorization --testPathPatterns=authorization.service.spec
 ```
 
 Expected: all 5 new F024 tests pass + previous 24 tests still pass.

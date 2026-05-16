@@ -652,7 +652,7 @@ Create `apps/api/test/integration/permission-cache-invalidation.spec.ts`. Test: 
 
 - [ ] **Step 7: Run integration test**
 
-Run `npx nx test api --testPathPattern=permission-cache-invalidation`. Expected: green within 1s.
+Run `npx nx test api --testPathPatterns=permission-cache-invalidation`. Expected: green within 1s.
 
 - [ ] **Step 8: Commit + PR**
 
@@ -839,8 +839,8 @@ In the spec file: load an existing role, attempt a raw SQL UPDATE of its code. E
 - [ ] **Step 8: Run all tests**
 
 ```
-npx nx test api --testPathPattern=session-lifecycle
-npx nx test control-plane --testPathPattern=session-lifecycle
+npx nx test api --testPathPatterns=session-lifecycle
+npx nx test control-plane --testPathPatterns=session-lifecycle
 ```
 Expected: all green.
 
@@ -1479,7 +1479,7 @@ Expected: this area's handlers now report 0 issues.
 - [ ] **Step 6: Run identity area tests**
 
 ```
-npx nx test api --testPathPattern=identity
+npx nx test api --testPathPatterns=identity
 ```
 Expected: all green.
 
@@ -1759,7 +1759,7 @@ Assertions:
 - [ ] **Step 3: Run the test**
 
 ```
-npx nx test api --testPathPattern=audit-hash-chain-concurrency
+npx nx test api --testPathPatterns=audit-hash-chain-concurrency
 ```
 Expected: green within 30s. Non-flaky over 5 consecutive runs.
 
@@ -1809,7 +1809,7 @@ Create the integration test. For each of the 7 steps, simulate a failure (e.g., 
 - [ ] **Step 5: Run the test**
 
 ```
-npx nx test api --testPathPattern=ava-chat-transactionality
+npx nx test api --testPathPatterns=ava-chat-transactionality
 ```
 Expected: 7 parameterized failure points all assert clean rollback. Green.
 
@@ -1866,7 +1866,7 @@ Edit `tools/authz-bypass-check.ts`: remove the F146 entry from `KNOWN_BYPASSES`.
 ```
 npm run authz:check
 if ($LASTEXITCODE -ne 0) { throw 'authz:check failed' }
-npx nx test api --testPathPattern=dashboard-widget-authz
+npx nx test api --testPathPatterns=dashboard-widget-authz
 ```
 Expected: both green.
 
@@ -1916,7 +1916,7 @@ Create `apps/api/test/integration/search-authz-pagination-accuracy.spec.ts`. See
 - [ ] **Step 7: Run all three tests on both engines**
 
 ```
-npx nx test api --testPathPattern=search-authz
+npx nx test api --testPathPatterns=search-authz
 ```
 Expected: green on both Typesense and pgvector paths.
 
@@ -1983,7 +1983,7 @@ Add `apps/api/test/integration/permissions-payload.spec.ts`. Seed: a collection 
 - [ ] **Step 7: Run tests**
 
 ```
-npx nx test api --testPathPattern=permissions-payload
+npx nx test api --testPathPatterns=permissions-payload
 ```
 Expected: green.
 
