@@ -18,7 +18,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * The secure_fields_by_default column is set to true for all system collections,
  * matching the baseline default (canon §1 Pre-W2 reshape). The admin policy
- * seed (0000000000002) grants the admin role wildcard field access on these
+ * seed (1000000000003) grants the admin role wildcard field access on these
  * collections with masking_strategy=NONE, so admins see unmasked values.
  *
  * Idempotent: ON CONFLICT (code) DO NOTHING for applications; ON CONFLICT
@@ -46,7 +46,7 @@ export class SeedSystemCollections1000000000002 implements MigrationInterface {
     `);
 
     // System collections — canonical UUIDs from the live instance database.
-    // admin-policy seed (0000000000002) resolves these by code, so the UUIDs
+    // admin-policy seed (1000000000003) resolves these by code, so the UUIDs
     // do not affect the policy seed, but fixing them ensures FK stability for
     // any future migration that references them by id.
     await queryRunner.query(`
