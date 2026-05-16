@@ -65,9 +65,11 @@ No commit. Read-only verification.
 ### Task 1: Generate baseline DDL from current schema
 
 **Files:**
-- Create: `migrations/instance/0000000000000-baseline.ts`
-- Create: `migrations/control-plane/0000000000000-baseline.ts`
-- Create: `docs/plans/2026-05-15-baseline-schema-manifest.md`
+- Create: `migrations/instance/0000000000000-baseline.ts` (DDL embedded inline via template literals)
+- Create: `migrations/control-plane/0000000000000-baseline.ts` (same shape; public schema)
+- Create: `tools/schema-manifest.ts` (top-level path matching existing scanner convention)
+- Create: `docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md`
+- Modify: `.gitignore` — add `.dev/baseline/` to the gitignored workspace-local paths (only `.dev/keys/` is currently ignored)
 
 - [ ] **Step 1: Boot a fresh DB stack and run existing migrations to capture canonical end-state**
 
@@ -81,16 +83,26 @@ npm run migration:run:control-plane
 ```
 Expected: both migration runs exit 0. (`migration:run:instance` and `migration:run:control-plane` are the real package.json scripts; `db:reset` / `migrate` / `seed` are NOT defined.) This is the schema we squash.
 
-- [ ] **Step 2: Generate baseline DDL via pg_dump --schema-only**
+- [ ] **Step 2: Create the workspace-local baseline scratch directory + gitignore**
 
-The Docker container name from `docker-compose.yml:6` is `hw_postgres` (underscore, not hyphen). Run from PowerShell — pipe via `Out-File -Encoding utf8` rather than Unix-style `>`:
+```
+New-Item -ItemType Directory -Force .dev/baseline | Out-Null
+Add-Content -Path .gitignore -Value '.dev/baseline/'
+```
+(`.gitignore` currently lists only `.dev/keys/`; this step adds the new path. Run `git status --short .gitignore` after to verify the line was added once, not duplicated.)
+
+- [ ] **Step 3: Generate baseline DDL via pg_dump --schema-only**
+
+The Docker container name from `docker-compose.yml:6` is `hw_postgres` (underscore, not hyphen). Use `Out-File -Encoding utf8` rather than Unix-style `>`:
 ```
 docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_instance | Out-File -Encoding utf8 .dev/baseline/instance-schema.sql
+if ($LASTEXITCODE -ne 0) { throw 'instance pg_dump failed' }
 docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_control_plane | Out-File -Encoding utf8 .dev/baseline/control-plane-schema.sql
+if ($LASTEXITCODE -ne 0) { throw 'control-plane pg_dump failed' }
 ```
-Use a workspace-local path (`.dev/baseline/`, gitignored) rather than `/tmp/...` since the host is Windows. Expected: two SQL files written.
+Expected: two SQL files written; both exit checks pass.
 
-- [ ] **Step 3: Apply known intentional deltas to the captured schema**
+- [ ] **Step 4: Apply known intentional deltas to the captured schema**
 
 Edit `.dev/baseline/instance-schema.sql`:
 - Drop `identity.permissions` table definition.
@@ -99,7 +111,7 @@ Edit `.dev/baseline/instance-schema.sql`:
 - Replace `identity.role_permissions` definition with: `CREATE TABLE identity.role_permissions (role_id uuid NOT NULL REFERENCES identity.roles(id) ON DELETE CASCADE, permission_code text NOT NULL REFERENCES identity.platform_permissions(code) ON DELETE RESTRICT, granted_at timestamptz NOT NULL DEFAULT now(), granted_by uuid NULL, PRIMARY KEY (role_id, permission_code));`
 - Change `metadata.collection_definitions.secure_fields_by_default boolean NOT NULL DEFAULT false` → `DEFAULT true`.
 
-- [ ] **Step 4: Embed the baseline DDL directly in the MigrationInterface class**
+- [ ] **Step 5: Embed the baseline DDL directly in the MigrationInterface class**
 
 Per spec §Pre-W2 gate "MigrationInterface classes containing schema-qualified DDL only" — do NOT use a sidecar `.sql` file (that would require additional packaging support in the K8s migration runner and risks runtime failures if the file isn't copied). Embed the DDL inline via template literal.
 
@@ -130,7 +142,7 @@ For large baselines (likely ~3000-6000 lines of DDL), split the `await queryRunn
 
 Same shape for `migrations/control-plane/0000000000000-baseline.ts` (the control-plane baseline uses `public` schema per spec §"Control-plane schema policy"; no domain schemas).
 
-- [ ] **Step 5: Generate schema manifest**
+- [ ] **Step 6: Generate schema manifest**
 
 Create the manifest script as a new W2 deliverable. The migration-blocking-index scanner already lives at `tools/migration-blocking-index-check.ts` (not under `tools/scanners/`), so add new manifest tooling at `tools/schema-manifest.ts` to match the existing top-level convention.
 
@@ -148,12 +160,14 @@ The script:
 
 Self-test: running the script twice against the same DB produces identical output (deterministic).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```
-git add migrations/instance/0000000000000-baseline.ts migrations/instance/0000000000000-baseline.sql migrations/control-plane/0000000000000-baseline.ts migrations/control-plane/0000000000000-baseline.sql docs/plans/2026-05-15-baseline-schema-manifest.md tools/scanners/schema-manifest.ts
+git add .gitignore migrations/instance/0000000000000-baseline.ts migrations/control-plane/0000000000000-baseline.ts docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md tools/schema-manifest.ts
 git commit -m "phase3-w2-pregate: capture baseline DDL + schema manifest"
 ```
+
+Note: no `.sql` files are staged — the DDL is embedded inline in the migration `.ts` classes per Step 5. The `.dev/baseline/` scratch directory is now gitignored and untracked.
 
 ### Task 2: Structural seed migrations + bootstrap scripts
 
@@ -263,28 +277,45 @@ git push origin pre-w2-migration-archive
 ```
 Expected: tag pushed to origin.
 
-- [ ] **Step 2: List files to delete**
+- [ ] **Step 2: List files to delete (PowerShell)**
 
-Run:
 ```
-git ls-files migrations/instance/ | grep -v "0000000000000\|0000000000001\|0000000000002\|0000000000003\|0000000000004\|0000000000005"
-git ls-files migrations/control-plane/ | grep -v "0000000000000\|0000000000001"
+$keepPrefixes = @('0000000000000','0000000000001','0000000000002','0000000000003','0000000000004','0000000000005','0000000000020')
+git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) }
+git ls-files migrations/control-plane/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($name.StartsWith('0000000000000') -or $name.StartsWith('0000000000010')) }
 ```
-Expected: ~98 instance files + ~8 control-plane files listed.
+Expected: ~98 instance files + ~8 control-plane files listed. The baseline + seed + Stream-1-added migration files (0000000000020-role-code-immutable-trigger for instance; 0000000000010-add-key-metadata for control-plane) are excluded from deletion.
 
 - [ ] **Step 3: Delete the listed files**
 
 ```
-git rm migrations/instance/1*.ts migrations/control-plane/1*.ts
+git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) } | ForEach-Object { git rm $_ }
+git ls-files migrations/control-plane/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($name.StartsWith('0000000000000') -or $name.StartsWith('0000000000010')) } | ForEach-Object { git rm $_ }
 ```
-(Adjust the glob to NOT match the baseline + seed migrations.)
+Reuse the same Where-Object filter so deletion matches Step 2's listing exactly. Confirm via `git status --short migrations/` before commit.
 
-- [ ] **Step 4: Verify migration runner still works**
+- [ ] **Step 4: Verify migration runner still works (fail-fast)**
+
+Each command on its own line with explicit exit-status check; a semicolon-chained one-liner would let a mid-chain failure silently mask under a later command's success.
 
 ```
-docker-compose down -v; docker-compose up -d postgres redis; Start-Sleep -Seconds 5; npm run migration:run:instance; npm run migration:run:control-plane; npx tsx scripts/seed-admin-user.ts; npx tsx scripts/seed-instance-key-bootstrap.ts; npx tsx scripts/seed-control-plane-key-bootstrap.ts
+docker-compose down -v
+if ($LASTEXITCODE -ne 0) { throw 'docker-compose down failed' }
+docker-compose up -d postgres redis
+if ($LASTEXITCODE -ne 0) { throw 'docker-compose up failed' }
+Start-Sleep -Seconds 5
+npm run migration:run:instance
+if ($LASTEXITCODE -ne 0) { throw 'instance migration failed' }
+npm run migration:run:control-plane
+if ($LASTEXITCODE -ne 0) { throw 'control-plane migration failed' }
+npx tsx scripts/seed-admin-user.ts
+if ($LASTEXITCODE -ne 0) { throw 'seed-admin-user failed' }
+npx tsx scripts/seed-instance-key-bootstrap.ts
+if ($LASTEXITCODE -ne 0) { throw 'instance key bootstrap failed' }
+npx tsx scripts/seed-control-plane-key-bootstrap.ts
+if ($LASTEXITCODE -ne 0) { throw 'control-plane key bootstrap failed' }
 ```
-Expected: all four exit 0. Baseline + seeds + bootstrap produce a fully-booted DB.
+Expected: all 7 commands succeed; baseline + seeds + bootstrap produce a fully-booted DB.
 
 - [ ] **Step 5: Run prelude-validate**
 
@@ -337,19 +368,19 @@ git commit -m "phase3-w2-pregate: prelude-validate asserts baseline reshape end-
 
 ```
 git push origin HEAD:w2/pre-gate-baseline
-gh pr create --title "phase3-w2-pre-gate: fresh-DB baseline squash" --body "$(cat <<'EOF'
+gh pr create --title "phase3-w2-pre-gate: fresh-DB baseline squash" --body @'
 ## Summary
 - Replaces 98 instance + 8 control-plane incremental migrations with one canonical baseline per plane
 - Baseline reflects end-state for known W2 reshapes (platform_permissions code-keyed, permission_code FK, secureFieldsByDefault=true)
 - Structural seed migrations + env-dependent bootstrap scripts kept; demo seeds deleted
 - Migration-blocking-index scanner gains same-migration-table-creation exception
-- Old migration files archived at \`pre-w2-migration-archive\` tag and deleted from tree
+- Old migration files archived at `pre-w2-migration-archive` tag and deleted from tree
 
 ## Spec reference
 docs/superpowers/specs/2026-05-15-phase3-w2-platform-integrity-design.md §Pre-W2 gate
 
 ## Validation
-- \`prelude-validate.ts\` 14 assertions green (11 Prelude + 3 baseline)
+- `prelude-validate.ts` 14 assertions green (11 Prelude + 3 baseline)
 - Fresh DB rebuild → baseline → seeds → bootstrap → boot → login all green
 - All Prelude scanners remain green
 
@@ -358,8 +389,7 @@ docs/superpowers/specs/2026-05-15-phase3-w2-platform-integrity-design.md §Pre-W
 - prelude-validate.ts happy + negative paths green
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
+'@
 ```
 
 Wait for review + merge. Pre-W2 Gate must land before any Stream 1 PR opens.
@@ -524,25 +554,41 @@ For each file matched by `git grep -nl "JWT_SECRET" apps/control-plane/ scripts/
 
 - [ ] **Step 9: Run control-plane fresh boot + login**
 
-PowerShell:
+`npm run dev:control-plane` blocks until killed, so split this verification across two PowerShell terminals (or use `Start-Process` to background the API).
+
+**Terminal A — bring up DB + run migrations + seeds + start the API (blocks):**
 ```
 docker-compose down -v
+if ($LASTEXITCODE -ne 0) { throw 'docker-compose down failed' }
 docker-compose up -d postgres redis
+if ($LASTEXITCODE -ne 0) { throw 'docker-compose up failed' }
 Start-Sleep -Seconds 5
 npm run migration:run:control-plane
+if ($LASTEXITCODE -ne 0) { throw 'control-plane migration failed' }
 npx tsx scripts/seed-admin-user.ts
+if ($LASTEXITCODE -ne 0) { throw 'seed-admin-user failed' }
 npx tsx scripts/seed-control-plane-key-bootstrap.ts
-npm run dev:control-plane  # in a separate terminal; the API listens on http://localhost:3001
-Start-Sleep -Seconds 10
-$body = @{ email = 'admin@hubblewave.dev'; password = $env:DEFAULT_ADMIN_PASSWORD } | ConvertTo-Json
-Invoke-RestMethod -Uri 'http://localhost:3001/api/auth/login' -Method Post -Body $body -ContentType 'application/json'
+if ($LASTEXITCODE -ne 0) { throw 'control-plane key bootstrap failed' }
+npm run dev:control-plane   # blocks; the API listens on http://localhost:3001
 ```
 
-Expected: response carries a valid `accessToken`. Decode its header (any JWT decoder) and verify `alg: ES256` and `kid: hwk_*`. Then:
+**Terminal B — once Terminal A reports "apps/control-plane listening", run the login + JWKS checks:**
 ```
+$body = @{ email = 'admin@hubblewave.dev'; password = $env:DEFAULT_ADMIN_PASSWORD } | ConvertTo-Json
+$resp = Invoke-RestMethod -Uri 'http://localhost:3001/api/auth/login' -Method Post -Body $body -ContentType 'application/json'
+$resp.accessToken    # decode any JWT decoder; verify header alg = ES256 and kid = hwk_*
 Invoke-RestMethod -Uri 'http://localhost:3001/.well-known/jwks.json'
 ```
-Expected: response body has a `keys` array with one entry matching the issued token's `kid`.
+
+Expected (Terminal B): login response carries a valid `accessToken`; decoded header shows `alg: ES256` and `kid: hwk_*`. JWKS endpoint returns a `keys` array containing one entry whose `kid` matches the token's.
+
+**Alternative (single terminal):** use `Start-Process` to background the API:
+```
+$api = Start-Process -FilePath 'npm' -ArgumentList 'run','dev:control-plane' -NoNewWindow -PassThru
+Start-Sleep -Seconds 10
+# ... login + JWKS checks here ...
+Stop-Process -Id $api.Id
+```
 
 - [ ] **Step 10: Commit + PR**
 
