@@ -112,10 +112,12 @@ $cpDb = if ($env:CONTROL_PLANE_DB_NAME) { $env:CONTROL_PLANE_DB_NAME } else { 'h
 
 # Confirm both databases exist before dumping. setup.ts creates them; if you skipped setup, create them manually:
 #   docker exec hw_postgres psql -U $pgUser -c "CREATE DATABASE $cpDb;" -d postgres
-docker exec hw_postgres psql -U $pgUser -lqt | Select-String -Pattern $instanceDb | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "instance DB '$instanceDb' missing — run npm run setup first" }
-docker exec hw_postgres psql -U $pgUser -lqt | Select-String -Pattern $cpDb | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "control-plane DB '$cpDb' missing — run npm run setup first" }
+# Use a SQL existence check via psql -tAc (tuples-only, unaligned, command). Select-String does NOT set
+# $LASTEXITCODE on no-match, so a missing DB would silently pass. Capture the SQL result and test emptiness.
+$instanceExists = docker exec hw_postgres psql -U $pgUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$instanceDb'"
+if (-not $instanceExists) { throw "instance DB '$instanceDb' missing — run npm run setup first" }
+$cpExists = docker exec hw_postgres psql -U $pgUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$cpDb'"
+if (-not $cpExists) { throw "control-plane DB '$cpDb' missing — run npm run setup first" }
 
 docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U $pgUser -d $instanceDb | Out-File -Encoding utf8 .dev/baseline/instance-schema.sql
 if ($LASTEXITCODE -ne 0) { throw 'instance pg_dump failed' }
@@ -299,24 +301,39 @@ git push origin pre-w2-migration-archive
 ```
 Expected: tag pushed to origin.
 
-- [ ] **Step 2: List files to delete (PowerShell)**
+- [ ] **Step 2: Compute the list of files to delete (PowerShell — single block, fail-safe)**
 
-The Pre-W2 keep-list contains only baseline + deterministic seed migrations. Stream 1 migrations (e.g. control-plane `0000000000010-add-key-metadata.ts`, instance `0000000000020-role-code-immutable-trigger.ts`) do not yet exist and will be added by Stream 1 PRs; they don't need to be in the Pre-W2 keep-list.
+Steps 2 and 3 share `$keepPrefixes` and the computed file lists. Run as ONE block so the variables stay in scope; do not split this into two PowerShell sessions. If you must run Step 3 independently, re-declare `$keepPrefixes` and recompute the lists first — running Step 3 with `$keepPrefixes = $null` would treat the keep-filter as always-false and delete the baseline + seed migrations.
+
+The Pre-W2 keep-list contains only baseline + deterministic seed migrations. Stream 1 migrations do not yet exist and will be added by Stream 1 PRs; they don't need to be in the Pre-W2 keep-list.
 
 ```
 $keepPrefixes = @('0000000000000','0000000000001','0000000000002','0000000000003','0000000000004','0000000000005')
-git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) }
-git ls-files migrations/control-plane/ | Where-Object { -not ((Split-Path $_ -Leaf).StartsWith('0000000000000')) }
-```
-Expected: ~98 instance files + ~8 control-plane files listed. The baseline + seed migrations are excluded from deletion.
 
-- [ ] **Step 3: Delete the listed files**
+$instanceFilesToDelete = git ls-files migrations/instance/ | Where-Object {
+  $name = Split-Path $_ -Leaf
+  -not ($keepPrefixes | Where-Object { $name.StartsWith($_) })
+}
+$controlPlaneFilesToDelete = git ls-files migrations/control-plane/ | Where-Object {
+  -not ((Split-Path $_ -Leaf).StartsWith('0000000000000'))
+}
+
+Write-Host "instance files to delete:"
+$instanceFilesToDelete
+Write-Host "control-plane files to delete:"
+$controlPlaneFilesToDelete
+```
+
+Expected output lists ~98 instance files + ~8 control-plane files. Sanity-check that the baseline + 5 seed migrations are NOT in either list before proceeding to Step 3.
+
+- [ ] **Step 3: Delete the listed files (uses the same variables from Step 2)**
 
 ```
-git ls-files migrations/instance/ | Where-Object { $name = Split-Path $_ -Leaf; -not ($keepPrefixes | ForEach-Object { $name.StartsWith($_) } | Where-Object { $_ }) } | ForEach-Object { git rm $_ }
-git ls-files migrations/control-plane/ | Where-Object { -not ((Split-Path $_ -Leaf).StartsWith('0000000000000')) } | ForEach-Object { git rm $_ }
+$instanceFilesToDelete | ForEach-Object { git rm $_ }
+$controlPlaneFilesToDelete | ForEach-Object { git rm $_ }
 ```
-Reuse the same Where-Object filter so deletion matches Step 2's listing exactly. Confirm via `git status --short migrations/` before commit.
+
+Run this in the same PowerShell session as Step 2. Confirm via `git status --short migrations/` before commit: only the ~106 files listed in Step 2 should appear as deletions, no baseline/seed files.
 
 - [ ] **Step 4: Verify migration runner still works (fail-fast)**
 
@@ -1038,7 +1055,7 @@ gh pr create --title "phase3-w2-stream2: registry sweep + scanner hard gate" --b
 **Files:**
 - Modify: `apps/api/src/app/metadata/collections/collections.service.ts` — default `secureFieldsByDefault = true` on create
 - Modify: `libs/instance-db/src/lib/entities/collection-definition.entity.ts` — `@Column({ default: true })`
-- Modify: existing authorization tests asserting the legacy default-allow branch — rewrite to assert deny path (except the 2 tests protecting the explicit opt-out branch itself)
+- Modify: existing authorization tests asserting the explicit opt-out default-allow branch — rewrite to assert deny path (except the 2 tests protecting that branch itself)
 
 Note: the DB default flip lands in the Pre-W2 baseline. This task closes the app side.
 
@@ -1050,12 +1067,12 @@ Edit `apps/api/src/app/metadata/collections/collections.service.ts`. The create 
 
 Edit `libs/instance-db/src/lib/entities/collection-definition.entity.ts`: `@Column({ type: 'boolean', default: true })` for `secure_fields_by_default`.
 
-- [ ] **Step 3: Test sweep — identify tests relying on legacy default-allow**
+- [ ] **Step 3: Test sweep — identify tests relying on the explicit opt-out default-allow branch**
 
 ```
 git grep -n "secureFieldsByDefault" -- libs/authorization/**/*.spec.ts apps/api/**/*.spec.ts
 ```
-For each test asserting `secureFieldsByDefault: false` → legacy default-allow: rewrite to assert the deny path under the new default. Exception: keep exactly the two tests that protect the explicit opt-out default-allow branch in the §28 evaluator (which remains in the code for customer-facing per-collection opt-out).
+For each test asserting `secureFieldsByDefault: false` → explicit opt-out default-allow: rewrite to assert the deny path under the new default. Exception: keep exactly the two tests that protect the explicit opt-out default-allow branch in the §28 evaluator (which remains in the code for customer-facing per-collection opt-out).
 
 - [ ] **Step 4: New test — secureFieldsByDefault=true + no rules → field denied + level-7 provenance**
 
@@ -1084,7 +1101,7 @@ Expected: all green.
 ```
 git add apps/api/src/app/metadata/collections/ libs/instance-db/src/lib/entities/collection-definition.entity.ts libs/authorization/src/lib/authorization.service.spec.ts apps/api/
 git commit -m "phase3-w2-stream2: secureFieldsByDefault=true app-side flip + test sweep"
-gh pr create --title "phase3-w2-stream2: secureFieldsByDefault=true flip" --body "App-side companion to the Pre-W2 baseline DB-default flip. CollectionsService.create defaults true. Test sweep rewrites legacy default-allow assertions to test deny path; 2 tests protecting the explicit opt-out branch retained."
+gh pr create --title "phase3-w2-stream2: secureFieldsByDefault=true flip" --body "App-side companion to the Pre-W2 baseline DB-default flip. CollectionsService.create defaults true. Test sweep rewrites explicit-opt-out default-allow assertions to test deny path; 2 tests protecting the explicit opt-out branch retained."
 ```
 
 ### Task 17: Stream 2 PR5 — Search §28.6 admin short-circuit retirement + canon §28.6 amendment
