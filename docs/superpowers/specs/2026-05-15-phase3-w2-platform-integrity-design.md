@@ -458,14 +458,19 @@ This is the upstream change Stream 4 depends on: the unified Typesense + pgvecto
 
 ### 2.9 `/authorization/explain` endpoint + audit provenance integration
 
-**Endpoint:** `GET /authorization/explain?userId=X&collectionId=Y&recordId=Z&fieldName=F`
+**Existing endpoints (preserved):**
+- `POST /authorization/explain/collection` — body carries `{ userId, collectionId, operation }`; returns `DecisionProvenance`.
+- `POST /authorization/explain/field` — body carries `{ userId, collectionId, field: { code, isSystem } }`; returns `FieldDecisionProvenance`.
 
-- Decorator: `@RequirePermission('authorization:explain:read')`. Registered with `dangerous: true` because it exposes authorization reasoning about users and records.
-- Returns the provenance object: `{ effect, matchedLevel, matchedRuleId?, matchedPrincipal?, maskStrategy?, fallbackChain: string[] }`.
+Both live on `apps/api/src/app/metadata/access/explain.controller.ts`. W2 keeps the URL shape + DTO contract; the POST/body shape matches the existing controller and is correct for an admin-only diagnostic call.
+
+**What W2 changes:**
+- The class-level `@Roles('admin')` (bare; currently scanner-fail under Stream 3's bare-`@Roles` rule) is migrated to `@RequirePermission('authorization:explain:read')`. The registry entry is `dangerous: true` because the endpoint exposes authorization reasoning about users and records. Migration lands in Stream 3's annotation sweep alongside other identity-area handlers (NOT as a Stream-2 PR — separating registry definition from the per-handler annotation work).
+- Response shape unchanged: returns the provenance object `{ effect, matchedLevel, matchedRuleId?, matchedPrincipal?, maskStrategy?, fallbackChain: string[] }`.
 
 **Audit provenance shape:** standardized inside existing `AuditLog.context.additionalData` JSONB. No parallel top-level `authzProvenance` column added.
 
-`PermissionsGuard` and `CollectionAccessGuard` write the provenance object on every 403 outcome via the audit subscriber.
+**Audit write path (corrected):** `PermissionsGuard` and `CollectionAccessGuard` write 403-outcome audit rows by calling a guard-facing audit service — the existing `AccessAuditPort` (in `libs/authorization/src/lib/audit-port.ts`) extended with a `logAccessDenied({ provenance, principal, resource, ... })` method if one isn't already present. The adapter implementation creates the `AuditLog` row with the provenance payload inside `context.additionalData`. The existing `AuditLogSubscriber` continues to hash inserted audit rows on its `beforeInsert` hook — no subscriber change. Subscriber's role is integrity (hash chain), not write triggering.
 
 ### 2.10 Stream 2 deliverables (PR sequence — 6 PRs)
 
@@ -474,7 +479,7 @@ This is the upstream change Stream 4 depends on: the unified Typesense + pgvecto
 3. **Migrate 213 `@RequirePermission` call sites + populate registry + flip scanner to hard CI gate.** Each existing call site gets a registered code OR converts to `@RequireCollectionAccess` for data-ACL routes OR converts to `@AuthenticatedOnly`. Registry populated. Scanner flips at end of this PR. Frontend permission constants reconciled to registry codegen.
 4. **`secureFieldsByDefault = true` baseline flip (app-side).** DB default rolled into pre-W2 baseline; this PR closes collection-creation default + test sweep.
 5. **§28.6 search short-circuit retirement.** Delete `search-query.service.ts:179` admin `allow_all` branch. Canon §28.6 amendment commits with this PR.
-6. **`/authorization/explain` endpoint + audit provenance extension.** Provenance surfaces via the endpoint and within `additionalData` on 403 audit rows.
+6. **Audit provenance write path + `/authorization/explain` capability registration.** Extends `AccessAuditPort` with `logAccessDenied(...)`; wires `PermissionsGuard` + `CollectionAccessGuard` to call it on 403; adapter writes the `AuditLog` row with provenance in `context.additionalData`; existing `AuditLogSubscriber` continues to hash on insert (no subscriber change). Registers `authorization:explain:read` in `PERMISSION_REGISTRY` (`dangerous: true`). The existing `POST /authorization/explain/{collection,field}` endpoints stay; their class-level `@Roles('admin')` migrates to `@RequirePermission('authorization:explain:read')` as part of Stream 3's identity-area annotation sweep, not in this PR.
 
 All PRs green at HEAD. PR #3 depends on #1 + #2.
 
@@ -764,7 +769,7 @@ This is a narrow identity/session invalidation channel, NOT a general realtime f
 }
 ```
 
-Written by `PermissionsGuard` and `CollectionAccessGuard` on every 403. Read via `/authorization/explain` (Stream 2) or direct audit-log queries with `authorization:explain:read` capability.
+Written by `PermissionsGuard` and `CollectionAccessGuard` on every 403, through the guard-facing audit service (`AccessAuditPort.logAccessDenied(...)` per §2.9). The adapter saves the row; `AuditLogSubscriber` hashes it on insert as it does today — no subscriber change. Read via `/authorization/explain/{collection,field}` (Stream 2) or direct audit-log queries with `authorization:explain:read` capability.
 
 No new top-level audit column. Standardized shape inside existing `additionalData`.
 
@@ -775,10 +780,10 @@ No new top-level audit column. Standardized shape inside existing `additionalDat
 **Additional happy-path assertions:**
 - Login as admin → `GET /api/users` → 200.
 - Login as non-admin (no `identity:user:manage`) → `GET /api/users` → 403 with body matching `{ statusCode: 403, message: "Permission denied", code: "PERMISSION_DENIED" }` exactly.
-- Admin → `GET /authorization/explain?userId=X&collectionId=Y` → 200 with provenance.
+- Admin (with `authorization:explain:read` capability) → `POST /authorization/explain/collection` with body `{ userId, collectionId, operation: 'read' }` → 200 with `DecisionProvenance`. Same admin → `POST /authorization/explain/field` with body `{ userId, collectionId, field: { code, isSystem } }` → 200 with `FieldDecisionProvenance`.
 - `GET /collections/:id/records/:recordId` → response carries `permissions.fields` map.
-- Service-token scope test: svc-worker → svc-api audience hits an automation endpoint (e.g., `POST /api/automation/rules/:id/invoke`) decorated `@AllowServiceToken + @RequireServiceScope('automation:invoke')`. With the scope claim → 200. Without the scope claim → 403. Without `@AllowServiceToken` on the endpoint → 401.
-- Service-token data-access test (separate concern from scope): svc-worker presents a token with `automation:invoke` scope and hits a data-ACL route like `GET /api/collections/work_order/records`. Access is determined by the service principal's `CollectionAccessRule` grants via the §28 evaluator, not by the JWT scope claim. Scope says "can call automation"; ACL says "can read work orders." Both layers apply independently.
+- Service-token scope test: svc-worker → svc-api audience hits a real automation endpoint (the current code surfaces `POST /api/automation/sync-trigger/execute` and `POST /api/automation/ava/execute`; Stream 3 sweep decorates one of these with `@AllowServiceToken + @RequireServiceScope('automation:invoke')` and the harness targets that exact route). With the scope claim → 200. Without the scope claim → 403. Without `@AllowServiceToken` on the endpoint → 401.
+- Service-token data-access test (separate concern from scope): svc-worker presents a token with `automation:invoke` scope and hits a current data-ACL route at `GET /data/collections/:collectionCode/data` (per `apps/api/src/app/data/collection-data.controller.ts:40`). Access is determined by the service principal's `CollectionAccessRule` grants via the §28 evaluator, not by the JWT scope claim. Scope says "can call automation"; ACL says "can read this collection." Both layers apply independently.
 - Admin role retired → `permissionCodes` cache invalidates within 1s → next request to admin-only endpoint → 403.
 
 **Additional negative-case assertions:**
