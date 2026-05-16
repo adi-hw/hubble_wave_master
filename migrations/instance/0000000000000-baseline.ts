@@ -1509,9 +1509,7 @@ export class Baseline0000000000000 implements MigrationInterface {
     permission_code text NOT NULL,
     granted_at timestamp with time zone DEFAULT now() NOT NULL,
     granted_by uuid,
-    CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission_code),
-    CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES identity.roles(id) ON DELETE CASCADE,
-    CONSTRAINT role_permissions_permission_code_fkey FOREIGN KEY (permission_code) REFERENCES identity.platform_permissions(code) ON DELETE RESTRICT
+    CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission_code)
 );`);
     await queryRunner.query(`CREATE TABLE identity.roles (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
@@ -4912,6 +4910,10 @@ export class Baseline0000000000000 implements MigrationInterface {
     ADD CONSTRAINT schema_versions_parent_version_id_fkey FOREIGN KEY (parent_version_id) REFERENCES public.schema_versions(id);`);
     await queryRunner.query(`ALTER TABLE ONLY public.upgrade_history
     ADD CONSTRAINT upgrade_history_upgrade_manifest_id_fkey FOREIGN KEY (upgrade_manifest_id) REFERENCES public.upgrade_manifest(id);`);
+    await queryRunner.query(`ALTER TABLE ONLY identity.role_permissions
+    ADD CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES identity.roles(id) ON DELETE CASCADE;`);
+    await queryRunner.query(`ALTER TABLE ONLY identity.role_permissions
+    ADD CONSTRAINT role_permissions_permission_code_fkey FOREIGN KEY (permission_code) REFERENCES identity.platform_permissions(code) ON DELETE RESTRICT;`);
 
     // Comments
     await queryRunner.query(`COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';`);

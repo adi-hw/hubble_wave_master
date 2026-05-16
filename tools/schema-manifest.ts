@@ -66,8 +66,12 @@ ORDER BY table_schema, table_name, ordinal_position;
 `;
 
 /**
- * Constraints (primary keys, unique constraints, check constraints).
+ * Constraints (primary keys, unique constraints, and check constraints).
  * Foreign keys are covered separately below.
+ *
+ * Primary keys and unique constraints join key_column_usage to capture the
+ * participating column name. Check constraints join check_constraints for the
+ * check clause; key_column_usage has no rows for CHECK so a UNION is used.
  */
 const CONSTRAINTS_SQL = `
 SELECT
@@ -75,14 +79,27 @@ SELECT
   tc.table_name,
   tc.constraint_name,
   tc.constraint_type,
-  kcu.column_name
+  kcu.column_name AS column_name
 FROM information_schema.table_constraints tc
 JOIN information_schema.key_column_usage kcu
   ON tc.constraint_name = kcu.constraint_name
   AND tc.table_schema = kcu.table_schema
 WHERE tc.table_schema NOT IN ('pg_catalog', 'information_schema')
   AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
-ORDER BY tc.table_schema, tc.table_name, tc.constraint_name, kcu.ordinal_position;
+UNION ALL
+SELECT
+  tc.table_schema,
+  tc.table_name,
+  tc.constraint_name,
+  tc.constraint_type,
+  cc.check_clause AS column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.check_constraints cc
+  ON tc.constraint_name = cc.constraint_name
+  AND tc.constraint_schema = cc.constraint_schema
+WHERE tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+  AND tc.constraint_type = 'CHECK'
+ORDER BY table_schema, table_name, constraint_name, column_name;
 `;
 
 /**
@@ -256,18 +273,18 @@ function buildFullManifest(): { content: string; introspectionContent: string; h
 
 /**
  * Self-validation: runs the same full manifest generation twice and verifies
- * the outputs are byte-identical. Exits 1 if they differ (indicates
- * non-deterministic query output or connection noise).
+ * the introspection content and hash are byte-identical. Exits 1 if they
+ * differ (indicates non-deterministic query output or connection noise).
  *
- * Both introspection content and the final rendered manifest (including the date
- * header) must match — the date header is identical within a single calendar
- * day, and the SHA-256 is computed over the date-header-free introspection
- * content so it is stable across day boundaries.
+ * The date header is intentionally excluded from this comparison — it is
+ * stable within a calendar day but would cause a spurious mismatch if the
+ * two runs straddle UTC midnight. The SHA-256 is computed over the
+ * date-header-free introspection content so it is always stable.
  *
  * Activated when --self-test flag is passed.
  */
 function runSelfTest(): void {
-  process.stderr.write('Running self-test: two consecutive manifest generations should be byte-identical...\n');
+  process.stderr.write('Running self-test: two consecutive manifest generations should produce identical introspection content and hash...\n');
 
   const m1 = buildFullManifest();
   const m2 = buildFullManifest();
@@ -277,17 +294,12 @@ function runSelfTest(): void {
     process.exit(1);
   }
 
-  if (m1.content !== m2.content) {
-    process.stderr.write('FAIL: full manifest output differs between run 1 and run 2.\n');
-    process.exit(1);
-  }
-
   if (m1.hash !== m2.hash) {
     process.stderr.write('FAIL: hash differs between run 1 and run 2.\n');
     process.exit(1);
   }
 
-  process.stderr.write(`Self-test PASS — introspection, full manifest, and hash all byte-identical across two independent calls. SHA-256: ${m1.hash}\n`);
+  process.stderr.write(`Self-test PASS — introspection content and hash are byte-identical across two independent calls. SHA-256: ${m1.hash}\n`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

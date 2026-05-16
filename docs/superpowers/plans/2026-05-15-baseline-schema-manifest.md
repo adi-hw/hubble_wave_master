@@ -1,8 +1,8 @@
 # HubbleWave Schema Manifest
 # Generated: 2026-05-16
 # Deterministic schema snapshot for baseline audit and drift detection.
-# SHA-256 (of introspection content below): 11a9920b356501fe61466e55e1a6f82da3e04650106291f8115282d8f8972b69
-# Instance database: hubblewave
+# SHA-256 (of introspection content below): 40b0e9eec42f18a3efbe81e8b2aa7cb20b9cf0aacd857d03077b8032cd7ab8d2
+# Instance database: hubblewave_baseline_test
 
 ## Tables and Columns
 app_builder|ai_report_templates|id|1|uuid_generate_v4()|NO|uuid||uuid
@@ -1187,18 +1187,13 @@ identity|password_reset_tokens|token|3||NO|character varying|255|varchar
 identity|password_reset_tokens|expires_at|4||NO|timestamp with time zone||timestamptz
 identity|password_reset_tokens|used_at|5||YES|timestamp with time zone||timestamptz
 identity|password_reset_tokens|created_at|6|now()|NO|timestamp with time zone||timestamptz
-identity|permissions|id|1|uuid_generate_v4()|NO|uuid||uuid
-identity|permissions|code|2||NO|character varying|100|varchar
-identity|permissions|name|3||NO|character varying|255|varchar
-identity|permissions|description|4||YES|text||text
-identity|permissions|category|5||YES|character varying|100|varchar
-identity|permissions|resource_type|6||YES|character varying|100|varchar
-identity|permissions|action_type|7||YES|character varying|50|varchar
-identity|permissions|is_system|8|false|NO|boolean||bool
-identity|permissions|is_dangerous|9|false|NO|boolean||bool
-identity|permissions|display_order|10|0|NO|integer||int4
-identity|permissions|icon|11||YES|character varying|100|varchar
-identity|permissions|created_at|12|now()|NO|timestamp with time zone||timestamptz
+identity|platform_permissions|code|1||NO|text||text
+identity|platform_permissions|plane|2||NO|text||text
+identity|platform_permissions|domain|3||NO|text||text
+identity|platform_permissions|resource|4||YES|text||text
+identity|platform_permissions|action|5||NO|text||text
+identity|platform_permissions|dangerous|6|false|NO|boolean||bool
+identity|platform_permissions|description|7||NO|text||text
 identity|refresh_tokens|token_hash|1||NO|text||text
 identity|refresh_tokens|family_id|2||NO|uuid||uuid
 identity|refresh_tokens|parent_token_id|3||YES|text||text
@@ -1214,12 +1209,10 @@ identity|refresh_tokens|last_used_at|12||YES|timestamp with time zone||timestamp
 identity|refresh_tokens|revoked_at|13||YES|timestamp with time zone||timestamptz
 identity|refresh_tokens|replaced_by_token_id|14||YES|text||text
 identity|refresh_tokens|revoked_reason|15||YES|text||text
-identity|role_permissions|id|1|uuid_generate_v4()|NO|uuid||uuid
-identity|role_permissions|role_id|2||NO|uuid||uuid
-identity|role_permissions|permission_id|3||NO|uuid||uuid
-identity|role_permissions|conditions|4||YES|jsonb||jsonb
-identity|role_permissions|created_by|5||YES|uuid||uuid
-identity|role_permissions|created_at|6|now()|NO|timestamp with time zone||timestamptz
+identity|role_permissions|role_id|1||NO|uuid||uuid
+identity|role_permissions|permission_code|2||NO|text||text
+identity|role_permissions|granted_at|3|now()|NO|timestamp with time zone||timestamptz
+identity|role_permissions|granted_by|4||YES|uuid||uuid
 identity|roles|id|1|uuid_generate_v4()|NO|uuid||uuid
 identity|roles|code|2||NO|character varying|100|varchar
 identity|roles|name|3||NO|character varying|255|varchar
@@ -1778,7 +1771,7 @@ metadata|collection_definitions|status|35|'draft'::character varying|NO|characte
 metadata|collection_definitions|current_revision_id|36||YES|uuid||uuid
 metadata|collection_definitions|published_at|37||YES|timestamp with time zone||timestamptz
 metadata|collection_definitions|source|38|'custom'::character varying|NO|character varying|120|varchar
-metadata|collection_definitions|secure_fields_by_default|39|false|NO|boolean||bool
+metadata|collection_definitions|secure_fields_by_default|39|true|NO|boolean||bool
 metadata|collection_indexes|id|1|uuid_generate_v4()|NO|uuid||uuid
 metadata|collection_indexes|collection_id|2||NO|uuid||uuid
 metadata|collection_indexes|code|3||NO|character varying|100|varchar
@@ -2844,304 +2837,1840 @@ public|view_configurations|created_by|27||YES|uuid||uuid
 public|view_configurations|updated_by|28||YES|uuid||uuid
 
 ## Constraints
+app_builder|ai_report_templates|22459_22880_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|ai_report_templates|22459_22880_1_not_null|CHECK|id IS NOT NULL
+app_builder|ai_report_templates|22459_22880_2_not_null|CHECK|name IS NOT NULL
+app_builder|ai_report_templates|22459_22880_8_not_null|CHECK|is_public IS NOT NULL
 app_builder|ai_report_templates|PK_ai_report_templates|PRIMARY KEY|id
+app_builder|ai_reports|22459_22888_11_not_null|CHECK|created_at IS NOT NULL
+app_builder|ai_reports|22459_22888_12_not_null|CHECK|updated_at IS NOT NULL
+app_builder|ai_reports|22459_22888_1_not_null|CHECK|id IS NOT NULL
+app_builder|ai_reports|22459_22888_3_not_null|CHECK|prompt IS NOT NULL
+app_builder|ai_reports|22459_22888_5_not_null|CHECK|definition IS NOT NULL
+app_builder|ai_reports|22459_22888_7_not_null|CHECK|status IS NOT NULL
 app_builder|ai_reports|PK_ai_reports|PRIMARY KEY|id
+app_builder|app_builder_components|22459_22897_1_not_null|CHECK|id IS NOT NULL
+app_builder|app_builder_components|22459_22897_2_not_null|CHECK|name IS NOT NULL
+app_builder|app_builder_components|22459_22897_3_not_null|CHECK|category IS NOT NULL
+app_builder|app_builder_components|22459_22897_4_not_null|CHECK|component_type IS NOT NULL
+app_builder|app_builder_components|22459_22897_5_not_null|CHECK|default_props IS NOT NULL
+app_builder|app_builder_components|22459_22897_6_not_null|CHECK|schema IS NOT NULL
+app_builder|app_builder_components|22459_22897_8_not_null|CHECK|is_system IS NOT NULL
+app_builder|app_builder_components|22459_22897_9_not_null|CHECK|created_at IS NOT NULL
 app_builder|app_builder_components|PK_app_builder_components|PRIMARY KEY|id
+app_builder|ava_stories|22459_22905_12_not_null|CHECK|status IS NOT NULL
+app_builder|ava_stories|22459_22905_15_not_null|CHECK|created_at IS NOT NULL
+app_builder|ava_stories|22459_22905_16_not_null|CHECK|updated_at IS NOT NULL
+app_builder|ava_stories|22459_22905_1_not_null|CHECK|id IS NOT NULL
+app_builder|ava_stories|22459_22905_3_not_null|CHECK|title IS NOT NULL
 app_builder|ava_stories|PK_ava_stories|PRIMARY KEY|id
+app_builder|customization_registry|22459_22914_12_not_null|CHECK|created_at IS NOT NULL
+app_builder|customization_registry|22459_22914_13_not_null|CHECK|updated_at IS NOT NULL
+app_builder|customization_registry|22459_22914_1_not_null|CHECK|id IS NOT NULL
+app_builder|customization_registry|22459_22914_2_not_null|CHECK|customization_type IS NOT NULL
+app_builder|customization_registry|22459_22914_3_not_null|CHECK|artifact_id IS NOT NULL
+app_builder|customization_registry|22459_22914_5_not_null|CHECK|is_system_modified IS NOT NULL
+app_builder|customization_registry|22459_22914_8_not_null|CHECK|dependencies IS NOT NULL
+app_builder|customization_registry|22459_22914_9_not_null|CHECK|dependents IS NOT NULL
 app_builder|customization_registry|PK_customization_registry|PRIMARY KEY|id
+app_builder|digital_twins|22459_22925_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|digital_twins|22459_22925_11_not_null|CHECK|updated_at IS NOT NULL
+app_builder|digital_twins|22459_22925_12_not_null|CHECK|name IS NOT NULL
+app_builder|digital_twins|22459_22925_14_not_null|CHECK|asset_type IS NOT NULL
+app_builder|digital_twins|22459_22925_1_not_null|CHECK|id IS NOT NULL
+app_builder|digital_twins|22459_22925_2_not_null|CHECK|asset_id IS NOT NULL
+app_builder|digital_twins|22459_22925_5_not_null|CHECK|sync_interval IS NOT NULL
+app_builder|digital_twins|22459_22925_6_not_null|CHECK|sensor_mappings IS NOT NULL
+app_builder|digital_twins|22459_22925_7_not_null|CHECK|state IS NOT NULL
+app_builder|digital_twins|22459_22925_8_not_null|CHECK|is_active IS NOT NULL
 app_builder|digital_twins|PK_digital_twins|PRIMARY KEY|id
+app_builder|documentation_versions|22459_22938_1_not_null|CHECK|id IS NOT NULL
+app_builder|documentation_versions|22459_22938_2_not_null|CHECK|documentation_id IS NOT NULL
+app_builder|documentation_versions|22459_22938_3_not_null|CHECK|version IS NOT NULL
+app_builder|documentation_versions|22459_22938_4_not_null|CHECK|documentation IS NOT NULL
+app_builder|documentation_versions|22459_22938_6_not_null|CHECK|created_at IS NOT NULL
 app_builder|documentation_versions|PK_documentation_versions|PRIMARY KEY|id
+app_builder|generated_documentation|22459_22945_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|generated_documentation|22459_22945_11_not_null|CHECK|updated_at IS NOT NULL
+app_builder|generated_documentation|22459_22945_1_not_null|CHECK|id IS NOT NULL
+app_builder|generated_documentation|22459_22945_2_not_null|CHECK|artifact_type IS NOT NULL
+app_builder|generated_documentation|22459_22945_3_not_null|CHECK|artifact_id IS NOT NULL
+app_builder|generated_documentation|22459_22945_5_not_null|CHECK|documentation IS NOT NULL
+app_builder|generated_documentation|22459_22945_7_not_null|CHECK|version IS NOT NULL
+app_builder|generated_documentation|22459_22945_8_not_null|CHECK|generated_at IS NOT NULL
+app_builder|generated_documentation|22459_22945_9_not_null|CHECK|generated_by IS NOT NULL
 app_builder|generated_documentation|PK_generated_documentation|PRIMARY KEY|id
+app_builder|insight_analysis_jobs|22459_22956_1_not_null|CHECK|id IS NOT NULL
+app_builder|insight_analysis_jobs|22459_22956_2_not_null|CHECK|job_type IS NOT NULL
+app_builder|insight_analysis_jobs|22459_22956_5_not_null|CHECK|run_frequency_hours IS NOT NULL
+app_builder|insight_analysis_jobs|22459_22956_6_not_null|CHECK|status IS NOT NULL
+app_builder|insight_analysis_jobs|22459_22956_8_not_null|CHECK|created_at IS NOT NULL
+app_builder|insight_analysis_jobs|22459_22956_9_not_null|CHECK|updated_at IS NOT NULL
 app_builder|insight_analysis_jobs|PK_insight_analysis_jobs|PRIMARY KEY|id
+app_builder|nl_queries|22459_22966_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|nl_queries|22459_22966_1_not_null|CHECK|id IS NOT NULL
+app_builder|nl_queries|22459_22966_3_not_null|CHECK|query_text IS NOT NULL
 app_builder|nl_queries|PK_nl_queries|PRIMARY KEY|id
+app_builder|predictive_insights|22459_22973_10_not_null|CHECK|status IS NOT NULL
+app_builder|predictive_insights|22459_22973_15_not_null|CHECK|created_at IS NOT NULL
+app_builder|predictive_insights|22459_22973_1_not_null|CHECK|id IS NOT NULL
+app_builder|predictive_insights|22459_22973_2_not_null|CHECK|insight_type IS NOT NULL
+app_builder|predictive_insights|22459_22973_3_not_null|CHECK|severity IS NOT NULL
+app_builder|predictive_insights|22459_22973_4_not_null|CHECK|title IS NOT NULL
+app_builder|predictive_insights|22459_22973_5_not_null|CHECK|description IS NOT NULL
 app_builder|predictive_insights|PK_predictive_insights|PRIMARY KEY|id
+app_builder|predictive_suggestions|22459_22981_10_not_null|CHECK|dismissed IS NOT NULL
+app_builder|predictive_suggestions|22459_22981_12_not_null|CHECK|shown_at IS NOT NULL
+app_builder|predictive_suggestions|22459_22981_1_not_null|CHECK|id IS NOT NULL
 app_builder|predictive_suggestions|PK_predictive_suggestions|PRIMARY KEY|id
+app_builder|recovery_actions|22459_22989_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|recovery_actions|22459_22989_11_not_null|CHECK|updated_at IS NOT NULL
+app_builder|recovery_actions|22459_22989_1_not_null|CHECK|id IS NOT NULL
+app_builder|recovery_actions|22459_22989_2_not_null|CHECK|name IS NOT NULL
+app_builder|recovery_actions|22459_22989_3_not_null|CHECK|action_type IS NOT NULL
+app_builder|recovery_actions|22459_22989_5_not_null|CHECK|trigger_conditions IS NOT NULL
+app_builder|recovery_actions|22459_22989_6_not_null|CHECK|action_config IS NOT NULL
+app_builder|recovery_actions|22459_22989_7_not_null|CHECK|is_active IS NOT NULL
+app_builder|recovery_actions|22459_22989_9_not_null|CHECK|trigger_count IS NOT NULL
 app_builder|recovery_actions|PK_recovery_actions|PRIMARY KEY|id
+app_builder|saved_nl_queries|22459_22999_1_not_null|CHECK|id IS NOT NULL
+app_builder|saved_nl_queries|22459_22999_3_not_null|CHECK|name IS NOT NULL
+app_builder|saved_nl_queries|22459_22999_4_not_null|CHECK|query_text IS NOT NULL
+app_builder|saved_nl_queries|22459_22999_5_not_null|CHECK|is_favorite IS NOT NULL
+app_builder|saved_nl_queries|22459_22999_6_not_null|CHECK|usage_count IS NOT NULL
+app_builder|saved_nl_queries|22459_22999_7_not_null|CHECK|created_at IS NOT NULL
 app_builder|saved_nl_queries|PK_saved_nl_queries|PRIMARY KEY|id
+app_builder|self_healing_events|22459_23008_1_not_null|CHECK|id IS NOT NULL
+app_builder|self_healing_events|22459_23008_2_not_null|CHECK|service_name IS NOT NULL
+app_builder|self_healing_events|22459_23008_3_not_null|CHECK|event_type IS NOT NULL
+app_builder|self_healing_events|22459_23008_9_not_null|CHECK|created_at IS NOT NULL
 app_builder|self_healing_events|PK_self_healing_events|PRIMARY KEY|id
+app_builder|sensor_readings|22459_23015_1_not_null|CHECK|id IS NOT NULL
+app_builder|sensor_readings|22459_23015_2_not_null|CHECK|asset_id IS NOT NULL
+app_builder|sensor_readings|22459_23015_3_not_null|CHECK|sensor_id IS NOT NULL
+app_builder|sensor_readings|22459_23015_8_not_null|CHECK|timestamp IS NOT NULL
 app_builder|sensor_readings|PK_sensor_readings|PRIMARY KEY|id
+app_builder|service_health_status|22459_23023_10_not_null|CHECK|health_history IS NOT NULL
+app_builder|service_health_status|22459_23023_11_not_null|CHECK|created_at IS NOT NULL
+app_builder|service_health_status|22459_23023_12_not_null|CHECK|updated_at IS NOT NULL
+app_builder|service_health_status|22459_23023_1_not_null|CHECK|id IS NOT NULL
+app_builder|service_health_status|22459_23023_2_not_null|CHECK|service_name IS NOT NULL
+app_builder|service_health_status|22459_23023_3_not_null|CHECK|status IS NOT NULL
 app_builder|service_health_status|PK_service_health_status|PRIMARY KEY|id
 app_builder|service_health_status|UQ_service_health_name|UNIQUE|service_name
+app_builder|sprint_recordings|22459_23033_10_not_null|CHECK|created_at IS NOT NULL
+app_builder|sprint_recordings|22459_23033_11_not_null|CHECK|updated_at IS NOT NULL
+app_builder|sprint_recordings|22459_23033_1_not_null|CHECK|id IS NOT NULL
+app_builder|sprint_recordings|22459_23033_2_not_null|CHECK|title IS NOT NULL
+app_builder|sprint_recordings|22459_23033_6_not_null|CHECK|recorded_at IS NOT NULL
+app_builder|sprint_recordings|22459_23033_8_not_null|CHECK|status IS NOT NULL
 app_builder|sprint_recordings|PK_sprint_recordings|PRIMARY KEY|id
+app_builder|story_implementations|22459_23042_1_not_null|CHECK|id IS NOT NULL
+app_builder|story_implementations|22459_23042_2_not_null|CHECK|story_id IS NOT NULL
+app_builder|story_implementations|22459_23042_3_not_null|CHECK|artifact_type IS NOT NULL
+app_builder|story_implementations|22459_23042_4_not_null|CHECK|artifact_id IS NOT NULL
+app_builder|story_implementations|22459_23042_5_not_null|CHECK|generated_by_ava IS NOT NULL
+app_builder|story_implementations|22459_23042_7_not_null|CHECK|created_at IS NOT NULL
 app_builder|story_implementations|PK_story_implementations|PRIMARY KEY|id
+app_builder|upgrade_fixes|22459_23050_10_not_null|CHECK|rollback_available IS NOT NULL
+app_builder|upgrade_fixes|22459_23050_11_not_null|CHECK|created_at IS NOT NULL
+app_builder|upgrade_fixes|22459_23050_1_not_null|CHECK|id IS NOT NULL
+app_builder|upgrade_fixes|22459_23050_2_not_null|CHECK|analysis_id IS NOT NULL
+app_builder|upgrade_fixes|22459_23050_3_not_null|CHECK|customization_id IS NOT NULL
+app_builder|upgrade_fixes|22459_23050_4_not_null|CHECK|fix_type IS NOT NULL
 app_builder|upgrade_fixes|PK_upgrade_fixes|PRIMARY KEY|id
+app_builder|upgrade_impact_analyses|22459_23058_14_not_null|CHECK|created_at IS NOT NULL
+app_builder|upgrade_impact_analyses|22459_23058_1_not_null|CHECK|id IS NOT NULL
+app_builder|upgrade_impact_analyses|22459_23058_2_not_null|CHECK|from_version IS NOT NULL
+app_builder|upgrade_impact_analyses|22459_23058_3_not_null|CHECK|to_version IS NOT NULL
+app_builder|upgrade_impact_analyses|22459_23058_4_not_null|CHECK|analysis_status IS NOT NULL
 app_builder|upgrade_impact_analyses|PK_upgrade_impact_analyses|PRIMARY KEY|id
+app_builder|user_behaviors|22459_23066_1_not_null|CHECK|id IS NOT NULL
+app_builder|user_behaviors|22459_23066_2_not_null|CHECK|user_id IS NOT NULL
+app_builder|user_behaviors|22459_23066_3_not_null|CHECK|action IS NOT NULL
+app_builder|user_behaviors|22459_23066_9_not_null|CHECK|timestamp IS NOT NULL
 app_builder|user_behaviors|PK_user_behaviors|PRIMARY KEY|id
+app_builder|user_patterns|22459_23073_1_not_null|CHECK|id IS NOT NULL
+app_builder|user_patterns|22459_23073_2_not_null|CHECK|user_id IS NOT NULL
+app_builder|user_patterns|22459_23073_3_not_null|CHECK|pattern_type IS NOT NULL
+app_builder|user_patterns|22459_23073_4_not_null|CHECK|pattern_data IS NOT NULL
+app_builder|user_patterns|22459_23073_6_not_null|CHECK|occurrence_count IS NOT NULL
+app_builder|user_patterns|22459_23073_8_not_null|CHECK|created_at IS NOT NULL
+app_builder|user_patterns|22459_23073_9_not_null|CHECK|updated_at IS NOT NULL
 app_builder|user_patterns|PK_user_patterns|PRIMARY KEY|id
+app_builder|voice_command_patterns|22459_23082_1_not_null|CHECK|id IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_2_not_null|CHECK|intent IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_3_not_null|CHECK|patterns IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_4_not_null|CHECK|action_type IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_5_not_null|CHECK|action_config IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_7_not_null|CHECK|is_active IS NOT NULL
+app_builder|voice_command_patterns|22459_23082_8_not_null|CHECK|created_at IS NOT NULL
 app_builder|voice_command_patterns|PK_voice_command_patterns|PRIMARY KEY|id
+app_builder|voice_commands|22459_23090_11_not_null|CHECK|created_at IS NOT NULL
+app_builder|voice_commands|22459_23090_1_not_null|CHECK|id IS NOT NULL
+app_builder|voice_commands|22459_23090_4_not_null|CHECK|command_text IS NOT NULL
+app_builder|voice_commands|22459_23090_8_not_null|CHECK|executed IS NOT NULL
 app_builder|voice_commands|PK_voice_commands|PRIMARY KEY|id
+app_builder|zero_code_app_versions|22459_23098_1_not_null|CHECK|id IS NOT NULL
+app_builder|zero_code_app_versions|22459_23098_2_not_null|CHECK|app_id IS NOT NULL
+app_builder|zero_code_app_versions|22459_23098_3_not_null|CHECK|version IS NOT NULL
+app_builder|zero_code_app_versions|22459_23098_4_not_null|CHECK|definition IS NOT NULL
+app_builder|zero_code_app_versions|22459_23098_7_not_null|CHECK|created_at IS NOT NULL
 app_builder|zero_code_app_versions|PK_zero_code_app_versions|PRIMARY KEY|id
+app_builder|zero_code_apps|22459_23105_11_not_null|CHECK|created_at IS NOT NULL
+app_builder|zero_code_apps|22459_23105_12_not_null|CHECK|updated_at IS NOT NULL
+app_builder|zero_code_apps|22459_23105_1_not_null|CHECK|id IS NOT NULL
+app_builder|zero_code_apps|22459_23105_2_not_null|CHECK|name IS NOT NULL
+app_builder|zero_code_apps|22459_23105_4_not_null|CHECK|version IS NOT NULL
+app_builder|zero_code_apps|22459_23105_5_not_null|CHECK|definition IS NOT NULL
+app_builder|zero_code_apps|22459_23105_6_not_null|CHECK|is_published IS NOT NULL
 app_builder|zero_code_apps|PK_zero_code_apps|PRIMARY KEY|id
+automation|approvals|22460_23115_1_not_null|CHECK|id IS NOT NULL
+automation|approvals|22460_23115_3_not_null|CHECK|node_id IS NOT NULL
+automation|approvals|22460_23115_4_not_null|CHECK|approver_id IS NOT NULL
 automation|approvals|approvals_pkey|PRIMARY KEY|id
+automation|approvals|chk_approval_status|CHECK|(((status)::text = ANY (ARRAY[('pending'::character varying)::t
+automation|approvals|chk_approval_type|CHECK|(((approval_type)::text = ANY (ARRAY[('sequential'::character v
+automation|approvals|chk_approver_type|CHECK|(((approver_type)::text = ANY (ARRAY[('user'::character varying
+automation|automation_execution_logs|22460_23130_10_not_null|CHECK|status IS NOT NULL
+automation|automation_execution_logs|22460_23130_18_not_null|CHECK|execution_depth IS NOT NULL
+automation|automation_execution_logs|22460_23130_1_not_null|CHECK|id IS NOT NULL
+automation|automation_execution_logs|22460_23130_20_not_null|CHECK|created_at IS NOT NULL
+automation|automation_execution_logs|22460_23130_4_not_null|CHECK|automation_type IS NOT NULL
+automation|automation_execution_logs|22460_23130_5_not_null|CHECK|automation_name IS NOT NULL
 automation|automation_execution_logs|pk_automation_execution_logs|PRIMARY KEY|id
+automation|automation_rule_revisions|22460_23138_1_not_null|CHECK|id IS NOT NULL
+automation|automation_rule_revisions|22460_23138_2_not_null|CHECK|automation_rule_id IS NOT NULL
+automation|automation_rule_revisions|22460_23138_3_not_null|CHECK|revision IS NOT NULL
+automation|automation_rule_revisions|22460_23138_4_not_null|CHECK|status IS NOT NULL
+automation|automation_rule_revisions|22460_23138_5_not_null|CHECK|payload IS NOT NULL
+automation|automation_rule_revisions|22460_23138_9_not_null|CHECK|created_at IS NOT NULL
 automation|automation_rule_revisions|automation_rule_revisions_pkey|PRIMARY KEY|id
+automation|automation_rules|22460_23146_11_not_null|CHECK|action_type IS NOT NULL
+automation|automation_rules|22460_23146_14_not_null|CHECK|abort_on_error IS NOT NULL
+automation|automation_rules|22460_23146_15_not_null|CHECK|execution_order IS NOT NULL
+automation|automation_rules|22460_23146_16_not_null|CHECK|is_active IS NOT NULL
+automation|automation_rules|22460_23146_17_not_null|CHECK|is_system IS NOT NULL
+automation|automation_rules|22460_23146_18_not_null|CHECK|consecutive_errors IS NOT NULL
+automation|automation_rules|22460_23146_1_not_null|CHECK|id IS NOT NULL
+automation|automation_rules|22460_23146_20_not_null|CHECK|metadata IS NOT NULL
+automation|automation_rules|22460_23146_23_not_null|CHECK|created_at IS NOT NULL
+automation|automation_rules|22460_23146_24_not_null|CHECK|updated_at IS NOT NULL
+automation|automation_rules|22460_23146_25_not_null|CHECK|application_id IS NOT NULL
+automation|automation_rules|22460_23146_26_not_null|CHECK|status IS NOT NULL
+automation|automation_rules|22460_23146_29_not_null|CHECK|source IS NOT NULL
+automation|automation_rules|22460_23146_2_not_null|CHECK|name IS NOT NULL
+automation|automation_rules|22460_23146_4_not_null|CHECK|collection_id IS NOT NULL
+automation|automation_rules|22460_23146_5_not_null|CHECK|trigger_timing IS NOT NULL
+automation|automation_rules|22460_23146_6_not_null|CHECK|trigger_operations IS NOT NULL
+automation|automation_rules|22460_23146_8_not_null|CHECK|condition_type IS NOT NULL
 automation|automation_rules|pk_automation_rules|PRIMARY KEY|id
+automation|business_hours|22460_23165_1_not_null|CHECK|id IS NOT NULL
+automation|business_hours|22460_23165_2_not_null|CHECK|name IS NOT NULL
+automation|business_hours|22460_23165_3_not_null|CHECK|code IS NOT NULL
+automation|business_hours|22460_23165_5_not_null|CHECK|timezone IS NOT NULL
+automation|business_hours|22460_23165_6_not_null|CHECK|schedule IS NOT NULL
 automation|business_hours|business_hours_code_key|UNIQUE|code
 automation|business_hours|business_hours_pkey|PRIMARY KEY|id
+automation|client_scripts|22460_23178_10_not_null|CHECK|actions IS NOT NULL
+automation|client_scripts|22460_23178_11_not_null|CHECK|execution_order IS NOT NULL
+automation|client_scripts|22460_23178_12_not_null|CHECK|is_active IS NOT NULL
+automation|client_scripts|22460_23178_13_not_null|CHECK|metadata IS NOT NULL
+automation|client_scripts|22460_23178_15_not_null|CHECK|created_at IS NOT NULL
+automation|client_scripts|22460_23178_16_not_null|CHECK|updated_at IS NOT NULL
+automation|client_scripts|22460_23178_1_not_null|CHECK|id IS NOT NULL
+automation|client_scripts|22460_23178_2_not_null|CHECK|name IS NOT NULL
+automation|client_scripts|22460_23178_4_not_null|CHECK|collection_id IS NOT NULL
+automation|client_scripts|22460_23178_6_not_null|CHECK|trigger IS NOT NULL
+automation|client_scripts|22460_23178_8_not_null|CHECK|condition_type IS NOT NULL
 automation|client_scripts|pk_client_scripts|PRIMARY KEY|id
+automation|connectors|22460_23190_11_not_null|CHECK|created_at IS NOT NULL
+automation|connectors|22460_23190_12_not_null|CHECK|updated_at IS NOT NULL
+automation|connectors|22460_23190_13_not_null|CHECK|source IS NOT NULL
+automation|connectors|22460_23190_1_not_null|CHECK|id IS NOT NULL
+automation|connectors|22460_23190_2_not_null|CHECK|code IS NOT NULL
+automation|connectors|22460_23190_3_not_null|CHECK|name IS NOT NULL
+automation|connectors|22460_23190_5_not_null|CHECK|kind IS NOT NULL
+automation|connectors|22460_23190_6_not_null|CHECK|config IS NOT NULL
+automation|connectors|22460_23190_8_not_null|CHECK|status IS NOT NULL
 automation|connectors|connectors_code_key|UNIQUE|code
 automation|connectors|connectors_pkey|PRIMARY KEY|id
+automation|cross_domain_read_diff|22460_23201_1_not_null|CHECK|id IS NOT NULL
+automation|cross_domain_read_diff|22460_23201_2_not_null|CHECK|caller_service IS NOT NULL
+automation|cross_domain_read_diff|22460_23201_3_not_null|CHECK|callsite IS NOT NULL
+automation|cross_domain_read_diff|22460_23201_4_not_null|CHECK|lookup_key IS NOT NULL
+automation|cross_domain_read_diff|22460_23201_5_not_null|CHECK|diff_kind IS NOT NULL
+automation|cross_domain_read_diff|22460_23201_8_not_null|CHECK|detected_at IS NOT NULL
+automation|cross_domain_read_diff|CHK_cross_domain_read_diff_kind|CHECK|(((diff_kind)::text = ANY (ARRAY[('value-mismatch'::character v
 automation|cross_domain_read_diff|PK_cross_domain_read_diff|PRIMARY KEY|id
+automation|decision_inputs|22460_23209_1_not_null|CHECK|id IS NOT NULL
+automation|decision_inputs|22460_23209_2_not_null|CHECK|table_id IS NOT NULL
+automation|decision_inputs|22460_23209_3_not_null|CHECK|name IS NOT NULL
+automation|decision_inputs|22460_23209_4_not_null|CHECK|input_type IS NOT NULL
+automation|decision_inputs|22460_23209_7_not_null|CHECK|position IS NOT NULL
+automation|decision_inputs|22460_23209_8_not_null|CHECK|created_at IS NOT NULL
 automation|decision_inputs|decision_inputs_pkey|PRIMARY KEY|id
+automation|decision_rows|22460_23216_1_not_null|CHECK|id IS NOT NULL
+automation|decision_rows|22460_23216_2_not_null|CHECK|table_id IS NOT NULL
+automation|decision_rows|22460_23216_3_not_null|CHECK|position IS NOT NULL
+automation|decision_rows|22460_23216_4_not_null|CHECK|conditions IS NOT NULL
+automation|decision_rows|22460_23216_8_not_null|CHECK|is_active IS NOT NULL
+automation|decision_rows|22460_23216_9_not_null|CHECK|created_at IS NOT NULL
 automation|decision_rows|decision_rows_pkey|PRIMARY KEY|id
+automation|decision_table_revisions|22460_23225_1_not_null|CHECK|id IS NOT NULL
+automation|decision_table_revisions|22460_23225_2_not_null|CHECK|table_id IS NOT NULL
+automation|decision_table_revisions|22460_23225_3_not_null|CHECK|revision IS NOT NULL
+automation|decision_table_revisions|22460_23225_4_not_null|CHECK|status IS NOT NULL
+automation|decision_table_revisions|22460_23225_5_not_null|CHECK|payload IS NOT NULL
+automation|decision_table_revisions|22460_23225_9_not_null|CHECK|created_at IS NOT NULL
 automation|decision_table_revisions|decision_table_revisions_pkey|PRIMARY KEY|id
+automation|decision_tables|22460_23233_10_not_null|CHECK|is_active IS NOT NULL
+automation|decision_tables|22460_23233_15_not_null|CHECK|created_at IS NOT NULL
+automation|decision_tables|22460_23233_16_not_null|CHECK|updated_at IS NOT NULL
+automation|decision_tables|22460_23233_17_not_null|CHECK|source IS NOT NULL
+automation|decision_tables|22460_23233_1_not_null|CHECK|id IS NOT NULL
+automation|decision_tables|22460_23233_2_not_null|CHECK|code IS NOT NULL
+automation|decision_tables|22460_23233_3_not_null|CHECK|name IS NOT NULL
+automation|decision_tables|22460_23233_5_not_null|CHECK|collection_id IS NOT NULL
+automation|decision_tables|22460_23233_6_not_null|CHECK|application_id IS NOT NULL
+automation|decision_tables|22460_23233_8_not_null|CHECK|hit_policy IS NOT NULL
+automation|decision_tables|22460_23233_9_not_null|CHECK|status IS NOT NULL
 automation|decision_tables|decision_tables_code_key|UNIQUE|code
 automation|decision_tables|decision_tables_pkey|PRIMARY KEY|id
+automation|guided_process_activities|22460_23245_1_not_null|CHECK|id IS NOT NULL
+automation|guided_process_activities|22460_23245_2_not_null|CHECK|stage_id IS NOT NULL
+automation|guided_process_activities|22460_23245_3_not_null|CHECK|name IS NOT NULL
+automation|guided_process_activities|22460_23245_5_not_null|CHECK|position IS NOT NULL
+automation|guided_process_activities|22460_23245_6_not_null|CHECK|kind IS NOT NULL
+automation|guided_process_activities|22460_23245_9_not_null|CHECK|created_at IS NOT NULL
 automation|guided_process_activities|guided_process_activities_pkey|PRIMARY KEY|id
+automation|guided_process_revisions|22460_23252_1_not_null|CHECK|id IS NOT NULL
+automation|guided_process_revisions|22460_23252_2_not_null|CHECK|process_id IS NOT NULL
+automation|guided_process_revisions|22460_23252_3_not_null|CHECK|revision IS NOT NULL
+automation|guided_process_revisions|22460_23252_4_not_null|CHECK|status IS NOT NULL
+automation|guided_process_revisions|22460_23252_5_not_null|CHECK|payload IS NOT NULL
+automation|guided_process_revisions|22460_23252_9_not_null|CHECK|created_at IS NOT NULL
 automation|guided_process_revisions|guided_process_revisions_pkey|PRIMARY KEY|id
+automation|guided_process_stages|22460_23260_1_not_null|CHECK|id IS NOT NULL
+automation|guided_process_stages|22460_23260_2_not_null|CHECK|process_id IS NOT NULL
+automation|guided_process_stages|22460_23260_3_not_null|CHECK|name IS NOT NULL
+automation|guided_process_stages|22460_23260_5_not_null|CHECK|position IS NOT NULL
+automation|guided_process_stages|22460_23260_7_not_null|CHECK|created_at IS NOT NULL
 automation|guided_process_stages|guided_process_stages_pkey|PRIMARY KEY|id
+automation|guided_processes|22460_23267_13_not_null|CHECK|created_at IS NOT NULL
+automation|guided_processes|22460_23267_14_not_null|CHECK|updated_at IS NOT NULL
+automation|guided_processes|22460_23267_15_not_null|CHECK|source IS NOT NULL
+automation|guided_processes|22460_23267_1_not_null|CHECK|id IS NOT NULL
+automation|guided_processes|22460_23267_2_not_null|CHECK|code IS NOT NULL
+automation|guided_processes|22460_23267_3_not_null|CHECK|name IS NOT NULL
+automation|guided_processes|22460_23267_5_not_null|CHECK|collection_id IS NOT NULL
+automation|guided_processes|22460_23267_6_not_null|CHECK|application_id IS NOT NULL
+automation|guided_processes|22460_23267_7_not_null|CHECK|status IS NOT NULL
+automation|guided_processes|22460_23267_8_not_null|CHECK|is_active IS NOT NULL
 automation|guided_processes|guided_processes_code_key|UNIQUE|code
 automation|guided_processes|guided_processes_pkey|PRIMARY KEY|id
+automation|process_flow_definition_revisions|22460_23278_1_not_null|CHECK|id IS NOT NULL
+automation|process_flow_definition_revisions|22460_23278_2_not_null|CHECK|process_flow_id IS NOT NULL
+automation|process_flow_definition_revisions|22460_23278_3_not_null|CHECK|revision IS NOT NULL
+automation|process_flow_definition_revisions|22460_23278_4_not_null|CHECK|status IS NOT NULL
+automation|process_flow_definition_revisions|22460_23278_5_not_null|CHECK|payload IS NOT NULL
+automation|process_flow_definition_revisions|22460_23278_9_not_null|CHECK|created_at IS NOT NULL
 automation|process_flow_definition_revisions|process_flow_definition_revisions_pkey|PRIMARY KEY|id
+automation|process_flow_definitions|22460_23286_1_not_null|CHECK|id IS NOT NULL
+automation|process_flow_definitions|22460_23286_24_not_null|CHECK|application_id IS NOT NULL
+automation|process_flow_definitions|22460_23286_25_not_null|CHECK|status IS NOT NULL
+automation|process_flow_definitions|22460_23286_28_not_null|CHECK|source IS NOT NULL
+automation|process_flow_definitions|22460_23286_2_not_null|CHECK|name IS NOT NULL
+automation|process_flow_definitions|22460_23286_3_not_null|CHECK|code IS NOT NULL
+automation|process_flow_definitions|22460_23286_8_not_null|CHECK|canvas IS NOT NULL
+automation|process_flow_definitions|22460_23286_9_not_null|CHECK|trigger_type IS NOT NULL
+automation|process_flow_definitions|chk_trigger_type|CHECK|(((trigger_type)::text = ANY (ARRAY[('record_created'::characte
 automation|process_flow_definitions|process_flow_definitions_code_key|UNIQUE|code
 automation|process_flow_definitions|process_flow_definitions_pkey|PRIMARY KEY|id
+automation|process_flow_execution_history|22460_23307_1_not_null|CHECK|id IS NOT NULL
+automation|process_flow_execution_history|22460_23307_3_not_null|CHECK|node_id IS NOT NULL
+automation|process_flow_execution_history|22460_23307_4_not_null|CHECK|node_type IS NOT NULL
+automation|process_flow_execution_history|22460_23307_6_not_null|CHECK|action IS NOT NULL
+automation|process_flow_execution_history|22460_23307_7_not_null|CHECK|status IS NOT NULL
+automation|process_flow_execution_history|chk_history_status|CHECK|(((status)::text = ANY (ARRAY[('started'::character varying)::t
 automation|process_flow_execution_history|process_flow_execution_history_pkey|PRIMARY KEY|id
+automation|process_flow_instances|22460_23315_1_not_null|CHECK|id IS NOT NULL
+automation|process_flow_instances|22460_23315_3_not_null|CHECK|record_id IS NOT NULL
+automation|process_flow_instances|chk_instance_state|CHECK|(((state)::text = ANY (ARRAY[('running'::character varying)::te
 automation|process_flow_instances|process_flow_instances_pkey|PRIMARY KEY|id
+automation|scheduled_jobs|22460_23328_12_not_null|CHECK|is_active IS NOT NULL
+automation|scheduled_jobs|22460_23328_16_not_null|CHECK|consecutive_failures IS NOT NULL
+automation|scheduled_jobs|22460_23328_17_not_null|CHECK|max_retries IS NOT NULL
+automation|scheduled_jobs|22460_23328_18_not_null|CHECK|metadata IS NOT NULL
+automation|scheduled_jobs|22460_23328_1_not_null|CHECK|id IS NOT NULL
+automation|scheduled_jobs|22460_23328_21_not_null|CHECK|created_at IS NOT NULL
+automation|scheduled_jobs|22460_23328_22_not_null|CHECK|updated_at IS NOT NULL
+automation|scheduled_jobs|22460_23328_2_not_null|CHECK|name IS NOT NULL
+automation|scheduled_jobs|22460_23328_5_not_null|CHECK|frequency IS NOT NULL
+automation|scheduled_jobs|22460_23328_7_not_null|CHECK|timezone IS NOT NULL
+automation|scheduled_jobs|22460_23328_8_not_null|CHECK|action_type IS NOT NULL
 automation|scheduled_jobs|pk_scheduled_jobs|PRIMARY KEY|id
+automation|sla_breaches|22460_23343_1_not_null|CHECK|id IS NOT NULL
+automation|sla_breaches|22460_23343_4_not_null|CHECK|record_id IS NOT NULL
+automation|sla_breaches|22460_23343_6_not_null|CHECK|target_seconds IS NOT NULL
+automation|sla_breaches|22460_23343_7_not_null|CHECK|elapsed_seconds IS NOT NULL
+automation|sla_breaches|22460_23343_8_not_null|CHECK|breach_amount_seconds IS NOT NULL
 automation|sla_breaches|sla_breaches_pkey|PRIMARY KEY|id
+automation|sla_definitions|22460_23350_1_not_null|CHECK|id IS NOT NULL
+automation|sla_definitions|22460_23350_2_not_null|CHECK|name IS NOT NULL
+automation|sla_definitions|22460_23350_3_not_null|CHECK|code IS NOT NULL
+automation|sla_definitions|22460_23350_6_not_null|CHECK|sla_type IS NOT NULL
+automation|sla_definitions|22460_23350_7_not_null|CHECK|target_minutes IS NOT NULL
+automation|sla_definitions|chk_sla_type|CHECK|(((sla_type)::text = ANY (ARRAY[('response'::character varying)
 automation|sla_definitions|sla_definitions_code_key|UNIQUE|code
 automation|sla_definitions|sla_definitions_pkey|PRIMARY KEY|id
+automation|sla_instances|22460_23365_13_not_null|CHECK|target_time IS NOT NULL
+automation|sla_instances|22460_23365_1_not_null|CHECK|id IS NOT NULL
+automation|sla_instances|22460_23365_3_not_null|CHECK|record_id IS NOT NULL
+automation|sla_instances|22460_23365_7_not_null|CHECK|remaining_seconds IS NOT NULL
+automation|sla_instances|22460_23365_8_not_null|CHECK|target_seconds IS NOT NULL
+automation|sla_instances|22460_23365_9_not_null|CHECK|start_time IS NOT NULL
+automation|sla_instances|chk_sla_instance_state|CHECK|(((state)::text = ANY (ARRAY[('active'::character varying)::tex
 automation|sla_instances|sla_instances_pkey|PRIMARY KEY|id
+automation|state_change_history|22460_23378_1_not_null|CHECK|id IS NOT NULL
+automation|state_change_history|22460_23378_2_not_null|CHECK|record_id IS NOT NULL
+automation|state_change_history|22460_23378_6_not_null|CHECK|to_state IS NOT NULL
 automation|state_change_history|state_change_history_pkey|PRIMARY KEY|id
+automation|state_machine_definitions|22460_23385_1_not_null|CHECK|id IS NOT NULL
+automation|state_machine_definitions|22460_23385_2_not_null|CHECK|name IS NOT NULL
+automation|state_machine_definitions|22460_23385_3_not_null|CHECK|code IS NOT NULL
+automation|state_machine_definitions|22460_23385_6_not_null|CHECK|state_field IS NOT NULL
+automation|state_machine_definitions|22460_23385_7_not_null|CHECK|states IS NOT NULL
+automation|state_machine_definitions|22460_23385_8_not_null|CHECK|transitions IS NOT NULL
 automation|state_machine_definitions|state_machine_definitions_code_key|UNIQUE|code
 automation|state_machine_definitions|state_machine_definitions_pkey|PRIMARY KEY|id
+ava|ava_anomalies|22461_23396_12_not_null|CHECK|is_resolved IS NOT NULL
+ava|ava_anomalies|22461_23396_15_not_null|CHECK|detected_at IS NOT NULL
+ava|ava_anomalies|22461_23396_17_not_null|CHECK|created_at IS NOT NULL
+ava|ava_anomalies|22461_23396_1_not_null|CHECK|id IS NOT NULL
+ava|ava_anomalies|22461_23396_2_not_null|CHECK|anomaly_type IS NOT NULL
+ava|ava_anomalies|22461_23396_3_not_null|CHECK|severity IS NOT NULL
+ava|ava_anomalies|22461_23396_4_not_null|CHECK|description IS NOT NULL
 ava|ava_anomalies|ava_anomalies_pkey|PRIMARY KEY|id
+ava|ava_audit_trail|22461_23404_18_not_null|CHECK|is_revertible IS NOT NULL
+ava|ava_audit_trail|22461_23404_1_not_null|CHECK|id IS NOT NULL
+ava|ava_audit_trail|22461_23404_29_not_null|CHECK|created_at IS NOT NULL
+ava|ava_audit_trail|22461_23404_2_not_null|CHECK|user_id IS NOT NULL
+ava|ava_audit_trail|22461_23404_8_not_null|CHECK|action_type IS NOT NULL
+ava|ava_audit_trail|22461_23404_9_not_null|CHECK|status IS NOT NULL
 ava|ava_audit_trail|PK_8883aeb20729f23f84dddd4cd2b|PRIMARY KEY|id
+ava|ava_cards|22461_23413_1_not_null|CHECK|id IS NOT NULL
+ava|ava_cards|22461_23413_2_not_null|CHECK|code IS NOT NULL
+ava|ava_cards|22461_23413_3_not_null|CHECK|name IS NOT NULL
 ava|ava_cards|ava_cards_code_key|UNIQUE|code
 ava|ava_cards|ava_cards_pkey|PRIMARY KEY|id
+ava|ava_contexts|22461_23425_1_not_null|CHECK|id IS NOT NULL
+ava|ava_contexts|22461_23425_2_not_null|CHECK|user_id IS NOT NULL
+ava|ava_contexts|22461_23425_4_not_null|CHECK|context_type IS NOT NULL
+ava|ava_contexts|22461_23425_5_not_null|CHECK|context_key IS NOT NULL
+ava|ava_contexts|22461_23425_6_not_null|CHECK|context_value IS NOT NULL
+ava|ava_contexts|22461_23425_8_not_null|CHECK|created_at IS NOT NULL
+ava|ava_contexts|22461_23425_9_not_null|CHECK|updated_at IS NOT NULL
 ava|ava_contexts|ava_contexts_pkey|PRIMARY KEY|id
+ava|ava_conversations|22461_23433_11_not_null|CHECK|created_at IS NOT NULL
+ava|ava_conversations|22461_23433_12_not_null|CHECK|updated_at IS NOT NULL
+ava|ava_conversations|22461_23433_1_not_null|CHECK|id IS NOT NULL
+ava|ava_conversations|22461_23433_2_not_null|CHECK|user_id IS NOT NULL
+ava|ava_conversations|22461_23433_3_not_null|CHECK|status IS NOT NULL
+ava|ava_conversations|22461_23433_5_not_null|CHECK|message_count IS NOT NULL
 ava|ava_conversations|ava_conversations_pkey|PRIMARY KEY|id
+ava|ava_feedback|22461_23443_10_not_null|CHECK|created_at IS NOT NULL
+ava|ava_feedback|22461_23443_1_not_null|CHECK|id IS NOT NULL
+ava|ava_feedback|22461_23443_2_not_null|CHECK|user_id IS NOT NULL
+ava|ava_feedback|22461_23443_5_not_null|CHECK|feedback_type IS NOT NULL
+ava|ava_feedback|22461_23443_9_not_null|CHECK|is_processed IS NOT NULL
 ava|ava_feedback|ava_feedback_pkey|PRIMARY KEY|id
+ava|ava_global_settings|22461_23451_10_not_null|CHECK|user_rate_limit_per_hour IS NOT NULL
+ava|ava_global_settings|22461_23451_11_not_null|CHECK|global_rate_limit_per_hour IS NOT NULL
+ava|ava_global_settings|22461_23451_13_not_null|CHECK|updated_at IS NOT NULL
+ava|ava_global_settings|22461_23451_1_not_null|CHECK|id IS NOT NULL
+ava|ava_global_settings|22461_23451_2_not_null|CHECK|ava_enabled IS NOT NULL
+ava|ava_global_settings|22461_23451_3_not_null|CHECK|read_only_mode IS NOT NULL
+ava|ava_global_settings|22461_23451_4_not_null|CHECK|allow_create_actions IS NOT NULL
+ava|ava_global_settings|22461_23451_5_not_null|CHECK|allow_update_actions IS NOT NULL
+ava|ava_global_settings|22461_23451_6_not_null|CHECK|allow_delete_actions IS NOT NULL
+ava|ava_global_settings|22461_23451_7_not_null|CHECK|allow_execute_actions IS NOT NULL
+ava|ava_global_settings|22461_23451_8_not_null|CHECK|default_requires_confirmation IS NOT NULL
+ava|ava_global_settings|22461_23451_9_not_null|CHECK|system_read_only_collections IS NOT NULL
 ava|ava_global_settings|PK_ae7c69697b886ebe857e9e15239|PRIMARY KEY|id
+ava|ava_intents|22461_23468_10_not_null|CHECK|created_at IS NOT NULL
+ava|ava_intents|22461_23468_1_not_null|CHECK|id IS NOT NULL
+ava|ava_intents|22461_23468_2_not_null|CHECK|message_id IS NOT NULL
+ava|ava_intents|22461_23468_3_not_null|CHECK|category IS NOT NULL
+ava|ava_intents|22461_23468_4_not_null|CHECK|intent_name IS NOT NULL
+ava|ava_intents|22461_23468_5_not_null|CHECK|confidence IS NOT NULL
+ava|ava_intents|22461_23468_8_not_null|CHECK|is_clarification_needed IS NOT NULL
 ava|ava_intents|ava_intents_pkey|PRIMARY KEY|id
+ava|ava_knowledge_embeddings|22461_23476_10_not_null|CHECK|updated_at IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_1_not_null|CHECK|id IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_2_not_null|CHECK|source_type IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_3_not_null|CHECK|source_id IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_4_not_null|CHECK|content_hash IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_5_not_null|CHECK|content IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_6_not_null|CHECK|embedding IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_7_not_null|CHECK|embedding_model IS NOT NULL
+ava|ava_knowledge_embeddings|22461_23476_9_not_null|CHECK|created_at IS NOT NULL
 ava|ava_knowledge_embeddings|ava_knowledge_embeddings_pkey|PRIMARY KEY|id
+ava|ava_messages|22461_23484_12_not_null|CHECK|created_at IS NOT NULL
+ava|ava_messages|22461_23484_1_not_null|CHECK|id IS NOT NULL
+ava|ava_messages|22461_23484_2_not_null|CHECK|conversation_id IS NOT NULL
+ava|ava_messages|22461_23484_3_not_null|CHECK|role IS NOT NULL
+ava|ava_messages|22461_23484_4_not_null|CHECK|content IS NOT NULL
 ava|ava_messages|ava_messages_pkey|PRIMARY KEY|id
+ava|ava_permission_configs|22461_23491_10_not_null|CHECK|created_at IS NOT NULL
+ava|ava_permission_configs|22461_23491_11_not_null|CHECK|updated_at IS NOT NULL
+ava|ava_permission_configs|22461_23491_1_not_null|CHECK|id IS NOT NULL
+ava|ava_permission_configs|22461_23491_3_not_null|CHECK|action_type IS NOT NULL
+ava|ava_permission_configs|22461_23491_4_not_null|CHECK|is_enabled IS NOT NULL
+ava|ava_permission_configs|22461_23491_5_not_null|CHECK|requires_confirmation IS NOT NULL
+ava|ava_permission_configs|22461_23491_6_not_null|CHECK|allowed_roles IS NOT NULL
+ava|ava_permission_configs|22461_23491_7_not_null|CHECK|excluded_roles IS NOT NULL
 ava|ava_permission_configs|PK_11683766f65091641045f8ae30f|PRIMARY KEY|id
+ava|ava_predictions|22461_23503_11_not_null|CHECK|created_at IS NOT NULL
+ava|ava_predictions|22461_23503_1_not_null|CHECK|id IS NOT NULL
+ava|ava_predictions|22461_23503_2_not_null|CHECK|prediction_type IS NOT NULL
+ava|ava_predictions|22461_23503_3_not_null|CHECK|target_date IS NOT NULL
+ava|ava_predictions|22461_23503_4_not_null|CHECK|prediction_value IS NOT NULL
+ava|ava_predictions|22461_23503_8_not_null|CHECK|is_active IS NOT NULL
 ava|ava_predictions|ava_predictions_pkey|PRIMARY KEY|id
+ava|ava_prompt_policies|22461_23511_1_not_null|CHECK|id IS NOT NULL
+ava|ava_prompt_policies|22461_23511_2_not_null|CHECK|code IS NOT NULL
+ava|ava_prompt_policies|22461_23511_3_not_null|CHECK|name IS NOT NULL
 ava|ava_prompt_policies|ava_prompt_policies_code_key|UNIQUE|code
 ava|ava_prompt_policies|ava_prompt_policies_pkey|PRIMARY KEY|id
+ava|ava_proposal|22461_23522_10_not_null|CHECK|created_at IS NOT NULL
+ava|ava_proposal|22461_23522_11_not_null|CHECK|updated_at IS NOT NULL
+ava|ava_proposal|22461_23522_1_not_null|CHECK|id IS NOT NULL
+ava|ava_proposal|22461_23522_2_not_null|CHECK|kind IS NOT NULL
+ava|ava_proposal|22461_23522_3_not_null|CHECK|payload IS NOT NULL
+ava|ava_proposal|22461_23522_5_not_null|CHECK|state IS NOT NULL
 ava|ava_proposal|ava_proposal_pkey|PRIMARY KEY|id
+ava|ava_suggestions|22461_23530_13_not_null|CHECK|created_at IS NOT NULL
+ava|ava_suggestions|22461_23530_1_not_null|CHECK|id IS NOT NULL
+ava|ava_suggestions|22461_23530_2_not_null|CHECK|user_id IS NOT NULL
+ava|ava_suggestions|22461_23530_4_not_null|CHECK|suggestion_type IS NOT NULL
+ava|ava_suggestions|22461_23530_7_not_null|CHECK|suggested_value IS NOT NULL
 ava|ava_suggestions|ava_suggestions_pkey|PRIMARY KEY|id
+ava|ava_tools|22461_23537_1_not_null|CHECK|id IS NOT NULL
+ava|ava_tools|22461_23537_2_not_null|CHECK|code IS NOT NULL
+ava|ava_tools|22461_23537_3_not_null|CHECK|name IS NOT NULL
 ava|ava_tools|ava_tools_code_key|UNIQUE|code
 ava|ava_tools|ava_tools_pkey|PRIMARY KEY|id
+ava|ava_topics|22461_23551_1_not_null|CHECK|id IS NOT NULL
+ava|ava_topics|22461_23551_2_not_null|CHECK|code IS NOT NULL
+ava|ava_topics|22461_23551_3_not_null|CHECK|name IS NOT NULL
 ava|ava_topics|ava_topics_code_key|UNIQUE|code
 ava|ava_topics|ava_topics_pkey|PRIMARY KEY|id
+ava|ava_usage_metrics|22461_23563_1_not_null|CHECK|id IS NOT NULL
+ava|ava_usage_metrics|22461_23563_3_not_null|CHECK|metric_date IS NOT NULL
+ava|ava_usage_metrics|22461_23563_4_not_null|CHECK|metric_type IS NOT NULL
+ava|ava_usage_metrics|22461_23563_5_not_null|CHECK|metric_value IS NOT NULL
+ava|ava_usage_metrics|22461_23563_7_not_null|CHECK|created_at IS NOT NULL
 ava|ava_usage_metrics|ava_usage_metrics_pkey|PRIMARY KEY|id
+ava|dataset_definitions|22461_23570_10_not_null|CHECK|version IS NOT NULL
+ava|dataset_definitions|22461_23570_11_not_null|CHECK|metadata IS NOT NULL
+ava|dataset_definitions|22461_23570_12_not_null|CHECK|is_active IS NOT NULL
+ava|dataset_definitions|22461_23570_15_not_null|CHECK|created_at IS NOT NULL
+ava|dataset_definitions|22461_23570_16_not_null|CHECK|updated_at IS NOT NULL
+ava|dataset_definitions|22461_23570_1_not_null|CHECK|id IS NOT NULL
+ava|dataset_definitions|22461_23570_2_not_null|CHECK|code IS NOT NULL
+ava|dataset_definitions|22461_23570_3_not_null|CHECK|name IS NOT NULL
+ava|dataset_definitions|22461_23570_5_not_null|CHECK|source_collection_code IS NOT NULL
+ava|dataset_definitions|22461_23570_6_not_null|CHECK|filter IS NOT NULL
+ava|dataset_definitions|22461_23570_7_not_null|CHECK|label_mapping IS NOT NULL
+ava|dataset_definitions|22461_23570_8_not_null|CHECK|feature_mapping IS NOT NULL
+ava|dataset_definitions|22461_23570_9_not_null|CHECK|status IS NOT NULL
 ava|dataset_definitions|dataset_definitions_code_key|UNIQUE|code
 ava|dataset_definitions|dataset_definitions_pkey|PRIMARY KEY|id
+ava|dataset_snapshots|22461_23585_12_not_null|CHECK|created_at IS NOT NULL
+ava|dataset_snapshots|22461_23585_13_not_null|CHECK|updated_at IS NOT NULL
+ava|dataset_snapshots|22461_23585_1_not_null|CHECK|id IS NOT NULL
+ava|dataset_snapshots|22461_23585_3_not_null|CHECK|status IS NOT NULL
+ava|dataset_snapshots|22461_23585_7_not_null|CHECK|metadata IS NOT NULL
 ava|dataset_snapshots|dataset_snapshots_pkey|PRIMARY KEY|id
+ava|model_artifacts|22461_23595_12_not_null|CHECK|status IS NOT NULL
+ava|model_artifacts|22461_23595_13_not_null|CHECK|metadata IS NOT NULL
+ava|model_artifacts|22461_23595_16_not_null|CHECK|created_at IS NOT NULL
+ava|model_artifacts|22461_23595_17_not_null|CHECK|updated_at IS NOT NULL
+ava|model_artifacts|22461_23595_1_not_null|CHECK|id IS NOT NULL
+ava|model_artifacts|22461_23595_2_not_null|CHECK|code IS NOT NULL
+ava|model_artifacts|22461_23595_3_not_null|CHECK|name IS NOT NULL
+ava|model_artifacts|22461_23595_4_not_null|CHECK|version IS NOT NULL
+ava|model_artifacts|22461_23595_7_not_null|CHECK|artifact_bucket IS NOT NULL
+ava|model_artifacts|22461_23595_8_not_null|CHECK|artifact_key IS NOT NULL
 ava|model_artifacts|model_artifacts_pkey|PRIMARY KEY|id
+ava|model_deployments|22461_23605_10_not_null|CHECK|created_at IS NOT NULL
+ava|model_deployments|22461_23605_11_not_null|CHECK|updated_at IS NOT NULL
+ava|model_deployments|22461_23605_1_not_null|CHECK|id IS NOT NULL
+ava|model_deployments|22461_23605_3_not_null|CHECK|target_type IS NOT NULL
+ava|model_deployments|22461_23605_4_not_null|CHECK|target_config IS NOT NULL
+ava|model_deployments|22461_23605_5_not_null|CHECK|status IS NOT NULL
+ava|model_deployments|22461_23605_9_not_null|CHECK|metadata IS NOT NULL
 ava|model_deployments|model_deployments_pkey|PRIMARY KEY|id
+ava|model_evaluations|22461_23616_10_not_null|CHECK|created_at IS NOT NULL
+ava|model_evaluations|22461_23616_11_not_null|CHECK|updated_at IS NOT NULL
+ava|model_evaluations|22461_23616_1_not_null|CHECK|id IS NOT NULL
+ava|model_evaluations|22461_23616_4_not_null|CHECK|metrics IS NOT NULL
+ava|model_evaluations|22461_23616_5_not_null|CHECK|confusion_matrix IS NOT NULL
+ava|model_evaluations|22461_23616_6_not_null|CHECK|calibration_stats IS NOT NULL
+ava|model_evaluations|22461_23616_7_not_null|CHECK|status IS NOT NULL
+ava|model_evaluations|22461_23616_8_not_null|CHECK|metadata IS NOT NULL
 ava|model_evaluations|model_evaluations_pkey|PRIMARY KEY|id
+ava|model_training_jobs|22461_23629_10_not_null|CHECK|status IS NOT NULL
+ava|model_training_jobs|22461_23629_16_not_null|CHECK|metadata IS NOT NULL
+ava|model_training_jobs|22461_23629_17_not_null|CHECK|created_at IS NOT NULL
+ava|model_training_jobs|22461_23629_18_not_null|CHECK|updated_at IS NOT NULL
+ava|model_training_jobs|22461_23629_1_not_null|CHECK|id IS NOT NULL
+ava|model_training_jobs|22461_23629_3_not_null|CHECK|model_code IS NOT NULL
+ava|model_training_jobs|22461_23629_4_not_null|CHECK|model_name IS NOT NULL
+ava|model_training_jobs|22461_23629_5_not_null|CHECK|model_version IS NOT NULL
+ava|model_training_jobs|22461_23629_6_not_null|CHECK|algorithm IS NOT NULL
+ava|model_training_jobs|22461_23629_7_not_null|CHECK|hyperparameters IS NOT NULL
+ava|model_training_jobs|22461_23629_8_not_null|CHECK|training_config IS NOT NULL
+ava|model_training_jobs|22461_23629_9_not_null|CHECK|metrics IS NOT NULL
 ava|model_training_jobs|model_training_jobs_pkey|PRIMARY KEY|id
+identity|auth_events|22462_23642_1_not_null|CHECK|id IS NOT NULL
+identity|auth_events|22462_23642_3_not_null|CHECK|event_type IS NOT NULL
+identity|auth_events|22462_23642_4_not_null|CHECK|success IS NOT NULL
+identity|auth_events|22462_23642_8_not_null|CHECK|details IS NOT NULL
+identity|auth_events|22462_23642_9_not_null|CHECK|created_at IS NOT NULL
 identity|auth_events|PK_ab929cc6084ffb3fd795bd983c0|PRIMARY KEY|id
+identity|auth_settings|22462_23650_10_not_null|CHECK|max_failed_attempts IS NOT NULL
+identity|auth_settings|22462_23650_11_not_null|CHECK|lockout_duration_minutes IS NOT NULL
+identity|auth_settings|22462_23650_12_not_null|CHECK|session_timeout_minutes IS NOT NULL
+identity|auth_settings|22462_23650_13_not_null|CHECK|max_concurrent_sessions IS NOT NULL
+identity|auth_settings|22462_23650_14_not_null|CHECK|remember_me_duration_days IS NOT NULL
+identity|auth_settings|22462_23650_15_not_null|CHECK|mfa_required IS NOT NULL
+identity|auth_settings|22462_23650_16_not_null|CHECK|mfa_grace_period_days IS NOT NULL
+identity|auth_settings|22462_23650_17_not_null|CHECK|sso_enabled IS NOT NULL
+identity|auth_settings|22462_23650_18_not_null|CHECK|sso_enforce IS NOT NULL
+identity|auth_settings|22462_23650_1_not_null|CHECK|id IS NOT NULL
+identity|auth_settings|22462_23650_20_not_null|CHECK|ip_whitelist_enabled IS NOT NULL
+identity|auth_settings|22462_23650_21_not_null|CHECK|ip_whitelist IS NOT NULL
+identity|auth_settings|22462_23650_22_not_null|CHECK|allowed_auth_methods IS NOT NULL
+identity|auth_settings|22462_23650_23_not_null|CHECK|allow_password_reset IS NOT NULL
+identity|auth_settings|22462_23650_24_not_null|CHECK|allow_profile_edit IS NOT NULL
+identity|auth_settings|22462_23650_25_not_null|CHECK|allow_mfa_self_enrollment IS NOT NULL
+identity|auth_settings|22462_23650_26_not_null|CHECK|created_at IS NOT NULL
+identity|auth_settings|22462_23650_27_not_null|CHECK|updated_at IS NOT NULL
+identity|auth_settings|22462_23650_2_not_null|CHECK|password_min_length IS NOT NULL
+identity|auth_settings|22462_23650_3_not_null|CHECK|password_require_uppercase IS NOT NULL
+identity|auth_settings|22462_23650_4_not_null|CHECK|password_require_lowercase IS NOT NULL
+identity|auth_settings|22462_23650_5_not_null|CHECK|password_require_numbers IS NOT NULL
+identity|auth_settings|22462_23650_6_not_null|CHECK|password_require_symbols IS NOT NULL
+identity|auth_settings|22462_23650_7_not_null|CHECK|password_history_count IS NOT NULL
+identity|auth_settings|22462_23650_8_not_null|CHECK|password_expiry_days IS NOT NULL
+identity|auth_settings|22462_23650_9_not_null|CHECK|password_block_common IS NOT NULL
 identity|auth_settings|PK_daf9fe3ab40a3241250fcd21127|PRIMARY KEY|id
+identity|behavioral_profiles|22462_23681_10_not_null|CHECK|last_updated_at IS NOT NULL
+identity|behavioral_profiles|22462_23681_1_not_null|CHECK|id IS NOT NULL
+identity|behavioral_profiles|22462_23681_2_not_null|CHECK|user_id IS NOT NULL
 identity|behavioral_profiles|behavioral_profiles_pkey|PRIMARY KEY|id
 identity|behavioral_profiles|behavioral_profiles_user_id_key|UNIQUE|user_id
+identity|delegations|22462_23699_10_not_null|CHECK|starts_at IS NOT NULL
+identity|delegations|22462_23699_11_not_null|CHECK|ends_at IS NOT NULL
+identity|delegations|22462_23699_1_not_null|CHECK|id IS NOT NULL
+identity|delegations|22462_23699_2_not_null|CHECK|delegator_id IS NOT NULL
+identity|delegations|22462_23699_3_not_null|CHECK|delegate_id IS NOT NULL
+identity|delegations|22462_23699_4_not_null|CHECK|name IS NOT NULL
 identity|delegations|delegations_pkey|PRIMARY KEY|id
+identity|email_verification_tokens|22462_23711_1_not_null|CHECK|id IS NOT NULL
+identity|email_verification_tokens|22462_23711_2_not_null|CHECK|user_id IS NOT NULL
+identity|email_verification_tokens|22462_23711_3_not_null|CHECK|email IS NOT NULL
+identity|email_verification_tokens|22462_23711_4_not_null|CHECK|token IS NOT NULL
+identity|email_verification_tokens|22462_23711_5_not_null|CHECK|expires_at IS NOT NULL
+identity|email_verification_tokens|22462_23711_7_not_null|CHECK|created_at IS NOT NULL
 identity|email_verification_tokens|PK_417a095bbed21c2369a6a01ab9a|PRIMARY KEY|id
 identity|email_verification_tokens|UQ_3d1613f95c6a564a3b588d161ae|UNIQUE|token
+identity|group_members|22462_23718_1_not_null|CHECK|id IS NOT NULL
+identity|group_members|22462_23718_2_not_null|CHECK|group_id IS NOT NULL
+identity|group_members|22462_23718_3_not_null|CHECK|user_id IS NOT NULL
+identity|group_members|22462_23718_4_not_null|CHECK|is_manager IS NOT NULL
+identity|group_members|22462_23718_5_not_null|CHECK|valid_from IS NOT NULL
+identity|group_members|22462_23718_8_not_null|CHECK|created_at IS NOT NULL
 identity|group_members|PK_86446139b2c96bfd0f3b8638852|PRIMARY KEY|id
 identity|group_members|UQ_f5939ee0ad233ad35e03f5c65c1|UNIQUE|group_id
 identity|group_members|UQ_f5939ee0ad233ad35e03f5c65c1|UNIQUE|user_id
+identity|group_roles|22462_23725_1_not_null|CHECK|id IS NOT NULL
+identity|group_roles|22462_23725_2_not_null|CHECK|group_id IS NOT NULL
+identity|group_roles|22462_23725_3_not_null|CHECK|role_id IS NOT NULL
+identity|group_roles|22462_23725_5_not_null|CHECK|created_at IS NOT NULL
 identity|group_roles|PK_c88b2351f40bf170bc7ab7e8fda|PRIMARY KEY|id
 identity|group_roles|UQ_31cb33278c5d3f7aed58766840a|UNIQUE|group_id
 identity|group_roles|UQ_31cb33278c5d3f7aed58766840a|UNIQUE|role_id
+identity|groups|22462_23730_10_not_null|CHECK|is_system IS NOT NULL
+identity|groups|22462_23730_11_not_null|CHECK|is_active IS NOT NULL
+identity|groups|22462_23730_14_not_null|CHECK|metadata IS NOT NULL
+identity|groups|22462_23730_16_not_null|CHECK|created_at IS NOT NULL
+identity|groups|22462_23730_17_not_null|CHECK|updated_at IS NOT NULL
+identity|groups|22462_23730_1_not_null|CHECK|id IS NOT NULL
+identity|groups|22462_23730_2_not_null|CHECK|code IS NOT NULL
+identity|groups|22462_23730_3_not_null|CHECK|name IS NOT NULL
+identity|groups|22462_23730_6_not_null|CHECK|hierarchy_level IS NOT NULL
+identity|groups|22462_23730_8_not_null|CHECK|type IS NOT NULL
 identity|groups|PK_659d1483316afb28afd3a90646e|PRIMARY KEY|id
 identity|groups|UQ_8989cafa0945a366f0c8716e609|UNIQUE|code
+identity|impersonation_sessions|22462_23743_1_not_null|CHECK|id IS NOT NULL
+identity|impersonation_sessions|22462_23743_2_not_null|CHECK|impersonator_id IS NOT NULL
+identity|impersonation_sessions|22462_23743_3_not_null|CHECK|target_user_id IS NOT NULL
+identity|impersonation_sessions|22462_23743_4_not_null|CHECK|reason IS NOT NULL
+identity|impersonation_sessions|22462_23743_6_not_null|CHECK|started_at IS NOT NULL
+identity|impersonation_sessions|22462_23743_8_not_null|CHECK|expires_at IS NOT NULL
+identity|impersonation_sessions|22462_23743_9_not_null|CHECK|ip_address IS NOT NULL
 identity|impersonation_sessions|impersonation_sessions_pkey|PRIMARY KEY|id
+identity|ldap_configs|22462_23753_10_not_null|CHECK|emailAttribute IS NOT NULL
+identity|ldap_configs|22462_23753_11_not_null|CHECK|fullNameAttribute IS NOT NULL
+identity|ldap_configs|22462_23753_12_not_null|CHECK|enabled IS NOT NULL
+identity|ldap_configs|22462_23753_13_not_null|CHECK|createdAt IS NOT NULL
+identity|ldap_configs|22462_23753_14_not_null|CHECK|updatedAt IS NOT NULL
+identity|ldap_configs|22462_23753_1_not_null|CHECK|id IS NOT NULL
+identity|ldap_configs|22462_23753_2_not_null|CHECK|host IS NOT NULL
+identity|ldap_configs|22462_23753_3_not_null|CHECK|port IS NOT NULL
+identity|ldap_configs|22462_23753_4_not_null|CHECK|secure IS NOT NULL
+identity|ldap_configs|22462_23753_7_not_null|CHECK|searchBase IS NOT NULL
+identity|ldap_configs|22462_23753_8_not_null|CHECK|userSearchFilter IS NOT NULL
+identity|ldap_configs|22462_23753_9_not_null|CHECK|usernameAttribute IS NOT NULL
 identity|ldap_configs|PK_617b64e3f20ff5598a11ea7661e|PRIMARY KEY|id
+identity|magic_link_tokens|22462_23767_1_not_null|CHECK|id IS NOT NULL
+identity|magic_link_tokens|22462_23767_2_not_null|CHECK|email IS NOT NULL
+identity|magic_link_tokens|22462_23767_4_not_null|CHECK|token IS NOT NULL
+identity|magic_link_tokens|22462_23767_5_not_null|CHECK|expires_at IS NOT NULL
 identity|magic_link_tokens|magic_link_tokens_pkey|PRIMARY KEY|id
 identity|magic_link_tokens|magic_link_tokens_token_key|UNIQUE|token
+identity|mfa_methods|22462_23774_1_not_null|CHECK|id IS NOT NULL
+identity|mfa_methods|22462_23774_2_not_null|CHECK|user_id IS NOT NULL
+identity|mfa_methods|22462_23774_3_not_null|CHECK|type IS NOT NULL
+identity|mfa_methods|22462_23774_6_not_null|CHECK|enabled IS NOT NULL
+identity|mfa_methods|22462_23774_7_not_null|CHECK|verified IS NOT NULL
+identity|mfa_methods|22462_23774_9_not_null|CHECK|created_at IS NOT NULL
 identity|mfa_methods|PK_60e4d183e6dbd427aa5549da581|PRIMARY KEY|id
+identity|nav_profile_items|22462_23783_10_not_null|CHECK|position IS NOT NULL
+identity|nav_profile_items|22462_23783_13_not_null|CHECK|is_visible IS NOT NULL
+identity|nav_profile_items|22462_23783_14_not_null|CHECK|is_expanded IS NOT NULL
+identity|nav_profile_items|22462_23783_15_not_null|CHECK|metadata IS NOT NULL
+identity|nav_profile_items|22462_23783_16_not_null|CHECK|created_at IS NOT NULL
+identity|nav_profile_items|22462_23783_1_not_null|CHECK|id IS NOT NULL
+identity|nav_profile_items|22462_23783_2_not_null|CHECK|profile_id IS NOT NULL
+identity|nav_profile_items|22462_23783_3_not_null|CHECK|type IS NOT NULL
+identity|nav_profile_items|22462_23783_4_not_null|CHECK|code IS NOT NULL
+identity|nav_profile_items|22462_23783_5_not_null|CHECK|label IS NOT NULL
 identity|nav_profile_items|PK_cb0391e27b4c5bfa13728f5ebf4|PRIMARY KEY|id
+identity|nav_profiles|22462_23794_10_not_null|CHECK|is_default IS NOT NULL
+identity|nav_profiles|22462_23794_11_not_null|CHECK|is_system IS NOT NULL
+identity|nav_profiles|22462_23794_12_not_null|CHECK|is_active IS NOT NULL
+identity|nav_profiles|22462_23794_14_not_null|CHECK|created_at IS NOT NULL
+identity|nav_profiles|22462_23794_15_not_null|CHECK|updated_at IS NOT NULL
+identity|nav_profiles|22462_23794_19_not_null|CHECK|is_locked IS NOT NULL
+identity|nav_profiles|22462_23794_1_not_null|CHECK|id IS NOT NULL
+identity|nav_profiles|22462_23794_2_not_null|CHECK|code IS NOT NULL
+identity|nav_profiles|22462_23794_3_not_null|CHECK|name IS NOT NULL
+identity|nav_profiles|22462_23794_5_not_null|CHECK|scope IS NOT NULL
+identity|nav_profiles|22462_23794_9_not_null|CHECK|priority IS NOT NULL
 identity|nav_profiles|PK_eab82f3592b4f3bdfa425eb651a|PRIMARY KEY|id
 identity|nav_profiles|UQ_92556f552f70c0531bdf4fc9d85|UNIQUE|code
+identity|password_history|22462_23808_1_not_null|CHECK|id IS NOT NULL
+identity|password_history|22462_23808_2_not_null|CHECK|user_id IS NOT NULL
+identity|password_history|22462_23808_3_not_null|CHECK|password_hash IS NOT NULL
+identity|password_history|22462_23808_4_not_null|CHECK|created_at IS NOT NULL
 identity|password_history|PK_da65ed4600e5e6bc9315754a8b2|PRIMARY KEY|id
+identity|password_policies|22462_23813_10_not_null|CHECK|lockoutMinutes IS NOT NULL
+identity|password_policies|22462_23813_11_not_null|CHECK|createdAt IS NOT NULL
+identity|password_policies|22462_23813_12_not_null|CHECK|updatedAt IS NOT NULL
+identity|password_policies|22462_23813_1_not_null|CHECK|id IS NOT NULL
+identity|password_policies|22462_23813_2_not_null|CHECK|minLength IS NOT NULL
+identity|password_policies|22462_23813_3_not_null|CHECK|requireUppercase IS NOT NULL
+identity|password_policies|22462_23813_4_not_null|CHECK|requireLowercase IS NOT NULL
+identity|password_policies|22462_23813_5_not_null|CHECK|requireNumbers IS NOT NULL
+identity|password_policies|22462_23813_6_not_null|CHECK|requireSpecialChars IS NOT NULL
+identity|password_policies|22462_23813_7_not_null|CHECK|expirationDays IS NOT NULL
+identity|password_policies|22462_23813_8_not_null|CHECK|historyCount IS NOT NULL
+identity|password_policies|22462_23813_9_not_null|CHECK|maxAttempts IS NOT NULL
 identity|password_policies|PK_5468b65a86afc8563ac81cb9153|PRIMARY KEY|id
+identity|password_reset_tokens|22462_23828_1_not_null|CHECK|id IS NOT NULL
+identity|password_reset_tokens|22462_23828_2_not_null|CHECK|user_id IS NOT NULL
+identity|password_reset_tokens|22462_23828_3_not_null|CHECK|token IS NOT NULL
+identity|password_reset_tokens|22462_23828_4_not_null|CHECK|expires_at IS NOT NULL
+identity|password_reset_tokens|22462_23828_6_not_null|CHECK|created_at IS NOT NULL
 identity|password_reset_tokens|PK_d16bebd73e844c48bca50ff8d3d|PRIMARY KEY|id
 identity|password_reset_tokens|UQ_ab673f0e63eac966762155508ee|UNIQUE|token
-identity|permissions|PK_920331560282b8bd21bb02290df|PRIMARY KEY|id
-identity|permissions|UQ_8dad765629e83229da6feda1c1d|UNIQUE|code
+identity|platform_permissions|22462_23833_1_not_null|CHECK|code IS NOT NULL
+identity|platform_permissions|22462_23833_2_not_null|CHECK|plane IS NOT NULL
+identity|platform_permissions|22462_23833_3_not_null|CHECK|domain IS NOT NULL
+identity|platform_permissions|22462_23833_5_not_null|CHECK|action IS NOT NULL
+identity|platform_permissions|22462_23833_6_not_null|CHECK|dangerous IS NOT NULL
+identity|platform_permissions|22462_23833_7_not_null|CHECK|description IS NOT NULL
+identity|platform_permissions|platform_permissions_pkey|PRIMARY KEY|code
+identity|platform_permissions|platform_permissions_plane_check|CHECK|((plane = ANY (ARRAY['instance'::text, 'control-plane'::text]))
+identity|refresh_tokens|22462_23842_10_not_null|CHECK|created_at IS NOT NULL
+identity|refresh_tokens|22462_23842_11_not_null|CHECK|expires_at IS NOT NULL
+identity|refresh_tokens|22462_23842_1_not_null|CHECK|token_hash IS NOT NULL
+identity|refresh_tokens|22462_23842_2_not_null|CHECK|family_id IS NOT NULL
+identity|refresh_tokens|22462_23842_4_not_null|CHECK|user_id IS NOT NULL
+identity|refresh_tokens|22462_23842_6_not_null|CHECK|session_id IS NOT NULL
 identity|refresh_tokens|refresh_tokens_pkey|PRIMARY KEY|token_hash
-identity|role_permissions|PK_84059017c90bfcb701b8fa42297|PRIMARY KEY|id
-identity|role_permissions|UQ_25d24010f53bb80b78e412c9656|UNIQUE|role_id
-identity|role_permissions|UQ_25d24010f53bb80b78e412c9656|UNIQUE|permission_id
+identity|refresh_tokens|refresh_tokens_revoked_reason_check|CHECK|(((revoked_reason IS NULL) OR (revoked_reason = ANY (ARRAY['reu
+identity|role_permissions|22462_23849_1_not_null|CHECK|role_id IS NOT NULL
+identity|role_permissions|22462_23849_2_not_null|CHECK|permission_code IS NOT NULL
+identity|role_permissions|22462_23849_3_not_null|CHECK|granted_at IS NOT NULL
+identity|role_permissions|role_permissions_pkey|PRIMARY KEY|permission_code
+identity|role_permissions|role_permissions_pkey|PRIMARY KEY|role_id
+identity|roles|22462_23857_10_not_null|CHECK|weight IS NOT NULL
+identity|roles|22462_23857_11_not_null|CHECK|is_system IS NOT NULL
+identity|roles|22462_23857_12_not_null|CHECK|is_active IS NOT NULL
+identity|roles|22462_23857_13_not_null|CHECK|is_default IS NOT NULL
+identity|roles|22462_23857_16_not_null|CHECK|metadata IS NOT NULL
+identity|roles|22462_23857_19_not_null|CHECK|created_at IS NOT NULL
+identity|roles|22462_23857_1_not_null|CHECK|id IS NOT NULL
+identity|roles|22462_23857_20_not_null|CHECK|updated_at IS NOT NULL
+identity|roles|22462_23857_2_not_null|CHECK|code IS NOT NULL
+identity|roles|22462_23857_3_not_null|CHECK|name IS NOT NULL
+identity|roles|22462_23857_6_not_null|CHECK|hierarchy_level IS NOT NULL
+identity|roles|22462_23857_8_not_null|CHECK|scope IS NOT NULL
 identity|roles|PK_c1433d71a4838793a49dcad46ab|PRIMARY KEY|id
 identity|roles|UQ_f6d54f95c31b73fb1bdd8e91d0c|UNIQUE|code
+identity|saml_auth_states|22462_23872_1_not_null|CHECK|id IS NOT NULL
+identity|saml_auth_states|22462_23872_2_not_null|CHECK|provider_id IS NOT NULL
+identity|saml_auth_states|22462_23872_3_not_null|CHECK|relay_state IS NOT NULL
+identity|saml_auth_states|22462_23872_4_not_null|CHECK|redirect_uri IS NOT NULL
+identity|saml_auth_states|22462_23872_5_not_null|CHECK|expires_at IS NOT NULL
 identity|saml_auth_states|saml_auth_states_pkey|PRIMARY KEY|id
 identity|saml_auth_states|saml_auth_states_relay_state_key|UNIQUE|relay_state
+identity|security_alerts|22462_23879_1_not_null|CHECK|id IS NOT NULL
+identity|security_alerts|22462_23879_3_not_null|CHECK|alert_type IS NOT NULL
+identity|security_alerts|22462_23879_4_not_null|CHECK|title IS NOT NULL
+identity|security_alerts|22462_23879_5_not_null|CHECK|description IS NOT NULL
+identity|security_alerts|22462_23879_6_not_null|CHECK|severity IS NOT NULL
 identity|security_alerts|security_alerts_pkey|PRIMARY KEY|id
+identity|service_accounts|22462_23890_10_not_null|CHECK|created_at IS NOT NULL
+identity|service_accounts|22462_23890_11_not_null|CHECK|updated_at IS NOT NULL
+identity|service_accounts|22462_23890_1_not_null|CHECK|id IS NOT NULL
+identity|service_accounts|22462_23890_2_not_null|CHECK|name IS NOT NULL
+identity|service_accounts|22462_23890_3_not_null|CHECK|client_secret_hash IS NOT NULL
+identity|service_accounts|22462_23890_4_not_null|CHECK|allowed_scopes IS NOT NULL
+identity|service_accounts|22462_23890_7_not_null|CHECK|status IS NOT NULL
+identity|service_accounts|CHK_service_accounts_status|CHECK|(((status)::text = ANY (ARRAY[('active'::character varying)::te
 identity|service_accounts|PK_service_accounts|PRIMARY KEY|id
+identity|service_token_signing_keys|22462_23901_1_not_null|CHECK|id IS NOT NULL
+identity|service_token_signing_keys|22462_23901_2_not_null|CHECK|key_id IS NOT NULL
+identity|service_token_signing_keys|22462_23901_3_not_null|CHECK|algorithm IS NOT NULL
+identity|service_token_signing_keys|22462_23901_4_not_null|CHECK|public_key_pem IS NOT NULL
+identity|service_token_signing_keys|22462_23901_6_not_null|CHECK|status IS NOT NULL
+identity|service_token_signing_keys|22462_23901_7_not_null|CHECK|created_at IS NOT NULL
+identity|service_token_signing_keys|CHK_service_token_signing_keys_status|CHECK|(((status)::text = ANY (ARRAY[('active'::character varying)::te
 identity|service_token_signing_keys|PK_service_token_signing_keys|PRIMARY KEY|id
+identity|sso_providers|22462_23911_18_not_null|CHECK|jit_enabled IS NOT NULL
+identity|sso_providers|22462_23911_1_not_null|CHECK|id IS NOT NULL
+identity|sso_providers|22462_23911_21_not_null|CHECK|jit_update_profile IS NOT NULL
+identity|sso_providers|22462_23911_25_not_null|CHECK|display_order IS NOT NULL
+identity|sso_providers|22462_23911_28_not_null|CHECK|enabled IS NOT NULL
+identity|sso_providers|22462_23911_29_not_null|CHECK|created_at IS NOT NULL
+identity|sso_providers|22462_23911_2_not_null|CHECK|name IS NOT NULL
+identity|sso_providers|22462_23911_30_not_null|CHECK|updated_at IS NOT NULL
+identity|sso_providers|22462_23911_3_not_null|CHECK|slug IS NOT NULL
+identity|sso_providers|22462_23911_5_not_null|CHECK|type IS NOT NULL
 identity|sso_providers|PK_348feeee9ed68f9161a2f5ffeb0|PRIMARY KEY|id
 identity|sso_providers|UQ_85208f3eacf568550f725f5097a|UNIQUE|slug
+identity|trusted_devices|22462_23923_14_not_null|CHECK|first_seen_at IS NOT NULL
+identity|trusted_devices|22462_23923_15_not_null|CHECK|last_seen_at IS NOT NULL
+identity|trusted_devices|22462_23923_1_not_null|CHECK|id IS NOT NULL
+identity|trusted_devices|22462_23923_2_not_null|CHECK|user_id IS NOT NULL
+identity|trusted_devices|22462_23923_3_not_null|CHECK|device_fingerprint IS NOT NULL
+identity|trusted_devices|22462_23923_4_not_null|CHECK|device_name IS NOT NULL
+identity|trusted_devices|22462_23923_5_not_null|CHECK|device_type IS NOT NULL
 identity|trusted_devices|trusted_devices_pkey|PRIMARY KEY|id
+identity|user_invitations|22462_23938_11_not_null|CHECK|invited_by IS NOT NULL
+identity|user_invitations|22462_23938_12_not_null|CHECK|created_at IS NOT NULL
+identity|user_invitations|22462_23938_1_not_null|CHECK|id IS NOT NULL
+identity|user_invitations|22462_23938_2_not_null|CHECK|email IS NOT NULL
+identity|user_invitations|22462_23938_3_not_null|CHECK|token IS NOT NULL
+identity|user_invitations|22462_23938_4_not_null|CHECK|status IS NOT NULL
+identity|user_invitations|22462_23938_5_not_null|CHECK|role_ids IS NOT NULL
+identity|user_invitations|22462_23938_6_not_null|CHECK|group_ids IS NOT NULL
+identity|user_invitations|22462_23938_8_not_null|CHECK|expires_at IS NOT NULL
 identity|user_invitations|PK_c8005acb91c3ce9a7ae581eca8f|PRIMARY KEY|id
 identity|user_invitations|UQ_1c885f83eb2a34fedd887e43e82|UNIQUE|token
+identity|user_roles|22462_23948_1_not_null|CHECK|id IS NOT NULL
+identity|user_roles|22462_23948_2_not_null|CHECK|user_id IS NOT NULL
+identity|user_roles|22462_23948_3_not_null|CHECK|role_id IS NOT NULL
+identity|user_roles|22462_23948_4_not_null|CHECK|source IS NOT NULL
+identity|user_roles|22462_23948_6_not_null|CHECK|valid_from IS NOT NULL
+identity|user_roles|22462_23948_9_not_null|CHECK|created_at IS NOT NULL
 identity|user_roles|PK_8acd5cf26ebd158416f477de799|PRIMARY KEY|id
-identity|user_roles|UQ_23ed6f04fe43066df08379fd034|UNIQUE|user_id
 identity|user_roles|UQ_23ed6f04fe43066df08379fd034|UNIQUE|role_id
+identity|user_roles|UQ_23ed6f04fe43066df08379fd034|UNIQUE|user_id
+identity|webauthn_challenges|22462_23955_1_not_null|CHECK|id IS NOT NULL
+identity|webauthn_challenges|22462_23955_2_not_null|CHECK|challenge IS NOT NULL
+identity|webauthn_challenges|22462_23955_4_not_null|CHECK|type IS NOT NULL
+identity|webauthn_challenges|22462_23955_6_not_null|CHECK|expires_at IS NOT NULL
 identity|webauthn_challenges|webauthn_challenges_challenge_key|UNIQUE|challenge
 identity|webauthn_challenges|webauthn_challenges_pkey|PRIMARY KEY|id
+identity|webauthn_credentials|22462_23962_1_not_null|CHECK|id IS NOT NULL
+identity|webauthn_credentials|22462_23962_2_not_null|CHECK|user_id IS NOT NULL
+identity|webauthn_credentials|22462_23962_3_not_null|CHECK|credential_id IS NOT NULL
+identity|webauthn_credentials|22462_23962_4_not_null|CHECK|public_key IS NOT NULL
+identity|webauthn_credentials|22462_23962_8_not_null|CHECK|name IS NOT NULL
 identity|webauthn_credentials|webauthn_credentials_credential_id_key|UNIQUE|credential_id
 identity|webauthn_credentials|webauthn_credentials_pkey|PRIMARY KEY|id
+insights|alert_definitions|22463_23976_1_not_null|CHECK|id IS NOT NULL
+insights|alert_definitions|22463_23976_2_not_null|CHECK|code IS NOT NULL
+insights|alert_definitions|22463_23976_3_not_null|CHECK|name IS NOT NULL
 insights|alert_definitions|alert_definitions_code_key|UNIQUE|code
 insights|alert_definitions|alert_definitions_pkey|PRIMARY KEY|id
+insights|dashboard_definitions|22463_23988_12_not_null|CHECK|scope IS NOT NULL
+insights|dashboard_definitions|22463_23988_1_not_null|CHECK|id IS NOT NULL
+insights|dashboard_definitions|22463_23988_2_not_null|CHECK|code IS NOT NULL
+insights|dashboard_definitions|22463_23988_3_not_null|CHECK|name IS NOT NULL
+insights|dashboard_definitions|CHK_dashboard_definitions_scope|CHECK|(((scope)::text = ANY (ARRAY[('system'::character varying)::tex
 insights|dashboard_definitions|dashboard_definitions_code_key|UNIQUE|code
 insights|dashboard_definitions|dashboard_definitions_pkey|PRIMARY KEY|id
+insights|metric_definitions|22463_24001_1_not_null|CHECK|id IS NOT NULL
+insights|metric_definitions|22463_24001_2_not_null|CHECK|code IS NOT NULL
+insights|metric_definitions|22463_24001_3_not_null|CHECK|name IS NOT NULL
+insights|metric_definitions|22463_24001_5_not_null|CHECK|source_type IS NOT NULL
+insights|metric_definitions|22463_24001_7_not_null|CHECK|aggregation IS NOT NULL
+insights|metric_definitions|22463_24001_8_not_null|CHECK|cadence IS NOT NULL
 insights|metric_definitions|metric_definitions_code_key|UNIQUE|code
 insights|metric_definitions|metric_definitions_pkey|PRIMARY KEY|id
+insights|metric_points|22463_24013_1_not_null|CHECK|id IS NOT NULL
+insights|metric_points|22463_24013_2_not_null|CHECK|metric_code IS NOT NULL
+insights|metric_points|22463_24013_3_not_null|CHECK|period_start IS NOT NULL
+insights|metric_points|22463_24013_4_not_null|CHECK|period_end IS NOT NULL
+insights|metric_points|22463_24013_5_not_null|CHECK|value IS NOT NULL
 insights|metric_points|metric_points_pkey|PRIMARY KEY|id
+integrations|api_keys|22464_24020_11_not_null|CHECK|is_active IS NOT NULL
+integrations|api_keys|22464_24020_12_not_null|CHECK|created_at IS NOT NULL
+integrations|api_keys|22464_24020_1_not_null|CHECK|id IS NOT NULL
+integrations|api_keys|22464_24020_2_not_null|CHECK|user_id IS NOT NULL
+integrations|api_keys|22464_24020_3_not_null|CHECK|name IS NOT NULL
+integrations|api_keys|22464_24020_4_not_null|CHECK|key_hash IS NOT NULL
+integrations|api_keys|22464_24020_5_not_null|CHECK|key_prefix IS NOT NULL
+integrations|api_keys|22464_24020_6_not_null|CHECK|scopes IS NOT NULL
 integrations|api_keys|PK_5c8a79801b44bd27b79228e1dad|PRIMARY KEY|id
 integrations|api_keys|UQ_57384430aa1959f4578046c9b81|UNIQUE|key_hash
+integrations|api_request_logs|22464_24029_1_not_null|CHECK|id IS NOT NULL
+integrations|api_request_logs|22464_24029_5_not_null|CHECK|method IS NOT NULL
+integrations|api_request_logs|22464_24029_6_not_null|CHECK|path IS NOT NULL
 integrations|api_request_logs|api_request_logs_pkey|PRIMARY KEY|id
+integrations|connector_connections|22464_24036_15_not_null|CHECK|metadata IS NOT NULL
+integrations|connector_connections|22464_24036_1_not_null|CHECK|id IS NOT NULL
+integrations|connector_connections|22464_24036_3_not_null|CHECK|name IS NOT NULL
+integrations|connector_connections|22464_24036_5_not_null|CHECK|config IS NOT NULL
 integrations|connector_connections|connector_connections_pkey|PRIMARY KEY|id
+integrations|export_jobs|22464_24047_1_not_null|CHECK|id IS NOT NULL
+integrations|export_jobs|22464_24047_2_not_null|CHECK|name IS NOT NULL
+integrations|export_jobs|22464_24047_5_not_null|CHECK|format IS NOT NULL
 integrations|export_jobs|export_jobs_pkey|PRIMARY KEY|id
+integrations|external_connectors|22464_24059_10_not_null|CHECK|auth_type IS NOT NULL
+integrations|external_connectors|22464_24059_16_not_null|CHECK|metadata IS NOT NULL
+integrations|external_connectors|22464_24059_1_not_null|CHECK|id IS NOT NULL
+integrations|external_connectors|22464_24059_2_not_null|CHECK|code IS NOT NULL
+integrations|external_connectors|22464_24059_3_not_null|CHECK|name IS NOT NULL
+integrations|external_connectors|22464_24059_5_not_null|CHECK|type IS NOT NULL
+integrations|external_connectors|22464_24059_9_not_null|CHECK|config_schema IS NOT NULL
 integrations|external_connectors|external_connectors_code_key|UNIQUE|code
 integrations|external_connectors|external_connectors_pkey|PRIMARY KEY|id
+integrations|import_jobs|22464_24072_10_not_null|CHECK|field_mapping IS NOT NULL
+integrations|import_jobs|22464_24072_1_not_null|CHECK|id IS NOT NULL
+integrations|import_jobs|22464_24072_2_not_null|CHECK|name IS NOT NULL
+integrations|import_jobs|22464_24072_3_not_null|CHECK|type IS NOT NULL
+integrations|import_jobs|22464_24072_4_not_null|CHECK|source_type IS NOT NULL
 integrations|import_jobs|import_jobs_pkey|PRIMARY KEY|id
+integrations|oauth_access_tokens|22464_24088_1_not_null|CHECK|id IS NOT NULL
+integrations|oauth_access_tokens|22464_24088_2_not_null|CHECK|access_token IS NOT NULL
+integrations|oauth_access_tokens|22464_24088_6_not_null|CHECK|expires_at IS NOT NULL
 integrations|oauth_access_tokens|oauth_access_tokens_access_token_key|UNIQUE|access_token
 integrations|oauth_access_tokens|oauth_access_tokens_pkey|PRIMARY KEY|id
+integrations|oauth_authorization_codes|22464_24096_10_not_null|CHECK|expires_at IS NOT NULL
+integrations|oauth_authorization_codes|22464_24096_1_not_null|CHECK|id IS NOT NULL
+integrations|oauth_authorization_codes|22464_24096_2_not_null|CHECK|code IS NOT NULL
+integrations|oauth_authorization_codes|22464_24096_4_not_null|CHECK|user_id IS NOT NULL
+integrations|oauth_authorization_codes|22464_24096_5_not_null|CHECK|redirect_uri IS NOT NULL
 integrations|oauth_authorization_codes|oauth_authorization_codes_code_key|UNIQUE|code
 integrations|oauth_authorization_codes|oauth_authorization_codes_pkey|PRIMARY KEY|id
+integrations|oauth_clients|22464_24104_1_not_null|CHECK|id IS NOT NULL
+integrations|oauth_clients|22464_24104_2_not_null|CHECK|client_id IS NOT NULL
+integrations|oauth_clients|22464_24104_3_not_null|CHECK|client_secret_hash IS NOT NULL
+integrations|oauth_clients|22464_24104_4_not_null|CHECK|name IS NOT NULL
+integrations|oauth_clients|22464_24104_6_not_null|CHECK|client_type IS NOT NULL
+integrations|oauth_clients|22464_24104_7_not_null|CHECK|redirect_uris IS NOT NULL
+integrations|oauth_clients|22464_24104_8_not_null|CHECK|allowed_scopes IS NOT NULL
+integrations|oauth_clients|22464_24104_9_not_null|CHECK|allowed_grant_types IS NOT NULL
 integrations|oauth_clients|oauth_clients_client_id_key|UNIQUE|client_id
 integrations|oauth_clients|oauth_clients_pkey|PRIMARY KEY|id
+integrations|oauth_refresh_tokens|22464_24120_1_not_null|CHECK|id IS NOT NULL
+integrations|oauth_refresh_tokens|22464_24120_2_not_null|CHECK|refresh_token IS NOT NULL
+integrations|oauth_refresh_tokens|22464_24120_7_not_null|CHECK|expires_at IS NOT NULL
 integrations|oauth_refresh_tokens|oauth_refresh_tokens_pkey|PRIMARY KEY|id
 integrations|oauth_refresh_tokens|oauth_refresh_tokens_refresh_token_key|UNIQUE|refresh_token
+integrations|sync_configurations|22464_24128_1_not_null|CHECK|id IS NOT NULL
+integrations|sync_configurations|22464_24128_20_not_null|CHECK|metadata IS NOT NULL
+integrations|sync_configurations|22464_24128_2_not_null|CHECK|name IS NOT NULL
 integrations|sync_configurations|sync_configurations_pkey|PRIMARY KEY|id
+integrations|sync_runs|22464_24145_1_not_null|CHECK|id IS NOT NULL
 integrations|sync_runs|sync_runs_pkey|PRIMARY KEY|id
+integrations|webhook_deliveries|22464_24163_1_not_null|CHECK|id IS NOT NULL
+integrations|webhook_deliveries|22464_24163_3_not_null|CHECK|event_type IS NOT NULL
+integrations|webhook_deliveries|22464_24163_4_not_null|CHECK|event_id IS NOT NULL
+integrations|webhook_deliveries|22464_24163_5_not_null|CHECK|payload IS NOT NULL
 integrations|webhook_deliveries|webhook_deliveries_pkey|PRIMARY KEY|id
+integrations|webhook_subscriptions|22464_24174_1_not_null|CHECK|id IS NOT NULL
+integrations|webhook_subscriptions|22464_24174_2_not_null|CHECK|name IS NOT NULL
+integrations|webhook_subscriptions|22464_24174_4_not_null|CHECK|endpoint_url IS NOT NULL
+integrations|webhook_subscriptions|22464_24174_5_not_null|CHECK|secret IS NOT NULL
+integrations|webhook_subscriptions|22464_24174_6_not_null|CHECK|events IS NOT NULL
 integrations|webhook_subscriptions|webhook_subscriptions_pkey|PRIMARY KEY|id
+metadata|application_revisions|22465_24192_1_not_null|CHECK|id IS NOT NULL
+metadata|application_revisions|22465_24192_2_not_null|CHECK|application_id IS NOT NULL
+metadata|application_revisions|22465_24192_3_not_null|CHECK|revision IS NOT NULL
+metadata|application_revisions|22465_24192_4_not_null|CHECK|status IS NOT NULL
+metadata|application_revisions|22465_24192_5_not_null|CHECK|payload IS NOT NULL
+metadata|application_revisions|22465_24192_9_not_null|CHECK|created_at IS NOT NULL
 metadata|application_revisions|application_revisions_pkey|PRIMARY KEY|id
+metadata|applications|22465_24200_11_not_null|CHECK|created_at IS NOT NULL
+metadata|applications|22465_24200_12_not_null|CHECK|updated_at IS NOT NULL
+metadata|applications|22465_24200_1_not_null|CHECK|id IS NOT NULL
+metadata|applications|22465_24200_2_not_null|CHECK|code IS NOT NULL
+metadata|applications|22465_24200_3_not_null|CHECK|name IS NOT NULL
+metadata|applications|22465_24200_6_not_null|CHECK|source IS NOT NULL
+metadata|applications|22465_24200_7_not_null|CHECK|status IS NOT NULL
 metadata|applications|applications_pkey|PRIMARY KEY|id
+metadata|change_packages|22465_24210_13_not_null|CHECK|created_at IS NOT NULL
+metadata|change_packages|22465_24210_14_not_null|CHECK|updated_at IS NOT NULL
+metadata|change_packages|22465_24210_1_not_null|CHECK|id IS NOT NULL
+metadata|change_packages|22465_24210_2_not_null|CHECK|code IS NOT NULL
+metadata|change_packages|22465_24210_3_not_null|CHECK|name IS NOT NULL
+metadata|change_packages|22465_24210_5_not_null|CHECK|application_id IS NOT NULL
+metadata|change_packages|22465_24210_6_not_null|CHECK|status IS NOT NULL
+metadata|change_packages|22465_24210_7_not_null|CHECK|changes IS NOT NULL
 metadata|change_packages|change_packages_code_key|UNIQUE|code
 metadata|change_packages|change_packages_pkey|PRIMARY KEY|id
+metadata|choice_items|22465_24220_10_not_null|CHECK|created_at IS NOT NULL
+metadata|choice_items|22465_24220_1_not_null|CHECK|id IS NOT NULL
+metadata|choice_items|22465_24220_2_not_null|CHECK|choice_list_id IS NOT NULL
+metadata|choice_items|22465_24220_3_not_null|CHECK|value IS NOT NULL
+metadata|choice_items|22465_24220_4_not_null|CHECK|label IS NOT NULL
+metadata|choice_items|22465_24220_5_not_null|CHECK|position IS NOT NULL
+metadata|choice_items|22465_24220_8_not_null|CHECK|is_default IS NOT NULL
+metadata|choice_items|22465_24220_9_not_null|CHECK|is_active IS NOT NULL
 metadata|choice_items|PK_bffbbb5b6dce82a7246514834aa|PRIMARY KEY|id
 metadata|choice_items|UQ_9d19126c923b35ffd71c6b08bbd|UNIQUE|choice_list_id
 metadata|choice_items|UQ_9d19126c923b35ffd71c6b08bbd|UNIQUE|value
+metadata|choice_lists|22465_24230_1_not_null|CHECK|id IS NOT NULL
+metadata|choice_lists|22465_24230_2_not_null|CHECK|code IS NOT NULL
+metadata|choice_lists|22465_24230_3_not_null|CHECK|name IS NOT NULL
+metadata|choice_lists|22465_24230_5_not_null|CHECK|is_system IS NOT NULL
+metadata|choice_lists|22465_24230_6_not_null|CHECK|is_active IS NOT NULL
+metadata|choice_lists|22465_24230_7_not_null|CHECK|created_at IS NOT NULL
+metadata|choice_lists|22465_24230_8_not_null|CHECK|updated_at IS NOT NULL
 metadata|choice_lists|PK_32e58b5d1206ca7bd235da92c66|PRIMARY KEY|id
 metadata|choice_lists|UQ_931628f1c40bc1d2b193ee07560|UNIQUE|code
+metadata|collection_constraints|22465_24240_12_not_null|CHECK|created_at IS NOT NULL
+metadata|collection_constraints|22465_24240_13_not_null|CHECK|updated_at IS NOT NULL
+metadata|collection_constraints|22465_24240_1_not_null|CHECK|id IS NOT NULL
+metadata|collection_constraints|22465_24240_2_not_null|CHECK|collection_id IS NOT NULL
+metadata|collection_constraints|22465_24240_3_not_null|CHECK|code IS NOT NULL
+metadata|collection_constraints|22465_24240_4_not_null|CHECK|name IS NOT NULL
+metadata|collection_constraints|22465_24240_5_not_null|CHECK|constraint_type IS NOT NULL
+metadata|collection_constraints|22465_24240_8_not_null|CHECK|is_active IS NOT NULL
+metadata|collection_constraints|22465_24240_9_not_null|CHECK|metadata IS NOT NULL
+metadata|collection_constraints|chk_collection_constraint_definition|CHECK|(((((constraint_type)::text = 'unique'::text) AND (columns IS N
+metadata|collection_constraints|chk_collection_constraint_type|CHECK|(((constraint_type)::text = ANY (ARRAY[('unique'::character var
 metadata|collection_constraints|collection_constraints_pkey|PRIMARY KEY|id
-metadata|collection_constraints|uq_collection_constraints|UNIQUE|collection_id
 metadata|collection_constraints|uq_collection_constraints|UNIQUE|code
+metadata|collection_constraints|uq_collection_constraints|UNIQUE|collection_id
+metadata|collection_definition_revisions|22465_24252_1_not_null|CHECK|id IS NOT NULL
+metadata|collection_definition_revisions|22465_24252_2_not_null|CHECK|collection_id IS NOT NULL
+metadata|collection_definition_revisions|22465_24252_3_not_null|CHECK|revision IS NOT NULL
+metadata|collection_definition_revisions|22465_24252_4_not_null|CHECK|status IS NOT NULL
+metadata|collection_definition_revisions|22465_24252_5_not_null|CHECK|payload IS NOT NULL
+metadata|collection_definition_revisions|22465_24252_9_not_null|CHECK|created_at IS NOT NULL
 metadata|collection_definition_revisions|collection_definition_revisions_pkey|PRIMARY KEY|id
+metadata|collection_definitions|22465_24260_10_not_null|CHECK|label_property IS NOT NULL
+metadata|collection_definitions|22465_24260_12_not_null|CHECK|is_extensible IS NOT NULL
+metadata|collection_definitions|22465_24260_13_not_null|CHECK|is_audited IS NOT NULL
+metadata|collection_definitions|22465_24260_14_not_null|CHECK|enable_versioning IS NOT NULL
+metadata|collection_definitions|22465_24260_15_not_null|CHECK|enable_attachments IS NOT NULL
+metadata|collection_definitions|22465_24260_16_not_null|CHECK|enable_activity_log IS NOT NULL
+metadata|collection_definitions|22465_24260_17_not_null|CHECK|enable_search IS NOT NULL
+metadata|collection_definitions|22465_24260_18_not_null|CHECK|is_system IS NOT NULL
+metadata|collection_definitions|22465_24260_19_not_null|CHECK|is_active IS NOT NULL
+metadata|collection_definitions|22465_24260_1_not_null|CHECK|id IS NOT NULL
+metadata|collection_definitions|22465_24260_22_not_null|CHECK|default_access IS NOT NULL
+metadata|collection_definitions|22465_24260_23_not_null|CHECK|metadata IS NOT NULL
+metadata|collection_definitions|22465_24260_26_not_null|CHECK|created_at IS NOT NULL
+metadata|collection_definitions|22465_24260_27_not_null|CHECK|updated_at IS NOT NULL
+metadata|collection_definitions|22465_24260_28_not_null|CHECK|owner IS NOT NULL
+metadata|collection_definitions|22465_24260_29_not_null|CHECK|sync_status IS NOT NULL
+metadata|collection_definitions|22465_24260_2_not_null|CHECK|code IS NOT NULL
+metadata|collection_definitions|22465_24260_33_not_null|CHECK|is_locked IS NOT NULL
+metadata|collection_definitions|22465_24260_35_not_null|CHECK|status IS NOT NULL
+metadata|collection_definitions|22465_24260_38_not_null|CHECK|source IS NOT NULL
+metadata|collection_definitions|22465_24260_39_not_null|CHECK|secure_fields_by_default IS NOT NULL
+metadata|collection_definitions|22465_24260_3_not_null|CHECK|name IS NOT NULL
+metadata|collection_definitions|22465_24260_7_not_null|CHECK|application_id IS NOT NULL
+metadata|collection_definitions|22465_24260_8_not_null|CHECK|owner_type IS NOT NULL
+metadata|collection_definitions|22465_24260_9_not_null|CHECK|table_name IS NOT NULL
 metadata|collection_definitions|PK_92ac9ed8fcf26e5f49e30a29c2a|PRIMARY KEY|id
 metadata|collection_definitions|UQ_7c22e7ac994b29b2d8320bf3bcf|UNIQUE|table_name
 metadata|collection_definitions|UQ_d74cad0dd7ab2f1144e34e1a816|UNIQUE|code
+metadata|collection_indexes|22465_24286_12_not_null|CHECK|created_at IS NOT NULL
+metadata|collection_indexes|22465_24286_13_not_null|CHECK|updated_at IS NOT NULL
+metadata|collection_indexes|22465_24286_1_not_null|CHECK|id IS NOT NULL
+metadata|collection_indexes|22465_24286_2_not_null|CHECK|collection_id IS NOT NULL
+metadata|collection_indexes|22465_24286_3_not_null|CHECK|code IS NOT NULL
+metadata|collection_indexes|22465_24286_4_not_null|CHECK|name IS NOT NULL
+metadata|collection_indexes|22465_24286_5_not_null|CHECK|index_type IS NOT NULL
+metadata|collection_indexes|22465_24286_6_not_null|CHECK|columns IS NOT NULL
+metadata|collection_indexes|22465_24286_7_not_null|CHECK|is_unique IS NOT NULL
+metadata|collection_indexes|22465_24286_8_not_null|CHECK|is_active IS NOT NULL
+metadata|collection_indexes|22465_24286_9_not_null|CHECK|metadata IS NOT NULL
+metadata|collection_indexes|chk_collection_index_type|CHECK|(((index_type)::text = ANY (ARRAY[('btree'::character varying):
 metadata|collection_indexes|collection_indexes_pkey|PRIMARY KEY|id
-metadata|collection_indexes|uq_collection_indexes|UNIQUE|collection_id
 metadata|collection_indexes|uq_collection_indexes|UNIQUE|code
+metadata|collection_indexes|uq_collection_indexes|UNIQUE|collection_id
+metadata|dependent_review_queue|22465_24299_10_not_null|CHECK|entity_label IS NOT NULL
+metadata|dependent_review_queue|22465_24299_12_not_null|CHECK|reason IS NOT NULL
+metadata|dependent_review_queue|22465_24299_13_not_null|CHECK|status IS NOT NULL
+metadata|dependent_review_queue|22465_24299_15_not_null|CHECK|created_at IS NOT NULL
+metadata|dependent_review_queue|22465_24299_1_not_null|CHECK|id IS NOT NULL
+metadata|dependent_review_queue|22465_24299_2_not_null|CHECK|collection_id IS NOT NULL
+metadata|dependent_review_queue|22465_24299_3_not_null|CHECK|collection_code IS NOT NULL
+metadata|dependent_review_queue|22465_24299_4_not_null|CHECK|property_code IS NOT NULL
+metadata|dependent_review_queue|22465_24299_6_not_null|CHECK|change_kind IS NOT NULL
+metadata|dependent_review_queue|22465_24299_7_not_null|CHECK|classification IS NOT NULL
+metadata|dependent_review_queue|22465_24299_8_not_null|CHECK|entity_type IS NOT NULL
+metadata|dependent_review_queue|22465_24299_9_not_null|CHECK|entity_id IS NOT NULL
 metadata|dependent_review_queue|dependent_review_queue_pkey|PRIMARY KEY|id
+metadata|display_rule_revisions|22465_24307_1_not_null|CHECK|id IS NOT NULL
+metadata|display_rule_revisions|22465_24307_2_not_null|CHECK|display_rule_id IS NOT NULL
+metadata|display_rule_revisions|22465_24307_3_not_null|CHECK|revision IS NOT NULL
+metadata|display_rule_revisions|22465_24307_4_not_null|CHECK|status IS NOT NULL
+metadata|display_rule_revisions|22465_24307_5_not_null|CHECK|payload IS NOT NULL
+metadata|display_rule_revisions|22465_24307_9_not_null|CHECK|created_at IS NOT NULL
 metadata|display_rule_revisions|display_rule_revisions_pkey|PRIMARY KEY|id
+metadata|display_rules|22465_24315_10_not_null|CHECK|status IS NOT NULL
+metadata|display_rules|22465_24315_15_not_null|CHECK|created_at IS NOT NULL
+metadata|display_rules|22465_24315_16_not_null|CHECK|updated_at IS NOT NULL
+metadata|display_rules|22465_24315_17_not_null|CHECK|source IS NOT NULL
+metadata|display_rules|22465_24315_1_not_null|CHECK|id IS NOT NULL
+metadata|display_rules|22465_24315_2_not_null|CHECK|name IS NOT NULL
+metadata|display_rules|22465_24315_4_not_null|CHECK|collection_id IS NOT NULL
+metadata|display_rules|22465_24315_5_not_null|CHECK|application_id IS NOT NULL
+metadata|display_rules|22465_24315_6_not_null|CHECK|condition IS NOT NULL
+metadata|display_rules|22465_24315_7_not_null|CHECK|actions IS NOT NULL
+metadata|display_rules|22465_24315_8_not_null|CHECK|priority IS NOT NULL
+metadata|display_rules|22465_24315_9_not_null|CHECK|is_active IS NOT NULL
 metadata|display_rules|display_rules_pkey|PRIMARY KEY|id
+metadata|form_definitions|22465_24329_12_not_null|CHECK|source IS NOT NULL
+metadata|form_definitions|22465_24329_1_not_null|CHECK|id IS NOT NULL
+metadata|form_definitions|22465_24329_2_not_null|CHECK|name IS NOT NULL
+metadata|form_definitions|22465_24329_3_not_null|CHECK|collection_id IS NOT NULL
+metadata|form_definitions|22465_24329_4_not_null|CHECK|isDefault IS NOT NULL
+metadata|form_definitions|22465_24329_6_not_null|CHECK|createdAt IS NOT NULL
+metadata|form_definitions|22465_24329_7_not_null|CHECK|updatedAt IS NOT NULL
+metadata|form_definitions|22465_24329_8_not_null|CHECK|application_id IS NOT NULL
+metadata|form_definitions|22465_24329_9_not_null|CHECK|status IS NOT NULL
 metadata|form_definitions|PK_e7b46c89a49ab24f30618b410d9|PRIMARY KEY|id
+metadata|form_versions|22465_24340_1_not_null|CHECK|id IS NOT NULL
+metadata|form_versions|22465_24340_2_not_null|CHECK|form_id IS NOT NULL
+metadata|form_versions|22465_24340_3_not_null|CHECK|version IS NOT NULL
+metadata|form_versions|22465_24340_4_not_null|CHECK|layout IS NOT NULL
+metadata|form_versions|22465_24340_5_not_null|CHECK|createdAt IS NOT NULL
+metadata|form_versions|22465_24340_6_not_null|CHECK|status IS NOT NULL
 metadata|form_versions|PK_46dbd35ef6adf11a8684deae1b1|PRIMARY KEY|id
+metadata|instance_branding|22465_24348_10_not_null|CHECK|allow_user_customization IS NOT NULL
+metadata|instance_branding|22465_24348_11_not_null|CHECK|created_at IS NOT NULL
+metadata|instance_branding|22465_24348_12_not_null|CHECK|updated_at IS NOT NULL
+metadata|instance_branding|22465_24348_1_not_null|CHECK|id IS NOT NULL
+metadata|instance_branding|22465_24348_3_not_null|CHECK|theme_overrides IS NOT NULL
 metadata|instance_branding|PK_ffa3a5f407b63635e6c7ec5e421|PRIMARY KEY|id
+metadata|locales|22465_24358_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|locales|22465_24358_1_not_null|CHECK|id IS NOT NULL
+metadata|locales|22465_24358_2_not_null|CHECK|code IS NOT NULL
+metadata|locales|22465_24358_3_not_null|CHECK|name IS NOT NULL
+metadata|locales|22465_24358_4_not_null|CHECK|direction IS NOT NULL
+metadata|locales|22465_24358_5_not_null|CHECK|metadata IS NOT NULL
+metadata|locales|22465_24358_6_not_null|CHECK|is_active IS NOT NULL
+metadata|locales|22465_24358_9_not_null|CHECK|created_at IS NOT NULL
 metadata|locales|locales_pkey|PRIMARY KEY|id
 metadata|locales|uq_locales_code|UNIQUE|code
+metadata|localization_bundles|22465_24369_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|localization_bundles|22465_24369_1_not_null|CHECK|id IS NOT NULL
+metadata|localization_bundles|22465_24369_3_not_null|CHECK|locale_code IS NOT NULL
+metadata|localization_bundles|22465_24369_4_not_null|CHECK|entries IS NOT NULL
+metadata|localization_bundles|22465_24369_5_not_null|CHECK|checksum IS NOT NULL
+metadata|localization_bundles|22465_24369_8_not_null|CHECK|metadata IS NOT NULL
+metadata|localization_bundles|22465_24369_9_not_null|CHECK|created_at IS NOT NULL
 metadata|localization_bundles|localization_bundles_pkey|PRIMARY KEY|id
 metadata|localization_bundles|uq_localization_bundles_locale|UNIQUE|locale_code
+metadata|module_security|22465_24379_1_not_null|CHECK|id IS NOT NULL
+metadata|module_security|22465_24379_2_not_null|CHECK|module_id IS NOT NULL
+metadata|module_security|22465_24379_3_not_null|CHECK|role_id IS NOT NULL
+metadata|module_security|22465_24379_4_not_null|CHECK|canView IS NOT NULL
 metadata|module_security|PK_4e41b3d2d49a520286fb067bffc|PRIMARY KEY|id
+metadata|modules|22465_24384_11_not_null|CHECK|is_active IS NOT NULL
+metadata|modules|22465_24384_12_not_null|CHECK|createdAt IS NOT NULL
+metadata|modules|22465_24384_13_not_null|CHECK|updatedAt IS NOT NULL
+metadata|modules|22465_24384_1_not_null|CHECK|id IS NOT NULL
+metadata|modules|22465_24384_2_not_null|CHECK|key IS NOT NULL
+metadata|modules|22465_24384_4_not_null|CHECK|label IS NOT NULL
+metadata|modules|22465_24384_6_not_null|CHECK|sort_order IS NOT NULL
+metadata|modules|22465_24384_7_not_null|CHECK|type IS NOT NULL
 metadata|modules|PK_7dbefd488bd96c5bf31f0ce0c95|PRIMARY KEY|id
 metadata|modules|UQ_a57f2b3bd9ebb022212e634f601|UNIQUE|key
+metadata|nav_nodes|22465_24395_10_not_null|CHECK|order IS NOT NULL
+metadata|nav_nodes|22465_24395_11_not_null|CHECK|is_visible IS NOT NULL
+metadata|nav_nodes|22465_24395_14_not_null|CHECK|created_at IS NOT NULL
+metadata|nav_nodes|22465_24395_15_not_null|CHECK|updated_at IS NOT NULL
+metadata|nav_nodes|22465_24395_1_not_null|CHECK|id IS NOT NULL
+metadata|nav_nodes|22465_24395_2_not_null|CHECK|profile_id IS NOT NULL
+metadata|nav_nodes|22465_24395_3_not_null|CHECK|key IS NOT NULL
+metadata|nav_nodes|22465_24395_4_not_null|CHECK|label IS NOT NULL
+metadata|nav_nodes|22465_24395_6_not_null|CHECK|type IS NOT NULL
 metadata|nav_nodes|PK_nav_nodes|PRIMARY KEY|id
+metadata|nav_patches|22465_24405_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|nav_patches|22465_24405_1_not_null|CHECK|id IS NOT NULL
+metadata|nav_patches|22465_24405_2_not_null|CHECK|profile_id IS NOT NULL
+metadata|nav_patches|22465_24405_3_not_null|CHECK|operation IS NOT NULL
+metadata|nav_patches|22465_24405_4_not_null|CHECK|target_node_key IS NOT NULL
+metadata|nav_patches|22465_24405_6_not_null|CHECK|priority IS NOT NULL
+metadata|nav_patches|22465_24405_8_not_null|CHECK|is_active IS NOT NULL
+metadata|nav_patches|22465_24405_9_not_null|CHECK|created_at IS NOT NULL
 metadata|nav_patches|PK_nav_patches|PRIMARY KEY|id
+metadata|navigation_module_revisions|22465_24415_1_not_null|CHECK|id IS NOT NULL
+metadata|navigation_module_revisions|22465_24415_2_not_null|CHECK|navigation_module_id IS NOT NULL
+metadata|navigation_module_revisions|22465_24415_3_not_null|CHECK|revision IS NOT NULL
+metadata|navigation_module_revisions|22465_24415_4_not_null|CHECK|status IS NOT NULL
+metadata|navigation_module_revisions|22465_24415_5_not_null|CHECK|layout IS NOT NULL
+metadata|navigation_module_revisions|22465_24415_9_not_null|CHECK|created_at IS NOT NULL
 metadata|navigation_module_revisions|PK_navigation_module_revisions|PRIMARY KEY|id
 metadata|navigation_module_revisions|UQ_navigation_module_revision|UNIQUE|navigation_module_id
 metadata|navigation_module_revisions|UQ_navigation_module_revision|UNIQUE|revision
+metadata|navigation_modules|22465_24423_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|navigation_modules|22465_24423_11_not_null|CHECK|application_id IS NOT NULL
+metadata|navigation_modules|22465_24423_1_not_null|CHECK|id IS NOT NULL
+metadata|navigation_modules|22465_24423_2_not_null|CHECK|code IS NOT NULL
+metadata|navigation_modules|22465_24423_3_not_null|CHECK|name IS NOT NULL
+metadata|navigation_modules|22465_24423_5_not_null|CHECK|metadata IS NOT NULL
+metadata|navigation_modules|22465_24423_6_not_null|CHECK|is_active IS NOT NULL
+metadata|navigation_modules|22465_24423_9_not_null|CHECK|created_at IS NOT NULL
 metadata|navigation_modules|PK_navigation_modules|PRIMARY KEY|id
 metadata|navigation_modules|UQ_navigation_modules_code|UNIQUE|code
+metadata|navigation_variants|22465_24433_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|navigation_variants|22465_24433_1_not_null|CHECK|id IS NOT NULL
+metadata|navigation_variants|22465_24433_2_not_null|CHECK|navigation_module_id IS NOT NULL
+metadata|navigation_variants|22465_24433_3_not_null|CHECK|scope IS NOT NULL
+metadata|navigation_variants|22465_24433_5_not_null|CHECK|priority IS NOT NULL
+metadata|navigation_variants|22465_24433_6_not_null|CHECK|is_active IS NOT NULL
+metadata|navigation_variants|22465_24433_9_not_null|CHECK|created_at IS NOT NULL
 metadata|navigation_variants|PK_navigation_variants|PRIMARY KEY|id
+metadata|pack_install_locks|22465_24441_1_not_null|CHECK|lock_key IS NOT NULL
+metadata|pack_install_locks|22465_24441_5_not_null|CHECK|updated_at IS NOT NULL
 metadata|pack_install_locks|pack_install_locks_pkey|PRIMARY KEY|lock_key
+metadata|pack_object_revisions|22465_24445_1_not_null|CHECK|id IS NOT NULL
+metadata|pack_object_revisions|22465_24445_2_not_null|CHECK|release_record_id IS NOT NULL
+metadata|pack_object_revisions|22465_24445_3_not_null|CHECK|object_type IS NOT NULL
+metadata|pack_object_revisions|22465_24445_4_not_null|CHECK|object_key IS NOT NULL
+metadata|pack_object_revisions|22465_24445_5_not_null|CHECK|object_hash IS NOT NULL
+metadata|pack_object_revisions|22465_24445_7_not_null|CHECK|content IS NOT NULL
+metadata|pack_object_revisions|22465_24445_9_not_null|CHECK|created_at IS NOT NULL
+metadata|pack_object_revisions|chk_pack_object_hash|CHECK|(((object_hash)::text ~ '^[a-f0-9]{64}$'::text))
+metadata|pack_object_revisions|chk_pack_object_type|CHECK|(((object_type)::text = ANY (ARRAY[('metadata'::character varyi
 metadata|pack_object_revisions|pack_object_revisions_pkey|PRIMARY KEY|id
+metadata|pack_object_states|22465_24454_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|pack_object_states|22465_24454_1_not_null|CHECK|id IS NOT NULL
+metadata|pack_object_states|22465_24454_2_not_null|CHECK|object_type IS NOT NULL
+metadata|pack_object_states|22465_24454_3_not_null|CHECK|object_key IS NOT NULL
+metadata|pack_object_states|22465_24454_4_not_null|CHECK|pack_code IS NOT NULL
+metadata|pack_object_states|22465_24454_5_not_null|CHECK|current_revision_id IS NOT NULL
+metadata|pack_object_states|22465_24454_6_not_null|CHECK|current_hash IS NOT NULL
+metadata|pack_object_states|22465_24454_8_not_null|CHECK|is_active IS NOT NULL
+metadata|pack_object_states|22465_24454_9_not_null|CHECK|created_at IS NOT NULL
+metadata|pack_object_states|chk_pack_object_state_hash|CHECK|(((current_hash)::text ~ '^[a-f0-9]{64}$'::text))
+metadata|pack_object_states|chk_pack_object_state_type|CHECK|(((object_type)::text = ANY (ARRAY[('metadata'::character varyi
 metadata|pack_object_states|pack_object_states_pkey|PRIMARY KEY|id
-metadata|pack_object_states|uq_pack_object_state|UNIQUE|object_type
 metadata|pack_object_states|uq_pack_object_state|UNIQUE|object_key
+metadata|pack_object_states|uq_pack_object_state|UNIQUE|object_type
+metadata|pack_release_records|22465_24465_10_not_null|CHECK|applied_by_type IS NOT NULL
+metadata|pack_release_records|22465_24465_11_not_null|CHECK|started_at IS NOT NULL
+metadata|pack_release_records|22465_24465_14_not_null|CHECK|created_at IS NOT NULL
+metadata|pack_release_records|22465_24465_15_not_null|CHECK|updated_at IS NOT NULL
+metadata|pack_release_records|22465_24465_1_not_null|CHECK|id IS NOT NULL
+metadata|pack_release_records|22465_24465_2_not_null|CHECK|pack_code IS NOT NULL
+metadata|pack_release_records|22465_24465_3_not_null|CHECK|pack_release_id IS NOT NULL
+metadata|pack_release_records|22465_24465_4_not_null|CHECK|status IS NOT NULL
+metadata|pack_release_records|22465_24465_5_not_null|CHECK|manifest IS NOT NULL
+metadata|pack_release_records|22465_24465_7_not_null|CHECK|install_summary IS NOT NULL
+metadata|pack_release_records|22465_24465_8_not_null|CHECK|warnings IS NOT NULL
+metadata|pack_release_records|chk_pack_release_actor|CHECK|(((applied_by_type)::text = ANY (ARRAY[('user'::character varyi
+metadata|pack_release_records|chk_pack_release_id_format|CHECK|(((pack_release_id)::text ~ '^[0-9]{8}.[0-9]{3,}$'::text))
+metadata|pack_release_records|chk_pack_release_sha256|CHECK|(((artifact_sha256 IS NULL) OR ((artifact_sha256)::text ~ '^[a-
+metadata|pack_release_records|chk_pack_release_status|CHECK|(((status)::text = ANY (ARRAY[('applying'::character varying)::
 metadata|pack_release_records|pack_release_records_pkey|PRIMARY KEY|id
+metadata|property_definition_revisions|22465_24481_1_not_null|CHECK|id IS NOT NULL
+metadata|property_definition_revisions|22465_24481_2_not_null|CHECK|property_id IS NOT NULL
+metadata|property_definition_revisions|22465_24481_3_not_null|CHECK|revision IS NOT NULL
+metadata|property_definition_revisions|22465_24481_4_not_null|CHECK|status IS NOT NULL
+metadata|property_definition_revisions|22465_24481_5_not_null|CHECK|payload IS NOT NULL
+metadata|property_definition_revisions|22465_24481_9_not_null|CHECK|created_at IS NOT NULL
 metadata|property_definition_revisions|property_definition_revisions_pkey|PRIMARY KEY|id
+metadata|property_definitions|22465_24489_10_not_null|CHECK|is_unique IS NOT NULL
+metadata|property_definitions|22465_24489_11_not_null|CHECK|is_indexed IS NOT NULL
+metadata|property_definitions|22465_24489_12_not_null|CHECK|validation_rules IS NOT NULL
+metadata|property_definitions|22465_24489_14_not_null|CHECK|default_value_type IS NOT NULL
+metadata|property_definitions|22465_24489_15_not_null|CHECK|position IS NOT NULL
+metadata|property_definitions|22465_24489_16_not_null|CHECK|is_visible IS NOT NULL
+metadata|property_definitions|22465_24489_17_not_null|CHECK|is_readonly IS NOT NULL
+metadata|property_definitions|22465_24489_1_not_null|CHECK|id IS NOT NULL
+metadata|property_definitions|22465_24489_25_not_null|CHECK|owner_type IS NOT NULL
+metadata|property_definitions|22465_24489_26_not_null|CHECK|is_system IS NOT NULL
+metadata|property_definitions|22465_24489_27_not_null|CHECK|is_active IS NOT NULL
+metadata|property_definitions|22465_24489_28_not_null|CHECK|is_searchable IS NOT NULL
+metadata|property_definitions|22465_24489_29_not_null|CHECK|is_sortable IS NOT NULL
+metadata|property_definitions|22465_24489_2_not_null|CHECK|collection_id IS NOT NULL
+metadata|property_definitions|22465_24489_30_not_null|CHECK|is_filterable IS NOT NULL
+metadata|property_definitions|22465_24489_31_not_null|CHECK|metadata IS NOT NULL
+metadata|property_definitions|22465_24489_33_not_null|CHECK|created_at IS NOT NULL
+metadata|property_definitions|22465_24489_34_not_null|CHECK|updated_at IS NOT NULL
+metadata|property_definitions|22465_24489_35_not_null|CHECK|owner IS NOT NULL
+metadata|property_definitions|22465_24489_36_not_null|CHECK|sync_status IS NOT NULL
+metadata|property_definitions|22465_24489_38_not_null|CHECK|is_locked IS NOT NULL
+metadata|property_definitions|22465_24489_3_not_null|CHECK|code IS NOT NULL
+metadata|property_definitions|22465_24489_41_not_null|CHECK|is_phi IS NOT NULL
+metadata|property_definitions|22465_24489_42_not_null|CHECK|is_pii IS NOT NULL
+metadata|property_definitions|22465_24489_43_not_null|CHECK|is_sensitive IS NOT NULL
+metadata|property_definitions|22465_24489_44_not_null|CHECK|masking_strategy IS NOT NULL
+metadata|property_definitions|22465_24489_46_not_null|CHECK|requires_break_glass IS NOT NULL
+metadata|property_definitions|22465_24489_47_not_null|CHECK|application_id IS NOT NULL
+metadata|property_definitions|22465_24489_48_not_null|CHECK|status IS NOT NULL
+metadata|property_definitions|22465_24489_4_not_null|CHECK|name IS NOT NULL
+metadata|property_definitions|22465_24489_51_not_null|CHECK|behavioral_attributes IS NOT NULL
+metadata|property_definitions|22465_24489_52_not_null|CHECK|source IS NOT NULL
+metadata|property_definitions|22465_24489_6_not_null|CHECK|property_type_id IS NOT NULL
+metadata|property_definitions|22465_24489_7_not_null|CHECK|column_name IS NOT NULL
+metadata|property_definitions|22465_24489_8_not_null|CHECK|config IS NOT NULL
+metadata|property_definitions|22465_24489_9_not_null|CHECK|is_required IS NOT NULL
 metadata|property_definitions|PK_09013b5e4e940a81de054ac6fd2|PRIMARY KEY|id
-metadata|property_definitions|UQ_2211a0f9fca1a63a5a8ff76bda2|UNIQUE|collection_id
 metadata|property_definitions|UQ_2211a0f9fca1a63a5a8ff76bda2|UNIQUE|code
+metadata|property_definitions|UQ_2211a0f9fca1a63a5a8ff76bda2|UNIQUE|collection_id
+metadata|property_types|22465_24525_11_not_null|CHECK|is_system IS NOT NULL
+metadata|property_types|22465_24525_12_not_null|CHECK|created_at IS NOT NULL
+metadata|property_types|22465_24525_1_not_null|CHECK|id IS NOT NULL
+metadata|property_types|22465_24525_2_not_null|CHECK|code IS NOT NULL
+metadata|property_types|22465_24525_3_not_null|CHECK|name IS NOT NULL
+metadata|property_types|22465_24525_4_not_null|CHECK|category IS NOT NULL
+metadata|property_types|22465_24525_6_not_null|CHECK|base_type IS NOT NULL
+metadata|property_types|22465_24525_7_not_null|CHECK|default_config IS NOT NULL
+metadata|property_types|22465_24525_8_not_null|CHECK|validation_rules IS NOT NULL
 metadata|property_types|PK_129390b286b9c776438dfa475a8|PRIMARY KEY|id
 metadata|property_types|UQ_1f7b17d42cf5cbd751912ddda14|UNIQUE|code
+metadata|schema_change_log|22465_24535_11_not_null|CHECK|performed_by_type IS NOT NULL
+metadata|schema_change_log|22465_24535_12_not_null|CHECK|success IS NOT NULL
+metadata|schema_change_log|22465_24535_18_not_null|CHECK|created_at IS NOT NULL
+metadata|schema_change_log|22465_24535_1_not_null|CHECK|id IS NOT NULL
+metadata|schema_change_log|22465_24535_2_not_null|CHECK|entity_type IS NOT NULL
+metadata|schema_change_log|22465_24535_3_not_null|CHECK|entity_id IS NOT NULL
+metadata|schema_change_log|22465_24535_4_not_null|CHECK|entity_code IS NOT NULL
+metadata|schema_change_log|22465_24535_5_not_null|CHECK|change_type IS NOT NULL
+metadata|schema_change_log|22465_24535_6_not_null|CHECK|change_source IS NOT NULL
+metadata|schema_change_log|chk_change_source|CHECK|(((change_source)::text = ANY (ARRAY[('api'::character varying)
+metadata|schema_change_log|chk_change_type|CHECK|(((change_type)::text = ANY (ARRAY[('create'::character varying
+metadata|schema_change_log|chk_entity_type|CHECK|(((entity_type)::text = ANY (ARRAY[('collection'::character var
+metadata|schema_change_log|chk_performed_by_type|CHECK|(((performed_by_type)::text = ANY (ARRAY[('user'::character var
 metadata|schema_change_log|schema_change_log_pkey|PRIMARY KEY|id
+metadata|schema_sync_state|22465_24548_1_not_null|CHECK|id IS NOT NULL
+metadata|schema_sync_state|chk_sync_result|CHECK|(((last_full_sync_result IS NULL) OR ((last_full_sync_result)::
 metadata|schema_sync_state|schema_sync_state_pkey|PRIMARY KEY|id
+metadata|search_dictionaries|22465_24561_10_not_null|CHECK|created_at IS NOT NULL
+metadata|search_dictionaries|22465_24561_11_not_null|CHECK|updated_at IS NOT NULL
+metadata|search_dictionaries|22465_24561_1_not_null|CHECK|id IS NOT NULL
+metadata|search_dictionaries|22465_24561_2_not_null|CHECK|code IS NOT NULL
+metadata|search_dictionaries|22465_24561_3_not_null|CHECK|name IS NOT NULL
+metadata|search_dictionaries|22465_24561_4_not_null|CHECK|locale IS NOT NULL
+metadata|search_dictionaries|22465_24561_5_not_null|CHECK|entries IS NOT NULL
+metadata|search_dictionaries|22465_24561_6_not_null|CHECK|metadata IS NOT NULL
+metadata|search_dictionaries|22465_24561_7_not_null|CHECK|is_active IS NOT NULL
 metadata|search_dictionaries|search_dictionaries_pkey|PRIMARY KEY|id
 metadata|search_dictionaries|uq_search_dictionaries_code|UNIQUE|code
+metadata|search_experiences|22465_24573_12_not_null|CHECK|created_at IS NOT NULL
+metadata|search_experiences|22465_24573_13_not_null|CHECK|updated_at IS NOT NULL
+metadata|search_experiences|22465_24573_1_not_null|CHECK|id IS NOT NULL
+metadata|search_experiences|22465_24573_2_not_null|CHECK|code IS NOT NULL
+metadata|search_experiences|22465_24573_3_not_null|CHECK|name IS NOT NULL
+metadata|search_experiences|22465_24573_5_not_null|CHECK|scope IS NOT NULL
+metadata|search_experiences|22465_24573_7_not_null|CHECK|config IS NOT NULL
+metadata|search_experiences|22465_24573_8_not_null|CHECK|metadata IS NOT NULL
+metadata|search_experiences|22465_24573_9_not_null|CHECK|is_active IS NOT NULL
 metadata|search_experiences|search_experiences_pkey|PRIMARY KEY|id
 metadata|search_experiences|uq_search_experiences_code|UNIQUE|code
+metadata|search_index_state|22465_24584_1_not_null|CHECK|id IS NOT NULL
+metadata|search_index_state|22465_24584_2_not_null|CHECK|collection_code IS NOT NULL
+metadata|search_index_state|22465_24584_3_not_null|CHECK|status IS NOT NULL
+metadata|search_index_state|22465_24584_6_not_null|CHECK|stats IS NOT NULL
+metadata|search_index_state|22465_24584_7_not_null|CHECK|updated_at IS NOT NULL
 metadata|search_index_state|search_index_state_pkey|PRIMARY KEY|id
 metadata|search_index_state|uq_search_index_state_collection|UNIQUE|collection_code
+metadata|search_sources|22465_24593_11_not_null|CHECK|created_at IS NOT NULL
+metadata|search_sources|22465_24593_12_not_null|CHECK|updated_at IS NOT NULL
+metadata|search_sources|22465_24593_1_not_null|CHECK|id IS NOT NULL
+metadata|search_sources|22465_24593_2_not_null|CHECK|code IS NOT NULL
+metadata|search_sources|22465_24593_3_not_null|CHECK|name IS NOT NULL
+metadata|search_sources|22465_24593_5_not_null|CHECK|collection_code IS NOT NULL
+metadata|search_sources|22465_24593_6_not_null|CHECK|config IS NOT NULL
+metadata|search_sources|22465_24593_7_not_null|CHECK|metadata IS NOT NULL
+metadata|search_sources|22465_24593_8_not_null|CHECK|is_active IS NOT NULL
 metadata|search_sources|search_sources_pkey|PRIMARY KEY|id
 metadata|search_sources|uq_search_sources_code|UNIQUE|code
+metadata|theme_definitions|22465_24604_10_not_null|CHECK|is_active IS NOT NULL
+metadata|theme_definitions|22465_24604_11_not_null|CHECK|is_deletable IS NOT NULL
+metadata|theme_definitions|22465_24604_13_not_null|CHECK|created_at IS NOT NULL
+metadata|theme_definitions|22465_24604_14_not_null|CHECK|updated_at IS NOT NULL
+metadata|theme_definitions|22465_24604_1_not_null|CHECK|id IS NOT NULL
+metadata|theme_definitions|22465_24604_2_not_null|CHECK|code IS NOT NULL
+metadata|theme_definitions|22465_24604_3_not_null|CHECK|name IS NOT NULL
+metadata|theme_definitions|22465_24604_5_not_null|CHECK|config IS NOT NULL
+metadata|theme_definitions|22465_24604_6_not_null|CHECK|theme_type IS NOT NULL
+metadata|theme_definitions|22465_24604_7_not_null|CHECK|contrast_level IS NOT NULL
+metadata|theme_definitions|22465_24604_8_not_null|CHECK|color_scheme IS NOT NULL
+metadata|theme_definitions|22465_24604_9_not_null|CHECK|is_default IS NOT NULL
 metadata|theme_definitions|PK_e9340ba17d97c17056d05759136|PRIMARY KEY|id
 metadata|theme_definitions|UQ_7acdb47306e9b04ff598ca67a8d|UNIQUE|code
+metadata|translation_keys|22465_24619_10_not_null|CHECK|created_at IS NOT NULL
+metadata|translation_keys|22465_24619_11_not_null|CHECK|updated_at IS NOT NULL
+metadata|translation_keys|22465_24619_1_not_null|CHECK|id IS NOT NULL
+metadata|translation_keys|22465_24619_2_not_null|CHECK|namespace IS NOT NULL
+metadata|translation_keys|22465_24619_3_not_null|CHECK|key IS NOT NULL
+metadata|translation_keys|22465_24619_4_not_null|CHECK|default_text IS NOT NULL
+metadata|translation_keys|22465_24619_6_not_null|CHECK|metadata IS NOT NULL
+metadata|translation_keys|22465_24619_7_not_null|CHECK|is_active IS NOT NULL
 metadata|translation_keys|translation_keys_pkey|PRIMARY KEY|id
-metadata|translation_keys|uq_translation_keys_namespace_key|UNIQUE|namespace
 metadata|translation_keys|uq_translation_keys_namespace_key|UNIQUE|key
+metadata|translation_keys|uq_translation_keys_namespace_key|UNIQUE|namespace
+metadata|translation_requests|22465_24629_11_not_null|CHECK|created_at IS NOT NULL
+metadata|translation_requests|22465_24629_12_not_null|CHECK|updated_at IS NOT NULL
+metadata|translation_requests|22465_24629_1_not_null|CHECK|id IS NOT NULL
+metadata|translation_requests|22465_24629_4_not_null|CHECK|status IS NOT NULL
+metadata|translation_requests|22465_24629_6_not_null|CHECK|reviewer_ids IS NOT NULL
+metadata|translation_requests|22465_24629_9_not_null|CHECK|metadata IS NOT NULL
 metadata|translation_requests|translation_requests_pkey|PRIMARY KEY|id
+metadata|translation_values|22465_24640_10_not_null|CHECK|created_at IS NOT NULL
+metadata|translation_values|22465_24640_11_not_null|CHECK|updated_at IS NOT NULL
+metadata|translation_values|22465_24640_1_not_null|CHECK|id IS NOT NULL
+metadata|translation_values|22465_24640_4_not_null|CHECK|text IS NOT NULL
+metadata|translation_values|22465_24640_5_not_null|CHECK|status IS NOT NULL
+metadata|translation_values|22465_24640_6_not_null|CHECK|metadata IS NOT NULL
+metadata|translation_values|22465_24640_7_not_null|CHECK|is_active IS NOT NULL
 metadata|translation_values|translation_values_pkey|PRIMARY KEY|id
-metadata|translation_values|uq_translation_values_key_locale|UNIQUE|translation_key_id
 metadata|translation_values|uq_translation_values_key_locale|UNIQUE|locale_id
+metadata|translation_values|uq_translation_values_key_locale|UNIQUE|translation_key_id
+metadata|user_theme_preferences|22465_24651_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|user_theme_preferences|22465_24651_1_not_null|CHECK|id IS NOT NULL
+metadata|user_theme_preferences|22465_24651_2_not_null|CHECK|user_id IS NOT NULL
+metadata|user_theme_preferences|22465_24651_4_not_null|CHECK|custom_overrides IS NOT NULL
+metadata|user_theme_preferences|22465_24651_5_not_null|CHECK|color_scheme IS NOT NULL
+metadata|user_theme_preferences|22465_24651_6_not_null|CHECK|auto_dark_mode IS NOT NULL
+metadata|user_theme_preferences|22465_24651_7_not_null|CHECK|respect_reduced_motion IS NOT NULL
+metadata|user_theme_preferences|22465_24651_8_not_null|CHECK|preference_source IS NOT NULL
+metadata|user_theme_preferences|22465_24651_9_not_null|CHECK|created_at IS NOT NULL
 metadata|user_theme_preferences|PK_d2925210c600e2673134dcf7e8b|PRIMARY KEY|id
+metadata|view_definition_revisions|22465_24664_11_not_null|CHECK|created_at IS NOT NULL
+metadata|view_definition_revisions|22465_24664_1_not_null|CHECK|id IS NOT NULL
+metadata|view_definition_revisions|22465_24664_2_not_null|CHECK|view_definition_id IS NOT NULL
+metadata|view_definition_revisions|22465_24664_3_not_null|CHECK|revision IS NOT NULL
+metadata|view_definition_revisions|22465_24664_4_not_null|CHECK|status IS NOT NULL
+metadata|view_definition_revisions|22465_24664_5_not_null|CHECK|layout IS NOT NULL
+metadata|view_definition_revisions|22465_24664_6_not_null|CHECK|widget_bindings IS NOT NULL
+metadata|view_definition_revisions|22465_24664_7_not_null|CHECK|actions IS NOT NULL
 metadata|view_definition_revisions|PK_view_definition_revisions|PRIMARY KEY|id
-metadata|view_definition_revisions|UQ_view_definition_revision|UNIQUE|view_definition_id
 metadata|view_definition_revisions|UQ_view_definition_revision|UNIQUE|revision
+metadata|view_definition_revisions|UQ_view_definition_revision|UNIQUE|view_definition_id
+metadata|view_definitions|22465_24674_11_not_null|CHECK|created_at IS NOT NULL
+metadata|view_definitions|22465_24674_12_not_null|CHECK|updated_at IS NOT NULL
+metadata|view_definitions|22465_24674_13_not_null|CHECK|application_id IS NOT NULL
+metadata|view_definitions|22465_24674_14_not_null|CHECK|source IS NOT NULL
+metadata|view_definitions|22465_24674_1_not_null|CHECK|id IS NOT NULL
+metadata|view_definitions|22465_24674_2_not_null|CHECK|code IS NOT NULL
+metadata|view_definitions|22465_24674_3_not_null|CHECK|name IS NOT NULL
+metadata|view_definitions|22465_24674_5_not_null|CHECK|kind IS NOT NULL
+metadata|view_definitions|22465_24674_7_not_null|CHECK|metadata IS NOT NULL
+metadata|view_definitions|22465_24674_8_not_null|CHECK|is_active IS NOT NULL
 metadata|view_definitions|PK_view_definitions|PRIMARY KEY|id
 metadata|view_definitions|UQ_view_definitions_code|UNIQUE|code
+metadata|view_variants|22465_24685_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|view_variants|22465_24685_1_not_null|CHECK|id IS NOT NULL
+metadata|view_variants|22465_24685_2_not_null|CHECK|view_definition_id IS NOT NULL
+metadata|view_variants|22465_24685_3_not_null|CHECK|scope IS NOT NULL
+metadata|view_variants|22465_24685_5_not_null|CHECK|priority IS NOT NULL
+metadata|view_variants|22465_24685_6_not_null|CHECK|is_active IS NOT NULL
+metadata|view_variants|22465_24685_9_not_null|CHECK|created_at IS NOT NULL
 metadata|view_variants|PK_view_variants|PRIMARY KEY|id
+metadata|widget_catalog|22465_24693_1_not_null|CHECK|id IS NOT NULL
+metadata|widget_catalog|22465_24693_2_not_null|CHECK|code IS NOT NULL
+metadata|widget_catalog|22465_24693_3_not_null|CHECK|name IS NOT NULL
+metadata|widget_catalog|22465_24693_4_not_null|CHECK|kind IS NOT NULL
+metadata|widget_catalog|22465_24693_5_not_null|CHECK|contract IS NOT NULL
+metadata|widget_catalog|22465_24693_6_not_null|CHECK|is_active IS NOT NULL
+metadata|widget_catalog|22465_24693_7_not_null|CHECK|created_at IS NOT NULL
+metadata|widget_catalog|22465_24693_8_not_null|CHECK|updated_at IS NOT NULL
+metadata|widget_catalog|22465_24693_9_not_null|CHECK|application_id IS NOT NULL
 metadata|widget_catalog|PK_widget_catalog|PRIMARY KEY|id
 metadata|widget_catalog|UQ_widget_catalog_code|UNIQUE|code
+metadata|workspace_definitions|22465_24703_10_not_null|CHECK|is_active IS NOT NULL
+metadata|workspace_definitions|22465_24703_14_not_null|CHECK|created_at IS NOT NULL
+metadata|workspace_definitions|22465_24703_15_not_null|CHECK|updated_at IS NOT NULL
+metadata|workspace_definitions|22465_24703_1_not_null|CHECK|id IS NOT NULL
+metadata|workspace_definitions|22465_24703_2_not_null|CHECK|code IS NOT NULL
+metadata|workspace_definitions|22465_24703_3_not_null|CHECK|name IS NOT NULL
+metadata|workspace_definitions|22465_24703_5_not_null|CHECK|application_id IS NOT NULL
+metadata|workspace_definitions|22465_24703_8_not_null|CHECK|source IS NOT NULL
+metadata|workspace_definitions|22465_24703_9_not_null|CHECK|status IS NOT NULL
 metadata|workspace_definitions|workspace_definitions_code_key|UNIQUE|code
 metadata|workspace_definitions|workspace_definitions_pkey|PRIMARY KEY|id
+metadata|workspace_pages|22465_24714_10_not_null|CHECK|created_at IS NOT NULL
+metadata|workspace_pages|22465_24714_11_not_null|CHECK|updated_at IS NOT NULL
+metadata|workspace_pages|22465_24714_1_not_null|CHECK|id IS NOT NULL
+metadata|workspace_pages|22465_24714_2_not_null|CHECK|workspace_id IS NOT NULL
+metadata|workspace_pages|22465_24714_3_not_null|CHECK|code IS NOT NULL
+metadata|workspace_pages|22465_24714_4_not_null|CHECK|name IS NOT NULL
+metadata|workspace_pages|22465_24714_5_not_null|CHECK|kind IS NOT NULL
+metadata|workspace_pages|22465_24714_6_not_null|CHECK|position IS NOT NULL
+metadata|workspace_pages|22465_24714_7_not_null|CHECK|layout IS NOT NULL
+metadata|workspace_pages|22465_24714_8_not_null|CHECK|source IS NOT NULL
 metadata|workspace_pages|workspace_pages_pkey|PRIMARY KEY|id
+metadata|workspace_variants|22465_24725_10_not_null|CHECK|updated_at IS NOT NULL
+metadata|workspace_variants|22465_24725_1_not_null|CHECK|id IS NOT NULL
+metadata|workspace_variants|22465_24725_2_not_null|CHECK|workspace_id IS NOT NULL
+metadata|workspace_variants|22465_24725_3_not_null|CHECK|page_id IS NOT NULL
+metadata|workspace_variants|22465_24725_4_not_null|CHECK|scope IS NOT NULL
+metadata|workspace_variants|22465_24725_6_not_null|CHECK|priority IS NOT NULL
+metadata|workspace_variants|22465_24725_7_not_null|CHECK|layout IS NOT NULL
+metadata|workspace_variants|22465_24725_9_not_null|CHECK|created_at IS NOT NULL
 metadata|workspace_variants|workspace_variants_pkey|PRIMARY KEY|id
+notify|device_tokens|22466_24735_1_not_null|CHECK|id IS NOT NULL
+notify|device_tokens|22466_24735_2_not_null|CHECK|user_id IS NOT NULL
+notify|device_tokens|22466_24735_3_not_null|CHECK|token IS NOT NULL
+notify|device_tokens|22466_24735_4_not_null|CHECK|platform IS NOT NULL
+notify|device_tokens|chk_device_platform|CHECK|(((platform)::text = ANY (ARRAY[('ios'::character varying)::tex
 notify|device_tokens|device_tokens_pkey|PRIMARY KEY|id
 notify|device_tokens|device_tokens_token_key|UNIQUE|token
+notify|in_app_notifications|22466_24745_1_not_null|CHECK|id IS NOT NULL
+notify|in_app_notifications|22466_24745_2_not_null|CHECK|user_id IS NOT NULL
+notify|in_app_notifications|22466_24745_3_not_null|CHECK|title IS NOT NULL
+notify|in_app_notifications|22466_24745_4_not_null|CHECK|body IS NOT NULL
+notify|in_app_notifications|chk_in_app_priority|CHECK|(((priority)::text = ANY (ARRAY[('low'::character varying)::tex
 notify|in_app_notifications|in_app_notifications_pkey|PRIMARY KEY|id
+notify|notification_history|22466_24756_1_not_null|CHECK|id IS NOT NULL
+notify|notification_history|22466_24756_3_not_null|CHECK|channel IS NOT NULL
+notify|notification_history|22466_24756_4_not_null|CHECK|recipient_id IS NOT NULL
+notify|notification_history|chk_notification_channel|CHECK|(((channel)::text = ANY (ARRAY[('email'::character varying)::te
 notify|notification_history|notification_history_pkey|PRIMARY KEY|id
+notify|notification_queue|22466_24764_1_not_null|CHECK|id IS NOT NULL
+notify|notification_queue|22466_24764_3_not_null|CHECK|recipient_id IS NOT NULL
+notify|notification_queue|22466_24764_4_not_null|CHECK|channels IS NOT NULL
+notify|notification_queue|22466_24764_5_not_null|CHECK|context IS NOT NULL
+notify|notification_queue|chk_notification_priority|CHECK|(((priority)::text = ANY (ARRAY[('low'::character varying)::tex
+notify|notification_queue|chk_notification_status|CHECK|(((status)::text = ANY (ARRAY[('pending'::character varying)::t
 notify|notification_queue|notification_queue_pkey|PRIMARY KEY|id
+notify|notification_templates|22466_24779_1_not_null|CHECK|id IS NOT NULL
+notify|notification_templates|22466_24779_2_not_null|CHECK|name IS NOT NULL
+notify|notification_templates|22466_24779_3_not_null|CHECK|code IS NOT NULL
+notify|notification_templates|22466_24779_5_not_null|CHECK|category IS NOT NULL
 notify|notification_templates|notification_templates_code_key|UNIQUE|code
 notify|notification_templates|notification_templates_pkey|PRIMARY KEY|id
+notify|user_notification_preferences|22466_24793_1_not_null|CHECK|id IS NOT NULL
+notify|user_notification_preferences|22466_24793_2_not_null|CHECK|user_id IS NOT NULL
+notify|user_notification_preferences|22466_24793_3_not_null|CHECK|preferences IS NOT NULL
+notify|user_notification_preferences|chk_digest_frequency|CHECK|(((digest_frequency)::text = ANY (ARRAY[('daily'::character var
 notify|user_notification_preferences|user_notification_preferences_pkey|PRIMARY KEY|id
 notify|user_notification_preferences|user_notification_preferences_user_id_key|UNIQUE|user_id
+public|access_audit_logs|2200_24812_1_not_null|CHECK|id IS NOT NULL
+public|access_audit_logs|2200_24812_2_not_null|CHECK|user_id IS NOT NULL
+public|access_audit_logs|2200_24812_3_not_null|CHECK|resource IS NOT NULL
+public|access_audit_logs|2200_24812_4_not_null|CHECK|action IS NOT NULL
+public|access_audit_logs|2200_24812_5_not_null|CHECK|decision IS NOT NULL
+public|access_audit_logs|2200_24812_7_not_null|CHECK|timestamp IS NOT NULL
 public|access_audit_logs|PK_92362eda47f20e6eff693801adc|PRIMARY KEY|id
+public|access_condition_groups|2200_24819_1_not_null|CHECK|id IS NOT NULL
+public|access_condition_groups|2200_24819_2_not_null|CHECK|rule_id IS NOT NULL
+public|access_condition_groups|2200_24819_3_not_null|CHECK|logic IS NOT NULL
 public|access_condition_groups|PK_a08fcc4ccef7a20eb06585d161d|PRIMARY KEY|id
+public|access_conditions|2200_24825_1_not_null|CHECK|id IS NOT NULL
+public|access_conditions|2200_24825_2_not_null|CHECK|rule_id IS NOT NULL
+public|access_conditions|2200_24825_3_not_null|CHECK|field IS NOT NULL
+public|access_conditions|2200_24825_4_not_null|CHECK|operator IS NOT NULL
+public|access_conditions|2200_24825_5_not_null|CHECK|value IS NOT NULL
 public|access_conditions|PK_dc7b7cc80c74b4cb2c2c908bc8e|PRIMARY KEY|id
+public|access_rule_audit_logs|2200_24831_1_not_null|CHECK|id IS NOT NULL
+public|access_rule_audit_logs|2200_24831_2_not_null|CHECK|rule_id IS NOT NULL
+public|access_rule_audit_logs|2200_24831_3_not_null|CHECK|action IS NOT NULL
+public|access_rule_audit_logs|2200_24831_5_not_null|CHECK|performed_by IS NOT NULL
+public|access_rule_audit_logs|2200_24831_6_not_null|CHECK|performedAt IS NOT NULL
 public|access_rule_audit_logs|PK_eabc37285db4504f74492eb2757|PRIMARY KEY|id
+public|audit_logs|2200_24838_10_not_null|CHECK|created_at IS NOT NULL
+public|audit_logs|2200_24838_1_not_null|CHECK|id IS NOT NULL
+public|audit_logs|2200_24838_5_not_null|CHECK|action IS NOT NULL
 public|audit_logs|PK_1bb179d048bbc581caa3b013439|PRIMARY KEY|id
+public|collection_access_rules|2200_24845_10_not_null|CHECK|can_update IS NOT NULL
+public|collection_access_rules|2200_24845_11_not_null|CHECK|can_delete IS NOT NULL
+public|collection_access_rules|2200_24845_13_not_null|CHECK|priority IS NOT NULL
+public|collection_access_rules|2200_24845_14_not_null|CHECK|is_active IS NOT NULL
+public|collection_access_rules|2200_24845_16_not_null|CHECK|created_at IS NOT NULL
+public|collection_access_rules|2200_24845_17_not_null|CHECK|updated_at IS NOT NULL
+public|collection_access_rules|2200_24845_19_not_null|CHECK|metadata IS NOT NULL
+public|collection_access_rules|2200_24845_1_not_null|CHECK|id IS NOT NULL
+public|collection_access_rules|2200_24845_20_not_null|CHECK|effect IS NOT NULL
+public|collection_access_rules|2200_24845_2_not_null|CHECK|collection_id IS NOT NULL
+public|collection_access_rules|2200_24845_3_not_null|CHECK|name IS NOT NULL
+public|collection_access_rules|2200_24845_8_not_null|CHECK|can_read IS NOT NULL
+public|collection_access_rules|2200_24845_9_not_null|CHECK|can_create IS NOT NULL
+public|collection_access_rules|CHK_collection_access_rules_effect|CHECK|(((effect)::text = ANY (ARRAY[('allow'::character varying)::tex
 public|collection_access_rules|PK_685125fdb89c2749d2c76bca5a2|PRIMARY KEY|id
+public|config_change_history|2200_24883_1_not_null|CHECK|id IS NOT NULL
+public|config_change_history|2200_24883_2_not_null|CHECK|configType IS NOT NULL
+public|config_change_history|2200_24883_4_not_null|CHECK|changeType IS NOT NULL
+public|config_change_history|2200_24883_7_not_null|CHECK|changedAt IS NOT NULL
 public|config_change_history|PK_1be86c25d2fc54beef9398c6991|PRIMARY KEY|id
+public|field_mappings|2200_24890_1_not_null|CHECK|id IS NOT NULL
+public|field_mappings|2200_24890_3_not_null|CHECK|name IS NOT NULL
+public|field_mappings|2200_24890_4_not_null|CHECK|source_entity IS NOT NULL
+public|field_mappings|2200_24890_7_not_null|CHECK|mappings IS NOT NULL
 public|field_mappings|field_mappings_pkey|PRIMARY KEY|id
+public|formula_cache|2200_24862_14_not_null|CHECK|created_at IS NOT NULL
+public|formula_cache|2200_24862_15_not_null|CHECK|updated_at IS NOT NULL
+public|formula_cache|2200_24862_1_not_null|CHECK|id IS NOT NULL
+public|formula_cache|2200_24862_2_not_null|CHECK|collection_id IS NOT NULL
+public|formula_cache|2200_24862_3_not_null|CHECK|property_id IS NOT NULL
+public|formula_cache|2200_24862_4_not_null|CHECK|record_id IS NOT NULL
+public|formula_cache|2200_24862_6_not_null|CHECK|value_type IS NOT NULL
+public|formula_cache|2200_24862_7_not_null|CHECK|formula_hash IS NOT NULL
+public|formula_cache|2200_24862_9_not_null|CHECK|calculated_at IS NOT NULL
+public|formula_cache|chk_value_type|CHECK|(((value_type)::text = ANY (ARRAY[('string'::character varying)
 public|formula_cache|formula_cache_pkey|PRIMARY KEY|id
+public|inline_editing_test|2200_24904_1_not_null|CHECK|id IS NOT NULL
+public|inline_editing_test|2200_24904_21_not_null|CHECK|created_at IS NOT NULL
+public|inline_editing_test|2200_24904_22_not_null|CHECK|updated_at IS NOT NULL
 public|inline_editing_test|inline_editing_test_pkey|PRIMARY KEY|id
+public|instance_customizations|2200_24915_12_not_null|CHECK|created_at IS NOT NULL
+public|instance_customizations|2200_24915_13_not_null|CHECK|updated_at IS NOT NULL
+public|instance_customizations|2200_24915_1_not_null|CHECK|id IS NOT NULL
+public|instance_customizations|2200_24915_2_not_null|CHECK|instance_id IS NOT NULL
+public|instance_customizations|2200_24915_3_not_null|CHECK|config_type IS NOT NULL
+public|instance_customizations|2200_24915_4_not_null|CHECK|resource_key IS NOT NULL
+public|instance_customizations|2200_24915_5_not_null|CHECK|customization_type IS NOT NULL
+public|instance_customizations|2200_24915_7_not_null|CHECK|custom_value IS NOT NULL
+public|instance_customizations|2200_24915_9_not_null|CHECK|is_active IS NOT NULL
 public|instance_customizations|instance_customizations_pkey|PRIMARY KEY|id
+public|instance_event_outbox|2200_24926_11_not_null|CHECK|created_at IS NOT NULL
+public|instance_event_outbox|2200_24926_1_not_null|CHECK|id IS NOT NULL
+public|instance_event_outbox|2200_24926_2_not_null|CHECK|event_type IS NOT NULL
+public|instance_event_outbox|2200_24926_5_not_null|CHECK|payload IS NOT NULL
+public|instance_event_outbox|2200_24926_6_not_null|CHECK|status IS NOT NULL
+public|instance_event_outbox|2200_24926_7_not_null|CHECK|attempts IS NOT NULL
 public|instance_event_outbox|instance_event_outbox_pkey|PRIMARY KEY|id
+public|instance_settings|2200_24935_1_not_null|CHECK|id IS NOT NULL
+public|instance_settings|2200_24935_2_not_null|CHECK|category IS NOT NULL
+public|instance_settings|2200_24935_3_not_null|CHECK|key IS NOT NULL
+public|instance_settings|2200_24935_4_not_null|CHECK|value IS NOT NULL
+public|instance_settings|2200_24935_6_not_null|CHECK|is_system IS NOT NULL
+public|instance_settings|2200_24935_8_not_null|CHECK|created_at IS NOT NULL
+public|instance_settings|2200_24935_9_not_null|CHECK|updated_at IS NOT NULL
 public|instance_settings|PK_eb2567a5e4188cd54689e1d79ef|PRIMARY KEY|id
 public|instance_settings|UQ_f4841fbd4c9819d5ade4b5dfeb8|UNIQUE|key
+public|instance_upgrade_impact|2200_24944_12_not_null|CHECK|status IS NOT NULL
+public|instance_upgrade_impact|2200_24944_16_not_null|CHECK|created_at IS NOT NULL
+public|instance_upgrade_impact|2200_24944_17_not_null|CHECK|updated_at IS NOT NULL
+public|instance_upgrade_impact|2200_24944_1_not_null|CHECK|id IS NOT NULL
+public|instance_upgrade_impact|2200_24944_2_not_null|CHECK|instance_id IS NOT NULL
+public|instance_upgrade_impact|2200_24944_4_not_null|CHECK|config_type IS NOT NULL
+public|instance_upgrade_impact|2200_24944_5_not_null|CHECK|resource_key IS NOT NULL
+public|instance_upgrade_impact|2200_24944_6_not_null|CHECK|impact_type IS NOT NULL
+public|instance_upgrade_impact|2200_24944_7_not_null|CHECK|impact_severity IS NOT NULL
 public|instance_upgrade_impact|instance_upgrade_impact_pkey|PRIMARY KEY|id
+public|key_metadata|2200_24955_1_not_null|CHECK|kid IS NOT NULL
+public|key_metadata|2200_24955_2_not_null|CHECK|provider IS NOT NULL
+public|key_metadata|2200_24955_5_not_null|CHECK|algorithm IS NOT NULL
+public|key_metadata|2200_24955_6_not_null|CHECK|state IS NOT NULL
+public|key_metadata|2200_24955_7_not_null|CHECK|public_key_pem IS NOT NULL
+public|key_metadata|2200_24955_9_not_null|CHECK|created_at IS NOT NULL
+public|key_metadata|key_metadata_algorithm_check|CHECK|((algorithm = 'ES256'::text))
 public|key_metadata|key_metadata_pkey|PRIMARY KEY|kid
+public|key_metadata|key_metadata_provider_check|CHECK|((provider = ANY (ARRAY['aws-kms'::text, 'local-es256'::text]))
+public|key_metadata|key_metadata_state_check|CHECK|((state = ANY (ARRAY['pending'::text, 'active'::text, 'retiring
+public|migrations|2200_24965_1_not_null|CHECK|id IS NOT NULL
+public|migrations|2200_24965_2_not_null|CHECK|timestamp IS NOT NULL
+public|migrations|2200_24965_3_not_null|CHECK|name IS NOT NULL
 public|migrations|PK_8c82d7f526340ab734260ea46be|PRIMARY KEY|id
+public|platform_config|2200_24970_1_not_null|CHECK|id IS NOT NULL
+public|platform_config|2200_24970_2_not_null|CHECK|key IS NOT NULL
+public|platform_config|2200_24970_3_not_null|CHECK|value IS NOT NULL
+public|platform_config|2200_24970_4_not_null|CHECK|value_type IS NOT NULL
+public|platform_config|2200_24970_6_not_null|CHECK|is_system IS NOT NULL
+public|platform_config|2200_24970_7_not_null|CHECK|created_at IS NOT NULL
+public|platform_config|2200_24970_8_not_null|CHECK|updated_at IS NOT NULL
 public|platform_config|platform_config_pkey|PRIMARY KEY|id
+public|property_access_rules|2200_24980_10_not_null|CHECK|is_active IS NOT NULL
+public|property_access_rules|2200_24980_12_not_null|CHECK|created_at IS NOT NULL
+public|property_access_rules|2200_24980_13_not_null|CHECK|masking_strategy IS NOT NULL
+public|property_access_rules|2200_24980_14_not_null|CHECK|updated_at IS NOT NULL
+public|property_access_rules|2200_24980_16_not_null|CHECK|metadata IS NOT NULL
+public|property_access_rules|2200_24980_17_not_null|CHECK|effect IS NOT NULL
+public|property_access_rules|2200_24980_1_not_null|CHECK|id IS NOT NULL
+public|property_access_rules|2200_24980_6_not_null|CHECK|can_read IS NOT NULL
+public|property_access_rules|2200_24980_7_not_null|CHECK|can_write IS NOT NULL
+public|property_access_rules|2200_24980_9_not_null|CHECK|priority IS NOT NULL
+public|property_access_rules|CHK_property_access_rules_effect|CHECK|(((effect)::text = ANY (ARRAY[('allow'::character varying)::tex
+public|property_access_rules|CHK_property_access_rules_target_xor|CHECK|((((property_id IS NOT NULL) AND (wildcard_collection_id IS NUL
 public|property_access_rules|PK_64e3b9fa96a1735ba4741905d88|PRIMARY KEY|id
+public|property_audit_logs|2200_24997_1_not_null|CHECK|id IS NOT NULL
+public|property_audit_logs|2200_24997_2_not_null|CHECK|property_id IS NOT NULL
+public|property_audit_logs|2200_24997_3_not_null|CHECK|record_id IS NOT NULL
+public|property_audit_logs|2200_24997_6_not_null|CHECK|changed_by IS NOT NULL
+public|property_audit_logs|2200_24997_7_not_null|CHECK|changedAt IS NOT NULL
 public|property_audit_logs|PK_3878feaf1d72785e4c4fa1d6c53|PRIMARY KEY|id
+public|property_dependencies|2200_24874_1_not_null|CHECK|id IS NOT NULL
+public|property_dependencies|2200_24874_2_not_null|CHECK|property_id IS NOT NULL
+public|property_dependencies|2200_24874_3_not_null|CHECK|collection_id IS NOT NULL
+public|property_dependencies|2200_24874_6_not_null|CHECK|dependency_type IS NOT NULL
+public|property_dependencies|2200_24874_9_not_null|CHECK|created_at IS NOT NULL
+public|property_dependencies|chk_dependency_type|CHECK|(((dependency_type)::text = ANY (ARRAY[('formula'::character va
 public|property_dependencies|property_dependencies_pkey|PRIMARY KEY|id
+public|runtime_anomaly|2200_25004_1_not_null|CHECK|id IS NOT NULL
+public|runtime_anomaly|2200_25004_2_not_null|CHECK|kind IS NOT NULL
+public|runtime_anomaly|2200_25004_3_not_null|CHECK|service_code IS NOT NULL
+public|runtime_anomaly|2200_25004_6_not_null|CHECK|message IS NOT NULL
+public|runtime_anomaly|2200_25004_9_not_null|CHECK|occurred_at IS NOT NULL
 public|runtime_anomaly|runtime_anomaly_pkey|PRIMARY KEY|id
+public|schema_versions|2200_25011_10_not_null|CHECK|created_at IS NOT NULL
+public|schema_versions|2200_25011_1_not_null|CHECK|id IS NOT NULL
+public|schema_versions|2200_25011_2_not_null|CHECK|version IS NOT NULL
+public|schema_versions|2200_25011_3_not_null|CHECK|collection_code IS NOT NULL
+public|schema_versions|2200_25011_4_not_null|CHECK|snapshot IS NOT NULL
+public|schema_versions|2200_25011_5_not_null|CHECK|change_type IS NOT NULL
+public|schema_versions|2200_25011_6_not_null|CHECK|change_summary IS NOT NULL
+public|schema_versions|2200_25011_7_not_null|CHECK|created_by IS NOT NULL
+public|schema_versions|chk_schema_versions_change_type|CHECK|(((change_type)::text = ANY (ARRAY[('collection_created'::chara
 public|schema_versions|schema_versions_pkey|PRIMARY KEY|id
 public|schema_versions|uq_schema_versions_collection_version|UNIQUE|collection_code
 public|schema_versions|uq_schema_versions_collection_version|UNIQUE|version
+public|search_embeddings|2200_25019_1_not_null|CHECK|id IS NOT NULL
+public|search_embeddings|2200_25019_2_not_null|CHECK|source_type IS NOT NULL
+public|search_embeddings|2200_25019_3_not_null|CHECK|source_id IS NOT NULL
+public|search_embeddings|2200_25019_4_not_null|CHECK|chunk_index IS NOT NULL
+public|search_embeddings|2200_25019_5_not_null|CHECK|content IS NOT NULL
 public|search_embeddings|search_embeddings_pkey|PRIMARY KEY|id
-public|search_embeddings|search_embeddings_source_type_source_id_chunk_index_key|UNIQUE|source_type
-public|search_embeddings|search_embeddings_source_type_source_id_chunk_index_key|UNIQUE|source_id
 public|search_embeddings|search_embeddings_source_type_source_id_chunk_index_key|UNIQUE|chunk_index
+public|search_embeddings|search_embeddings_source_type_source_id_chunk_index_key|UNIQUE|source_id
+public|search_embeddings|search_embeddings_source_type_source_id_chunk_index_key|UNIQUE|source_type
+public|service_principals|2200_25028_1_not_null|CHECK|service_id IS NOT NULL
+public|service_principals|2200_25028_2_not_null|CHECK|display_name IS NOT NULL
+public|service_principals|2200_25028_3_not_null|CHECK|allowed_audiences IS NOT NULL
+public|service_principals|2200_25028_4_not_null|CHECK|allowed_scopes IS NOT NULL
+public|service_principals|2200_25028_6_not_null|CHECK|active IS NOT NULL
+public|service_principals|2200_25028_7_not_null|CHECK|created_at IS NOT NULL
+public|service_principals|2200_25028_8_not_null|CHECK|updated_at IS NOT NULL
 public|service_principals|service_principals_pkey|PRIMARY KEY|service_id
+public|upgrade_history|2200_25036_14_not_null|CHECK|impacts_resolved IS NOT NULL
+public|upgrade_history|2200_25036_15_not_null|CHECK|impacts_auto_merged IS NOT NULL
+public|upgrade_history|2200_25036_16_not_null|CHECK|created_at IS NOT NULL
+public|upgrade_history|2200_25036_1_not_null|CHECK|id IS NOT NULL
+public|upgrade_history|2200_25036_2_not_null|CHECK|instance_id IS NOT NULL
+public|upgrade_history|2200_25036_3_not_null|CHECK|from_version IS NOT NULL
+public|upgrade_history|2200_25036_4_not_null|CHECK|to_version IS NOT NULL
+public|upgrade_history|2200_25036_6_not_null|CHECK|status IS NOT NULL
+public|upgrade_history|2200_25036_7_not_null|CHECK|started_at IS NOT NULL
 public|upgrade_history|upgrade_history_pkey|PRIMARY KEY|id
+public|upgrade_manifest|2200_25049_10_not_null|CHECK|is_available IS NOT NULL
+public|upgrade_manifest|2200_25049_11_not_null|CHECK|is_mandatory IS NOT NULL
+public|upgrade_manifest|2200_25049_12_not_null|CHECK|created_at IS NOT NULL
+public|upgrade_manifest|2200_25049_1_not_null|CHECK|id IS NOT NULL
+public|upgrade_manifest|2200_25049_2_not_null|CHECK|version IS NOT NULL
+public|upgrade_manifest|2200_25049_3_not_null|CHECK|release_date IS NOT NULL
 public|upgrade_manifest|upgrade_manifest_pkey|PRIMARY KEY|id
+public|user_preferences|2200_25062_10_not_null|CHECK|pinned_navigation IS NOT NULL
+public|user_preferences|2200_25062_11_not_null|CHECK|recent_items_count IS NOT NULL
+public|user_preferences|2200_25062_12_not_null|CHECK|show_favorites_in_sidebar IS NOT NULL
+public|user_preferences|2200_25062_13_not_null|CHECK|show_recent_in_sidebar IS NOT NULL
+public|user_preferences|2200_25062_14_not_null|CHECK|language IS NOT NULL
+public|user_preferences|2200_25062_16_not_null|CHECK|date_format IS NOT NULL
+public|user_preferences|2200_25062_17_not_null|CHECK|time_format IS NOT NULL
+public|user_preferences|2200_25062_18_not_null|CHECK|start_of_week IS NOT NULL
+public|user_preferences|2200_25062_19_not_null|CHECK|number_format IS NOT NULL
+public|user_preferences|2200_25062_1_not_null|CHECK|id IS NOT NULL
+public|user_preferences|2200_25062_20_not_null|CHECK|notification_preferences IS NOT NULL
+public|user_preferences|2200_25062_21_not_null|CHECK|accessibility IS NOT NULL
+public|user_preferences|2200_25062_22_not_null|CHECK|keyboard_shortcuts_enabled IS NOT NULL
+public|user_preferences|2200_25062_23_not_null|CHECK|custom_shortcuts IS NOT NULL
+public|user_preferences|2200_25062_24_not_null|CHECK|table_preferences IS NOT NULL
+public|user_preferences|2200_25062_25_not_null|CHECK|dashboard_preferences IS NOT NULL
+public|user_preferences|2200_25062_26_not_null|CHECK|auto_save_enabled IS NOT NULL
+public|user_preferences|2200_25062_27_not_null|CHECK|auto_save_interval IS NOT NULL
+public|user_preferences|2200_25062_28_not_null|CHECK|confirm_before_leave IS NOT NULL
+public|user_preferences|2200_25062_29_not_null|CHECK|show_field_descriptions IS NOT NULL
+public|user_preferences|2200_25062_2_not_null|CHECK|user_id IS NOT NULL
+public|user_preferences|2200_25062_30_not_null|CHECK|search_include_archived IS NOT NULL
+public|user_preferences|2200_25062_31_not_null|CHECK|search_results_per_page IS NOT NULL
+public|user_preferences|2200_25062_32_not_null|CHECK|search_highlight_matches IS NOT NULL
+public|user_preferences|2200_25062_35_not_null|CHECK|ava_enabled IS NOT NULL
+public|user_preferences|2200_25062_36_not_null|CHECK|ava_auto_suggest IS NOT NULL
+public|user_preferences|2200_25062_37_not_null|CHECK|ava_voice_enabled IS NOT NULL
+public|user_preferences|2200_25062_38_not_null|CHECK|sync_enabled IS NOT NULL
+public|user_preferences|2200_25062_3_not_null|CHECK|density_mode IS NOT NULL
+public|user_preferences|2200_25062_41_not_null|CHECK|preference_version IS NOT NULL
+public|user_preferences|2200_25062_42_not_null|CHECK|created_at IS NOT NULL
+public|user_preferences|2200_25062_43_not_null|CHECK|updated_at IS NOT NULL
+public|user_preferences|2200_25062_4_not_null|CHECK|sidebar_position IS NOT NULL
+public|user_preferences|2200_25062_5_not_null|CHECK|sidebar_collapsed IS NOT NULL
+public|user_preferences|2200_25062_6_not_null|CHECK|sidebar_width IS NOT NULL
+public|user_preferences|2200_25062_7_not_null|CHECK|show_breadcrumbs IS NOT NULL
+public|user_preferences|2200_25062_8_not_null|CHECK|show_footer IS NOT NULL
+public|user_preferences|2200_25062_9_not_null|CHECK|content_width IS NOT NULL
 public|user_preferences|PK_e8cfb5b31af61cd363a6b6d7c25|PRIMARY KEY|id
+public|user_sessions|2200_25104_11_not_null|CHECK|is_active IS NOT NULL
+public|user_sessions|2200_25104_12_not_null|CHECK|is_remembered IS NOT NULL
+public|user_sessions|2200_25104_13_not_null|CHECK|created_at IS NOT NULL
+public|user_sessions|2200_25104_14_not_null|CHECK|last_activity_at IS NOT NULL
+public|user_sessions|2200_25104_15_not_null|CHECK|expires_at IS NOT NULL
+public|user_sessions|2200_25104_1_not_null|CHECK|id IS NOT NULL
+public|user_sessions|2200_25104_2_not_null|CHECK|user_id IS NOT NULL
+public|user_sessions|2200_25104_3_not_null|CHECK|session_token IS NOT NULL
 public|user_sessions|PK_e93e031a5fed190d4789b6bfd83|PRIMARY KEY|id
 public|user_sessions|UQ_e5eb7a3c7766f941fe16b9edecb|UNIQUE|session_token
+public|users|2200_25114_10_not_null|CHECK|must_change_password IS NOT NULL
+public|users|2200_25114_11_not_null|CHECK|status IS NOT NULL
+public|users|2200_25114_1_not_null|CHECK|id IS NOT NULL
+public|users|2200_25114_21_not_null|CHECK|locale IS NOT NULL
+public|users|2200_25114_22_not_null|CHECK|time_zone IS NOT NULL
+public|users|2200_25114_23_not_null|CHECK|date_format IS NOT NULL
+public|users|2200_25114_24_not_null|CHECK|time_format IS NOT NULL
+public|users|2200_25114_25_not_null|CHECK|mfa_enabled IS NOT NULL
+public|users|2200_25114_29_not_null|CHECK|failed_login_attempts IS NOT NULL
+public|users|2200_25114_2_not_null|CHECK|email IS NOT NULL
+public|users|2200_25114_32_not_null|CHECK|email_verified IS NOT NULL
+public|users|2200_25114_34_not_null|CHECK|is_admin IS NOT NULL
+public|users|2200_25114_35_not_null|CHECK|is_system_user IS NOT NULL
+public|users|2200_25114_4_not_null|CHECK|display_name IS NOT NULL
+public|users|2200_25114_53_not_null|CHECK|metadata IS NOT NULL
+public|users|2200_25114_54_not_null|CHECK|created_at IS NOT NULL
+public|users|2200_25114_55_not_null|CHECK|updated_at IS NOT NULL
+public|users|2200_25114_56_not_null|CHECK|security_stamp IS NOT NULL
+public|users|2200_25114_8_not_null|CHECK|password_algo IS NOT NULL
 public|users|PK_a3ffb1c0c8416b9fc6f907b7433|PRIMARY KEY|id
+public|view_configurations|2200_25136_19_not_null|CHECK|owner_type IS NOT NULL
+public|view_configurations|2200_25136_1_not_null|CHECK|id IS NOT NULL
+public|view_configurations|2200_25136_25_not_null|CHECK|created_at IS NOT NULL
+public|view_configurations|2200_25136_26_not_null|CHECK|updated_at IS NOT NULL
+public|view_configurations|2200_25136_2_not_null|CHECK|collection_id IS NOT NULL
+public|view_configurations|2200_25136_3_not_null|CHECK|code IS NOT NULL
+public|view_configurations|2200_25136_4_not_null|CHECK|name IS NOT NULL
+public|view_configurations|2200_25136_6_not_null|CHECK|view_type IS NOT NULL
+public|view_configurations|2200_25136_7_not_null|CHECK|config IS NOT NULL
+public|view_configurations|chk_owner_type|CHECK|(((owner_type)::text = ANY (ARRAY[('system'::character varying)
+public|view_configurations|chk_view_type|CHECK|(((view_type)::text = ANY (ARRAY[('list'::character varying)::t
 public|view_configurations|view_configurations_pkey|PRIMARY KEY|id
 
 ## Foreign Keys
@@ -3234,9 +4763,8 @@ identity|password_reset_tokens|user_id|FK_52ac39dd8a28730c63aeb428c9c|public|use
 identity|refresh_tokens|parent_token_id|refresh_tokens_parent_token_id_fkey|identity|refresh_tokens|token_hash|NO ACTION|SET NULL
 identity|refresh_tokens|replaced_by_token_id|refresh_tokens_replaced_by_token_id_fkey|identity|refresh_tokens|token_hash|NO ACTION|SET NULL
 identity|refresh_tokens|user_id|refresh_tokens_user_id_fkey|public|users|id|NO ACTION|CASCADE
-identity|role_permissions|permission_id|FK_17022daf3f885f7d35423e9971e|identity|permissions|id|NO ACTION|CASCADE
-identity|role_permissions|role_id|FK_178199805b901ccd220ab7740ec|identity|roles|id|NO ACTION|CASCADE
-identity|role_permissions|created_by|FK_a731453130efd9b40d4ab5f9620|public|users|id|NO ACTION|NO ACTION
+identity|role_permissions|permission_code|role_permissions_permission_code_fkey|identity|platform_permissions|code|NO ACTION|RESTRICT
+identity|role_permissions|role_id|role_permissions_role_id_fkey|identity|roles|id|NO ACTION|CASCADE
 identity|roles|parent_id|FK_3e97eeaf865aeda0d20c0c5c509|identity|roles|id|NO ACTION|NO ACTION
 identity|roles|created_by|FK_4a39f3095781cdd9d6061afaae5|public|users|id|NO ACTION|NO ACTION
 identity|roles|updated_by|FK_747b580d73db0ad78963d78b076|public|users|id|NO ACTION|NO ACTION
@@ -3526,7 +5054,7 @@ automation|process_flow_execution_history|idx_process_flow_history_instance|CREA
 automation|process_flow_execution_history|process_flow_execution_history_pkey|CREATE UNIQUE INDEX process_flow_execution_history_pkey ON automation.process_flow_execution_history USING btree (id)
 automation|process_flow_instances|idx_process_flow_instances_process_flow|CREATE INDEX idx_process_flow_instances_process_flow ON automation.process_flow_instances USING btree (process_flow_id)
 automation|process_flow_instances|idx_process_flow_instances_record|CREATE INDEX idx_process_flow_instances_record ON automation.process_flow_instances USING btree (collection_id, record_id)
-automation|process_flow_instances|idx_process_flow_instances_state|CREATE INDEX idx_process_flow_instances_state ON automation.process_flow_instances USING btree (state) WHERE ((state)::text = ANY ((ARRAY['running'::character varying, 'waiting_approval'::character varying])::text[]))
+automation|process_flow_instances|idx_process_flow_instances_state|CREATE INDEX idx_process_flow_instances_state ON automation.process_flow_instances USING btree (state) WHERE ((state)::text = ANY (ARRAY[('running'::character varying)::text, ('waiting_approval'::character varying)::text]))
 automation|process_flow_instances|process_flow_instances_pkey|CREATE UNIQUE INDEX process_flow_instances_pkey ON automation.process_flow_instances USING btree (id)
 automation|scheduled_jobs|idx_scheduled_jobs_active_next_run|CREATE INDEX idx_scheduled_jobs_active_next_run ON automation.scheduled_jobs USING btree (is_active, next_run_at)
 automation|scheduled_jobs|pk_scheduled_jobs|CREATE UNIQUE INDEX pk_scheduled_jobs ON automation.scheduled_jobs USING btree (id)
@@ -3684,20 +5212,14 @@ identity|password_reset_tokens|IDX_7c038e5a589b06cbe4320cc88b|CREATE INDEX "IDX_
 identity|password_reset_tokens|IDX_ab673f0e63eac966762155508e|CREATE UNIQUE INDEX "IDX_ab673f0e63eac966762155508e" ON identity.password_reset_tokens USING btree (token)
 identity|password_reset_tokens|PK_d16bebd73e844c48bca50ff8d3d|CREATE UNIQUE INDEX "PK_d16bebd73e844c48bca50ff8d3d" ON identity.password_reset_tokens USING btree (id)
 identity|password_reset_tokens|UQ_ab673f0e63eac966762155508ee|CREATE UNIQUE INDEX "UQ_ab673f0e63eac966762155508ee" ON identity.password_reset_tokens USING btree (token)
-identity|permissions|IDX_637007c67b604bd971d4fe6823|CREATE INDEX "IDX_637007c67b604bd971d4fe6823" ON identity.permissions USING btree (resource_type)
-identity|permissions|IDX_8dad765629e83229da6feda1c1|CREATE UNIQUE INDEX "IDX_8dad765629e83229da6feda1c1" ON identity.permissions USING btree (code)
-identity|permissions|IDX_aad80a27f0a425bfc3f092a732|CREATE INDEX "IDX_aad80a27f0a425bfc3f092a732" ON identity.permissions USING btree (category)
-identity|permissions|PK_920331560282b8bd21bb02290df|CREATE UNIQUE INDEX "PK_920331560282b8bd21bb02290df" ON identity.permissions USING btree (id)
-identity|permissions|UQ_8dad765629e83229da6feda1c1d|CREATE UNIQUE INDEX "UQ_8dad765629e83229da6feda1c1d" ON identity.permissions USING btree (code)
+identity|platform_permissions|platform_permissions_pkey|CREATE UNIQUE INDEX platform_permissions_pkey ON identity.platform_permissions USING btree (code)
 identity|refresh_tokens|idx_refresh_tokens_expires_at|CREATE INDEX idx_refresh_tokens_expires_at ON identity.refresh_tokens USING btree (expires_at) WHERE (revoked_at IS NULL)
 identity|refresh_tokens|idx_refresh_tokens_family_id|CREATE INDEX idx_refresh_tokens_family_id ON identity.refresh_tokens USING btree (family_id)
 identity|refresh_tokens|idx_refresh_tokens_family_not_revoked|CREATE INDEX idx_refresh_tokens_family_not_revoked ON identity.refresh_tokens USING btree (family_id) WHERE (revoked_at IS NULL)
 identity|refresh_tokens|idx_refresh_tokens_user_session|CREATE INDEX idx_refresh_tokens_user_session ON identity.refresh_tokens USING btree (user_id, session_id)
 identity|refresh_tokens|refresh_tokens_pkey|CREATE UNIQUE INDEX refresh_tokens_pkey ON identity.refresh_tokens USING btree (token_hash)
-identity|role_permissions|IDX_17022daf3f885f7d35423e9971|CREATE INDEX "IDX_17022daf3f885f7d35423e9971" ON identity.role_permissions USING btree (permission_id)
 identity|role_permissions|IDX_178199805b901ccd220ab7740e|CREATE INDEX "IDX_178199805b901ccd220ab7740e" ON identity.role_permissions USING btree (role_id)
-identity|role_permissions|PK_84059017c90bfcb701b8fa42297|CREATE UNIQUE INDEX "PK_84059017c90bfcb701b8fa42297" ON identity.role_permissions USING btree (id)
-identity|role_permissions|UQ_25d24010f53bb80b78e412c9656|CREATE UNIQUE INDEX "UQ_25d24010f53bb80b78e412c9656" ON identity.role_permissions USING btree (role_id, permission_id)
+identity|role_permissions|role_permissions_pkey|CREATE UNIQUE INDEX role_permissions_pkey ON identity.role_permissions USING btree (role_id, permission_code)
 identity|roles|IDX_2a3edd7bc16920c3287331ea42|CREATE INDEX "IDX_2a3edd7bc16920c3287331ea42" ON identity.roles USING btree (is_system)
 identity|roles|IDX_3e97eeaf865aeda0d20c0c5c50|CREATE INDEX "IDX_3e97eeaf865aeda0d20c0c5c50" ON identity.roles USING btree (parent_id)
 identity|roles|IDX_e9f58bffa9bdcc402c0438a60c|CREATE INDEX "IDX_e9f58bffa9bdcc402c0438a60c" ON identity.roles USING btree (is_active)
@@ -4142,7 +5664,7 @@ public|view_configurations|idx_view_config_type|CREATE INDEX idx_view_config_typ
 public|view_configurations|idx_view_config_unique|CREATE UNIQUE INDEX idx_view_config_unique ON public.view_configurations USING btree (collection_id, code)
 public|view_configurations|view_configurations_pkey|CREATE UNIQUE INDEX view_configurations_pkey ON public.view_configurations USING btree (id)
 
-# Control-plane database: hubblewave_control_plane
+# Control-plane database: hubblewave_cp_baseline_test
 
 ## Tables and Columns
 public|control_plane_audit_log|id|1|uuid_generate_v4()|NO|uuid||uuid
@@ -4399,22 +5921,153 @@ public|terraform_jobs|created_at|20|now()|NO|timestamp with time zone||timestamp
 public|terraform_jobs|updated_at|21|now()|NO|timestamp with time zone||timestamptz
 
 ## Constraints
+public|control_plane_audit_log|2200_27673_12_not_null|CHECK|details IS NOT NULL
+public|control_plane_audit_log|2200_27673_16_not_null|CHECK|created_at IS NOT NULL
+public|control_plane_audit_log|2200_27673_1_not_null|CHECK|id IS NOT NULL
+public|control_plane_audit_log|2200_27673_5_not_null|CHECK|action IS NOT NULL
+public|control_plane_audit_log|2200_27673_8_not_null|CHECK|result IS NOT NULL
 public|control_plane_audit_log|control_plane_audit_log_pkey|PRIMARY KEY|id
+public|control_plane_users|2200_27682_12_not_null|CHECK|failed_login_attempts IS NOT NULL
+public|control_plane_users|2200_27682_19_not_null|CHECK|metadata IS NOT NULL
+public|control_plane_users|2200_27682_1_not_null|CHECK|id IS NOT NULL
+public|control_plane_users|2200_27682_20_not_null|CHECK|created_at IS NOT NULL
+public|control_plane_users|2200_27682_21_not_null|CHECK|updated_at IS NOT NULL
+public|control_plane_users|2200_27682_2_not_null|CHECK|email IS NOT NULL
+public|control_plane_users|2200_27682_3_not_null|CHECK|display_name IS NOT NULL
+public|control_plane_users|2200_27682_7_not_null|CHECK|role IS NOT NULL
+public|control_plane_users|2200_27682_8_not_null|CHECK|status IS NOT NULL
+public|control_plane_users|2200_27682_9_not_null|CHECK|mfa_enabled IS NOT NULL
 public|control_plane_users|control_plane_users_pkey|PRIMARY KEY|id
+public|customers|2200_27695_10_not_null|CHECK|mrr IS NOT NULL
+public|customers|2200_27695_1_not_null|CHECK|id IS NOT NULL
+public|customers|2200_27695_25_not_null|CHECK|max_instances IS NOT NULL
+public|customers|2200_27695_26_not_null|CHECK|settings IS NOT NULL
+public|customers|2200_27695_27_not_null|CHECK|feature_flags IS NOT NULL
+public|customers|2200_27695_28_not_null|CHECK|metadata IS NOT NULL
+public|customers|2200_27695_2_not_null|CHECK|code IS NOT NULL
+public|customers|2200_27695_33_not_null|CHECK|created_at IS NOT NULL
+public|customers|2200_27695_34_not_null|CHECK|updated_at IS NOT NULL
+public|customers|2200_27695_35_not_null|CHECK|total_users IS NOT NULL
+public|customers|2200_27695_36_not_null|CHECK|total_assets IS NOT NULL
+public|customers|2200_27695_3_not_null|CHECK|name IS NOT NULL
+public|customers|2200_27695_4_not_null|CHECK|status IS NOT NULL
+public|customers|2200_27695_5_not_null|CHECK|tier IS NOT NULL
+public|customers|2200_27695_9_not_null|CHECK|currency IS NOT NULL
 public|customers|customers_pkey|PRIMARY KEY|id
+public|global_settings|2200_27713_10_not_null|CHECK|updated_at IS NOT NULL
+public|global_settings|2200_27713_1_not_null|CHECK|id IS NOT NULL
+public|global_settings|2200_27713_2_not_null|CHECK|scope IS NOT NULL
+public|global_settings|2200_27713_3_not_null|CHECK|platform_name IS NOT NULL
+public|global_settings|2200_27713_4_not_null|CHECK|maintenance_mode IS NOT NULL
+public|global_settings|2200_27713_5_not_null|CHECK|public_signup IS NOT NULL
+public|global_settings|2200_27713_6_not_null|CHECK|default_trial_days IS NOT NULL
+public|global_settings|2200_27713_7_not_null|CHECK|support_email IS NOT NULL
+public|global_settings|2200_27713_8_not_null|CHECK|metadata IS NOT NULL
+public|global_settings|2200_27713_9_not_null|CHECK|created_at IS NOT NULL
 public|global_settings|global_settings_pkey|PRIMARY KEY|id
+public|instance_metrics|2200_27726_1_not_null|CHECK|id IS NOT NULL
+public|instance_metrics|2200_27726_2_not_null|CHECK|instance_id IS NOT NULL
+public|instance_metrics|2200_27726_3_not_null|CHECK|recorded_at IS NOT NULL
 public|instance_metrics|instance_metrics_pkey|PRIMARY KEY|id
+public|instances|2200_27731_10_not_null|CHECK|version IS NOT NULL
+public|instances|2200_27731_11_not_null|CHECK|resource_tier IS NOT NULL
+public|instances|2200_27731_12_not_null|CHECK|database_name IS NOT NULL
+public|instances|2200_27731_14_not_null|CHECK|database_port IS NOT NULL
+public|instances|2200_27731_19_not_null|CHECK|health_details IS NOT NULL
+public|instances|2200_27731_1_not_null|CHECK|id IS NOT NULL
+public|instances|2200_27731_20_not_null|CHECK|resource_metrics IS NOT NULL
+public|instances|2200_27731_26_not_null|CHECK|config IS NOT NULL
+public|instances|2200_27731_27_not_null|CHECK|feature_flags IS NOT NULL
+public|instances|2200_27731_28_not_null|CHECK|metadata IS NOT NULL
+public|instances|2200_27731_2_not_null|CHECK|customer_id IS NOT NULL
+public|instances|2200_27731_31_not_null|CHECK|backup_retention_days IS NOT NULL
+public|instances|2200_27731_36_not_null|CHECK|created_at IS NOT NULL
+public|instances|2200_27731_37_not_null|CHECK|updated_at IS NOT NULL
+public|instances|2200_27731_38_not_null|CHECK|gpu_enabled IS NOT NULL
+public|instances|2200_27731_3_not_null|CHECK|environment IS NOT NULL
+public|instances|2200_27731_4_not_null|CHECK|status IS NOT NULL
+public|instances|2200_27731_5_not_null|CHECK|health IS NOT NULL
+public|instances|2200_27731_9_not_null|CHECK|region IS NOT NULL
 public|instances|instances_pkey|PRIMARY KEY|id
+public|instances|instances_resource_tier_check|CHECK|(((resource_tier)::text = ANY (ARRAY[('standard'::character var
+public|licenses|2200_27751_11_not_null|CHECK|metadata IS NOT NULL
+public|licenses|2200_27751_13_not_null|CHECK|issued_at IS NOT NULL
+public|licenses|2200_27751_18_not_null|CHECK|created_at IS NOT NULL
+public|licenses|2200_27751_1_not_null|CHECK|id IS NOT NULL
+public|licenses|2200_27751_2_not_null|CHECK|customer_id IS NOT NULL
+public|licenses|2200_27751_4_not_null|CHECK|license_key IS NOT NULL
+public|licenses|2200_27751_5_not_null|CHECK|license_type IS NOT NULL
+public|licenses|2200_27751_6_not_null|CHECK|status IS NOT NULL
+public|licenses|2200_27751_7_not_null|CHECK|features IS NOT NULL
 public|licenses|licenses_pkey|PRIMARY KEY|id
+public|migrations|2200_27762_1_not_null|CHECK|id IS NOT NULL
+public|migrations|2200_27762_2_not_null|CHECK|timestamp IS NOT NULL
+public|migrations|2200_27762_3_not_null|CHECK|name IS NOT NULL
 public|migrations|PK_8c82d7f526340ab734260ea46be|PRIMARY KEY|id
+public|pack_registry|2200_27767_10_not_null|CHECK|created_at IS NOT NULL
+public|pack_registry|2200_27767_11_not_null|CHECK|updated_at IS NOT NULL
+public|pack_registry|2200_27767_1_not_null|CHECK|id IS NOT NULL
+public|pack_registry|2200_27767_2_not_null|CHECK|code IS NOT NULL
+public|pack_registry|2200_27767_3_not_null|CHECK|name IS NOT NULL
+public|pack_registry|2200_27767_5_not_null|CHECK|publisher IS NOT NULL
+public|pack_registry|2200_27767_7_not_null|CHECK|metadata IS NOT NULL
 public|pack_registry|pack_registry_pkey|PRIMARY KEY|id
 public|pack_registry|uq_pack_registry_code|UNIQUE|code
+public|pack_releases|2200_27776_10_not_null|CHECK|artifact_key IS NOT NULL
+public|pack_releases|2200_27776_11_not_null|CHECK|artifact_sha256 IS NOT NULL
+public|pack_releases|2200_27776_12_not_null|CHECK|signature IS NOT NULL
+public|pack_releases|2200_27776_13_not_null|CHECK|signature_key_id IS NOT NULL
+public|pack_releases|2200_27776_14_not_null|CHECK|is_active IS NOT NULL
+public|pack_releases|2200_27776_16_not_null|CHECK|created_at IS NOT NULL
+public|pack_releases|2200_27776_17_not_null|CHECK|is_installable_by_client IS NOT NULL
+public|pack_releases|2200_27776_1_not_null|CHECK|id IS NOT NULL
+public|pack_releases|2200_27776_2_not_null|CHECK|pack_id IS NOT NULL
+public|pack_releases|2200_27776_3_not_null|CHECK|release_id IS NOT NULL
+public|pack_releases|2200_27776_4_not_null|CHECK|manifest_revision IS NOT NULL
+public|pack_releases|2200_27776_5_not_null|CHECK|manifest IS NOT NULL
+public|pack_releases|2200_27776_8_not_null|CHECK|assets IS NOT NULL
+public|pack_releases|2200_27776_9_not_null|CHECK|artifact_bucket IS NOT NULL
+public|pack_releases|chk_pack_release_id_format|CHECK|(((release_id)::text ~ '^[0-9]{8}.[0-9]{3,}$'::text))
+public|pack_releases|chk_pack_release_sha256|CHECK|(((artifact_sha256)::text ~ '^[a-f0-9]{64}$'::text))
 public|pack_releases|pack_releases_pkey|PRIMARY KEY|id
 public|pack_releases|uq_pack_releases_pack_release|UNIQUE|pack_id
 public|pack_releases|uq_pack_releases_pack_release|UNIQUE|release_id
+public|refresh_tokens|2200_27788_1_not_null|CHECK|id IS NOT NULL
+public|refresh_tokens|2200_27788_2_not_null|CHECK|token_hash IS NOT NULL
+public|refresh_tokens|2200_27788_3_not_null|CHECK|family IS NOT NULL
+public|refresh_tokens|2200_27788_4_not_null|CHECK|user_id IS NOT NULL
+public|refresh_tokens|2200_27788_5_not_null|CHECK|issued_at IS NOT NULL
+public|refresh_tokens|2200_27788_6_not_null|CHECK|expires_at IS NOT NULL
 public|refresh_tokens|refresh_tokens_pkey|PRIMARY KEY|id
+public|revoked_tokens|2200_27795_1_not_null|CHECK|id IS NOT NULL
+public|revoked_tokens|2200_27795_2_not_null|CHECK|jti IS NOT NULL
+public|revoked_tokens|2200_27795_3_not_null|CHECK|user_id IS NOT NULL
+public|revoked_tokens|2200_27795_4_not_null|CHECK|expires_at IS NOT NULL
+public|revoked_tokens|2200_27795_5_not_null|CHECK|revoked_at IS NOT NULL
 public|revoked_tokens|revoked_tokens_pkey|PRIMARY KEY|id
+public|subscriptions|2200_27802_14_not_null|CHECK|cancel_at_period_end IS NOT NULL
+public|subscriptions|2200_27802_18_not_null|CHECK|metadata IS NOT NULL
+public|subscriptions|2200_27802_19_not_null|CHECK|created_at IS NOT NULL
+public|subscriptions|2200_27802_1_not_null|CHECK|id IS NOT NULL
+public|subscriptions|2200_27802_20_not_null|CHECK|updated_at IS NOT NULL
+public|subscriptions|2200_27802_2_not_null|CHECK|customer_id IS NOT NULL
+public|subscriptions|2200_27802_3_not_null|CHECK|plan_id IS NOT NULL
+public|subscriptions|2200_27802_4_not_null|CHECK|plan_name IS NOT NULL
+public|subscriptions|2200_27802_5_not_null|CHECK|status IS NOT NULL
+public|subscriptions|2200_27802_6_not_null|CHECK|amount IS NOT NULL
+public|subscriptions|2200_27802_7_not_null|CHECK|currency IS NOT NULL
+public|subscriptions|2200_27802_8_not_null|CHECK|billing_cycle IS NOT NULL
+public|subscriptions|2200_27802_9_not_null|CHECK|discount_percent IS NOT NULL
 public|subscriptions|subscriptions_pkey|PRIMARY KEY|id
+public|terraform_jobs|2200_27816_11_not_null|CHECK|output IS NOT NULL
+public|terraform_jobs|2200_27816_1_not_null|CHECK|id IS NOT NULL
+public|terraform_jobs|2200_27816_20_not_null|CHECK|created_at IS NOT NULL
+public|terraform_jobs|2200_27816_21_not_null|CHECK|updated_at IS NOT NULL
+public|terraform_jobs|2200_27816_2_not_null|CHECK|instance_id IS NOT NULL
+public|terraform_jobs|2200_27816_3_not_null|CHECK|customer_code IS NOT NULL
+public|terraform_jobs|2200_27816_4_not_null|CHECK|environment IS NOT NULL
+public|terraform_jobs|2200_27816_5_not_null|CHECK|operation IS NOT NULL
+public|terraform_jobs|2200_27816_6_not_null|CHECK|status IS NOT NULL
 public|terraform_jobs|terraform_jobs_pkey|PRIMARY KEY|id
 
 ## Foreign Keys
@@ -4490,4 +6143,4 @@ public|terraform_jobs|idx_terraform_jobs_instance_created|CREATE INDEX idx_terra
 public|terraform_jobs|idx_terraform_jobs_status|CREATE INDEX idx_terraform_jobs_status ON public.terraform_jobs USING btree (status)
 public|terraform_jobs|terraform_jobs_pkey|CREATE UNIQUE INDEX terraform_jobs_pkey ON public.terraform_jobs USING btree (id)
 
-SHA-256: 11a9920b356501fe61466e55e1a6f82da3e04650106291f8115282d8f8972b69
+SHA-256: 40b0e9eec42f18a3efbe81e8b2aa7cb20b9cf0aacd857d03077b8032cd7ab8d2
