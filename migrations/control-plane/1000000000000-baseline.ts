@@ -1,7 +1,10 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class Baseline0000000000000 implements MigrationInterface {
-  name = 'Baseline0000000000000';
+export class Baseline1000000000000 implements MigrationInterface {
+  // TypeORM requires the last 13 chars of `name` to parse as a non-zero
+  // integer (parseInt(name.substr(-13), 10) is the sort key). Filename,
+  // class suffix, and runtime `name` all share the `1000000000000` sentinel.
+  name = 'Baseline1000000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Extensions
@@ -9,14 +12,11 @@ export class Baseline0000000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`);
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;`);
 
-    // Sequences
-    await queryRunner.query(`CREATE SEQUENCE public.migrations_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;`);
+    // NOTE: public.migrations_id_seq is intentionally omitted — TypeORM
+    // pre-creates the `migrations` table and its sequence as part of
+    // MigrationExecutor bookkeeping before any migration runs. Re-declaring
+    // them here causes "relation already exists" (SQLSTATE 42P07) on a
+    // fresh DB. Same posture as the instance baseline.
 
     // Tables
     await queryRunner.query(`CREATE TABLE public.control_plane_audit_log (
@@ -196,11 +196,8 @@ export class Baseline0000000000000 implements MigrationInterface {
     revoke_reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );`);
-    await queryRunner.query(`CREATE TABLE public.migrations (
-    id integer NOT NULL,
-    "timestamp" bigint NOT NULL,
-    name character varying NOT NULL
-);`);
+    // NOTE: public.migrations table is intentionally omitted —
+    // TypeORM creates it as part of MigrationExecutor bookkeeping.
     await queryRunner.query(`CREATE TABLE public.pack_registry (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     code character varying(200) NOT NULL,
@@ -348,10 +345,7 @@ export class Baseline0000000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX idx_terraform_jobs_instance_created ON public.terraform_jobs USING btree (instance_id, created_at);`);
     await queryRunner.query(`CREATE INDEX idx_terraform_jobs_status ON public.terraform_jobs USING btree (status);`);
 
-    // Constraints
-    await queryRunner.query(`ALTER TABLE ONLY public.migrations ALTER COLUMN id SET DEFAULT nextval('public.migrations_id_seq'::regclass);`);
-    await queryRunner.query(`ALTER TABLE ONLY public.migrations
-    ADD CONSTRAINT "PK_8c82d7f526340ab734260ea46be" PRIMARY KEY (id);`);
+    // Constraints (public.migrations PK is managed by TypeORM, not the baseline)
     await queryRunner.query(`ALTER TABLE ONLY public.control_plane_audit_log
     ADD CONSTRAINT control_plane_audit_log_pkey PRIMARY KEY (id);`);
     await queryRunner.query(`ALTER TABLE ONLY public.control_plane_users

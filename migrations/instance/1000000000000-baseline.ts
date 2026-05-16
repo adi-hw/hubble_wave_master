@@ -1,11 +1,11 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class Baseline0000000000000 implements MigrationInterface {
+export class Baseline1000000000000 implements MigrationInterface {
   // TypeORM requires the last 13 chars of `name` to parse as a non-zero
-  // integer (it uses parseInt(name.substr(-13), 10) as the sort key).
-  // The filename prefix is 0000000000000 which would produce 0 (falsy),
-  // so we use a valid epoch-range sentinel: 1000000000000 (must sort before
-  // all five seed migrations which use 1000000000001–1000000000005).
+  // integer (it uses parseInt(name.substr(-13), 10) as the sort key). The
+  // filename prefix, class suffix, and runtime `name` all share the same
+  // `1000000000000` sentinel; the five seed migrations use 1000000000001
+  // through 1000000000005 in FK-dependency order.
   name = 'Baseline1000000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

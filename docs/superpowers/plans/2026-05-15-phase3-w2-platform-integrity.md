@@ -76,8 +76,8 @@ No commit. Read-only verification.
 ### Task 1: Generate baseline DDL from current schema
 
 **Files:**
-- Create: `migrations/instance/0000000000000-baseline.ts` (DDL embedded inline via template literals)
-- Create: `migrations/control-plane/0000000000000-baseline.ts` (same shape; public schema)
+- Create: `migrations/instance/1000000000000-baseline.ts` (DDL embedded inline via template literals)
+- Create: `migrations/control-plane/1000000000000-baseline.ts` (same shape; public schema)
 - Create: `tools/schema-manifest.ts` (top-level path matching existing scanner convention)
 - Create: `docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md`
 - Modify: `.gitignore` — add `.dev/baseline/` to the gitignored workspace-local paths (only `.dev/keys/` is currently ignored)
@@ -139,12 +139,12 @@ Edit `.dev/baseline/instance-schema.sql`:
 
 Per spec §Pre-W2 gate "MigrationInterface classes containing schema-qualified DDL only" — do NOT use a sidecar `.sql` file (that would require additional packaging support in the K8s migration runner and risks runtime failures if the file isn't copied). Embed the DDL inline via template literal.
 
-Create `migrations/instance/0000000000000-baseline.ts`:
+Create `migrations/instance/1000000000000-baseline.ts`:
 ```ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class Baseline0000000000000 implements MigrationInterface {
-  name = 'Baseline0000000000000';
+export class Baseline1000000000000 implements MigrationInterface {
+  name = 'Baseline1000000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
@@ -164,7 +164,7 @@ export class Baseline0000000000000 implements MigrationInterface {
 
 For large baselines (likely ~3000-6000 lines of DDL), split the `await queryRunner.query(...)` into a sequence of statements grouped logically (schemas, identity tables, metadata tables, etc.) — each as its own `await queryRunner.query()` call. This keeps the file readable and isolates failures.
 
-Same shape for `migrations/control-plane/0000000000000-baseline.ts` (the control-plane baseline uses `public` schema per spec §"Control-plane schema policy"; no domain schemas).
+Same shape for `migrations/control-plane/1000000000000-baseline.ts` (the control-plane baseline uses `public` schema per spec §"Control-plane schema policy"; no domain schemas).
 
 - [ ] **Step 6: Generate schema manifest**
 
@@ -187,7 +187,7 @@ Self-test: running the script twice against the same DB produces identical outpu
 - [ ] **Step 7: Commit**
 
 ```
-git add .gitignore migrations/instance/0000000000000-baseline.ts migrations/control-plane/0000000000000-baseline.ts docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md tools/schema-manifest.ts
+git add .gitignore migrations/instance/1000000000000-baseline.ts migrations/control-plane/1000000000000-baseline.ts docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md tools/schema-manifest.ts
 git commit -m "phase3-w2-pregate: capture baseline DDL + schema manifest"
 ```
 
@@ -196,12 +196,14 @@ Note: no `.sql` files are staged — the DDL is embedded inline in the migration
 ### Task 2: Structural seed migrations + bootstrap scripts
 
 **Files:**
-- Create: `migrations/instance/0000000000001-seed-system-roles.ts`
-- Create: `migrations/instance/0000000000002-seed-admin-policies.ts`
-- Create: `migrations/instance/0000000000003-seed-service-principals.ts`
-- Create: `migrations/instance/0000000000004-seed-system-collections.ts`
-- Create: `migrations/instance/0000000000005-seed-default-navigation.ts`
-- Keep: `scripts/seed-admin-user.ts` (post-migration bootstrap — exists today)
+- Create: `migrations/instance/1000000000001-seed-system-roles.ts`
+- Create: `migrations/instance/1000000000002-seed-system-collections.ts`
+- Create: `migrations/instance/1000000000003-seed-admin-policies.ts`
+- Create: `migrations/instance/1000000000004-seed-service-principals.ts`
+- Create: `migrations/instance/1000000000005-seed-default-navigation.ts`
+- Modify: `scripts/seed-admin-user.ts` (gut the permission-seeding logic — see Step 4)
+
+Filenames use the same `1e12` sentinel prefixes as the baseline (`1000000000000-baseline.ts`). TypeORM's runtime sorts by the `name` property, which uses the same sentinel suffix as the filename + class name — all three coherent. Filename order also matches FK-dependency order: roles → system-collections → admin-policies (resolves collection UUIDs by code) → service-principals → default-navigation.
 
 Pre-W2 does NOT create or invoke instance/control-plane key bootstrap scripts. Canon §29.9's `LocalEs256KeySigningService` auto-generates `.dev/keys/` on first `npm run dev:api` for the instance plane today; control-plane joins that pattern via Stream 1 PR3 (new `scripts/seed-control-plane-key-bootstrap.ts` and the control-plane `key_metadata` migration both ship in Stream 1).
 
@@ -213,13 +215,13 @@ For each seed (system_roles, admin_policies, service_principals, system_collecti
 
 Pattern (for `seed-system-roles`):
 ```ts
-export class SeedSystemRoles0000000000001 implements MigrationInterface {
+export class SeedSystemRoles1000000000001 implements MigrationInterface {
+  name = 'SeedSystemRoles1000000000001';
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      INSERT INTO identity.roles (id, code, display_name, description) VALUES
-        ('<uuid>', 'admin', 'Administrator', 'Platform administrator role'),
-        ('<uuid>', 'authenticated', 'Authenticated User', 'Default role for any authenticated user'),
-        ('<uuid>', 'system', 'System', 'Internal system role for platform operations')
+      INSERT INTO identity.roles (id, code, name, description, is_system, is_active, is_default, scope, hierarchy_level, weight, metadata) VALUES
+        ('936009c6-677a-4740-a202-ea00f3fa93c6', 'admin',         'Administrator',       'Bootstrap operator / platform administrator', true, true, false, 'global', 0, 0, '{}'),
+        ('b9c54a3e-7d2f-4f8a-9c5e-8f1a2b3c4d5e', 'platform_user', 'Platform User',       'Baseline authenticated platform member',      true, true, true,  'global', 0, 0, '{}')
       ON CONFLICT (code) DO NOTHING;
     `);
   }
@@ -227,27 +229,40 @@ export class SeedSystemRoles0000000000001 implements MigrationInterface {
 }
 ```
 
-Same shape for the other four seeds.
+**Role seed scope (locked at Pre-W2 rework, 2026-05-16):** Only two structural roles ship in this seed — `admin` and `platform_user`. Application personas (`auditor`, `manager`, `technician`, `viewer`) are NOT seeded here; they imply persona models that don't exist in the platform yet. `platform_user` (not `authenticated`) is the canonical name because it is an authorization role assignable to a `user_roles` row, not an auth-state label — `@AuthenticatedOnly()` already covers "logged-in identity is sufficient." Future bootstrap/test users can receive `platform_user`; Stream 2 grants registry-backed permissions to both roles via the TS-constant-driven sync.
+
+**Permission seed scope (locked at Pre-W2 rework, 2026-05-16):** Pre-W2 seeds ZERO rows into `identity.platform_permissions` and ZERO rows into `identity.role_permissions`. Baseline creates the tables + FKs only. Per spec §2.3, the `PERMISSION_REGISTRY` TS constant in `libs/permission-registry` is the single source of truth, materialized into the DB by `scripts/seed-permission-registry-sync.ts` in Stream 2 PR3. No handwritten seed migration for these rows in Pre-W2. Admin authority during the Pre-W2 → Stream 2 window lives entirely in `CollectionAccessRule` + `PropertyAccessRule` (Step 2 of `seed-admin-policies`).
+
+Same shape (deterministic `MigrationInterface` with `name` property matching the filename + class suffix; forward-only `down()`) for the other four seeds.
 
 - [ ] **Step 3: Verify bootstrap scripts are env-dependent only**
 
-`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration), unchanged from current code. No other bootstrap scripts are added in Pre-W2 — the instance plane's `LocalEs256KeySigningService` per canon §29.9 auto-generates `.dev/keys/` on first run of `npm run dev:api`, so no explicit instance key bootstrap script is needed at this gate. (Stream 1 PR3 adds the control-plane analog script and the control-plane `key_metadata` migration as part of the HS256→ES256 migration.)
+`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration). No other bootstrap scripts are added in Pre-W2 — the instance plane's `LocalEs256KeySigningService` per canon §29.9 auto-generates `.dev/keys/` on first run of `npm run dev:api`, so no explicit instance key bootstrap script is needed at this gate. (Stream 1 PR3 adds the control-plane analog script and the control-plane `key_metadata` migration as part of the HS256→ES256 migration.)
 
-- [ ] **Step 4: Delete demo/sample seed scripts**
+- [ ] **Step 4: Gut `seed-admin-user.ts` permission-seeding logic**
 
-Identify any scripts in `scripts/` that seed sample work orders, dashboards, demo workspaces. Delete them (greenfield = no compat).
+The pre-Pre-W2 script (a) embedded an inline `DEFAULT_PERMISSIONS` constant of ~50 dot-style codes (`users.view`, `metadata.collections.spreadsheet.write`, etc.) — the exact vocabulary the W2 registry contract retires — and (b) inserted those rows into `identity.permissions`, the UUID-keyed table the baseline drops. Post-baseline the script throws on the first INSERT.
+
+Strip these blocks from the script:
+- The entire `DEFAULT_PERMISSIONS` array (top-of-file constant).
+- The `console.log('\n📋 Seeding permissions...')` loop (writes to `identity.permissions`).
+- The `Assign all permissions to admin` loop (writes `permission_id` to `identity.role_permissions`).
+
+The remaining script (admin role lookup + admin user upsert + admin role binding via `identity.user_roles`) is the only piece needed for fresh-install bootstrap. Permission registry materialization is Stream 2 PR3's job via `scripts/seed-permission-registry-sync.ts` reading the TS constant — keeping the dual code path here was the source of the W2 vocabulary drift in the first place.
+
+- [ ] **Step 5: Confirm no demo/sample seed scripts exist**
 
 Run:
 ```
 git grep -l "demo\|sample" scripts/
 ```
-Review each, delete if it creates non-structural data.
+Expected: no files in `scripts/` create non-structural seed data. (Pre-Pre-W2 verification on `2e71849` confirmed `scripts/` already had no demo scripts to delete; the per-PR check above stays in the plan as a guard for future demo-script accretion.)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```
-git add migrations/instance/0000000000001-* migrations/instance/0000000000002-* migrations/instance/0000000000003-* migrations/instance/0000000000004-* migrations/instance/0000000000005-* scripts/
-git commit -m "phase3-w2-pregate: structural seed migrations + delete demo seeds"
+git add migrations/instance/1000000000001-* migrations/instance/1000000000002-* migrations/instance/1000000000003-* migrations/instance/1000000000004-* migrations/instance/1000000000005-* scripts/seed-admin-user.ts
+git commit -m "phase3-w2-pregate: structural seed migrations + gut seed-admin-user permission block"
 ```
 
 ### Task 3: Update migration-blocking-index scanner for baseline exception
@@ -308,14 +323,14 @@ Steps 2 and 3 share `$keepPrefixes` and the computed file lists. Run as ONE bloc
 The Pre-W2 keep-list contains only baseline + deterministic seed migrations. Stream 1 migrations do not yet exist and will be added by Stream 1 PRs; they don't need to be in the Pre-W2 keep-list.
 
 ```
-$keepPrefixes = @('0000000000000','0000000000001','0000000000002','0000000000003','0000000000004','0000000000005')
+$keepPrefixes = @('1000000000000','1000000000001','1000000000002','1000000000003','1000000000004','1000000000005')
 
 $instanceFilesToDelete = git ls-files migrations/instance/ | Where-Object {
   $name = Split-Path $_ -Leaf
   -not ($keepPrefixes | Where-Object { $name.StartsWith($_) })
 }
 $controlPlaneFilesToDelete = git ls-files migrations/control-plane/ | Where-Object {
-  -not ((Split-Path $_ -Leaf).StartsWith('0000000000000'))
+  -not ((Split-Path $_ -Leaf).StartsWith('1000000000000'))
 }
 
 Write-Host "instance files to delete:"

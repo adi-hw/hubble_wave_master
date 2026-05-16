@@ -23,10 +23,12 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * access, which is a platform-breaking state. Forward-only is the only safe
  * path per canon §28.6.
  */
-export class SeedAdminPolicies0000000000002 implements MigrationInterface {
-  // Timestamp sentinel 1000000000003 — runs after seed-system-collections
-  // (1000000000002) so the system collection rows exist when this seed
-  // resolves collection UUIDs by code.
+export class SeedAdminPolicies1000000000003 implements MigrationInterface {
+  // Filename, class suffix, and runtime name all share the `1000000000003`
+  // sentinel. Runs after seed-system-collections (1000000000002) so the
+  // system collection rows exist when this seed resolves collection UUIDs
+  // by code; FK-depends on the admin role UUID from seed-system-roles
+  // (1000000000001).
   name = 'SeedAdminPolicies1000000000003';
 
   /**

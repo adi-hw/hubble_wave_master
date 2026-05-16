@@ -27,10 +27,11 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * down() throws — system collections are structural platform data; removing
  * them would cascade-delete access rules and break audit infrastructure.
  */
-export class SeedSystemCollections0000000000004 implements MigrationInterface {
-  // Timestamp sentinel 1000000000002 — runs immediately after seed-system-roles
-  // (1000000000001) so that system collections exist when seed-admin-policies
-  // (1000000000003) resolves collection UUIDs by code.
+export class SeedSystemCollections1000000000002 implements MigrationInterface {
+  // Filename, class suffix, and runtime name all share the `1000000000002`
+  // sentinel. Runs immediately after seed-system-roles (1000000000001) so
+  // system collections exist when seed-admin-policies (1000000000003)
+  // resolves collection UUIDs by code.
   name = 'SeedSystemCollections1000000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

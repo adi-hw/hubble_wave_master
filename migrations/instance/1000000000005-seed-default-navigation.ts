@@ -23,10 +23,11 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * down() throws — navigation is structural boot-time data; removing it
  * would render the platform unnavigable. Forward-only is the only safe path.
  */
-export class SeedDefaultNavigation0000000000005 implements MigrationInterface {
-  // Timestamp sentinel 1000000000005 — runs last among the structural seeds;
-  // requires identity.nav_profiles table from the baseline and the admin-role
-  // row from seed-system-roles (1000000000001).
+export class SeedDefaultNavigation1000000000005 implements MigrationInterface {
+  // Filename, class suffix, and runtime name all share the `1000000000005`
+  // sentinel. Runs last among the structural seeds; requires
+  // identity.nav_profiles from the baseline (nav_nodes do not reference
+  // role UUIDs, so no FK on seed-system-roles).
   name = 'SeedDefaultNavigation1000000000005';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

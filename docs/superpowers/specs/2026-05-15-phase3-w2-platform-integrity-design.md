@@ -69,17 +69,17 @@ W2 is bound by all Phase 3 cross-wave rules from the governing spec:
 
 ### Scope
 
-Replace the 98 instance migrations in `migrations/instance/*` with one canonical baseline `migrations/instance/0000000000000-baseline.ts` plus the structural seed migrations listed below. Same for the 8 control-plane migrations.
+Replace the 98 instance migrations in `migrations/instance/*` with one canonical baseline `migrations/instance/1000000000000-baseline.ts` plus the structural seed migrations listed below. Same for the 8 control-plane migrations. Filenames use `1e12` sentinel prefixes (`1000000000000`–`1000000000005`) so the filename's trailing digits, the TypeScript class suffix, and the migration's runtime `name` property all match — TypeORM rejects the literal `0` timestamp, so a non-zero sentinel is required.
 
 Baseline files are TypeORM `MigrationInterface` classes containing schema-qualified DDL only: `CREATE SCHEMA` per the 10 domain schemas; `CREATE TABLE` with all columns, FKs, constraints; `CREATE INDEX` (transactional — see indexing policy below); triggers; materialized views; GIN indexes from W6.B.
 
 ### Structural seed migrations (deterministic, post-baseline)
 
-- `seed-system-roles` — `admin`, `authenticated`, `system`
-- `seed-admin-policies` — Plan Fix 33's `CollectionAccessRule` seed for system collections
-- `seed-service-principals` — canon §29 PR-D's `svc-worker → svc-api` row (the only currently-seeded principal)
-- `seed-system-collections` — system collections with `secureFieldsByDefault = true`
-- `seed-default-navigation` — deduped post-Prelude nav state
+- `seed-system-roles` — `admin` (bootstrap operator / platform administrator) + `platform_user` (baseline authenticated platform member). The four application personas — `auditor`, `manager`, `technician`, `viewer` — are NOT seeded here. They imply persona models the platform has not built; ship them with the wave that introduces those personas. `platform_user` rather than `authenticated` because the latter is an auth-state label (`@AuthenticatedOnly()` already expresses that), while `platform_user` is an actual authorization role assignable to `user_roles`. NO rows are written to `identity.platform_permissions` or `identity.role_permissions` — per §2.3 the TS-constant-driven `seed-permission-registry-sync` script in Stream 2 PR3 is the single source for those tables, and admin's authority during the Pre-W2 → Stream 2 window comes from the `CollectionAccessRule` + wildcard `PropertyAccessRule` seed below.
+- `seed-system-collections` — the default application + 3 system collections (`audit_logs`, `schema_change_log`, `schema_sync_state`) with `secureFieldsByDefault = true`. Runs before `seed-admin-policies` so the latter resolves collection UUIDs by code.
+- `seed-admin-policies` — Plan Fix 33's `CollectionAccessRule` + wildcard `PropertyAccessRule` seed granting the `admin` role full access to system collections. FK-depends on the `admin` role's UUID from `seed-system-roles` and on collection UUIDs from `seed-system-collections`.
+- `seed-service-principals` — canon §29 PR-D's `svc-worker → svc-api` row (the only currently-seeded principal).
+- `seed-default-navigation` — deduped post-Prelude nav state.
 
 ### Bootstrap scripts (post-migration, env/filesystem-dependent)
 
