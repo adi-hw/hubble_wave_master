@@ -236,18 +236,14 @@ function introspectDatabase(dbName: string): string {
  *
  * Keeping the hashed portion separate from the date header means the SHA-256
  * is stable across calendar-day boundaries — only the database schema drives
- * the hash.
+ * the hash. Database name labels are in the non-hashed header section.
  */
 function buildIntrospectionContent(): string {
   const parts: string[] = [];
 
-  parts.push(`# Instance database: ${INSTANCE_DB}`);
-  parts.push('');
   parts.push(introspectDatabase(INSTANCE_DB));
   parts.push('');
 
-  parts.push(`# Control-plane database: ${CP_DB}`);
-  parts.push('');
   parts.push(introspectDatabase(CP_DB));
   parts.push('');
 
@@ -266,6 +262,8 @@ function buildFullManifest(): { content: string; introspectionContent: string; h
     `# Generated: ${new Date().toISOString().split('T')[0]}`,
     '# Deterministic schema snapshot for baseline audit and drift detection.',
     `# SHA-256 (of introspection content below): ${hash}`,
+    `# Instance database: ${INSTANCE_DB}`,
+    `# Control-plane database: ${CP_DB}`,
     '',
   ].join('\n');
   return { content: header + introspectionContent, introspectionContent, hash };
