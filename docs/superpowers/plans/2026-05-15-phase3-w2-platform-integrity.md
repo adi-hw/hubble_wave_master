@@ -58,7 +58,7 @@ No commit. Read-only verification.
 
 **Goal:** replace the 98 instance migrations and 8 control-plane migrations with one canonical baseline per plane. Baseline reflects end-state for known W2 reshapes: `identity.platform_permissions` (code-keyed), `permission_code text` FK on `identity.role_permissions`, `CollectionDefinition.secure_fields_by_default DEFAULT TRUE`.
 
-**Exit gate:** `npm run db:reset:instance && npm run migrate:instance && npm run seed:instance` succeeds; schema manifest committed; `prelude-validate.ts` green; old migration files deleted from tree; `pre-w2-migration-archive` tag pushed.
+**Exit gate:** fresh DB rebuild via `docker-compose down -v` + `docker-compose up -d postgres redis` + `npm run migration:run:instance` + `npm run migration:run:control-plane` + bootstrap scripts succeeds with zero errors; schema manifest committed; `prelude-validate.ts` green; old migration files deleted from tree; `pre-w2-migration-archive` tag pushed.
 
 **Spec reference:** §"Pre-W2 gate — Fresh-DB Baseline Squash".
 
@@ -69,46 +69,55 @@ No commit. Read-only verification.
 - Create: `migrations/control-plane/0000000000000-baseline.ts`
 - Create: `docs/plans/2026-05-15-baseline-schema-manifest.md`
 
-- [ ] **Step 1: Boot a fresh instance DB and run all 98 migrations to capture canonical end-state**
+- [ ] **Step 1: Boot a fresh DB stack and run existing migrations to capture canonical end-state**
 
-Run:
+Powershell:
 ```
-docker-compose down -v && docker-compose up -d postgres redis && sleep 5 && npm run migrate:instance && npm run migrate:control-plane
+docker-compose down -v
+docker-compose up -d postgres redis
+Start-Sleep -Seconds 5
+npm run migration:run:instance
+npm run migration:run:control-plane
 ```
-Expected: both migration runs exit 0. This is the schema we squash.
+Expected: both migration runs exit 0. (`migration:run:instance` and `migration:run:control-plane` are the real package.json scripts; `db:reset` / `migrate` / `seed` are NOT defined.) This is the schema we squash.
 
 - [ ] **Step 2: Generate baseline DDL via pg_dump --schema-only**
 
-Run:
+The Docker container name from `docker-compose.yml:6` is `hw_postgres` (underscore, not hyphen). Run from PowerShell — pipe via `Out-File -Encoding utf8` rather than Unix-style `>`:
 ```
-docker exec hw-postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_instance > /tmp/instance-schema.sql
-docker exec hw-postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_control_plane > /tmp/control-plane-schema.sql
+docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_instance | Out-File -Encoding utf8 .dev/baseline/instance-schema.sql
+docker exec hw_postgres pg_dump --schema-only --no-owner --no-privileges -U postgres -d hubblewave_control_plane | Out-File -Encoding utf8 .dev/baseline/control-plane-schema.sql
 ```
-Expected: two SQL files written.
+Use a workspace-local path (`.dev/baseline/`, gitignored) rather than `/tmp/...` since the host is Windows. Expected: two SQL files written.
 
 - [ ] **Step 3: Apply known intentional deltas to the captured schema**
 
-Edit `/tmp/instance-schema.sql`:
+Edit `.dev/baseline/instance-schema.sql`:
 - Drop `identity.permissions` table definition.
 - Drop any `permission_id uuid` column on `identity.role_permissions`.
 - Add: `CREATE TABLE identity.platform_permissions (code text PRIMARY KEY, plane text NOT NULL CHECK (plane IN ('instance', 'control-plane')), domain text NOT NULL, resource text NULL, action text NOT NULL, dangerous boolean NOT NULL DEFAULT false, description text NOT NULL);`
 - Replace `identity.role_permissions` definition with: `CREATE TABLE identity.role_permissions (role_id uuid NOT NULL REFERENCES identity.roles(id) ON DELETE CASCADE, permission_code text NOT NULL REFERENCES identity.platform_permissions(code) ON DELETE RESTRICT, granted_at timestamptz NOT NULL DEFAULT now(), granted_by uuid NULL, PRIMARY KEY (role_id, permission_code));`
 - Change `metadata.collection_definitions.secure_fields_by_default boolean NOT NULL DEFAULT false` → `DEFAULT true`.
 
-- [ ] **Step 4: Wrap in TypeORM MigrationInterface class**
+- [ ] **Step 4: Embed the baseline DDL directly in the MigrationInterface class**
+
+Per spec §Pre-W2 gate "MigrationInterface classes containing schema-qualified DDL only" — do NOT use a sidecar `.sql` file (that would require additional packaging support in the K8s migration runner and risks runtime failures if the file isn't copied). Embed the DDL inline via template literal.
 
 Create `migrations/instance/0000000000000-baseline.ts`:
 ```ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 
 export class Baseline0000000000000 implements MigrationInterface {
   name = 'Baseline0000000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const sql = readFileSync(join(__dirname, '0000000000000-baseline.sql'), 'utf8');
-    await queryRunner.query(sql);
+    await queryRunner.query(`
+      -- Paste the full edited DDL from .dev/baseline/instance-schema.sql here.
+      -- Schemas first, then tables, then indexes, then triggers, then materialized views.
+      CREATE SCHEMA IF NOT EXISTS identity;
+      CREATE SCHEMA IF NOT EXISTS metadata;
+      -- ... (full DDL)
+    `);
   }
 
   public async down(): Promise<void> {
@@ -117,19 +126,27 @@ export class Baseline0000000000000 implements MigrationInterface {
 }
 ```
 
-Save the edited SQL as `migrations/instance/0000000000000-baseline.sql`.
+For large baselines (likely ~3000-6000 lines of DDL), split the `await queryRunner.query(...)` into a sequence of statements grouped logically (schemas, identity tables, metadata tables, etc.) — each as its own `await queryRunner.query()` call. This keeps the file readable and isolates failures.
 
-Same shape for control-plane (the control-plane baseline uses `public` schema per spec §"Control-plane schema policy"; no domain schemas).
+Same shape for `migrations/control-plane/0000000000000-baseline.ts` (the control-plane baseline uses `public` schema per spec §"Control-plane schema policy"; no domain schemas).
 
 - [ ] **Step 5: Generate schema manifest**
 
+Create the manifest script as a new W2 deliverable. The migration-blocking-index scanner already lives at `tools/migration-blocking-index-check.ts` (not under `tools/scanners/`), so add new manifest tooling at `tools/schema-manifest.ts` to match the existing top-level convention.
+
 Run:
 ```
-node tools/scanners/schema-manifest.ts > docs/plans/2026-05-15-baseline-schema-manifest.md
+npx tsx tools/schema-manifest.ts | Out-File -Encoding utf8 docs/superpowers/plans/2026-05-15-baseline-schema-manifest.md
 ```
-Expected: a deterministic listing of every table + column + index in baseline, with the three intentional-deltas explicitly annotated.
+The manifest is a deterministic listing of every table + column + index in baseline, with the three intentional-deltas explicitly annotated.
 
-If `tools/scanners/schema-manifest.ts` doesn't yet exist, create it as a thin script that runs `pg_dump --schema-only` and pipes through a hash function. Self-test: hashing the same DB twice produces identical output.
+The script:
+- Connects to the running DB.
+- Runs `pg_dump --schema-only` or equivalent introspection queries.
+- Normalizes output (sorts tables, sorts columns within tables, strips noise).
+- Pipes through a SHA-256 hash function; emits both the listing and the hash.
+
+Self-test: running the script twice against the same DB produces identical output (deterministic).
 
 - [ ] **Step 6: Commit**
 
@@ -146,8 +163,9 @@ git commit -m "phase3-w2-pregate: capture baseline DDL + schema manifest"
 - Create: `migrations/instance/0000000000003-seed-service-principals.ts`
 - Create: `migrations/instance/0000000000004-seed-system-collections.ts`
 - Create: `migrations/instance/0000000000005-seed-default-navigation.ts`
-- Keep: `scripts/seed-admin-user.ts` (post-migration bootstrap)
-- Keep: `scripts/seed-instance-key-bootstrap.ts` (post-migration bootstrap; per canon §29.9)
+- Keep: `scripts/seed-admin-user.ts` (post-migration bootstrap — exists today)
+- **Create (W2 new deliverable):** `scripts/seed-instance-key-bootstrap.ts` (post-migration bootstrap for instance-plane ES256 keys per canon §29.9; does NOT exist today — scripts/ has bootstrap-buckets.ts, bootstrap-typesense.ts, generate-pack-signing-keypair.ts, seed-admin-user.ts only)
+- **Create (W2 new deliverable, Stream 1 PR3):** `scripts/seed-control-plane-key-bootstrap.ts` (control-plane analog)
 
 - [ ] **Step 1: Extract structural seed SQL from current state**
 
@@ -175,7 +193,7 @@ Same shape for the other four seeds.
 
 - [ ] **Step 3: Verify bootstrap scripts are env-dependent only**
 
-`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration). `scripts/seed-instance-key-bootstrap.ts` reads/writes `.dev/keys/`; this stays a script. Both remain unchanged.
+`scripts/seed-admin-user.ts` reads `DEFAULT_ADMIN_PASSWORD`; this stays a script (not a migration), unchanged from current code. **Create new** `scripts/seed-instance-key-bootstrap.ts` (env/filesystem-dependent — reads/writes `.dev/keys/`; idempotent if a keypair already exists; matches canon §29.9 `LocalEs256KeySigningService` pattern). This is a NEW script — scripts/ currently has only bootstrap-buckets.ts, bootstrap-typesense.ts, generate-pack-signing-keypair.ts, seed-admin-user.ts.
 
 - [ ] **Step 4: Delete demo/sample seed scripts**
 
@@ -197,12 +215,12 @@ git commit -m "phase3-w2-pregate: structural seed migrations + delete demo seeds
 ### Task 3: Update migration-blocking-index scanner for baseline exception
 
 **Files:**
-- Modify: `tools/scanners/migration-blocking-index-check.ts`
+- Modify: `tools/migration-blocking-index-check.ts`
 
 - [ ] **Step 1: Read current scanner**
 
 ```
-cat tools/scanners/migration-blocking-index-check.ts
+cat tools/migration-blocking-index-check.ts
 ```
 Understand the current rule: blocks `CREATE INDEX` (non-CONCURRENTLY) on growth tables in any migration.
 
@@ -226,7 +244,7 @@ Expected: passes. Baseline has blocking indexes on tables it creates in the same
 - [ ] **Step 5: Commit**
 
 ```
-git add tools/scanners/migration-blocking-index-check.ts tools/scanners/__tests__/migration-blocking-index-check.test.ts
+git add tools/migration-blocking-index-check.ts tools/scanners/__tests__/migration-blocking-index-check.test.ts
 git commit -m "phase3-w2-pregate: blocking-index scanner gains same-migration-table-creation exception"
 ```
 
@@ -264,7 +282,7 @@ git rm migrations/instance/1*.ts migrations/control-plane/1*.ts
 - [ ] **Step 4: Verify migration runner still works**
 
 ```
-docker-compose down -v && docker-compose up -d postgres redis && sleep 5 && npm run migrate:instance && npm run migrate:control-plane && npm run seed:instance && npm run seed:control-plane
+docker-compose down -v; docker-compose up -d postgres redis; Start-Sleep -Seconds 5; npm run migration:run:instance; npm run migration:run:control-plane; npx tsx scripts/seed-admin-user.ts; npx tsx scripts/seed-instance-key-bootstrap.ts; npx tsx scripts/seed-control-plane-key-bootstrap.ts
 ```
 Expected: all four exit 0. Baseline + seeds + bootstrap produce a fully-booted DB.
 
@@ -498,7 +516,7 @@ Create `scripts/seed-control-plane-key-bootstrap.ts`. Reads/writes `.dev/keys/co
 
 - [ ] **Step 7: Fix refresh-token.entity.ts schema bug**
 
-Run `git grep -n "schema:.*identity" libs/control-plane-db/ libs/instance-db/`. Apply fix to whichever entity erroneously declares `schema: 'identity'` for a control-plane table. Likely candidate per finding-list: `libs/instance-db/src/lib/entities/refresh-token.entity.ts:26`. If the entity is actually used by instance-plane, the `schema: 'identity'` is correct and there is no bug there; verify usage before changing.
+The buggy entity is `libs/control-plane-db/src/lib/entities/refresh-token.entity.ts`. (Investigation confirmed: `libs/control-plane-db/src/lib/entities/` contains the refresh-token entity used by control-plane; `libs/instance-db` has its own separate refresh-token entity used by the instance plane where `schema: 'identity'` IS correct.) Remove the `schema: 'identity'` declaration from the control-plane entity's `@Entity()` decorator (either delete the schema field, or replace with `schema: 'public'` to be explicit). Verify with `git grep -n "schema:" libs/control-plane-db/src/lib/entities/` after the edit — control-plane entities should have no `schema:` declarations (or only `schema: 'public'`).
 
 - [ ] **Step 8: Delete JWT_SECRET references**
 
@@ -506,7 +524,25 @@ For each file matched by `git grep -nl "JWT_SECRET" apps/control-plane/ scripts/
 
 - [ ] **Step 9: Run control-plane fresh boot + login**
 
-Reset Docker volumes, run migrations, run seed, start control-plane. POST to `/api/auth/login`; expect ES256-signed JWT with `kid` header. GET `/.well-known/jwks.json`; expect a `keys` array with the active key.
+PowerShell:
+```
+docker-compose down -v
+docker-compose up -d postgres redis
+Start-Sleep -Seconds 5
+npm run migration:run:control-plane
+npx tsx scripts/seed-admin-user.ts
+npx tsx scripts/seed-control-plane-key-bootstrap.ts
+npm run dev:control-plane  # in a separate terminal; the API listens on http://localhost:3001
+Start-Sleep -Seconds 10
+$body = @{ email = 'admin@hubblewave.dev'; password = $env:DEFAULT_ADMIN_PASSWORD } | ConvertTo-Json
+Invoke-RestMethod -Uri 'http://localhost:3001/api/auth/login' -Method Post -Body $body -ContentType 'application/json'
+```
+
+Expected: response carries a valid `accessToken`. Decode its header (any JWT decoder) and verify `alg: ES256` and `kid: hwk_*`. Then:
+```
+Invoke-RestMethod -Uri 'http://localhost:3001/.well-known/jwks.json'
+```
+Expected: response body has a `keys` array with one entry matching the issued token's `kid`.
 
 - [ ] **Step 10: Commit + PR**
 
