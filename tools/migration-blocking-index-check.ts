@@ -74,61 +74,29 @@ const GROWTH_TABLE_PATTERNS: string[] = [
 
 /**
  * Pre-existing migration files that were written before the CONCURRENTLY
- * convention landed (W6.A). These files MUST NOT be modified — migrations
- * are immutable once shipped. They are inventoried here so the scanner
- * reports them as acknowledged rather than failing CI.
+ * convention landed (W6.A). Empty as of Phase 3 W2 Task 4 — the six prior
+ * entries pointed at the 98 instance + 8 control-plane incremental
+ * migrations that were squashed into the Pre-W2 baseline (archived at the
+ * `pre-w2-migration-archive` git tag) and deleted from the tree. Three of
+ * those entries (initial schema, automation-tables, add-refresh-token-
+ * families) were same-migration-table-creation patterns that the Task 3
+ * exception subsumes anyway; the other three (audit-log-hash-chain,
+ * audit-log-permission, control-plane refresh_tokens) were genuine pre-
+ * convention violations the squash retires.
  *
- * ADDING A NEW ENTRY IS FORBIDDEN. This list is append-only for historical
- * migrations. All new migrations on growth tables must comply.
- *
- * Full inventory documented in docs/plan-fixes/26-performance-wave.md.
+ * ADDING A NEW ENTRY IS FORBIDDEN. All new migrations must comply with
+ * CONCURRENTLY + `static transaction = false`, or fall under the
+ * same-migration-table-creation exception (squash baselines, fresh-install
+ * seeds). The empty literal stays as the structural anchor — when the
+ * next genuine pre-existing-violation case is identified, it lands here
+ * with rationale + reviewer commitment, not as a silent regex narrowing.
  */
 const LEGACY_ALLOWLIST: Array<{
   /** Relative file path from repo root (forward slashes). */
   file: string;
   /** Why this pre-existing violation is accepted. */
   rationale: string;
-}> = [
-  {
-    file: 'migrations/instance/1766696011515-InitialSchema.ts',
-    rationale:
-      'Initial schema migration — ran on empty database at platform bootstrap. ' +
-      'Tables were empty; no lock contention possible. Pre-pilot, pre-W6.A.',
-  },
-  {
-    file: 'migrations/instance/1803000000000-phase3-automation-tables.ts',
-    rationale:
-      'Creates automation_execution_logs table and its initial indexes in one ' +
-      'transaction (table + indexes together). Table did not exist before this ' +
-      'migration ran, so no ACCESS EXCLUSIVE contention on existing data. Pre-W6.A.',
-  },
-  {
-    file: 'migrations/instance/1820000000001-audit-log-hash-chain.ts',
-    rationale:
-      'Adds hash-chain columns and indexes on audit_logs. Ran at pre-pilot ' +
-      'stage when audit_logs table had bounded rows. Pre-W6.A.',
-  },
-  {
-    file: 'migrations/instance/1830000000000-audit-log-permission.ts',
-    rationale:
-      'Adds permission_code+created_at composite index on audit_logs. ' +
-      'Pre-pilot instance; table had bounded rows at migration time. Pre-W6.A.',
-  },
-  {
-    file: 'migrations/instance/1930600000000-add-refresh-token-families.ts',
-    rationale:
-      'Drops and recreates refresh_tokens table (full table rebuild per canon §1 ' +
-      'greenfield posture). New indexes are on a freshly-created empty table — ' +
-      'no CONCURRENTLY benefit for a new table. Pre-W6.A; table-rebuild context.',
-  },
-  {
-    file: 'migrations/control-plane/1824000000000-refresh-tokens.ts',
-    rationale:
-      'Control-plane refresh_tokens. Table has bounded growth (only HubbleWave ' +
-      'operator accounts; not per-customer). Blocking index acceptable at this scale. ' +
-      'Pre-W6.A.',
-  },
-];
+}> = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Regexes
