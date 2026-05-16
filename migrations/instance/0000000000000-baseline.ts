@@ -1,7 +1,12 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class Baseline0000000000000 implements MigrationInterface {
-  name = 'Baseline0000000000000';
+  // TypeORM requires the last 13 chars of `name` to parse as a non-zero
+  // integer (it uses parseInt(name.substr(-13), 10) as the sort key).
+  // The filename prefix is 0000000000000 which would produce 0 (falsy),
+  // so we use a valid epoch-range sentinel: 1000000000000 (must sort before
+  // all five seed migrations which use 1000000000001–1000000000005).
+  name = 'Baseline1000000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Schemas
@@ -87,13 +92,10 @@ export class Baseline0000000000000 implements MigrationInterface {
       $$;`);
 
     // Sequences
-    await queryRunner.query(`CREATE SEQUENCE public.migrations_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;`);
+    // NOTE: public.migrations_id_seq is intentionally omitted — TypeORM
+    // creates the migrations table (and its sequence) before running any
+    // migration; re-creating it here would cause a "relation already exists"
+    // error on a fresh database.
 
     // Tables
     await queryRunner.query(`CREATE TABLE app_builder.ai_report_templates (
@@ -3095,11 +3097,9 @@ export class Baseline0000000000000 implements MigrationInterface {
     CONSTRAINT key_metadata_provider_check CHECK ((provider = ANY (ARRAY['aws-kms'::text, 'local-es256'::text]))),
     CONSTRAINT key_metadata_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'active'::text, 'retiring'::text, 'retired'::text, 'compromised'::text])))
 );`);
-    await queryRunner.query(`CREATE TABLE public.migrations (
-    id integer NOT NULL,
-    "timestamp" bigint NOT NULL,
-    name character varying NOT NULL
-);`);
+    // NOTE: public.migrations is intentionally omitted — TypeORM creates this
+    // table before running any migration; re-creating it here would cause a
+    // "relation already exists" error on a fresh database.
     await queryRunner.query(`CREATE TABLE public.platform_config (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     key character varying(100) NOT NULL,
@@ -3925,7 +3925,9 @@ export class Baseline0000000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE TRIGGER trg_view_config_updated_at BEFORE UPDATE ON public.view_configurations FOR EACH ROW EXECUTE FUNCTION public.update_view_config_updated_at();`);
 
     // Constraints
-    await queryRunner.query(`ALTER TABLE ONLY public.migrations ALTER COLUMN id SET DEFAULT nextval('public.migrations_id_seq'::regclass);`);
+    // NOTE: public.migrations column default is intentionally omitted —
+    // TypeORM manages the migrations table schema; altering it here would
+    // conflict with TypeORM's own definition on a fresh database.
     await queryRunner.query(`ALTER TABLE ONLY app_builder.ai_report_templates
     ADD CONSTRAINT "PK_ai_report_templates" PRIMARY KEY (id);`);
     await queryRunner.query(`ALTER TABLE ONLY app_builder.ai_reports
@@ -4426,8 +4428,8 @@ export class Baseline0000000000000 implements MigrationInterface {
     ADD CONSTRAINT "PK_64e3b9fa96a1735ba4741905d88" PRIMARY KEY (id);`);
     await queryRunner.query(`ALTER TABLE ONLY public.collection_access_rules
     ADD CONSTRAINT "PK_685125fdb89c2749d2c76bca5a2" PRIMARY KEY (id);`);
-    await queryRunner.query(`ALTER TABLE ONLY public.migrations
-    ADD CONSTRAINT "PK_8c82d7f526340ab734260ea46be" PRIMARY KEY (id);`);
+    // NOTE: public.migrations primary key is intentionally omitted —
+    // TypeORM creates its own migrations table with PRIMARY KEY already defined.
     await queryRunner.query(`ALTER TABLE ONLY public.access_audit_logs
     ADD CONSTRAINT "PK_92362eda47f20e6eff693801adc" PRIMARY KEY (id);`);
     await queryRunner.query(`ALTER TABLE ONLY public.access_condition_groups
