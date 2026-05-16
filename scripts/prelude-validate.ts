@@ -134,9 +134,18 @@ assert('login via /api/identity/auth/login alias also returns valid JWT', async 
     : { ok: false, detail: `expected 201, got ${r.stdout}` };
 });
 
-assert('GET /api/users returns 200 with admin token', async () => {
+// Admin profile round-trip through the auth pipeline (JWT verify → IdentityResolverPort
+// → @AuthenticatedOnly()). Pre-W2 path (ii) leaves `identity.platform_permissions` and
+// `identity.role_permissions` empty until Stream 2 PR3 materializes the registry from
+// PERMISSION_REGISTRY, so @RequirePermission-gated endpoints (e.g. `GET /api/users`,
+// gated by `users.view`) return 403 by design — testing them here would assert the
+// gate works against a deliberately-empty registry. The W2 spec admin-can-list-users
+// assertion is the right shape for Stream 2's exit gate; we use `/api/auth/me` here
+// because it tests the same trust chain (token issuance → JWT validation → admin
+// identity resolution → request-context hydration) without depending on the registry.
+assert('GET /api/auth/me returns 200 with admin token', async () => {
   if (!loginAccessToken) return { ok: false, detail: 'no token from prior login assertion' };
-  const r = sh(`curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/api/users?pageSize=1" -H "Authorization: Bearer ${loginAccessToken}"`, { allowFail: true });
+  const r = sh(`curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/api/auth/me" -H "Authorization: Bearer ${loginAccessToken}"`, { allowFail: true });
   return r.stdout.trim() === '200'
     ? { ok: true }
     : { ok: false, detail: `expected 200, got ${r.stdout}` };

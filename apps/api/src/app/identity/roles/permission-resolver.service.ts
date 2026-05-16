@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, MoreThan, IsNull } from 'typeorm';
 import {
   Role,
-  Permission,
+  PlatformPermission,
   RolePermission,
   UserRole,
   GroupRole,
@@ -23,7 +23,7 @@ import {
 export interface UserPermissionCache {
   userId: string;
   permissions: Set<string>;          // Permission codes
-  permissionDetails: Map<string, Permission>;  // code -> full permission
+  permissionDetails: Map<string, PlatformPermission>;  // code -> full permission
   roleIds: string[];                 // Direct + inherited role IDs
   roles: Role[];               // Full role objects
   /**
@@ -408,7 +408,7 @@ export class PermissionResolverService implements OnModuleInit {
 
     // Step 6: Fetch all permissions for these roles
     const permissions = new Set<string>();
-    const permissionDetails = new Map<string, Permission>();
+    const permissionDetails = new Map<string, PlatformPermission>();
 
     if (allRoleIds.length > 0) {
       const rolePerms = await this.rolePermissionRepo.find({

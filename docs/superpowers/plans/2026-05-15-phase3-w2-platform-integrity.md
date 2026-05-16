@@ -373,18 +373,85 @@ if ($LASTEXITCODE -ne 0) { throw 'seed-admin-user failed' }
 ```
 Expected: all 5 commands succeed; baseline + structural seeds produce a fully-migrated DB ready for Stream 1 work to extend.
 
-- [ ] **Step 5: Run prelude-validate**
-
-```
-npm run prelude:validate
-```
-Expected: 11 assertions pass against the freshly-baselined DB.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```
 git add migrations/instance migrations/control-plane
 git commit -m "phase3-w2-pregate: delete 98+8 incremental migrations (archived at pre-w2-migration-archive)"
+```
+
+Step 5 used to run `npm run prelude:validate` here, but that step is now Task 4.5 (TypeScript entity-model alignment): the baseline reshape (`identity.permissions` UUID-keyed → `identity.platform_permissions` code-keyed; `permission_id` UUID FK → `permission_code` text FK) requires matching changes in the entity layer, otherwise `nx serve api` boots but login throws 500 because TypeORM emits SQL against columns that no longer exist. The plan originally placed entity-model alignment in Stream 1 / Stream 2, but that left master broken in the foundation layer the wave is trying to make trustworthy. Founder direction (2026-05-16): fix the plan, not the standard.
+
+### Task 4.5: TypeScript entity-model alignment with baseline
+
+**Files:**
+- Create: `libs/instance-db/src/lib/entities/platform-permission.entity.ts`
+- Delete: `libs/instance-db/src/lib/entities/permission.entity.ts`
+- Modify: `libs/instance-db/src/lib/entities/role-permission.entity.ts` (permissionId UUID → permissionCode text; composite PK; PlatformPermission relation)
+- Modify: `libs/instance-db/src/lib/entities/identity.ts` (barrel export)
+- Modify: `libs/instance-db/src/lib/entities/index.ts` (barrel + `instanceEntities` array)
+- Delete: `apps/api/src/app/identity/roles/permission-seeder.service.ts` (W2 spec §2.3 — registry is materialized from the `PERMISSION_REGISTRY` TS constant in Stream 2 PR3, not from an in-app seeder; pre-Pre-W2 seeder wrote dot-style codes to the now-dropped `identity.permissions` table)
+- Delete: `apps/api/src/app/identity/roles/permissions.controller.ts` (CRUD against the dropped table; replaced by Stream 2 PR3's registry-backed controller)
+- Modify: `apps/api/src/app/identity/roles/roles.module.ts` (remove seeder DI binding + controller registration)
+- Modify: `apps/api/src/app/identity/roles/role.service.ts` (`permissionId` → `permissionCode`; `Permission` type → `PlatformPermission`; `perm.id` → `perm.code`)
+- Modify: `apps/api/src/app/identity/roles/permission-resolver.service.ts` (type updates only — `Map<string, Permission>` → `Map<string, PlatformPermission>`)
+- Modify: `apps/api/src/app/identity/roles/index.ts` (remove deleted seeder re-export)
+
+Scope discipline: **only** changes needed for compile + boot + admin seed + login/profile resolution to stop querying `identity.permissions` / `permission_id`. NO registry rows seeded (path ii from Task 2 holds). NO Stream 2 registry scanner / bootstrap / codegen work in this task — that lands when Stream 2 PR3 ships.
+
+- [ ] **Step 1: Add `PlatformPermission` entity**
+
+Create `platform-permission.entity.ts` mapping `identity.platform_permissions` exactly as the baseline DDL defines it (PK on `code`, NOT a UUID; `plane`/`domain`/`resource`/`action`/`dangerous`/`description` columns).
+
+- [ ] **Step 2: Rewrite `RolePermission` entity**
+
+Switch the FK from `permissionId` UUID (referencing the dropped `permissions.id`) to `permissionCode` text (referencing `platform_permissions.code`). The baseline uses a composite primary key on `(role_id, permission_code)` — drop the standalone UUID `id` column. Rename `createdAt`/`createdBy` → `grantedAt`/`grantedBy` to match the baseline column names.
+
+- [ ] **Step 3: Delete `permission.entity.ts` + `PermissionSeederService` + `PermissionsController`**
+
+The seeder ran in `RolesModule.onModuleInit` and pre-populated the now-dropped table with ~50 dot-style codes (the exact vocabulary W2 spec §2.1 retires). The controller exposed CRUD on the same table. Both are dead post-baseline; Stream 2 PR3 replaces them with the registry-backed equivalents.
+
+- [ ] **Step 4: Translate `role.service.ts`**
+
+Replace every `permissionId: perm.id` with `permissionCode: perm.code`, every `Repository<Permission>` with `Repository<PlatformPermission>`, every `Permission[]` return type with `PlatformPermission[]`. The methods (`setRolePermissions`, `addRolePermissions`, `removeRolePermissions`, `getRoleEffectivePermissions`) remain functionally equivalent against the new schema.
+
+- [ ] **Step 5: Translate `permission-resolver.service.ts`**
+
+Only type updates — the runtime logic is unchanged because `RolePermission.permission` (now a `PlatformPermission` ManyToOne via `permission_code`) exposes the same `.code` property the resolver already reads.
+
+- [ ] **Step 6: Update barrels + roles module**
+
+`identity.ts` and `index.ts` swap `Permission` for `PlatformPermission`. The `instanceEntities` array (TypeORM registration list) likewise. `roles.module.ts` removes the `PermissionSeederService` DI binding and the `PermissionsController` registration; the `onModuleInit` shrinks to just the cross-service publisher binding (no more seeding step).
+
+- [ ] **Step 7: Build typecheck**
+
+```
+npx nx build instance-db
+if ($LASTEXITCODE -ne 0) { throw 'instance-db build failed' }
+npx nx build api
+if ($LASTEXITCODE -ne 0) { throw 'api build failed' }
+```
+
+- [ ] **Step 8: Swap prelude-validate assertion 5 to `/api/auth/me`**
+
+The pre-Pre-W2 assertion 5 was `GET /api/users returns 200 with admin token`. That endpoint is gated by `@RequirePermission('users.view')`. Path (ii) from Task 2 leaves `identity.platform_permissions` and `identity.role_permissions` empty until Stream 2 PR3 materializes the registry from `PERMISSION_REGISTRY`, so the admin has no `users.view` grant — every `@RequirePermission`-gated endpoint returns 403 by design during the Pre-W2 → Stream 2 PR3 window. Asserting 200 against that endpoint amounts to testing whether the gate works against a deliberately-empty registry, which is not what Pre-W2 promises.
+
+Swap assertion 5 to `GET /api/auth/me returns 200 with admin token`. `/api/auth/me` uses `@AuthenticatedOnly() + JwtAuthGuard` — no `@RequirePermission`. The assertion tests the same trust chain (token issuance → JWT validation → admin identity resolution → request-context hydration) without depending on the registry being non-empty. The W2 spec admin-can-list-users assertion is the right shape for Stream 2 PR3's exit gate; re-add `GET /api/users 200` there once `PERMISSION_REGISTRY` has materialized.
+
+Document the rationale inline (comment in `scripts/prelude-validate.ts` above the assertion) so the swap survives readers without git archaeology.
+
+- [ ] **Step 9: Run prelude-validate end-to-end**
+
+```
+npm run prelude:validate
+```
+Expected: 11 assertions pass against the freshly-baselined DB — including the three login assertions that broke after Task 4 because of the entity-vs-baseline drift, and the swapped assertion 5 (`/api/auth/me` instead of `/api/users`). Task 5 adds 3 more for 14/14.
+
+- [ ] **Step 10: Commit**
+
+```
+git add libs/instance-db/src/lib/entities/ apps/api/src/app/identity/roles/ scripts/prelude-validate.ts
+git commit -m "phase3-w2-pregate: TypeScript entity-model alignment with baseline + prelude-validate assertion 5 swap"
 ```
 
 ### Task 5: Pre-W2 gate validation harness extension

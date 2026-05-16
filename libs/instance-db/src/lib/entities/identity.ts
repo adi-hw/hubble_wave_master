@@ -13,7 +13,7 @@
 export { User, UserStatus } from './user.entity';
 
 export { Role, RoleScope } from './role.entity';
-export { Permission } from './permission.entity';
+export { PlatformPermission } from './platform-permission.entity';
 export { RolePermission, UserRole, AssignmentSource } from './role-permission.entity';
 export { Group, GroupType, GroupMember, GroupRole } from './group.entity';
 

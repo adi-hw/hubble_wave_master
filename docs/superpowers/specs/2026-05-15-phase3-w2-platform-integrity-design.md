@@ -73,6 +73,19 @@ Replace the 98 instance migrations in `migrations/instance/*` with one canonical
 
 Baseline files are TypeORM `MigrationInterface` classes containing schema-qualified DDL only: `CREATE SCHEMA` per the 10 domain schemas; `CREATE TABLE` with all columns, FKs, constraints; `CREATE INDEX` (transactional — see indexing policy below); triggers; materialized views; GIN indexes from W6.B.
 
+### TypeScript entity-model alignment (Pre-W2 scope)
+
+The baseline reshape changes two `identity.*` tables — `permissions` → `platform_permissions` (UUID PK → code PK) and `role_permissions.permission_id` → `role_permissions.permission_code` — so the TypeScript entity files in `libs/instance-db/src/lib/entities/` MUST be brought in sync inside Pre-W2. Anything less leaves master in a state where the DB migration runs cleanly but `nx serve api` boots and immediately throws 500 on `/auth/login` because TypeORM emits SQL against columns and tables that no longer exist (`identity.permissions`, `role_permissions.permission_id`).
+
+The entity-model alignment is therefore Pre-W2's responsibility, not Stream 1 / Stream 2's. Specifically:
+
+- Add `PlatformPermission` entity mirroring `identity.platform_permissions` (code PK, no UUID).
+- Replace `RolePermission` entity's `permissionId` UUID column + `Permission` ManyToOne with `permissionCode` text column + `PlatformPermission` ManyToOne via `permission_code`. Use the composite PK on `(role_id, permission_code)` per the baseline DDL.
+- Delete the old `Permission` entity (and the `PermissionSeederService` + `PermissionsController` that exercised it — both reseed / CRUD the dropped table; Stream 2 PR3 replaces them with the registry-backed equivalents).
+- Update only the consumers needed for compile + boot + admin seed + login/profile resolution. Specifically: the entity barrels (`identity.ts`, `index.ts`, `instanceEntities` array), `RolesModule` wiring, `RoleService` (permission-grant methods translated to `permissionCode`), `PermissionResolverService` (type updates only).
+
+Scope discipline: NO `identity.platform_permissions` rows written. NO `identity.role_permissions` rows written. Path (ii) from the role-seed decision holds — the TypeScript `PERMISSION_REGISTRY` constant is the single source of truth, materialized by Stream 2 PR3's `seed-permission-registry-sync.ts`. NO Stream 2 scanner / codegen / bootstrap work in this slice.
+
 ### Structural seed migrations (deterministic, post-baseline)
 
 - `seed-system-roles` — `admin` (bootstrap operator / platform administrator) + `platform_user` (baseline authenticated platform member). The four application personas — `auditor`, `manager`, `technician`, `viewer` — are NOT seeded here. They imply persona models the platform has not built; ship them with the wave that introduces those personas. `platform_user` rather than `authenticated` because the latter is an auth-state label (`@AuthenticatedOnly()` already expresses that), while `platform_user` is an actual authorization role assignable to `user_roles`. NO rows are written to `identity.platform_permissions` or `identity.role_permissions` — per §2.3 the TS-constant-driven `seed-permission-registry-sync` script in Stream 2 PR3 is the single source for those tables, and admin's authority during the Pre-W2 → Stream 2 window comes from the `CollectionAccessRule` + wildcard `PropertyAccessRule` seed below.
