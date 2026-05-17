@@ -10,13 +10,25 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PredictiveOpsService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import { InsightType, InsightSeverity, InsightStatus } from '@hubblewave/instance-db';
 
 interface TriggerAnalysisDto {
   type: InsightType;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — predictive operations
+ * insights are user-facing AI features. The dashboard surfaces
+ * anomalies the user is allowed to see via per-collection ACL
+ * applied at the data layer.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Predictive Operations')
 @ApiBearerAuth()
 @Controller('phase7/predictive-ops')

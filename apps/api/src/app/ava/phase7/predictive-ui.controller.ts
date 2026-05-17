@@ -10,7 +10,12 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PredictiveUIService, UserContext } from '@hubblewave/ai';
 import { BehaviorType } from '@hubblewave/instance-db';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 
 interface TrackBehaviorDto {
   type: BehaviorType;
@@ -25,6 +30,12 @@ interface GetSuggestionsDto {
   sessionDuration?: number;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — predictive UI personalization
+ * is a user-facing AI feature. Every handler operates on the caller's
+ * own behavior data / suggestions / layouts via `@CurrentUser`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Predictive UI')
 @ApiBearerAuth()
 @Controller('phase7/predictive-ui')

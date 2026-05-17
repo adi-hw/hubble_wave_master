@@ -14,7 +14,12 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AppBuilderService } from '@hubblewave/ai';
 import { AppStatus } from '@hubblewave/instance-db';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 
 interface GenerateAppDto {
   description: string;
@@ -28,6 +33,12 @@ interface RefineAppDto {
   refinement: string;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — zero-code app builder is
+ * a user-facing AI feature. Each user manages their own apps via
+ * `@CurrentUser`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Zero-Code App Builder')
 @ApiBearerAuth()
 @Controller('phase7/app-builder')
