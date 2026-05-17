@@ -36,6 +36,70 @@ export interface AuthorizedPropertyMeta extends PropertyMeta {
   maskingStrategy: MaskingStrategy;
 }
 
+/**
+ * Per-field permissions surfaced to the client on UI-facing data
+ * responses (list / search / detail / dashboard). The §28 evaluator
+ * computes this once per request; the client renders accordingly:
+ *
+ *   - `canRead === false` → the record body OMITS the field entirely
+ *     (server-side stripping). The client doesn't need to mask it.
+ *   - `canRead === true, maskStrategy === 'PARTIAL' | 'FULL'` → the
+ *     server returns the masked value (via `maskCollectionRecord`).
+ *     The client renders as-is.
+ *   - `canRead === true, canWrite === false` → the client renders the
+ *     field as read-only.
+ *
+ * The `canWrite` and `maskStrategy` fields are optional because some
+ * code paths only carry read-decision provenance (e.g. an
+ * aggregated/grouped query that doesn't surface masking per row).
+ * Field decisions that DO carry the data carry it; consumers fall
+ * back to `canWrite: true` and `maskStrategy: 'NONE'` when absent.
+ */
+export interface FieldPermissions {
+  canRead: boolean;
+  canWrite?: boolean;
+  maskStrategy?: MaskingStrategy;
+}
+
+/**
+ * Canon §28 + W2 Stream 4b Task 36 — the response-level permissions
+ * payload. Attached to every UI-facing data response so the client
+ * can render per the centralized §28 decision instead of re-deriving
+ * it from per-field flags scattered across the response.
+ *
+ * Shape:
+ * ```json
+ * {
+ *   "canCreate": true,
+ *   "canUpdate": false,
+ *   "canDelete": false,
+ *   "fields": {
+ *     "name":   { "canRead": true,  "canWrite": false, "maskStrategy": "NONE" },
+ *     "salary": { "canRead": true,  "canWrite": false, "maskStrategy": "PARTIAL" },
+ *     "ssn":    { "canRead": false }
+ *   }
+ * }
+ * ```
+ *
+ * `canCreate / canUpdate / canDelete` reflect the collection-level
+ * §28 evaluator output (CollectionAccessRule for the verb). They
+ * gate the client's render of add/edit/delete affordances. Backend
+ * is still authoritative — the client uses these flags ONLY to render
+ * UI; every actual mutation still passes through the
+ * `@RequireCollectionAccess(...)` guard.
+ *
+ * `fields` is uniform across all records in a response — per-field
+ * permissions are computed once on the collection's schema, not
+ * per-row. (Per-row ABAC filters change which RECORDS are visible
+ * but not which FIELDS are visible within a record.)
+ */
+export interface ResponsePermissions {
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+  fields: Record<string, FieldPermissions>;
+}
+
 
 
 // ============================================================================
