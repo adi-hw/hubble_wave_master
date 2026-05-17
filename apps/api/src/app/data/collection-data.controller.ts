@@ -13,7 +13,13 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser, UserRequestContext } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+  UserRequestContext,
+} from '@hubblewave/auth-guard';
 import { CollectionDataService, QueryOptions } from './collection-data.service';
 
 // Query DTOs
@@ -37,8 +43,18 @@ interface BulkDeleteDto {
   ids: string[];
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — runtime collection data surface. Every
+ * handler runs through `CollectionDataService` with a `UserRequestContext`
+ * built from the JWT principal; the service applies the §28 evaluator
+ * (collection + record + field rules) per request. The route-level
+ * boundary is `@AuthenticatedOnly` because the data-ACL decision is
+ * data-driven (collection-by-collection) and lives inside the service,
+ * not in a static capability code on the endpoint.
+ */
 @Controller('data/collections')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class CollectionDataController {
   private readonly logger = new Logger(CollectionDataController.name);
 

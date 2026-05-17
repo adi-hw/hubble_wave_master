@@ -3,8 +3,9 @@
  * HubbleWave Platform - Phase 5
  *
  * OAuth2 endpoints follow RFC 6749 specifications.
- * Client management endpoints require authentication.
- * Token endpoints (token, revoke, introspect) are public per spec.
+ * Client management endpoints require platform-admin (`system:configure`).
+ * Token endpoints (token, revoke, introspect, validate) and OIDC discovery
+ * are public per spec.
  */
 
 import {
@@ -20,9 +21,18 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser, Public } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  InstanceRequest,
+  JwtAuthGuard,
+  PermissionsGuard,
+  Public,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { OAuth2Service } from './oauth2.service';
 import { OAuthGrantType } from '@hubblewave/instance-db';
 
@@ -60,9 +70,21 @@ interface TokenDto {
   code_verifier?: string;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — OAuth2 surface. Client administration
+ * (`/oauth/clients/*`, `/oauth/cleanup`, and the cross-user
+ * `/oauth/users/:userId/revoke-all` / `/oauth/clients/:clientId/revoke-all`
+ * endpoints) is gated by `system:configure` — these are platform-admin
+ * operations that mutate the identity boundary. The authorization-code
+ * flow (`/oauth/authorize`) runs as the calling user and only needs
+ * `@AuthenticatedOnly`. Token-flow endpoints + OIDC discovery + token
+ * validation are `@Public` per RFC 6749 (the OAuth client's own
+ * credentials are the authentication boundary).
+ */
 @ApiTags('OAuth2')
 @Controller('oauth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class OAuth2Controller {
   constructor(private readonly oauth2Service: OAuth2Service) {}
 
@@ -128,9 +150,10 @@ export class OAuth2Controller {
     return this.oauth2Service.regenerateClientSecret(id);
   }
 
-  // OAuth2 Flows (Authorization requires auth, token endpoints are public)
+  // OAuth2 Flows (Authorization runs as the calling user; token endpoints are public)
 
   @Get('authorize')
+  @AuthenticatedOnly()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'OAuth2 authorization endpoint' })
   async authorize(
@@ -217,7 +240,7 @@ export class OAuth2Controller {
   @Public()
   @ApiOperation({ summary: 'OIDC discovery document (public)' })
   @ApiResponse({ status: 200, description: 'Discovery document' })
-  async discovery(@Req() req: Request) {
+  async discovery(@Req() req: InstanceRequest) {
     const issuer = `${req.protocol}://${req.get('host')}`;
     return this.oauth2Service.getDiscoveryDocument(issuer);
   }
@@ -232,7 +255,7 @@ export class OAuth2Controller {
     return this.oauth2Service.validateAccessToken(body.token);
   }
 
-  // User Token Management (protected)
+  // User Token Management (admin)
 
   @Post('users/:userId/revoke-all')
   @ApiBearerAuth()
@@ -252,7 +275,7 @@ export class OAuth2Controller {
     return { success: true };
   }
 
-  // Cleanup (protected, admin only)
+  // Cleanup (admin only)
 
   @Post('cleanup')
   @ApiBearerAuth()
