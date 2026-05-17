@@ -1,5 +1,11 @@
 import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import {
   CreateSearchDictionaryRequest,
   CreateSearchExperienceRequest,
@@ -10,9 +16,15 @@ import {
   UpdateSearchSourceRequest,
 } from './search.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 21 — search experience / source /
+ * dictionary administration. Platform-admin configuration of the
+ * search subsystem — `@RequirePermission('system:configure')` is the
+ * right gate; admin holds it via seeded role_permissions.
+ */
 @Controller('metadata/search')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 

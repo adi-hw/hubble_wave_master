@@ -10,11 +10,24 @@ import {
   UseGuards,
   NotFoundException,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { ScriptService, CreateScriptDto, UpdateScriptDto } from './script.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 21 — collection scripts (the automation
+ * surface attached to a collection) are gated by
+ * `@RequirePermission('metadata:flow:manage')` — the same capability
+ * that gates automation flow / rule authoring.
+ */
 @Controller('collections/:collectionId/scripts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('metadata:flow:manage')
 export class ScriptController {
   constructor(private readonly scriptService: ScriptService) {}
 
@@ -38,7 +51,6 @@ export class ScriptController {
   }
 
   @Post()
-  @Roles('admin')
   async create(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -48,7 +60,6 @@ export class ScriptController {
   }
 
   @Put(':id')
-  @Roles('admin')
   async update(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -62,7 +73,6 @@ export class ScriptController {
   }
 
   @Delete(':id')
-  @Roles('admin')
   async delete(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,

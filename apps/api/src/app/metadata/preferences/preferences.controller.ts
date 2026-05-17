@@ -18,8 +18,18 @@ import {
   ReorderPinnedItemsDto,
   SyncPreferencesDto,
 } from './preferences.dto';
-import { CurrentUser, JwtAuthGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+} from '@hubblewave/auth-guard';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 21 — every handler operates on the
+ * caller's own user preferences via `@CurrentUser('userId')`.
+ * Authenticated identity is sufficient; no specific capability gate.
+ */
+@AuthenticatedOnly()
 @Controller('preferences')
 @UseGuards(JwtAuthGuard)
 export class PreferencesController {
