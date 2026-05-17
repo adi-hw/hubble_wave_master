@@ -12,6 +12,7 @@ export {
   IdentityCacheInvalidationSubscriber,
   IdentityCacheEventPublisher,
 } from './lib/subscribers/identity-cache-invalidation.subscriber';
+export { AuditLogSubscriber } from './lib/subscribers/audit-log.subscriber';
 export { AccessRuleCacheInvalidationSubscriber } from './lib/subscribers/access-rule-cache-invalidation.subscriber';
 export type {
   AccessRuleCacheInvalidationPublisher,

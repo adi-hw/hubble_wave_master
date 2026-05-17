@@ -236,6 +236,24 @@ Silent skips (logger.warn followed by `continue`) are also auditability
 violations. They MUST also write a `runtime_anomaly` row via
 `RuntimeAnomalyService` so operators can query and alert on them.
 
+**Hash-chain linearization (Plan Fix 41 / F042, 2026-05-16):** Audit
+hash-chain writes MUST be linearized at the actual insert boundary.
+TypeORM array saves of `AuditLog` (`repo.save([...])`, `repo.insert([...])`,
+or any batched insert path) are forbidden because TypeORM's
+`SubjectExecutor` fires `beforeInsert` for every subject in a batch
+before any INSERT runs — all N entries read the same predecessor row
+under the subscriber's advisory lock (which is re-entrant on the same
+backend connection) and produce N rows forking off one ancestor. The
+`withAudit(...)` helper flushes recorded events as sequential
+single-entity `repo.save(entry)` calls inside the same transaction so
+each insert extends the chain one row at a time. The `audit:check`
+scanner flags batched-AuditLog patterns at PR time; the only
+acceptable exception is a future DB-native chain writer that computes
+both `previous_hash` and `hash` atomically (e.g. a Postgres trigger or
+generated columns), allowlisted explicitly in
+`tools/audit-bypass-check.ts:AUDIT_LOG_BULK_INSERT_ALLOWLIST` with an
+architecture rationale.
+
 ---
 
 ## 11. AI is a Richly-Integrated Feature Surface (canon §11 SOFTEN, 2026-05-09)
@@ -593,6 +611,30 @@ explicit amendment note (date, fix code if from a remediation wave,
 1-line summary of what changed).
 
 Past amendments (most recent first):
+
+- 2026-05-16 (Plan Fix 41 / F042): audit hash-chain batch-fork fix.
+  W2 Stream 4a stress test (50 concurrent tx × 10 audit rows × 5 sessions)
+  surfaced 10/500 rows sharing `previousHash = NULL` instead of the
+  expected 1 — all from one transaction's batched audit save forking off
+  the same ancestor. Root cause: `withAudit(...)` called `repo.save([...])`
+  with an array; TypeORM's `SubjectExecutor.broadcastBeforeEventsForAll`
+  fires `beforeInsert` for every subject before any INSERT, so all N
+  entries read the same predecessor under the subscriber's advisory lock
+  (which is re-entrant on the same backend connection). Fix: `withAudit`
+  now flushes events as sequential single-entity `repo.save(entry)` calls
+  inside the same transaction. §10 amended with a behavioral clause that
+  TypeORM array saves of `AuditLog` are forbidden unless a future
+  DB-native chain writer computes both `previous_hash` and `hash`
+  atomically. `audit:check` extended with `AUDIT_LOG_BULK_INSERT_PATTERN`
+  + an `AUDIT_LOG_BULK_INSERT_ALLOWLIST` (currently empty). Self-test
+  grows from 17 to 24 assertions. The live-Postgres reproducer lands at
+  `apps/api/test/integration/audit-hash-chain-concurrency.spec.ts` and
+  passes 5/5 iterations under the fix; verified failing on the pre-fix
+  code by stashing the patch. `AuditLogSubscriber` itself unchanged —
+  the bug was a `withAudit` implementation detail, not a subscriber
+  defect. Postgres-side chain extension (trigger / generated columns)
+  explicitly deferred to a future plan-fix if measured audit volume
+  makes sequential inserts a bottleneck.
 
 - 2026-05-13 (Plan Fix 40): end-to-end bootstrap hardening sweep.
   Three boot-blocking DI / env wiring issues fixed: (1) `AWS_REGION`

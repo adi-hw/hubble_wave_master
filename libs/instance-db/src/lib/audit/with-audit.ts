@@ -40,6 +40,25 @@ export type AuditRecorder = (event: AuditEvent) => void;
  * Canon §10 ("every action must be explainable"): a record mutation and its
  * audit log entry must succeed together or fail together — never one without
  * the other.
+ *
+ * Plan Fix 41 / F042 — audit events are flushed as **individually chained
+ * inserts**, one `await repo.save(entry)` per recorded event, NOT a single
+ * `repo.save([...])` array call. The reason is the hash chain extension
+ * path in `AuditLogSubscriber.beforeInsert`: TypeORM's `SubjectExecutor`
+ * runs the `beforeInsert` hook for EVERY subject in a batched save before
+ * any INSERT fires (`node_modules/typeorm/persistence/SubjectExecutor.js`).
+ * The advisory lock the subscriber acquires is re-entrant on the same
+ * Postgres backend, so all N entries in a batched save read the same
+ * predecessor row and produce N rows forking off one ancestor — the F042
+ * fork pattern. Sequential per-row saves serialize the chain extension
+ * inside the wrapping transaction; the lock continues to do its
+ * inter-transaction job correctly.
+ *
+ * Canon §10 amendment (2026-05-16, Plan Fix 41): audit hash-chain writes
+ * must be linearized at the insert boundary. TypeORM array saves of
+ * `AuditLog` are forbidden unless a future DB-native chain writer
+ * computes both `previous_hash` and `hash` atomically. The
+ * `audit:check` scanner enforces this at the repo-level surface.
  */
 export async function withAudit<T>(
   dataSource: DataSource,
@@ -55,8 +74,12 @@ export async function withAudit<T>(
 
     if (auditEvents.length > 0) {
       const repo = mgr.getRepository(AuditLog);
-      const entries = auditEvents.map((event) =>
-        repo.create({
+      // Sequential per-row saves: each call triggers its own beforeInsert
+      // hook → its own advisory-lock-guarded predecessor read → its own
+      // INSERT, with the chain extending one row at a time. Array saves
+      // would batch the beforeInsert hooks and fork the chain (F042).
+      for (const event of auditEvents) {
+        const entry = repo.create({
           userId: event.userId ?? null,
           collectionCode: event.collectionCode ?? null,
           recordId: event.recordId ?? null,
@@ -66,9 +89,9 @@ export async function withAudit<T>(
           ipAddress: event.ipAddress ?? null,
           userAgent: event.userAgent ?? null,
           permissionCode: event.permissionCode ?? null,
-        }),
-      );
-      await repo.save(entries);
+        });
+        await repo.save(entry);
+      }
     }
 
     return result;
