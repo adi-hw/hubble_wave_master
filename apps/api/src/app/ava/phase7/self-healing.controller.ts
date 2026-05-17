@@ -11,7 +11,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SelfHealingService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { RecoveryActionType, EventType } from '@hubblewave/instance-db';
 
 interface RegisterServiceDto {
@@ -43,10 +50,18 @@ interface RecoveryActionDto {
   actionConfig: Record<string, unknown>;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — self-healing
+ * infrastructure dashboard + recovery actions. Read paths are
+ * user-facing (anyone can view service health); admin paths
+ * (registering services, defining recovery actions) carry
+ * method-level `@RequirePermission('ava:admin')`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Self-Healing Infrastructure')
 @ApiBearerAuth()
 @Controller('phase7/self-healing')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SelfHealingController {
   constructor(
     private readonly selfHealingService: SelfHealingService,
@@ -69,7 +84,7 @@ export class SelfHealingController {
   }
 
   @Post('services')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Register a service for monitoring' })
   @ApiResponse({ status: 201, description: 'Service registered' })
   async registerService(
@@ -112,7 +127,7 @@ export class SelfHealingController {
   }
 
   @Put('services/:serviceName/status')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Update service health status' })
   @ApiResponse({ status: 200, description: 'Status updated' })
   async updateServiceStatus(
@@ -143,7 +158,7 @@ export class SelfHealingController {
   }
 
   @Post('recovery')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Create recovery action' })
   @ApiResponse({ status: 201, description: 'Recovery action created' })
   async createRecoveryAction(
@@ -155,7 +170,7 @@ export class SelfHealingController {
   }
 
   @Put('recovery/:id')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Update recovery action' })
   @ApiResponse({ status: 200, description: 'Recovery action updated' })
   async updateRecoveryAction(
@@ -167,7 +182,7 @@ export class SelfHealingController {
   }
 
   @Delete('recovery/:id')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Delete recovery action' })
   @ApiResponse({ status: 200, description: 'Recovery action deleted' })
   async deleteRecoveryAction(
@@ -188,7 +203,7 @@ export class SelfHealingController {
   }
 
   @Post('run-checks')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Run all health checks' })
   @ApiResponse({ status: 200, description: 'Health checks triggered' })
   async runAllHealthChecks() {

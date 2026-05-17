@@ -8,7 +8,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { VoiceControlService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 
 interface VoiceCommandDto {
   audioData?: string;
@@ -27,10 +34,16 @@ interface RegisterPatternDto {
   }>;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — voice command processing.
+ * Voice commands are user-facing; admin paths (pattern registration)
+ * carry method-level `@RequirePermission('ava:admin')`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Voice Control')
 @ApiBearerAuth()
 @Controller('phase7/voice')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class VoiceControlController {
   constructor(
     private readonly voiceService: VoiceControlService,
@@ -91,7 +104,7 @@ export class VoiceControlController {
   }
 
   @Post('patterns')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Register a command pattern' })
   @ApiResponse({ status: 201, description: 'Pattern registered' })
   async registerPattern(

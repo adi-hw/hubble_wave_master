@@ -11,7 +11,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { DigitalTwinService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { SensorMapping, TwinStatus } from '@hubblewave/instance-db';
 
 interface CreateTwinDto {
@@ -48,17 +55,25 @@ interface SensorReadingDto {
   timestamp?: Date;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — digital twin / IoT
+ * integration. User-facing AI feature surface for read paths; admin
+ * paths (create/update/delete twins) carry method-level
+ * `@RequirePermission('ava:admin')` overriding the class-level
+ * `@AuthenticatedOnly()`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Digital Twins & IoT Integration')
 @ApiBearerAuth()
 @Controller('phase7/digital-twins')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DigitalTwinController {
   constructor(
     private readonly twinService: DigitalTwinService,
   ) {}
 
   @Post()
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Create a digital twin' })
   @ApiResponse({ status: 201, description: 'Digital twin created' })
   async createTwin(
@@ -101,7 +116,7 @@ export class DigitalTwinController {
   }
 
   @Put(':id')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Update digital twin' })
   @ApiResponse({ status: 200, description: 'Twin updated' })
   async updateTwin(
@@ -113,7 +128,7 @@ export class DigitalTwinController {
   }
 
   @Delete(':id')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Delete digital twin' })
   @ApiResponse({ status: 200, description: 'Twin deleted' })
   async deleteTwin(
@@ -134,7 +149,7 @@ export class DigitalTwinController {
   }
 
   @Post(':id/sensors')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Add sensor mapping to twin' })
   @ApiResponse({ status: 201, description: 'Sensor mapping added' })
   async addSensorMapping(
@@ -156,7 +171,7 @@ export class DigitalTwinController {
   }
 
   @Delete(':id/sensors/:sensorId')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Remove sensor mapping' })
   @ApiResponse({ status: 200, description: 'Sensor mapping removed' })
   async removeSensorMapping(
@@ -250,7 +265,7 @@ export class DigitalTwinController {
   }
 
   @Post(':assetId/cleanup')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Cleanup old sensor readings' })
   @ApiResponse({ status: 200, description: 'Number of readings deleted' })
   async cleanupOldReadings(
