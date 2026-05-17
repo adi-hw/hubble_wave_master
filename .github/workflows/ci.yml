@@ -600,3 +600,39 @@ jobs:
           DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
           ADMIN_FIRST_NAME: HubbleWave
           ADMIN_LAST_NAME: Admin
+
+      # W2 boundary-consistency harness (Stream 4b Task 40).
+      # Runs in the same job as prelude-validate so the API process is
+      # already up (prelude-validate boots it and leaves it running for
+      # the duration of the step). `--skip-api-boot` skips the
+      # 60-180s cold-compile boot the harness would otherwise do
+      # standalone. Failures here block the merge — w2:validate is a
+      # required CI gate per the Stream 4b exit criterion.
+      - name: W2 validate
+        run: npm run w2:validate -- --skip-api-boot
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: hubblewave
+          DB_PASSWORD: hubblewave
+          DB_NAME: hubblewave
+          CONTROL_PLANE_DB_HOST: localhost
+          CONTROL_PLANE_DB_PORT: 5432
+          CONTROL_PLANE_DB_USER: hubblewave
+          CONTROL_PLANE_DB_PASSWORD: hubblewave
+          CONTROL_PLANE_DB_NAME: hubblewave_control_plane
+          DIRECT_DB_HOST: localhost
+          DIRECT_DB_PORT: 5432
+          DIRECT_CONTROL_PLANE_DB_HOST: localhost
+          DIRECT_CONTROL_PLANE_DB_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: development
+          JWT_KEY_PROVIDER: local-es256
+          JWT_BOOTSTRAP_SECRET: ci-bootstrap-secret-for-prelude-validate
+          API_PORT: 3000
+          ADMIN_EMAIL: admin@hubblewave.local
+          ADMIN_PASSWORD: ci-admin-password-1234
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-1234
+          ADMIN_FIRST_NAME: HubbleWave
+          ADMIN_LAST_NAME: Admin

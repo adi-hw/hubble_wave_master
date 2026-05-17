@@ -81,6 +81,7 @@
     "selftest:abac-coverage": "npx tsx tools/scanners/abac-coverage-check-selftest.ts",
     "schema-map:generate": "npx tsx tools/scanners/generate-schema-ownership-map.ts",
     "prelude:validate": "npx tsx scripts/prelude-validate.ts",
+    "w2:validate": "npx tsx scripts/w2-validate.ts",
     "schema:manifest": "npx tsx tools/schema-manifest.ts",
     "schema:manifest:self-test": "npx tsx tools/schema-manifest.ts --self-test"
   },
