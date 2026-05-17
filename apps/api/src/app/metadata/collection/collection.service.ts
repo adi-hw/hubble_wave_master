@@ -576,6 +576,11 @@ export class CollectionService {
         enableActivityLog: true,
         enableSearch: true,
         defaultAccess: 'read',
+        // Canon §28.2 default-deny posture (W2 Stream 2 PR4). The DB
+        // column carries the same default; setting it explicitly here
+        // makes the runtime entity value match the DB even on code paths
+        // that read the entity before re-fetching the saved row.
+        secureFieldsByDefault: true,
         createdBy: userId,
         updatedBy: userId,
         metadata: this.mergeMetadata(dto.metadata),
