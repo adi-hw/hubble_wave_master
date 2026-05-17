@@ -3844,11 +3844,175 @@ Additionally: `tools/integration-call-check.ts` (NEW scanner) — grep pack code
 
 ---
 
-### 13.15 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.15 Worked example: §3.14 Semantic Search / Vector Match Primitive (full artifact-level spec — pgvector index + explainable confidence bands)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.14 cover §3.1 — §3.13; the remaining 5 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.15.1 Tables
 
-**Substrate (5 remaining sections — §3.1-§3.13 ✅):**
+Two new tables in `schema: 'search'` (existing schema from canon §40 / Plan Fix 30 search authz wave).
+
+**`search.vector_index_entry`** — one row per indexed field-value, partitioned by `collection_id` then by `embedding_model_version`. Reuses canon §28 search-authz pre-filter mechanism (Plan Fix 30 PR-2 + PR-3).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK component (with `collection_id` for partitioning) |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `collection_id` | `uuid` | — | NOT NULL | LIST partition key |
+| `record_id` | `uuid` | — | NOT NULL | The indexed record |
+| `source_field` | `varchar(120)` | — | NOT NULL | Property `code` whose text was embedded |
+| `source_text` | `text` | — | NOT NULL | The exact text embedded (subject to PII redaction policy at pack manifest) |
+| `embedding` | `vector(1536)` | — | NOT NULL | pgvector — 1536 dims matches OpenAI text-embedding-3-small AND Ollama nomic-embed-text; founder-correctable in registry |
+| `embedding_model_version` | `varchar(64)` | — | NOT NULL | E.g. `openai-3-small-2024-02`, `ollama-nomic-embed-text-v1.5`; SUB-partition key |
+| `last_indexed_at` | `timestamptz` | — | NOT NULL | When this entry was last refreshed |
+| `provenance` | `jsonb` | `'{}'::jsonb` | NOT NULL | `{ source_kind: 'record_update' \| 'pack_install' \| 'manual_reindex', triggered_by_user_id?, prior_embedding_age_seconds? }` |
+| `_collection_id` | `uuid` | — | NOT NULL | Plan Fix 30 PR-3 ACL projection column; mirror of `collection_id` for authz filter |
+| `_attribute_*` | `jsonb` | — | NULL | Plan Fix 30 PR-3 ABAC projection columns added per pack's `acl_attributes[]` declaration |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+**Partitioning:**
+```sql
+CREATE TABLE search.vector_index_entry (...) PARTITION BY LIST (collection_id);
+-- Per-collection partition, then SUB-partition by embedding_model_version:
+CREATE TABLE search.vector_index_entry_{collection_uuid}
+  PARTITION OF search.vector_index_entry FOR VALUES IN ('{collection_uuid}')
+  PARTITION BY LIST (embedding_model_version);
+```
+
+Indexes (per leaf partition):
+- PK on `(id, collection_id, embedding_model_version)` — composite required by 2-level partitioning
+- IVFFlat or HNSW on `(embedding)` — chosen per leaf based on row count (HNSW preferred when partition > 100k rows; IVFFlat for smaller). `vector_cosine_ops` operator class.
+- `ix_vie_record ON (record_id)` for "re-index this record" queries.
+- BRIN on `(last_indexed_at)` for retention sweep.
+
+**`search.embedding_model_registry`** — which model is active per (instance, family).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `model_family` | `varchar(64)` | — | NOT NULL | `text` / `image` / `audio`; only `text` shipped at G0a |
+| `model_version` | `varchar(64)` | — | NOT NULL | E.g. `openai-3-small-2024-02` |
+| `provider` | `varchar(32)` | — | NOT NULL | `openai` / `anthropic` / `ollama` / `bedrock` / `local-onnx` |
+| `dimensions` | `int` | — | NOT NULL | E.g. 1536; CHECK `dimensions IN (768, 1024, 1536, 3072)` (covering known production models) |
+| `cost_per_million_tokens_usd` | `decimal(10, 4)` | `0` | NOT NULL | Operational telemetry |
+| `is_active` | `boolean` | `false` | NOT NULL | Exactly one row per `(instance_id, model_family)` may be active (UNIQUE partial index enforces) |
+| `activated_at` | `timestamptz` | — | NULL | Set when `is_active` flipped true |
+| `retiring_at` | `timestamptz` | — | NULL | Set when a successor is activated; old partitions retained until cutover sweep completes |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(instance_id, model_family) WHERE is_active = true` — partial uniqueness enforces single-active-model invariant; `ix_emr_family ON (model_family)`.
+
+**Additive column on `metadata.property_definitions`**:
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `vector_indexed` | `boolean` | `false` | NOT NULL | When `true`, writes to records of this property trigger embedding generation + index upsert |
+
+#### 13.15.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1940000000000-add-vector-indexed-property-column.ts` | `ALTER TABLE metadata.property_definitions ADD COLUMN vector_indexed boolean NOT NULL DEFAULT false;` |
+| 2 | `1940000000001-create-embedding-model-registry.ts` | Table + partial unique index |
+| 3 | `1940000000002-create-vector-index-entry-parent.ts` | Parent partitioned table (LIST by collection_id) — no leaf partitions yet; subsequent migrations create them on `sync_to_mobile`-style triggers |
+| 4 | `1940000000003-seed-default-embedding-model.ts` | Seed `model_family='text'`, `provider='ollama'`, `model_version='nomic-embed-text-v1.5'`, `dimensions=768`, `is_active=true` for dev; production deployments override via control-plane provisioning |
+
+(Founder-correctable: `dimensions=1536` is the platform default for new installs because OpenAI 3-small is the most common production model; Ollama nomic-embed produces 768; an instance can run either by registering the appropriate `embedding_model_registry` row. The `embedding vector(1536)` column declaration locks any single instance to ONE dimension count — switching dimensions requires a partition-reindex migration. The seed flips to 768 dim for dev — flagged in PR-4 acceptance.)
+
+#### 13.15.3 Services
+
+`apps/worker/src/search/embedding-pipeline.processor.ts` + `apps/api/src/app/search/vector/`:
+
+**`EmbeddingPipelineProcessor`** — worker; listens on a Redis stream for `record.modified` + `record.created` events emitted by data services:
+1. For each event, iterate over the record's properties; collect those whose `property_definition.vector_indexed = true`.
+2. For each such property, generate canonical text (NFC-normalized, whitespace-collapsed); skip if text unchanged from prior embedding (compare via `source_text` field).
+3. Invoke the active embedding model (resolved from `embedding_model_registry` for the instance + `model_family='text'`); receive a `vector(N)` where N matches the registered `dimensions`.
+4. UPSERT into `search.vector_index_entry` (`record_id, source_field, embedding_model_version` is the upsert key); stamp `provenance.source_kind='record_update'`.
+5. Reuse Plan Fix 30 PR-3 ACL projection columns — populate `_collection_id` and `_attribute_*` so subsequent searches respect §28.
+
+**`VectorMatchService`** — `apps/api/src/app/search/vector/vector-match.service.ts`:
+
+```typescript
+semanticMatch(query: string, collectionId: string, options: SemanticMatchOptions, ctx: UserRequestContext): Promise<RankedMatch[]>;
+```
+
+Flow:
+1. Resolve active embedding model from registry; refuse with 503 if no active model.
+2. Embed the query text (one API call to the active provider).
+3. Build the §28 authz pre-filter via `compileSearchAuthz(collectionId, ctx)` (Plan Fix 30 PR-3). The resulting AST translates into a parameterized WHERE clause on `_collection_id` + `_attribute_*` columns.
+4. Execute pgvector ANN query: `SELECT id, record_id, source_field, source_text, embedding <=> $1 AS distance FROM search.vector_index_entry WHERE <authz_where> ORDER BY embedding <=> $1 LIMIT $topK;`
+5. Compute `confidence = 1 - cosine_distance`. Apply bands: `high ≥ 0.85`; `medium 0.70-0.85`; `low < 0.70`.
+6. For low-confidence (< 0.70), AUTOMATICALLY append a lexical fallback (`SearchService.searchLexical` via §28 Typesense path); merge results with `match_kind='lexical_fallback'` flag.
+7. Return `RankedMatch[]` with `{ recordId, score, confidence, band, sourceField, sourceText, matchKind: 'vector' | 'lexical_fallback', explainability: { ...explainable_factors } }`.
+
+`explainable_factors`: `{ embedding_model_version, query_token_count, top_neighbor_distance, second_neighbor_distance, lexical_fallback_terms?: string[] }`. The platform surfaces these in the AVA chat trace + `/api/search/explain` endpoint.
+
+**`EmbeddingModelLifecycleService`** — admin path to register, activate, and retire embedding models:
+```typescript
+register(input: RegisterModelRequest, ctx: UserRequestContext): Promise<EmbeddingModelRegistry>;
+activate(modelId: string, ctx: UserRequestContext): Promise<void>;
+reindex(collectionId: string, modelVersion: string, ctx: UserRequestContext): Promise<{ jobId: string }>;
+```
+
+Switching active model triggers a full background reindex per collection (writes to a new model-version SUB-partition; old SUB-partition retained until cutover sweep removes it 30 days later).
+
+#### 13.15.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/search/vector` | `@RequireCollectionAccess('read')` | `{ query, collectionId, topK?, options? }` returns ranked matches |
+| `GET` | `/api/search/explain` | `@RequirePermission('search:explain:read')` | query: `matchId` — full explainability payload for a prior match |
+| `POST` | `/api/integrations/embedding-models` | `@RequirePermission('search:embedding_model:manage')` | `{ provider, modelVersion, dimensions, costPerMillionTokensUsd }` |
+| `POST` | `/api/integrations/embedding-models/:id/activate` | `@RequirePermission('search:embedding_model:manage')` (`dangerous: true`) | — triggers full reindex |
+| `GET` | `/api/integrations/embedding-models` | `@RequirePermission('search:embedding_model:read')` | — |
+
+#### 13.15.5 Validator extensions
+
+Pack validator gains 2 publish gates:
+
+1. **G15.1** — Property declared with `vector_indexed=true` MUST be a text-type property (string / text / markdown / longtext). Error: `VECTOR_INDEX_REQUIRES_TEXT_PROPERTY`.
+2. **G15.2** — Pack `semantic_search.indexes[]` declarations MUST reference existing properties with `vector_indexed=true`. Error: `SEMANTIC_INDEX_REFERENCES_NON_INDEXED_PROPERTY`.
+
+#### 13.15.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `VectorIndexEntry` | `EmbeddingPipelineProcessor.process`, `EmbeddingModelLifecycleService.reindex` |
+| `EmbeddingModelRegistry` | `EmbeddingModelLifecycleService.*` |
+
+#### 13.15.7 Tests (self-test ≥ 11 assertions)
+
+1. **`vector-record-modified-triggers-embed.spec.ts`** — record write on a `vector_indexed=true` property → embed-and-upsert row in `vector_index_entry`; `provenance.source_kind='record_update'`.
+2. **`vector-text-unchanged-skip.spec.ts`** — second write with same canonical text → no new embedding call (assert via mock counter).
+3. **`vector-semantic-match-high-confidence.spec.ts`** — query that closely matches an indexed phrase; returns `band='high'`; `match_kind='vector'`.
+4. **`vector-semantic-match-low-confidence-falls-back.spec.ts`** — query with no close match; `band='low'`; lexical fallback fires; merged result includes `match_kind='lexical_fallback'`.
+5. **`vector-authz-prefilter.spec.ts`** — user with §28 collection access restricted to status='active' records; vector search returns ONLY active records; status='draft' records absent from result.
+6. **`vector-attribute-prefilter.spec.ts`** — user with ABAC `region=NA` rule; results filtered via `_attribute_*` ACL columns.
+7. **`vector-explainability.spec.ts`** — every result carries `embedding_model_version` + neighbor distances; `/api/search/explain` returns full audit trail.
+8. **`vector-active-model-activate-reindex.spec.ts`** — register new model + activate; full reindex job runs; new SUB-partition populated; old SUB-partition retained 30 days then swept.
+9. **`vector-no-active-model.spec.ts`** — instance with NO active model; `semanticMatch` returns 503 with `NO_ACTIVE_EMBEDDING_MODEL`.
+10. **`vector-validator-non-text-property.spec.ts`** — pack declares `vector_indexed=true` on a `number` property; publish refused with G15.1.
+11. **`vector-validator-undeclared-property.spec.ts`** — pack `semantic_search.indexes[]` references a property not marked `vector_indexed=true`; G15.2 refusal.
+
+#### 13.15.8 PR breakdown for §3.14
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Migrations + entities + property column + `EmbeddingModelLifecycleService` + admin endpoints + validator G15.1/G15.2 + tests 9, 10, 11 | Migrations 1-4; entity area patch; `apps/api/src/app/search/vector/embedding-model.service.ts`; pack-validator extension | Registry CRUD works; partial-unique enforces single-active; validator catches misuse |
+| 2 | `EmbeddingPipelineProcessor` + `record.modified` listener + canonical text + skip-unchanged + ACL projection wire + tests 1, 2 | `apps/worker/src/search/embedding-pipeline.processor.ts`; Redis stream consumer | Writes trigger embed; unchanged text skipped; Plan Fix 30 PR-3 projections populated |
+| 3 | `VectorMatchService.semanticMatch` + pgvector ANN + confidence bands + tests 3, 5, 6 | `apps/api/src/app/search/vector/vector-match.service.ts`; SQL emitter | High-confidence results returned; §28 + ABAC pre-filter respected |
+| 4 | Lexical fallback + explainability + `/api/search/explain` endpoint + tests 4, 7 | Merge logic with §28 Typesense path; explain controller | Low-confidence triggers fallback; explainability complete |
+| 5 | Reindex on model activation + 30-day SUB-partition retention sweep + canon §40 amendment + test 8 | `apps/worker/src/search/reindex.processor.ts`; SchedulingModule; CLAUDE.md amendment | Switch reindexes; old SUB-partition swept; canon merged |
+
+**Total: 5 PRs for §3.14. Estimated effort: ~9-11 working days.**
+
+---
+
+### 13.16 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.15 cover §3.1 — §3.14; the remaining 4 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (4 remaining sections — §3.1-§3.14 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -3862,7 +4026,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.11 external-collaborator sessions — §13.12 (5 PRs)
 - ✅ §3.12 Storage / Evidence Attachment runtime — §13.13 (6 PRs)
 - ✅ §3.13 Connector runtime + simulators — §13.14 (6 PRs)
-- §3.14 Semantic Search / Vector Match (4 PRs)
+- ✅ §3.14 Semantic Search / Vector Match — §13.15 (5 PRs)
 - §3.15 Spatial + Relationship Graph (5 PRs)
 - §3.16 Financial Control primitive (5 PRs)
 - §3.17 Bulk Import / Commissioning Staging (4 PRs)
@@ -3882,7 +4046,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.16 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.17 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3903,7 +4067,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.17 What's left to do BEFORE code starts
+### 13.18 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
