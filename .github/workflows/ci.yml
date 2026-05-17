@@ -122,6 +122,14 @@ jobs:
         # adds it as a blocking gate. Exits 0 regardless of mismatches today.
         run: npm run permission-registry:check
 
+      - name: Route boundary coverage check (canon §28 / W2 Stream 3 PR1, reporting-only)
+        # Reporting-only at Stream 3 PR1 — informs the Stream 3 sweep
+        # (~881 handlers across 28 controllers). Stream 3 PR-final flips
+        # this to `--strict` once the sweep completes. The structured
+        # report at `dist/route-boundary-report.json` is the work-item
+        # ledger for the sweep PRs (tasks 20-30).
+        run: npm run route-boundary:check
+
       - name: Scanner self-tests (W0 task 2 + per-scanner suites)
         # Each scanner ships with a self-test that proves it catches the
         # patterns it claims to. Without this gate, future scanner edits

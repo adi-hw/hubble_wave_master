@@ -364,6 +364,9 @@
       "ts-jest": {
         "reason": "TS transformer for jest"
       },
+      "ts-morph": {
+        "reason": "AST-aware TypeScript parser for the W2 Stream 3 route-boundary-coverage scanner. Replaces text-heuristic regex scanners where decorator + parameter type analysis requires real type-resolution. Added by W2 Stream 3 PR1."
+      },
       "ts-node": {
         "reason": "TS execution for tooling scripts (migrations, scanners)"
       },
