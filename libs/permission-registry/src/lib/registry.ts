@@ -358,4 +358,230 @@ export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
     description:
       'Read and write platform-wide configuration: identity config scopes, admin UI theme, behavioural analytics ingestion, application metadata — every admin "settings" surface.',
   },
+
+  // Control Plane ----------------------------------------------------------
+  // The control plane (`apps/control-plane`) is HubbleWave's own admin
+  // surface for managing customers, instances, licenses, billing,
+  // infrastructure, and platform-wide operations. Capability codes
+  // here are tagged `plane: 'control-plane'` so the registry self-test
+  // distinguishes them from instance-plane codes; the runtime
+  // PermissionsGuard treats both alike (the discriminator exists for
+  // documentation + future surface-specific tooling).
+  //
+  // Code grammar: per the locked PERMISSION_CODE_REGEX the codes use
+  // underscores (`control_plane:...`), not hyphens. The `plane`
+  // field value retains the hyphen because it's a TypeScript literal,
+  // not a code string.
+  {
+    code: 'control_plane:user:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'user',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Register, update, or revoke control-plane admin users (HubbleWave SRE / operator identities).',
+  },
+  {
+    code: 'control_plane:audit:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'audit',
+    action: 'read',
+    dangerous: false,
+    description: 'Read control-plane audit log entries.',
+  },
+  {
+    code: 'control_plane:audit:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'audit',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Append synthetic / out-of-band control-plane audit log entries.',
+  },
+  {
+    code: 'control_plane:customer:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'customer',
+    action: 'read',
+    dangerous: false,
+    description: 'Read the customer registry (customers, codes, stats).',
+  },
+  {
+    code: 'control_plane:customer:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'customer',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Create, update, configure, and delete customer records — the platform tenancy boundary.',
+  },
+  {
+    code: 'control_plane:instance:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'instance',
+    action: 'read',
+    dangerous: false,
+    description:
+      'Read provisioned customer instances + their stats / health snapshots.',
+  },
+  {
+    code: 'control_plane:instance:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'instance',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Create, provision, update, terminate customer instances; push health + metrics; bind domains. Mutates customer-runtime topology.',
+  },
+  {
+    code: 'control_plane:terraform:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'terraform',
+    action: 'read',
+    dangerous: false,
+    description: 'Read Terraform job records + plan outputs.',
+  },
+  {
+    code: 'control_plane:terraform:invoke',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'terraform',
+    action: 'invoke',
+    dangerous: true,
+    description:
+      'Trigger Terraform plan / apply / cancel against platform infrastructure — highest blast radius on the control plane.',
+  },
+  {
+    code: 'control_plane:pack:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'pack',
+    action: 'read',
+    dangerous: false,
+    description:
+      'Read the vertical-pack catalog (registered packs, releases, install status).',
+  },
+  {
+    code: 'control_plane:pack:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'pack',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Upload, register, install, and roll back vertical packs across customer instances.',
+  },
+  {
+    code: 'control_plane:license:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'license',
+    action: 'read',
+    dangerous: false,
+    description: 'Read license records + validate a presented license.',
+  },
+  {
+    code: 'control_plane:license:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'license',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Issue, update, and revoke license records — controls the entitlement boundary.',
+  },
+  {
+    code: 'control_plane:subscription:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'subscription',
+    action: 'read',
+    dangerous: false,
+    description: 'Read customer subscription records.',
+  },
+  {
+    code: 'control_plane:subscription:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'subscription',
+    action: 'manage',
+    dangerous: true,
+    description: 'Create or update customer subscriptions.',
+  },
+  {
+    code: 'control_plane:metrics:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'metrics',
+    action: 'read',
+    dangerous: false,
+    description: 'Read aggregated platform metrics + recent activity.',
+  },
+  {
+    code: 'control_plane:metrics:invoke',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'metrics',
+    action: 'invoke',
+    dangerous: false,
+    description:
+      'Ingest health + resource metrics from a customer instance into the control-plane telemetry store.',
+  },
+  {
+    code: 'control_plane:health:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'health',
+    action: 'read',
+    dangerous: false,
+    description:
+      'Read the aggregated health snapshot + per-instance health detail.',
+  },
+  {
+    code: 'control_plane:health:manage',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'health',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Trigger an immediate health aggregation pass; toggle the periodic health-polling job.',
+  },
+  {
+    code: 'control_plane:recovery:invoke',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'recovery',
+    action: 'invoke',
+    dangerous: true,
+    description:
+      'Trigger backup or restore operations — disaster-recovery surface, mutates customer data state.',
+  },
+  {
+    code: 'control_plane:settings:read',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'settings',
+    action: 'read',
+    dangerous: false,
+    description: 'Read global control-plane settings.',
+  },
+  {
+    code: 'control_plane:settings:configure',
+    plane: 'control-plane',
+    domain: 'control_plane',
+    resource: 'settings',
+    action: 'configure',
+    dangerous: true,
+    description:
+      'Update global control-plane settings — platform-wide configuration.',
+  },
 ];
