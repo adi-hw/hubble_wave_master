@@ -39,6 +39,17 @@ export const COLLECTION_ACL_REPOSITORY = 'COLLECTION_ACL_REPOSITORY';
 export const PROPERTY_ACL_REPOSITORY = 'PROPERTY_ACL_REPOSITORY';
 export const COLLECTION_DEFINITION_REPOSITORY = 'COLLECTION_DEFINITION_REPOSITORY';
 
+/**
+ * Sentinel returned by a `filterDashboardLayout` resolveCollectionId
+ * hook when a widget points at a collection code/id that exists in the
+ * widget metadata but has no matching CollectionDefinition row (renamed
+ * or deleted collection). The widget is dropped fail-closed rather
+ * than included with a missing reference — including it would leak the
+ * existence of a renamed/deleted sensitive collection in the layout
+ * surface visible to every viewer.
+ */
+export const FILTER_UNRESOLVED = Symbol('filter:collection-unresolved');
+
 interface CollectionAclRepo {
   find(options: { where: Record<string, unknown>; order?: Record<string, string> }): Promise<CollectionAccessRuleData[]>;
   /**
@@ -357,6 +368,180 @@ export class AuthorizationService
         `Access denied: You do not have permission to ${operation} records in collection ${collectionId}`,
       );
     }
+  }
+
+  /**
+   * F146 — per-widget collection authz filter for dashboard layouts.
+   *
+   * Walks `layout.widgets` (and any nested `widgets` arrays — UI Builder
+   * nests row/column containers) and drops every widget whose
+   * referenced collection the caller cannot `read` per the §28
+   * evaluator. Widgets without a recognizable collection reference
+   * (static text, markdown, AVA chat panels, layout containers) pass
+   * through unchanged.
+   *
+   * `resolveCollectionId` is the caller-supplied hook that maps a raw
+   * widget object to a stable `collectionId` UUID (or `null` for
+   * non-collection widgets, or the sentinel `'__unresolved__'` for a
+   * widget whose collectionCode resolved to no collection — that case
+   * is fail-closed and produces a `deny` entry in `droppedWidgets`).
+   * Keeping resolution in the caller frees `AuthorizationService` from
+   * a transitive dependency on `CollectionDefinition` lookup, which is
+   * an analytics-module concern.
+   *
+   * Returns the filtered layout plus a compact provenance summary the
+   * caller is expected to fold into a §10 audit row. The summary
+   * records the widget id, the collection id the widget targeted, and
+   * a one-line reason string sourced from the §28.7 fallback chain so
+   * the audit trail explains WHY each widget was hidden — not just
+   * THAT it was.
+   *
+   * The shape of the layout is preserved verbatim apart from the
+   * widget filtering. Top-level fields (version, title, settings,
+   * etc.) and any nested non-widget structures are untouched.
+   */
+  async filterDashboardLayout(
+    layout: Record<string, unknown> | null | undefined,
+    principal: UserRequestContext,
+    resolveCollectionId: (widget: Record<string, unknown>) => Promise<string | null | typeof FILTER_UNRESOLVED>,
+  ): Promise<{
+    layout: Record<string, unknown>;
+    droppedWidgetCount: number;
+    droppedWidgets: Array<{ widgetId: string; collectionId: string | null; reason: string }>;
+  }> {
+    if (!layout || typeof layout !== 'object') {
+      return { layout: {}, droppedWidgetCount: 0, droppedWidgets: [] };
+    }
+
+    const dropped: Array<{ widgetId: string; collectionId: string | null; reason: string }> = [];
+    const filtered = await this.filterWidgetContainer(layout, principal, dropped, resolveCollectionId);
+    return {
+      layout: filtered,
+      droppedWidgetCount: dropped.length,
+      droppedWidgets: dropped,
+    };
+  }
+
+  /**
+   * Walk a layout object, returning a shallow copy with its `widgets`
+   * array filtered (and any nested widget arrays inside the surviving
+   * widgets also filtered). Recurses through child containers so a
+   * dashboard with row/column nesting still drops forbidden leaf
+   * widgets while preserving the layout skeleton.
+   */
+  private async filterWidgetContainer(
+    container: Record<string, unknown>,
+    principal: UserRequestContext,
+    dropped: Array<{ widgetId: string; collectionId: string | null; reason: string }>,
+    resolveCollectionId: (widget: Record<string, unknown>) => Promise<string | null | typeof FILTER_UNRESOLVED>,
+  ): Promise<Record<string, unknown>> {
+    const widgetsRaw = (container as { widgets?: unknown }).widgets;
+    if (!Array.isArray(widgetsRaw)) {
+      return { ...container };
+    }
+
+    const kept: unknown[] = [];
+    for (const widget of widgetsRaw) {
+      const verdict = await this.evaluateWidget(widget, principal, resolveCollectionId);
+      if (verdict.kind === 'pass-through') {
+        kept.push(widget);
+        continue;
+      }
+      if (verdict.kind === 'recurse') {
+        // Container widget — recurse into its `widgets` so nested leaf
+        // widgets get the same filter. The container itself stays.
+        const recursed = await this.filterWidgetContainer(
+          widget as Record<string, unknown>,
+          principal,
+          dropped,
+          resolveCollectionId,
+        );
+        kept.push(recursed);
+        continue;
+      }
+      if (verdict.kind === 'allow') {
+        kept.push(widget);
+        continue;
+      }
+      // verdict.kind === 'deny'
+      dropped.push({
+        widgetId: verdict.widgetId,
+        collectionId: verdict.collectionId,
+        reason: verdict.reason,
+      });
+    }
+    return { ...container, widgets: kept };
+  }
+
+  /**
+   * Decide whether a single widget passes the per-widget authz gate.
+   *
+   *   - `pass-through` — no recognizable collection reference (static
+   *     text, AVA chat, layout label). Keep the widget verbatim.
+   *   - `recurse`      — the widget is a container with nested
+   *     `widgets`; recurse into it.
+   *   - `allow`        — the widget references a collection and the
+   *     caller has `read` access to it.
+   *   - `deny`         — the widget references a collection and the
+   *     caller does NOT have `read` access (or the referenced
+   *     collection cannot be resolved). Drop the widget.
+   */
+  private async evaluateWidget(
+    widget: unknown,
+    principal: UserRequestContext,
+    resolveCollectionId: (widget: Record<string, unknown>) => Promise<string | null | typeof FILTER_UNRESOLVED>,
+  ): Promise<
+    | { kind: 'pass-through' }
+    | { kind: 'recurse' }
+    | { kind: 'allow' }
+    | { kind: 'deny'; widgetId: string; collectionId: string | null; reason: string }
+  > {
+    if (!widget || typeof widget !== 'object') {
+      return { kind: 'pass-through' };
+    }
+    const w = widget as Record<string, unknown>;
+    const widgetId = typeof w['id'] === 'string' ? (w['id'] as string) : '<unknown>';
+
+    // Container nesting: a widget with its own `widgets` array gets
+    // recursed into (its leaves are the data widgets we care about).
+    if (Array.isArray((w as { widgets?: unknown }).widgets)) {
+      return { kind: 'recurse' };
+    }
+
+    const resolved = await resolveCollectionId(w);
+    if (resolved === null) {
+      return { kind: 'pass-through' };
+    }
+    if (resolved === FILTER_UNRESOLVED) {
+      // Fail-closed: the widget points at a collection code that has
+      // no matching CollectionDefinition row (renamed or deleted).
+      // Drop the widget rather than including it — including it would
+      // leak the existence of a renamed/deleted sensitive collection.
+      return {
+        kind: 'deny',
+        widgetId,
+        collectionId: null,
+        reason: 'collection reference does not resolve',
+      };
+    }
+
+    const { allowed, provenance } = await this.evaluateCollectionAccess(
+      principal,
+      resolved,
+      'read',
+    );
+    if (allowed) {
+      return { kind: 'allow' };
+    }
+
+    // The §28.7 fallback chain ends with the level that actually fired
+    // the deny. Use that as the audit reason so an operator inspecting
+    // the audit row sees the precedence level that hid the widget.
+    const reason = provenance.fallbackChain.length > 0
+      ? provenance.fallbackChain[provenance.fallbackChain.length - 1]
+      : `denied (level-${provenance.matchedLevel})`;
+
+    return { kind: 'deny', widgetId, collectionId: resolved, reason };
   }
 
   /**

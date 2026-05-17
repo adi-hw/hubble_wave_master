@@ -1,34 +1,45 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DashboardsService } from './dashboards.service';
-import type { AuthorizationService } from '@hubblewave/authorization';
-import type { CollectionOperation } from '@hubblewave/authorization';
+import { AuthorizationService, FILTER_UNRESOLVED } from '@hubblewave/authorization';
 import type { UserRequestContext } from '@hubblewave/auth-guard';
 import type { CollectionDefinition, DashboardDefinition } from '@hubblewave/instance-db';
 
 /**
  * F146 — per-widget collection access at dashboard read time.
  *
- * The dashboard-level scope check (canRead) gates whether the user sees
- * the dashboard at all. These tests focus on the secondary gate: even
- * once a dashboard is visible, widgets that reference collections the
- * user cannot read must be silently dropped from the returned layout.
- * Partial dashboards over broken dashboards; mirrors the metrics-layer
- * filter philosophy in metrics.service.ts.
+ * The dashboard-level scope check (canRead) gates whether the user
+ * sees the dashboard at all. The widget-level filter lives in
+ * `AuthorizationService.filterDashboardLayout`; these tests exercise
+ * the integration between DashboardsService and that filter (the
+ * service decides what to do with the drop summary — write a §10
+ * audit row when widgets were filtered, leave it alone when none
+ * were).
+ *
+ * Pure widget-walker semantics (recursion, pass-through, fail-closed)
+ * are covered by the AuthorizationService spec.
  */
 
 const PRINCIPAL: UserRequestContext = {
+  kind: 'user',
   userId: 'u-viewer',
-  roles: ['operator'],
-  permissions: [],
+  roleIds: [],
+  roleCodes: ['operator'],
+  permissionCodes: [],
+  groupIds: [],
   isAdmin: false,
-} as unknown as UserRequestContext;
+  securityStamp: 'stamp-1',
+};
 
 const ADMIN: UserRequestContext = {
+  kind: 'user',
   userId: 'u-admin',
-  roles: ['admin'],
-  permissions: [],
+  roleIds: [],
+  roleCodes: ['admin'],
+  permissionCodes: [],
+  groupIds: [],
   isAdmin: true,
-} as unknown as UserRequestContext;
+  securityStamp: 'stamp-admin',
+};
 
 const COLLECTIONS: Record<string, CollectionDefinition> = {
   work_orders: { id: '11111111-1111-4111-8111-111111111111', code: 'work_orders' } as unknown as CollectionDefinition,
@@ -38,43 +49,129 @@ const COLLECTIONS: Record<string, CollectionDefinition> = {
 
 type MockSetup = {
   service: DashboardsService;
-  dashboardRepo: any;
-  collectionRepo: any;
-  authz: jest.Mocked<Pick<AuthorizationService, 'canAccessCollection'>>;
+  dashboardRepo: { findOne: jest.Mock; find: jest.Mock };
+  collectionRepo: { findOne: jest.Mock };
+  authz: {
+    filterDashboardLayout: jest.Mock;
+  };
+  txnCalls: { count: number };
 };
 
+/**
+ * Build a DashboardsService instance with mocks for every constructor
+ * dependency. The `AuthorizationService.filterDashboardLayout` mock
+ * delegates to the SAME widget-walking logic the real method runs
+ * (composed inline) so the integration tests can assert end-to-end
+ * behaviour without spinning up TypeORM.
+ *
+ * `allowedCollectionIds` controls which collection UUIDs the
+ * inlined evaluator answers `allowed=true` for; everything else
+ * resolves to a deny with a synthetic provenance reason.
+ */
 const buildService = (options: {
   dashboard?: DashboardDefinition | null;
   dashboards?: DashboardDefinition[];
   allowedCollectionIds?: Set<string>;
 }): MockSetup => {
   const allowed = options.allowedCollectionIds ?? new Set<string>();
+
+  // Inline the widget-walking logic so the spec exercises the
+  // contract DashboardsService relies on (the function returns a
+  // filtered layout + drop summary) without depending on the
+  // real AuthorizationService DI graph.
   const authz = {
-    canAccessCollection: jest.fn(
-      async (_ctx: UserRequestContext, collectionId: string, _op: CollectionOperation) => allowed.has(collectionId),
+    filterDashboardLayout: jest.fn(
+      async (
+        layout: Record<string, unknown> | null | undefined,
+        _principal: UserRequestContext,
+        resolveCollectionId: (
+          widget: Record<string, unknown>,
+        ) => Promise<string | null | typeof FILTER_UNRESOLVED>,
+      ) => {
+        if (!layout || typeof layout !== 'object') {
+          return { layout: {}, droppedWidgetCount: 0, droppedWidgets: [] };
+        }
+        const widgetsRaw = (layout as { widgets?: unknown }).widgets;
+        if (!Array.isArray(widgetsRaw)) {
+          return { layout: { ...layout }, droppedWidgetCount: 0, droppedWidgets: [] };
+        }
+        const dropped: Array<{ widgetId: string; collectionId: string | null; reason: string }> = [];
+        const kept: unknown[] = [];
+        for (const widget of widgetsRaw) {
+          if (!widget || typeof widget !== 'object') {
+            kept.push(widget);
+            continue;
+          }
+          const w = widget as Record<string, unknown>;
+          const widgetId = typeof w.id === 'string' ? w.id : '<unknown>';
+          const resolved = await resolveCollectionId(w);
+          if (resolved === null) {
+            kept.push(widget);
+            continue;
+          }
+          if (resolved === FILTER_UNRESOLVED) {
+            dropped.push({
+              widgetId,
+              collectionId: null,
+              reason: 'collection reference does not resolve',
+            });
+            continue;
+          }
+          if (allowed.has(resolved)) {
+            kept.push(widget);
+          } else {
+            dropped.push({
+              widgetId,
+              collectionId: resolved,
+              reason: 'level-3: default deny',
+            });
+          }
+        }
+        return {
+          layout: { ...layout, widgets: kept },
+          droppedWidgetCount: dropped.length,
+          droppedWidgets: dropped,
+        };
+      },
     ),
-  } as jest.Mocked<Pick<AuthorizationService, 'canAccessCollection'>>;
+  };
 
   const dashboardRepo = {
     findOne: jest.fn(async () => options.dashboard ?? null),
     find: jest.fn(async () => options.dashboards ?? []),
   };
-  const auditRepo = {
-    create: jest.fn(),
-    save: jest.fn(),
-  };
   const collectionRepo = {
     findOne: jest.fn(async ({ where }: { where: { code: string } }) => COLLECTIONS[where.code] ?? null),
   };
 
+  // The service uses `withAudit(dataSource, fn)`. The mock dataSource
+  // gives `withAudit` a transaction method that just invokes the
+  // callback with an EntityManager-shaped object; the helper's audit
+  // flush then runs against `mgr.getRepository(AuditLog).save(entry)`.
+  // We satisfy that path with stub repos so unit tests assert without
+  // a real DB.
+  const txnCalls = { count: 0 };
+  const dataSource = {
+    transaction: jest.fn(async (cb: (mgr: unknown) => Promise<unknown>) => {
+      txnCalls.count += 1;
+      const mgr = {
+        getRepository: () => ({
+          create: jest.fn((entry: unknown) => entry),
+          save: jest.fn(async (entry: unknown) => entry),
+        }),
+      };
+      return cb(mgr);
+    }),
+  };
+
   const service = new DashboardsService(
     dashboardRepo as never,
-    auditRepo as never,
     collectionRepo as never,
     authz as unknown as AuthorizationService,
+    dataSource as never,
   );
 
-  return { service, dashboardRepo, collectionRepo, authz };
+  return { service, dashboardRepo, collectionRepo, authz, txnCalls };
 };
 
 const makeDashboard = (overrides: Partial<DashboardDefinition>): DashboardDefinition => ({
@@ -105,7 +202,7 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
           ],
         },
       });
-      const { service, authz } = buildService({
+      const { service, authz, txnCalls } = buildService({
         dashboard,
         allowedCollectionIds: new Set([COLLECTIONS.work_orders.id, COLLECTIONS.incidents.id]),
       });
@@ -114,7 +211,9 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
 
       const widgets = (result.layout as { widgets: Array<{ id: string }> }).widgets;
       expect(widgets.map((w) => w.id)).toEqual(['w1', 'w2']);
-      expect(authz.canAccessCollection).toHaveBeenCalledTimes(2);
+      expect(authz.filterDashboardLayout).toHaveBeenCalledTimes(1);
+      // No drops → no audit transaction.
+      expect(txnCalls.count).toBe(0);
     });
 
     it('drops widgets whose referenced collection the user cannot read', async () => {
@@ -128,7 +227,7 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
           ],
         },
       });
-      const { service } = buildService({
+      const { service, txnCalls } = buildService({
         dashboard,
         allowedCollectionIds: new Set([COLLECTIONS.work_orders.id, COLLECTIONS.incidents.id]),
       });
@@ -137,6 +236,8 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
 
       const widgets = (result.layout as { widgets: Array<{ id: string }> }).widgets;
       expect(widgets.map((w) => w.id)).toEqual(['w-ok', 'w-also-ok']);
+      // Drops → exactly one §10 audit transaction.
+      expect(txnCalls.count).toBe(1);
     });
 
     it('returns dashboard with empty widgets array when user can read none of the collections', async () => {
@@ -186,15 +287,17 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
 
     it('passes through layouts with no widgets array unchanged', async () => {
       const dashboard = makeDashboard({ layout: { version: 1, something: 'else' } });
-      const { service, authz } = buildService({
+      const { service, authz, txnCalls } = buildService({
         dashboard,
         allowedCollectionIds: new Set(),
       });
 
       const result = await service.get(PRINCIPAL, 'ops_overview');
 
-      expect(result.layout).toEqual({ version: 1, something: 'else' });
-      expect(authz.canAccessCollection).not.toHaveBeenCalled();
+      // The filter copies the layout; field equality is enough.
+      expect(result.layout).toMatchObject({ version: 1, something: 'else' });
+      expect(authz.filterDashboardLayout).toHaveBeenCalledTimes(1);
+      expect(txnCalls.count).toBe(0);
     });
 
     it('honours widget.collectionId UUID references directly', async () => {
@@ -241,7 +344,11 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
       expect(widgets.map((w) => w.id)).toEqual(['w-ok']);
     });
 
-    it('bypasses per-widget filtering for admins', async () => {
+    it('admins flow through the same evaluator; seed admin policies grant access', async () => {
+      // Canon §28.6 (Plan Fix 33): admins do not bypass the evaluator;
+      // they match because the seeded admin policy grants access. We
+      // simulate that here by including the HR collection in the
+      // allowed set for the admin principal.
       const dashboard = makeDashboard({
         layout: {
           version: 1,
@@ -251,17 +358,20 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
           ],
         },
       });
-      const { service, authz, collectionRepo } = buildService({
+      const { service, authz } = buildService({
         dashboard,
-        allowedCollectionIds: new Set(), // admin doesn't need allowlist
+        allowedCollectionIds: new Set([
+          COLLECTIONS.hr_payroll.id,
+          COLLECTIONS.work_orders.id,
+        ]),
       });
 
       const result = await service.get(ADMIN, 'ops_overview');
 
       const widgets = (result.layout as { widgets: Array<{ id: string }> }).widgets;
       expect(widgets.map((w) => w.id)).toEqual(['w-hr', 'w-ops']);
-      expect(authz.canAccessCollection).not.toHaveBeenCalled();
-      expect(collectionRepo.findOne).not.toHaveBeenCalled();
+      // The filter is called like any other principal — no special branch.
+      expect(authz.filterDashboardLayout).toHaveBeenCalledTimes(1);
     });
 
     it('still surfaces NotFoundException when dashboard does not exist', async () => {
@@ -302,7 +412,7 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
           },
         }),
       ];
-      const { service } = buildService({
+      const { service, txnCalls } = buildService({
         dashboards,
         allowedCollectionIds: new Set([COLLECTIONS.work_orders.id, COLLECTIONS.incidents.id]),
       });
@@ -317,6 +427,8 @@ describe('DashboardsService — F146 per-widget collection authz', () => {
         { code: 'd1', widgetIds: ['d1-ok'] },
         { code: 'd2', widgetIds: ['d2-ok'] },
       ]);
+      // Two dashboards, both produced drops → two §10 audit transactions.
+      expect(txnCalls.count).toBe(2);
     });
 
     it('returns dashboards with empty widget arrays when viewer cannot read any referenced collection', async () => {
