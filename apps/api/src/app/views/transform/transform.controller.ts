@@ -13,7 +13,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, JwtAuthGuard } from '@hubblewave/auth-guard';
 import { TransformService, TransformConfig, TransformResult } from './transform.service';
 
 interface TransformRequestDto {
@@ -21,6 +21,12 @@ interface TransformRequestDto {
   config: TransformConfig;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — data transformation endpoints
+ * (view-builder utilities). User-facing; per-collection ACL applies
+ * inside the service when transforms read collection data.
+ */
+@AuthenticatedOnly()
 @Controller('transform')
 @UseGuards(JwtAuthGuard)
 export class TransformController {

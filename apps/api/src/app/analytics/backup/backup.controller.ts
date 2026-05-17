@@ -1,9 +1,23 @@
 import { Body, Controller, ForbiddenException, Post, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-guard';
+import {
+  InstanceRequest,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequirePermission,
+  extractContext,
+} from '@hubblewave/auth-guard';
 import { BackupService } from './backup.service';
 
+/**
+ * Canon §28 / W2 Stream 3 — backup + restore are platform-admin
+ * operations. Gated by `@RequirePermission('system:configure')`. The
+ * pre-Stream-3 `context.isAdmin` runtime check inside each handler
+ * is now redundant with the capability gate; left in place as
+ * defense in depth pending a follow-up cleanup.
+ */
 @Controller('backup')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class BackupController {
   constructor(private readonly backupService: BackupService) {}
 
