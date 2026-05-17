@@ -28,6 +28,11 @@ import {
   type UserRequestContext,
   type RequestContext,
 } from './request-context.interface';
+import {
+  ACCESS_AUDIT_PORT,
+  type AccessAuditPort,
+  type AuditedDecisionProvenance,
+} from './audit-port';
 
 const PERMISSION_DENIED_RESPONSE = {
   statusCode: 403,
@@ -90,6 +95,9 @@ export class CollectionAccessGuard implements CanActivate {
     @Optional()
     @Inject(COLLECTION_ID_RESOLVER_PORT)
     private readonly resolver?: CollectionIdResolverPort,
+    @Optional()
+    @Inject(ACCESS_AUDIT_PORT)
+    private readonly accessAudit?: AccessAuditPort,
   ) {}
 
   async canActivate(execCtx: ExecutionContext): Promise<boolean> {
@@ -142,6 +150,7 @@ export class CollectionAccessGuard implements CanActivate {
       opts.verb,
     );
     if (!allowed) {
+      this.logAccessDenied(context, collectionId, opts.verb, request, 'collection');
       throw new ForbiddenException(PERMISSION_DENIED_RESPONSE);
     }
 
@@ -163,6 +172,7 @@ export class CollectionAccessGuard implements CanActivate {
         opts.verb,
       );
       if (!recordAllowed) {
+        this.logAccessDenied(context, collectionId, opts.verb, request, 'record', recordId);
         throw new ForbiddenException(PERMISSION_DENIED_RESPONSE);
       }
     } else {
@@ -178,6 +188,70 @@ export class CollectionAccessGuard implements CanActivate {
     }
 
     return true;
+  }
+
+  /**
+   * Fire-and-forget §28.7 access-denied audit row write. Best-effort:
+   * the throw at the call site is the authoritative response — a
+   * failed audit write must not regress the 403 into a 500.
+   */
+  private logAccessDenied(
+    context: UserRequestContext,
+    collectionId: string,
+    verb: string,
+    request: unknown,
+    denyLevel: 'collection' | 'record',
+    recordId?: string,
+  ): void {
+    if (!this.accessAudit) return;
+    try {
+      const provenance: AuditedDecisionProvenance = {
+        effect: 'deny',
+        // §28.3 record-decision precedence: level 1 (explicit deny matched)
+        // OR level 3 (no rule matched, default deny). The guard does not
+        // see which level fired without re-running the evaluator — we
+        // emit level 3 as the default attribution; admin tooling that
+        // wants the precise level uses `/authorization/explain` to
+        // re-derive the provenance.
+        matchedLevel: 3,
+        matchedRuleId: null,
+        matchedPrincipal: null,
+        fallbackChain: [
+          `level-1: indeterminate (use /authorization/explain for precise level)`,
+          `level-2: indeterminate`,
+          `level-3: §28 evaluator returned false for ${verb} on collection ${collectionId}${recordId ? ` record ${recordId}` : ''}`,
+        ],
+      };
+      const httpReq = request as {
+        method?: unknown;
+        route?: { path?: unknown };
+      };
+      this.accessAudit.logAccessDenied({
+        userId: context.userId,
+        resource: {
+          kind: denyLevel === 'record' ? 'collection' : 'collection',
+          identifier:
+            denyLevel === 'record'
+              ? `${collectionId}/${recordId}`
+              : collectionId,
+        },
+        provenance,
+        requestContext: {
+          verb,
+          httpMethod:
+            typeof httpReq.method === 'string' ? httpReq.method : undefined,
+          httpPath:
+            typeof httpReq.route?.path === 'string'
+              ? httpReq.route.path
+              : undefined,
+        },
+      });
+    } catch (err) {
+      // Swallow — best-effort persistence per canon §10 + W2 Stream 2
+      // PR6 docstring.
+      // eslint-disable-next-line no-console
+      console.warn('AccessAuditPort.logAccessDenied threw on collection deny', err);
+    }
   }
 
   /**

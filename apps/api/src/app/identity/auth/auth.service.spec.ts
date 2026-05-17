@@ -5,7 +5,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { DataSource, EntityManager } from 'typeorm';
 
-import { ACCESS_AUDIT_PORT, type AccessAuditPort } from '@hubblewave/authorization';
+import { ACCESS_AUDIT_PORT, type AccessAuditPort } from '@hubblewave/auth-guard';
 import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
@@ -108,6 +108,7 @@ const mockRefreshTokenRepository = {
 const mockAccessAuditPort: AccessAuditPort = {
   logAdminBypass: jest.fn(),
   logSecurityEvent: jest.fn(),
+  logAccessDenied: jest.fn(),
 };
 
 const mockDataSource = {

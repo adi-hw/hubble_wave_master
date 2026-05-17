@@ -612,6 +612,31 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (W2 Stream 2 PR6): AccessAuditPort relocation +
+  `logAccessDenied` audit row on 403. The `AccessAuditPort` interface
+  + `ACCESS_AUDIT_PORT` token moved from
+  `libs/authorization/src/lib/audit-port.ts` to
+  `libs/auth-guard/src/lib/audit-port.ts`. Reason: the auth-guard
+  library cannot import from `libs/authorization` without creating a
+  dependency cycle (authorization already imports `UserRequestContext`
+  from auth-guard), but `PermissionsGuard` + `CollectionAccessGuard`
+  need to call the port on 403. Moving the port to auth-guard breaks
+  the cycle; `libs/authorization` re-exports the symbols from
+  `@hubblewave/auth-guard` so existing imports continue to compile.
+  New port method `logAccessDenied(event)` writes an `AccessAuditLog`
+  row carrying §28.7 provenance (`effect`, `matchedLevel`,
+  `matchedRuleId`, `matchedPrincipal`, `fallbackChain`) + the request
+  context (required code, mode, http method, route pattern). The 403
+  response body remains the canon §28 bland shape
+  `{ statusCode: 403, message: 'Permission denied', code:
+  'PERMISSION_DENIED' }` — forensic detail goes to the audit log,
+  never the wire. PermissionsGuard switched from verbose-message
+  403 to the bland shape as part of the same change. Adapter
+  implementation in `apps/api/src/app/metadata/access/services/
+  access-audit.service.ts` writes the row with
+  `decision = 'DENY'`. Fire-and-forget semantics preserved — a down
+  audit table cannot regress runtime correctness.
+
 - 2026-05-17 (W2 Stream 2 PR5): §28.6 amendment — search admin
   short-circuit retired. `apps/api/src/app/ava/search/
   search-query.service.ts:buildAuthzAst` no longer carries the

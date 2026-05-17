@@ -5,9 +5,12 @@ import { AccessAuditLog, AccessRuleAuditLog } from '@hubblewave/instance-db';
 import type {
   AccessAuditEvent,
   AccessAuditPort,
+  AccessDeniedEvent,
+  SecurityAuditEvent,
+} from '@hubblewave/auth-guard';
+import type {
   DecisionProvenance,
   FieldDecisionProvenance,
-  SecurityAuditEvent,
 } from '@hubblewave/authorization';
 
 @Injectable()
@@ -85,6 +88,38 @@ export class AccessAuditService implements AccessAuditPort {
     });
     this.auditRepo.save(log).catch((err) => {
       this.logger.error('Failed to write security event audit log', err);
+    });
+  }
+
+  /**
+   * W2 Stream 2 PR6 — write an audit row for a 403 produced by the
+   * guard chain (`PermissionsGuard` or `CollectionAccessGuard`).
+   * Captures the §28.7 deny provenance alongside the request context
+   * so operators can answer "why did user X get 403 on route Y"
+   * directly from the audit log without re-running the evaluator.
+   *
+   * Same fire-and-forget posture as `logAdminBypass` /
+   * `logSecurityEvent` — a down audit table must not regress runtime
+   * correctness (the 403 is the authoritative response; failing to
+   * record an audit row must not turn into a 500).
+   */
+  logAccessDenied(event: AccessDeniedEvent): void {
+    const log = this.auditRepo.create({
+      userId: event.userId,
+      resource: `${event.resource.kind}:${event.resource.identifier}`,
+      action: 'access_denied',
+      decision: 'DENY',
+      context: {
+        additionalData: {
+          resourceKind: event.resource.kind,
+          resourceIdentifier: event.resource.identifier,
+          authzProvenance: event.provenance,
+          ...(event.requestContext ?? {}),
+        },
+      },
+    });
+    this.auditRepo.save(log).catch((err) => {
+      this.logger.error('Failed to write access-denied audit log', err);
     });
   }
 

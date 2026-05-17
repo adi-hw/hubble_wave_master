@@ -12,7 +12,7 @@ import {
 import {
   ACCESS_AUDIT_PORT,
   type AccessAuditPort,
-} from '@hubblewave/authorization';
+} from '@hubblewave/auth-guard';
 import { LoginDto } from './dto/login.dto';
 import { MfaService } from './mfa.service';
 import { AuthEventsService } from './auth-events.service';
