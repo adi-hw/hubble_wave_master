@@ -3484,11 +3484,177 @@ Adds branches to `JwtAuthGuard` for `kiosk` + `collaborator` audiences; the no-u
 
 ---
 
-### 13.13 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.13 Worked example: §3.12 Storage & Evidence Attachment Runtime (full artifact-level spec — generic pre-signed upload + AV/secret/PII scan + object-lock + retention)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.12 cover §3.1 — §3.11; the remaining 7 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.13.1 Tables
 
-**Substrate (7 remaining sections — §3.1-§3.11 ✅):**
+Two new tables in `schema: 'storage'` (NEW schema). Shared substrate consumed by §3.6 evidence_artifacts, §3.9 intake attachments, and every pack that handles file uploads.
+
+**`storage.attachment_uploads`** — one row per upload request.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `purpose` | `varchar(64)` | — | NOT NULL | E.g. `loto_photo`, `evidence_attachment`, `contractor_upload`, `nameplate_photo`, `asset_pin_voice_note`, `invoice_pdf`, `intake_attachment` |
+| `scope_collection_id` | `uuid` | — | NULL | When non-NULL, the upload is bound to a specific collection's record |
+| `scope_record_id` | `uuid` | — | NULL | The record the upload eventually links to |
+| `requested_by_user_id` | `uuid` | — | NULL | NULL when issued by a system principal (e.g. intake submission); FK otherwise |
+| `requested_by_principal_kind` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{user, intake, collaborator, service}` |
+| `presigned_url` | `text` | — | NOT NULL | Returned to client; S3 PUT URL; signed with 15-minute expiry |
+| `presigned_url_expires_at` | `timestamptz` | — | NOT NULL | — |
+| `expected_size_bytes` | `bigint` | — | NULL | Hint from client (validation only) |
+| `actual_size_bytes` | `bigint` | — | NULL | Filled by ingest worker post-upload |
+| `content_type` | `varchar(128)` | — | NOT NULL | Declared by client; ingest worker verifies via magic-byte sniffing |
+| `actual_content_type` | `varchar(128)` | — | NULL | Detected post-upload; mismatch → `quarantined` |
+| `content_hash_sha256` | `bytea` | — | NULL | 32 bytes; computed by ingest worker |
+| `s3_object_key` | `text` | — | NOT NULL | `instance/{instance_id}/storage/{purpose}/{yyyy/mm/dd}/{id}` |
+| `s3_bucket` | `varchar(120)` | — | NOT NULL | Per-instance bucket name |
+| `s3_version_id` | `text` | — | NULL | Filled post-upload from S3 response |
+| `s3_object_lock_mode` | `varchar(16)` | `'COMPLIANCE'` | NOT NULL | CHECK ∈ `{COMPLIANCE, GOVERNANCE}` per §13.7 founder-locked default |
+| `retention_until` | `timestamptz` | — | NULL | Filled by `link-on-clean` worker based on purpose's retention class |
+| `legal_hold` | `boolean` | `false` | NOT NULL | — |
+| `status` | `varchar(16)` | `'presigned'` | NOT NULL | CHECK ∈ `{presigned, uploaded, scanning, quarantined, clean, linked, expired}` |
+| `quarantine_reason` | `varchar(120)` | — | NULL | Filled on `status='quarantined'` |
+| `linked_artifact_table` | `varchar(64)` | — | NULL | E.g. `compliance.evidence_artifacts`, `intake.public_intake_attachments`; the table the linked-on-clean row was written to |
+| `linked_artifact_id` | `uuid` | — | NULL | FK to the linked artifact's row in `linked_artifact_table` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `uploaded_at` | `timestamptz` | — | NULL | Stamped by ingest worker |
+| `linked_at` | `timestamptz` | — | NULL | Stamped by `link-on-clean` worker |
+
+Indexes: PK; `ix_au_status ON (status, created_at) WHERE status IN ('presigned', 'uploaded', 'scanning', 'quarantined')`; `ix_au_scope ON (scope_collection_id, scope_record_id) WHERE status = 'linked'`; UNIQUE `(s3_bucket, s3_object_key)`; `ix_au_purpose ON (purpose, created_at DESC)`.
+
+**`storage.attachment_scan_results`** — per-scan-pass result rows.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `attachment_upload_id` | `uuid` | — | NOT NULL | FK → `attachment_uploads(id)` |
+| `scan_kind` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{av, secret, pii, content_type}` |
+| `scanner_name` | `varchar(64)` | — | NOT NULL | E.g. `clamav-0.103`, `gitleaks-8.18`, `presidio-2.2`, `magic-byte-libmagic-5.45` |
+| `scanner_version` | `varchar(32)` | — | NOT NULL | — |
+| `verdict` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{clean, suspicious, dirty, error}` |
+| `details` | `jsonb` | `'{}'::jsonb` | NOT NULL | Scanner-specific findings (e.g., signature names, secret token kinds, PII categories) |
+| `started_at` | `timestamptz` | — | NOT NULL | — |
+| `finished_at` | `timestamptz` | — | NOT NULL | — |
+| `error_message` | `text` | — | NULL | Populated when `verdict='error'` |
+
+Indexes: PK; `ix_asr_upload ON (attachment_upload_id, scan_kind)`; `ix_asr_dirty ON (verdict) WHERE verdict IN ('suspicious', 'dirty')`.
+
+#### 13.13.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1938000000000-create-storage-schema.ts` | `CREATE SCHEMA storage;` |
+| 2 | `1938000000001-create-attachment-uploads.ts` | Table + indexes |
+| 3 | `1938000000002-create-attachment-scan-results.ts` | Table + indexes |
+
+#### 13.13.3 Services
+
+`apps/api/src/app/storage/` (new API module) + `apps/worker/src/storage/` (new worker module).
+
+**`StoragePresignService`** — `apps/api/src/app/storage/presign.service.ts`:
+
+```typescript
+requestUpload(input: PresignRequest, ctx: RequestContext): Promise<PresignResult>;
+```
+
+`PresignRequest` carries `{ purpose, scopeCollectionId?, scopeRecordId?, expectedSizeBytes?, contentType }`. Flow:
+1. Resolve purpose policy from a config registry (purpose-to-(retention_class, max_size_bytes, allowed_content_types) mapping declared by packs).
+2. Validate `expectedSizeBytes ≤ purpose.max_size_bytes` and `contentType ∈ purpose.allowed_content_types`.
+3. Authorization: callers must hold `storage:upload:request` permission OR be one of the trusted principal kinds (intake processor, collaborator session). The request_context's `kind` drives this check.
+4. Generate `s3_object_key`, mint a 15-minute presigned PUT URL via S3 SDK, write `attachment_uploads` row via `withAudit` with `status='presigned'`.
+5. Return `{ uploadId, presignedUrl, expiresAt, objectKey }`.
+
+**`AttachmentIngestProcessor`** — worker side; triggered by S3 event notification (`s3:ObjectCreated:Put`):
+1. Look up `attachment_uploads` row by `s3_object_key`; if not found OR `status != 'presigned'` → emit RuntimeAnomaly (`storage_ingest_unexpected_object`) and quarantine.
+2. Verify `actual_size_bytes ≤ purpose.max_size_bytes`; mismatch → `quarantined`.
+3. Sniff magic bytes; if `actual_content_type` mismatches declared → `quarantined`.
+4. Compute SHA-256 → `content_hash_sha256`.
+5. Set `status='scanning'`, `uploaded_at=now()`. Enqueue per-scanner jobs.
+
+**`AvScanProcessor`** — ClamAV (or pluggable); writes `attachment_scan_results` row with `scan_kind='av'`.
+**`SecretScanProcessor`** — gitleaks-rules-based; writes row with `scan_kind='secret'`.
+**`PiiScanProcessor`** — Presidio or equivalent; writes row with `scan_kind='pii'`.
+
+Each scanner's verdict feeds into a state-machine check:
+- ALL `verdict='clean'` → `status='clean'`; trigger link-on-clean.
+- ANY `verdict='dirty'` → `status='quarantined'`; `quarantine_reason=<details>`; emit RuntimeAnomaly.
+- ANY `verdict='suspicious'` → quarantine + emit RuntimeAnomaly; secret/PII findings always treated as quarantine (deliberately strict).
+- ANY `verdict='error'` AND no other dirty → retry the failed scan once; second error → quarantine with reason `scan_error_retry_exhausted`.
+
+**`LinkOnCleanProcessor`** — runs when ALL configured scans for the purpose return `clean`:
+1. Compute `retention_until` from `purpose.retention_class` (uses the §13.7 classes — `part_11_clinical`, `osha`, etc.).
+2. Apply S3 `PutObjectRetention` with `ObjectLockRetainUntilDate=retention_until` and `Mode='COMPLIANCE'` (per §3.6 founder default).
+3. Resolve `purpose.link_target` and INSERT the artifact row into the target table (`compliance.evidence_artifacts` for evidence purposes; `intake.public_intake_attachments` already exists from §13.10 — the link-on-clean stamps `scan_status='clean'` rather than inserting a new row).
+4. Update `attachment_uploads` row: `status='linked'`, `linked_artifact_table`, `linked_artifact_id`, `linked_at`.
+
+**`ExpiredPresignSweeper`** — worker; scheduled every 5 minutes:
+- Finds rows where `status='presigned'` AND `presigned_url_expires_at < now() - INTERVAL '1 hour'`. Marks them `status='expired'` so they don't accumulate.
+
+#### 13.13.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/storage/uploads` | `@AuthenticatedOnly()` (per-purpose authorization inside service) | `{ purpose, scopeCollectionId?, scopeRecordId?, expectedSizeBytes?, contentType }` returns `{ uploadId, presignedUrl, expiresAt }` |
+| `GET` | `/api/storage/uploads/:id` | `@RequirePermission('storage:upload:read')` | — returns status + scan results |
+| `GET` | `/api/storage/uploads/:id/download-url` | `@RequireCollectionAccess('read')` (resolved via `scope_collection_id`/`scope_record_id`) | — returns a 60-second signed GET URL when `status='linked'` |
+
+New permission code: `storage:upload:read`. The `requestUpload` controller is `@AuthenticatedOnly()` because purpose-specific authorization is too dynamic for a single boundary decorator — the service computes it from purpose policy + principal kind.
+
+#### 13.13.5 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G13.1** — Pack `storage.purposes[]` MUST declare `(name, retention_class, max_size_bytes, allowed_content_types[], link_target_table)`. Error: `MISSING_STORAGE_PURPOSE_DECLARATION`.
+2. **G13.2** — `retention_class` MUST be in the §13.7 canonical enum. Error: `INVALID_RETENTION_CLASS`.
+3. **G13.3** — `link_target_table` MUST be one of the registered receivers: `compliance.evidence_artifacts`, `intake.public_intake_attachments`, or a pack-declared table whose schema includes the required columns (sha256, content_type, size_bytes, s3_object_version_id). Error: `INVALID_LINK_TARGET`.
+
+#### 13.13.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `AttachmentUpload` | `StoragePresignService.requestUpload`, `AttachmentIngestProcessor.process`, `LinkOnCleanProcessor.link`, `ExpiredPresignSweeper.sweep` |
+| `AttachmentScanResult` | `AvScanProcessor`, `SecretScanProcessor`, `PiiScanProcessor`, `AttachmentIngestProcessor` (for content_type results) |
+
+Pack consumers MUST call `StoragePresignService.requestUpload(...)` for uploads; direct `storage.*` writes from packs fail the scanner.
+
+#### 13.13.7 Tests (self-test ≥ 12 assertions)
+
+1. **`storage-presign-happy-path.spec.ts`** — request upload; receive presigned URL; PUT to LocalStack S3; ingest worker fires; SHA-256 computed; scans clean; link-on-clean inserts into `compliance.evidence_artifacts`; status `linked`.
+2. **`storage-presign-expired-url.spec.ts`** — wait 16 minutes; attempt PUT → S3 rejects; ExpiredPresignSweeper marks row `expired`.
+3. **`storage-size-cap.spec.ts`** — request 30MB upload for a purpose with `max_size_bytes=25MB` → `BAD_REQUEST` at presign; PUT of oversize file rejected by ingest worker → `quarantined`.
+4. **`storage-content-type-mismatch.spec.ts`** — declare `application/pdf`; upload a PNG; magic-byte sniff detects mismatch; `quarantined` with reason `content_type_mismatch`.
+5. **`storage-av-dirty.spec.ts`** — ClamAV verdict `dirty`; row `quarantined`; RuntimeAnomaly emitted.
+6. **`storage-secret-dirty.spec.ts`** — upload contains an AWS access key string; secret scanner flags; `quarantined`; RuntimeAnomaly.
+7. **`storage-pii-suspicious.spec.ts`** — upload contains PII (SSN-shaped); Presidio flags `suspicious`; `quarantined` (suspicious is treated as quarantine).
+8. **`storage-scan-error-retry.spec.ts`** — AV scanner crashes once; scan retried; second attempt clean; row proceeds to `linked`.
+9. **`storage-scan-error-exhausted.spec.ts`** — AV scanner crashes twice; row `quarantined` with reason `scan_error_retry_exhausted`.
+10. **`storage-link-on-clean-target-routing.spec.ts`** — purpose `intake_attachment` routes to `intake.public_intake_attachments`; purpose `evidence_attachment` routes to `compliance.evidence_artifacts`. Mistaken target → G13.3 validator refusal at pack-publish time.
+11. **`storage-download-authz.spec.ts`** — linked artifact; user without `@RequireCollectionAccess('read')` on the scope record → 403; with access → 60s signed URL.
+12. **`storage-service-boundary-scanner.spec.ts`** — adding a `attachmentUploadsRepo.save()` call from outside the allowed-writers list fails the scanner.
+
+#### 13.13.8 PR breakdown for §3.12
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + tables + entities + `StoragePresignService` + presign endpoint + tests 1 (partial), 3 | Migrations 1-3; entity area patch; `apps/api/src/app/storage/**`; validator G13.1-G13.3 | Presign URL returned; row written; size cap enforced; validator gates pack declarations |
+| 2 | `AttachmentIngestProcessor` + content-type sniff + SHA-256 + `ExpiredPresignSweeper` + tests 2, 4 | `apps/worker/src/storage/ingest.processor.ts`; SchedulingModule wire | Ingest stamps actual values; mismatch quarantines; expired sweep runs |
+| 3 | AV + secret + PII scanners + state machine + tests 5, 6, 7 | `apps/worker/src/storage/av-scan.processor.ts` + `secret-scan.processor.ts` + `pii-scan.processor.ts`; ClamAV deployment manifest | All dirty/suspicious paths quarantine + emit RuntimeAnomaly |
+| 4 | Scan retry semantics + tests 8, 9 | State-machine extension; scan-error retry counter | Single-error retried; double-error quarantined |
+| 5 | `LinkOnCleanProcessor` + retention_until computation + COMPLIANCE Object Lock + link target routing + tests 1 (full), 10, 11 | `apps/worker/src/storage/link-on-clean.processor.ts`; S3 PutObjectRetention; download endpoint | Clean uploads land in correct target table; COMPLIANCE applied; signed download URL works |
+| 6 | Canon §38 amendment + service-boundary scanner extension + ExpiredPresignSweeper + test 12 | CLAUDE.md amendment; `tools/service-boundary-check.ts` updates | Scanner blocks external writes; canon merged |
+
+**Total: 6 PRs for §3.12. Estimated effort: ~10-13 working days.**
+
+---
+
+### 13.14 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.13 cover §3.1 — §3.12; the remaining 6 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (6 remaining sections — §3.1-§3.12 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -3500,7 +3666,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.9 public intake hardened — §13.10 (5 PRs)
 - ✅ §3.10 break-glass override — §13.11 (4 PRs)
 - ✅ §3.11 external-collaborator sessions — §13.12 (5 PRs)
-- §3.12 Storage / Evidence Attachment runtime (6 PRs)
+- ✅ §3.12 Storage / Evidence Attachment runtime — §13.13 (6 PRs)
 - §3.13 Connector runtime + simulators (5 PRs)
 - §3.14 Semantic Search / Vector Match (4 PRs)
 - §3.15 Spatial + Relationship Graph (5 PRs)
@@ -3522,7 +3688,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.14 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.15 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3543,7 +3709,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.15 What's left to do BEFORE code starts
+### 13.16 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
