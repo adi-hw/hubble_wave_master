@@ -1,6 +1,6 @@
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
+import type { InstanceRequest } from '@hubblewave/auth-guard';
 import { ServicePrincipal } from '@hubblewave/instance-db';
 import { ServiceTokenController } from './service-token.controller';
 import { ServiceBootstrapService } from './service-bootstrap.service';
@@ -58,10 +58,10 @@ describe('ServiceTokenController', () => {
     return new ServiceTokenController(bootstrap, issuer, config);
   }
 
-  function buildRequest(): Request {
+  function buildRequest(): InstanceRequest {
     return {
       headers: { authorization: 'Bearer some.k8s.token' },
-    } as unknown as Request;
+    } as unknown as InstanceRequest;
   }
 
   it('returns the minted token + expiresIn on success', async () => {
