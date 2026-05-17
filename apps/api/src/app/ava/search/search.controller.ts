@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
+  AuthenticatedOnly,
   CurrentUser,
   JwtAuthGuard,
+  PermissionsGuard,
   RequestUser,
-  Roles,
-  RolesGuard,
+  RequirePermission,
   extractContext,
   InstanceRequest,
 } from '@hubblewave/auth-guard';
@@ -13,8 +14,16 @@ import { SearchQueryService } from './search-query.service';
 import { SearchExperienceService } from './search-experience.service';
 import { SearchReindexService, SearchReindexRequest } from './search-reindex.service';
 
+/**
+ * Canon §28 / §11 / W2 Stream 3 — universal search surface. The user
+ * search experiences + query endpoints are `@AuthenticatedOnly` (per-
+ * record ACLs apply inside the search-authz emitter, canon §28); the
+ * reindex trigger consumes platform compute and is gated by
+ * `ava:admin`. The pre-W2 `RolesGuard` + bare `@Roles('admin')` are
+ * retired.
+ */
 @Controller('search')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SearchController {
   constructor(
     private readonly searchQuery: SearchQueryService,
@@ -23,12 +32,14 @@ export class SearchController {
   ) {}
 
   @Get('experiences')
+  @AuthenticatedOnly()
   async listExperiences(@Req() req?: InstanceRequest) {
     const context = extractContext(req || {});
     return this.experienceService.listForContext(context);
   }
 
   @Get('query')
+  @AuthenticatedOnly()
   async query(
     @Query('q') q: string,
     @Query('experience_code') experienceCode?: string,
@@ -66,7 +77,7 @@ export class SearchController {
   }
 
   @Post('reindex')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   async reindex(@Body() body: SearchReindexRequest, @CurrentUser() user?: RequestUser) {
     return this.reindexService.reindex(body, user?.id);
   }

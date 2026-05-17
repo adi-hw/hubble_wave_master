@@ -190,7 +190,7 @@ export class AVAController {
   async chat(
     @CurrentUser() user: RequestUser,
     @Body() dto: ChatRequestDto,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
     const dataSource = this.dataSource;
     const organizationId = resolveOrganizationId(req);
@@ -305,7 +305,7 @@ export class AVAController {
   async chatStream(
     @CurrentUser() user: RequestUser,
     @Body() dto: ChatRequestDto,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
     @Res() res: Response
   ) {
     const dataSource = this.dataSource;
@@ -429,7 +429,7 @@ export class AVAController {
   @ApiResponse({ status: 200, description: 'List of conversations' })
   async getConversations(
     @CurrentUser() user: RequestUser,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
   ) {
     const dataSource = this.dataSource;
@@ -451,7 +451,7 @@ export class AVAController {
   async getConversation(
     @CurrentUser() user: RequestUser,
     @Param('id') conversationId: string,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
     const dataSource = this.dataSource;
     const organizationId = resolveOrganizationId(req);
@@ -476,7 +476,7 @@ export class AVAController {
   async deleteConversation(
     @CurrentUser() user: RequestUser,
     @Param('id') conversationId: string,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
     const dataSource = this.dataSource;
     const organizationId = resolveOrganizationId(req);
