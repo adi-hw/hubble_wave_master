@@ -2851,11 +2851,109 @@ Self-test count: 18 integration tests × ≥ 1 primary assertion + 8 assertions 
 
 ---
 
-### 13.9 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.9 Worked example: §3.8 AVA Runtime UI Synthesis (full artifact-level spec — Invisible Manual + transient FormDefinition rendering)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.8 cover §3.1 — §3.7; the remaining 11 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.9.1 Tables
 
-**Substrate (11 remaining sections — §3.1-§3.7 ✅):**
+No new persistent tables (request-scoped synthesis per §3.8 prose). Three additive columns on the existing `ava.ava_proposals` entity (canon §11/§12):
+
+**`ava.ava_proposals`** — gains three columns:
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `synthesis_kind` | `varchar(64)` | — | NULL | Set when proposal carries a synthesized `FormDefinition`; values e.g. `troubleshooting_checklist`, `manual_excerpt_form`, `inline_diagnostic_grid` |
+| `synthesized_form_def` | `jsonb` | — | NULL | Full `FormDefinition` JSON; rendered by client via `@hubblewave/ui-primitives` |
+| `validator_passed` | `boolean` | — | NULL | `true` when `FormDefinitionValidator.validate()` returned no errors; `false` when synthesis was refused (proposal still recorded for canon §12 traceability — the auditor sees what AVA *tried* to render even when refused) |
+
+Index: `ix_ava_synthesis_kind ON (synthesis_kind) WHERE synthesis_kind IS NOT NULL` — partial; supports "show me all troubleshooting synthesis attempts in the last week" queries.
+
+#### 13.9.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1934000000000-add-ava-proposal-synthesis-columns.ts` | `ALTER TABLE ava.ava_proposals ADD COLUMN synthesis_kind varchar(64) NULL, ADD COLUMN synthesized_form_def jsonb NULL, ADD COLUMN validator_passed boolean NULL;` + index via `createIndexConcurrent` |
+
+#### 13.9.3 Services
+
+`apps/api/src/app/ava/synthesis/` (new submodule under existing `ava` module).
+
+**`AvaFormSynthesisService`** — `apps/api/src/app/ava/synthesis/ava-form-synthesis.service.ts`:
+
+```typescript
+synthesize(input: SynthesisRequest, ctx: UserRequestContext): Promise<SynthesisResult>;
+```
+
+`SynthesisRequest` carries `{ toolName: string; toolInput: Record<string, unknown>; targetCollectionId?: string; targetRecordId?: string; }`. Flow:
+1. Resolve the registered `AVATool` by `toolName`; refuse with 404 if unknown. Every synthesis tool is gated through canon §12 trust progression — the tool's `trust_state` column (existing) determines whether the result auto-renders (`execute`) or requires a Preview confirmation (`suggest`/`preview`).
+2. Invoke the tool's handler (registered by the pack at boot via `AVAToolRegistry.register({ name, handler, trust_state })`). Handler returns a candidate `FormDefinition` JSON.
+3. Pass the candidate through `FormDefinitionValidator.validate(candidate, { synthesisMode: true })`. The validator is the SAME one pack-shipped forms use — only `@hubblewave/ui-primitives` primitive names allowed, no escape hatches. Synthesis-mode adds two additional rules: (a) max 20 fields, (b) max nested depth of 3 (prevents AVA from emitting a UI bomb).
+4. Write an `AVAProposal` row inside `withAudit(...)` with `synthesis_kind`, `synthesized_form_def` (if validator passed), `validator_passed = boolean`. The trust-state policy determines `proposal_state`: `execute` → `applied`; `suggest`/`preview` → `pending_review`.
+5. Return `{ proposalId, formDef?, validatorErrors?, trustState }`.
+
+The handler-emitted `FormDefinition` is NEVER persisted to `metadata.form_definitions` — pack-shipped vs synthesized forms are distinct surfaces. Persisted forms come through pack publishers; synthesized forms render-and-vanish via the proposal row.
+
+**`FormDefinitionValidator`** — extended (existing service from §3.7 G8.4):
+
+```typescript
+validate(formDef: FormDefinition, options?: { synthesisMode?: boolean }): ValidationResult;
+```
+
+Synthesis mode additionally enforces field-count + depth caps. Errors emit structured codes: `SYNTHESIS_FIELD_CAP_EXCEEDED`, `SYNTHESIS_NEST_DEPTH_EXCEEDED`.
+
+#### 13.9.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/ava/synthesize` | `@RequirePermission('ava:synthesis:invoke')` | `{ toolName, toolInput, targetCollectionId?, targetRecordId? }` returns `{ proposalId, formDef?, validatorErrors?, trustState }` |
+| `GET` | `/api/ava/proposals/:id/synthesis` | `@RequirePermission('ava:proposal:read')` | — returns the persisted `synthesized_form_def` for audit/replay |
+
+New permission codes in `PERMISSION_REGISTRY`:
+- `ava:synthesis:invoke`
+- `ava:proposal:read` (reused from canon §11)
+
+#### 13.9.5 Validator extensions
+
+Pack validator gains 2 publish gates:
+
+1. **G9.1** — Pack `ava_tools[]` declarations MUST resolve to functions exported by the pack's `ava-tools/` directory; registration signature `AVAToolRegistry.register({ name, handler, trust_state })`. Error: `MISSING_AVA_TOOL_HANDLER`.
+2. **G9.2** — Every `ava_tools[].trust_state` MUST be in `{suggest, preview, execute}` per canon §12 per-feature trust progression. Error: `INVALID_TRUST_STATE`.
+
+#### 13.9.6 Service-boundary scanner rules
+
+Writes to `ava.ava_proposals` already restricted to `AvaProposalService`; allow `AvaFormSynthesisService` in `tools/service-boundary-check.ts` `KNOWN_WRITES`. No new entity-writer rules.
+
+#### 13.9.7 Tests (self-test ≥ 10 assertions)
+
+Integration tests at `apps/api/test/integration/ava-synthesis-*.spec.ts`:
+
+1. **`ava-synthesis-happy-path.spec.ts`** — register `synthesizeTroubleshootingChecklist`; invoke via API; validator passes; proposal row written with `synthesis_kind` + `synthesized_form_def`.
+2. **`ava-synthesis-validator-refuses-non-primitive.spec.ts`** — tool emits `FormDefinition` referencing primitive `LegacyMuiButton` (not in `PRIMITIVE_REGISTRY`); validator rejects; proposal row written with `validator_passed=false` and `synthesized_form_def=null`; API response 422 with structured error.
+3. **`ava-synthesis-field-cap-exceeded.spec.ts`** — tool emits 25 fields; validator rejects with `SYNTHESIS_FIELD_CAP_EXCEEDED`; proposal still written.
+4. **`ava-synthesis-nest-depth-exceeded.spec.ts`** — tool emits 4-level-nested Stack; rejects with `SYNTHESIS_NEST_DEPTH_EXCEEDED`.
+5. **`ava-synthesis-trust-state-suggest.spec.ts`** — tool registered with `trust_state='suggest'`; result `proposal_state = pending_review`; UI must call `confirmProposal` before render.
+6. **`ava-synthesis-trust-state-execute.spec.ts`** — same but `trust_state='execute'`; `proposal_state='applied'`; UI renders directly.
+7. **`ava-synthesis-authorization.spec.ts`** — user without `ava:synthesis:invoke` gets canon §28 minimal 403; `AccessAuditPort.logAccessDenied` row written.
+8. **`ava-synthesis-mobile-primitive-only.spec.ts`** — synthesis on a `sync_to_mobile=true` collection refuses primitives whose `supportedSurfaces` lacks `'mobile'`; reuses §13.8 G8.4.
+9. **`ava-synthesis-canon12-audit.spec.ts`** — every synthesis call (passed AND refused) writes one `audit_logs` row; payload includes tool name + validator result.
+10. **`ava-synthesis-validator-mode-symmetry.spec.ts`** — same `FormDefinition` passes both pack-validator and synthesis-validator; only synthesis-mode additions are field-cap + nest-depth. Regression test for validator drift.
+
+#### 13.9.8 PR breakdown for §3.8
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Migration + entity columns + `AvaFormSynthesisService` + `FormDefinitionValidator` synthesis mode + tests 1, 2, 9, 10 | Migration 1; `ava.ts` entity area patch; `apps/api/src/app/ava/synthesis/**`; validator extension; integration tests | Happy-path renders; invalid primitive refused; audit row per call; validator mode symmetry test green |
+| 2 | API endpoints + permission codes + `AVAToolRegistry` boot wiring + tests 3, 4, 7, 8 | `apps/api/src/app/ava/synthesis/synthesis.controller.ts`; `PERMISSION_REGISTRY` + sync; pack-installer hook | Field-cap rejected; nest-depth rejected; 403 on missing permission; mobile-eligible refusal |
+| 3 | Trust-state plumbing + Suggest/Preview/Execute branches + canon §11 amendment + tests 5, 6 | Trust-state policy lookup; canon §11/§12 amendment to CLAUDE.md | Suggest defers render; Execute renders inline; canon merged |
+
+**Total: 3 PRs for §3.8. Estimated effort: ~4-5 working days.**
+
+---
+
+### 13.10 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.9 cover §3.1 — §3.8; the remaining 10 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (10 remaining sections — §3.1-§3.8 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -2863,7 +2961,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.5 time-series observations — §13.6 (7 PRs)
 - ✅ §3.6 regulated-action + Merkle batch + Part 11 envelope — §13.7 (6 PRs)
 - ✅ §3.7 mobile parity + UI primitives — §13.8 (8 PRs)
-- §3.8 AVA UI synthesis (3 PRs)
+- ✅ §3.8 AVA UI synthesis — §13.9 (3 PRs)
 - §3.9 public intake hardened (5 PRs)
 - §3.10 break-glass override (4 PRs)
 - §3.11 external-collaborator sessions (5 PRs)
@@ -2889,7 +2987,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.10 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.11 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -2910,7 +3008,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.11 What's left to do BEFORE code starts
+### 13.12 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
