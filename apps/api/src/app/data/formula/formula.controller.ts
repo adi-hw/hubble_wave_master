@@ -17,7 +17,13 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, UserRequestContext, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+  UserRequestContext,
+} from '@hubblewave/auth-guard';
 import { FormulaService } from './formula.service';
 import { RollupService } from './rollup.service';
 import { LookupService } from './lookup.service';
@@ -57,6 +63,14 @@ interface ResolveLookupDto {
   sourceCollection: string;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — formula evaluation / validation / rollup /
+ * lookup / dependency analysis are user-facing operations used in
+ * formula authoring + runtime evaluation. Authenticated identity is
+ * sufficient; per-collection ACL applies inside the service when
+ * formulas read collection data.
+ */
+@AuthenticatedOnly()
 @Controller('formulas')
 @UseGuards(JwtAuthGuard)
 export class FormulaController {

@@ -21,7 +21,13 @@ import {
   LLMChatMessage,
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser, AuthenticatedRequest, extractContext } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  AuthenticatedRequest,
+  CurrentUser,
+  JwtAuthGuard,
+  extractContext,
+} from '@hubblewave/auth-guard';
 
 interface QueryDto {
   question: string;
@@ -45,6 +51,14 @@ interface SummarizeDto {
   style?: 'brief' | 'detailed' | 'bullet';
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 — RAG-backed chat is the user-facing
+ * AVA conversational surface. Authenticated identity is sufficient;
+ * per-collection ACL applies in the vector-store layer for RAG
+ * retrieval (the @CurrentUser context is passed through as the
+ * principal so the search emits attribution).
+ */
+@AuthenticatedOnly()
 @ApiTags('AI Chat')
 @ApiBearerAuth()
 @Controller('chat')
