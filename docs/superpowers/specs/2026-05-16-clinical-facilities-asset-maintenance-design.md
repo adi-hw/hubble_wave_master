@@ -3118,11 +3118,176 @@ Additionally added to `tools/security-bypass-check.ts` `PUBLIC_ALLOWLIST` (the t
 
 ---
 
-### 13.11 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.11 Worked example: §3.10 Break-Glass Field Override (full artifact-level spec — time-bound unmasking + hard-deny classes + canon §28.10)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.10 cover §3.1 — §3.9; the remaining 9 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.11.1 Tables + additive columns
 
-**Substrate (9 remaining sections — §3.1-§3.9 ✅):**
+Two additive columns on the existing `metadata.property_definitions` table, plus one new table in `schema: 'compliance'`.
+
+**`metadata.property_definitions`** — gains two columns:
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `break_glass_eligible` | `boolean` | `false` | NOT NULL | When `true`, property can be unmasked via a time-bound grant (subject to confidentiality_class) |
+| `confidentiality_class` | `varchar(64)` | `'internal'` | NOT NULL | CHECK ∈ `{public, internal, sensitive, never_reveal, legal_hold, sealed_investigation, system_secret, unrelated_patient_context}`; the five hard-deny values are mutually exclusive with `break_glass_eligible=true` (validator G11.1) |
+
+Index: `ix_pd_break_glass ON (collection_id, break_glass_eligible) WHERE break_glass_eligible = true`.
+
+**`compliance.field_unmask_grants`** — time-bound grant rows.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `principal_user_id` | `uuid` | — | NOT NULL | FK → `identity.users(id)`; the user receiving the unmask |
+| `collection_id` | `uuid` | — | NOT NULL | FK |
+| `record_id` | `uuid` | — | NOT NULL | The specific record |
+| `property_id` | `uuid` | — | NOT NULL | FK → `metadata.property_definitions(id)`; CHECK at insert that `property.break_glass_eligible = true` AND `property.confidentiality_class NOT IN (hard-deny enum)` |
+| `granted_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `granted_until` | `timestamptz` | — | NOT NULL | Bounded duration (default 10 minutes; per-pack policy may extend up to 60 minutes) |
+| `reason_code_id` | `uuid` | — | NOT NULL | FK → `compliance.reason_codes(id)`; reason_code's `applicable_signature_meanings` must include `'break_glass'` (new meaning) OR the platform-default `platform__break_glass_phi_access` row |
+| `signature_chain_entry_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `compliance.signature_chains(id)`; binds the grant to the §13.7 compliance chain |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `revoked_at` | `timestamptz` | — | NULL | Set by auto-revoker OR manual revoke |
+| `revocation_reason` | `varchar(64)` | — | NULL | `auto_expired` / `manual_revoke` / `principal_session_ended` / `compromise_response` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_fug_active ON (principal_user_id, collection_id, record_id, property_id) WHERE revoked_at IS NULL AND granted_until > now()` — partial; this is the cache-bust target for `compliance:break_glass:grant:invalidate` events; `ix_fug_expiring ON (granted_until) WHERE revoked_at IS NULL` — for the auto-revoker sweep.
+
+**§13.11 extends `compliance.reason_codes.applicable_signature_meanings` enum to include `'break_glass'`** (the signature meaning enum stays at 5 values; `break_glass` is an *applicable-meaning* tag distinct from the `signature_meaning` column on `electronic_signatures`). The signature row that authorizes a break-glass grant uses `signature_meaning='responsibility'` per the §13.7.5.1 matrix (so a fresh WebAuthn assertion is required), AND `reason_code.applicable_signature_meanings` must contain `'break_glass'`.
+
+#### 13.11.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1936000000000-add-property-confidentiality-columns.ts` | `ALTER TABLE metadata.property_definitions ADD COLUMN break_glass_eligible boolean NOT NULL DEFAULT false, ADD COLUMN confidentiality_class varchar(64) NOT NULL DEFAULT 'internal';` + CHECK + index via `createIndexConcurrent` |
+| 2 | `1936000000001-create-field-unmask-grants.ts` | Table + indexes; CHECK that grants reference eligible non-hard-deny properties |
+| 3 | `1936000000002-seed-break-glass-reason-codes.ts` | Seed `platform__break_glass_phi_access` (applicable meanings `['break_glass']`), `platform__break_glass_legal_request`, `platform__break_glass_incident_response` |
+
+#### 13.11.3 Services
+
+`apps/api/src/app/compliance/break-glass/` (new submodule under existing compliance module).
+
+**`BreakGlassService`** — `apps/api/src/app/compliance/break-glass/break-glass.service.ts`:
+
+```typescript
+requestGrant(input: GrantRequest, ctx: UserRequestContext): Promise<GrantResult>;
+revokeGrant(grantId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+listActiveGrants(filter: GrantFilter, ctx: UserRequestContext): Promise<FieldUnmaskGrant[]>;
+```
+
+`requestGrant(...)` flow:
+1. Resolve target `property_definitions` row. Refuse with structured error `BREAK_GLASS_PROPERTY_INELIGIBLE` if `break_glass_eligible=false` OR `confidentiality_class ∈ {never_reveal, legal_hold, sealed_investigation, system_secret, unrelated_patient_context}`. **The hard-deny class check is the first thing checked** — even if a misconfigured grant somehow reaches insert, the property-level eligibility check at evaluator time still wins.
+2. Validate authority — user must hold `compliance:break_glass:request` permission AND have READ access to the record (i.e., can SEE the masked-or-omitted field; break-glass unmasks what the user already has row-visibility for).
+3. Require fresh WebAuthn re-auth (per §13.7.5.1 `responsibility` tier; per-call, not session); reuse `WebAuthnService.verifyAssertion`.
+4. Validate `reason_code_id` is active AND its `applicable_signature_meanings` includes `'break_glass'`.
+5. Compute `granted_until = now() + min(requested_duration, 60 minutes, pack_policy.max_break_glass_duration)`. Default 10 minutes; pack manifest may declare a tighter cap per purpose.
+6. Inside `withAudit(...)`:
+   - Insert `electronic_signatures` row with `signature_meaning='responsibility'` and `reason_code_id` (binds the action to canon §10 + §32).
+   - Insert `field_unmask_grants` row referencing `signature_chains` from the previous step.
+   - Emit `compliance:break_glass:grant:invalidate` event on the cache-invalidation bus (canon F025) so subsequent reads pick up the grant immediately.
+7. Return `{ grantId, grantedUntil, signatureChainEntryId, auditLogId }`.
+
+`revokeGrant(...)`:
+- Manual revoke requires `compliance:break_glass:revoke` permission. Sets `revoked_at + revocation_reason='manual_revoke'`. Writes audit + emits cache-bust.
+- A user revoking their own active grant (e.g., "I'm done; don't leave it sitting") is allowed via `compliance:break_glass:revoke_own` (less-privileged code).
+
+**`BreakGlassRevokerService`** — worker side; `apps/worker/src/compliance/break-glass-revoker.service.ts`:
+- Scheduled via SchedulingModule every 60 seconds.
+- Query: `SELECT id FROM compliance.field_unmask_grants WHERE granted_until <= now() AND revoked_at IS NULL`.
+- For each: set `revoked_at = now(), revocation_reason='auto_expired'`; write audit row; emit cache-bust event.
+- Self-bound batch size 500 per tick (avoids long transactions).
+
+**`AuthorizationService.evaluateFieldDecision`** — extended (existing service from canon §28):
+
+The three-stage evaluator per §3.10 prose:
+
+```typescript
+function evaluateFieldDecision(ctx, property, record): FieldDecision {
+  // Stage 1 — Hard-deny classes (overrides everything, including grants)
+  if (HARD_DENY_CLASSES.has(property.confidentiality_class)) {
+    return { effect: 'deny', matchedLevel: 0, matchedRuleId: 'hard_deny_class', ... };
+  }
+  // Stage 2 — Active grant short-circuits to UNMASK
+  if (property.break_glass_eligible) {
+    const grant = ctx.breakGlassGrantCache.get(`${record.id}:${property.id}`);
+    if (grant && grant.granted_until > now() && !grant.revoked_at) {
+      return { effect: 'allow', matchedLevel: 'break_glass_grant', matchedRuleId: grant.id, ... };
+    }
+  }
+  // Stage 3 — Normal canon §28.5 7-level matrix
+  return evaluateNormalFieldDecision(ctx, property, record);
+}
+```
+
+The grant cache (`UserRequestContext.breakGlassGrantCache`) is request-scoped + populated lazily on first field decision involving an eligible property. Cache-bust events invalidate the entry. The evaluator's `granted_until > now()` check is the fail-safe — even if the auto-revoker is delayed, an expired grant CANNOT unmask because the evaluator sees the past `granted_until` and falls through to stage 3.
+
+#### 13.11.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/compliance/break-glass/grants` | `@RequirePermission('compliance:break_glass:request')` | `{ collectionId, recordId, propertyId, reasonCodeId, requestedDurationSeconds, webauthnAssertion }` |
+| `DELETE` | `/api/compliance/break-glass/grants/:id` | `@RequirePermission('compliance:break_glass:revoke')` OR `compliance:break_glass:revoke_own` (own grants only) | `{ reason }` |
+| `GET` | `/api/compliance/break-glass/grants` | `@RequirePermission('compliance:break_glass:audit_read')` | query: `principalUserId?`, `collectionId?`, `recordId?`, `active?`, `from?`, `to?` — forensic query for Compliance Officer |
+| `GET` | `/api/compliance/break-glass/properties` | `@RequirePermission('metadata:property:read')` | query: `collectionId?` — returns eligibility metadata for UI break-glass button rendering |
+
+New permission codes:
+- `compliance:break_glass:request`
+- `compliance:break_glass:revoke` (revokes any grant; admin)
+- `compliance:break_glass:revoke_own` (less-privileged)
+- `compliance:break_glass:audit_read` (Compliance Officer forensic query)
+
+#### 13.11.5 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G11.1** — A property MUST NOT have BOTH `break_glass_eligible=true` AND `confidentiality_class ∈ hard-deny enum`. Error: `BREAK_GLASS_HARD_DENY_CONFLICT` (lists the offending property + its class).
+2. **G11.2** — Pack manifest `break_glass.max_duration_seconds` MUST be ≤ 3600 (60 minutes platform cap). Error: `BREAK_GLASS_DURATION_CAP_EXCEEDED`.
+3. **G11.3** — Every `reason_codes.applicable_signature_meanings[]` value MUST be a recognized meaning — the enum now includes `'break_glass'` alongside the §13.7.1 five. Error: `INVALID_SIGNATURE_MEANING_TAG` (extends §13.7.7 G7.3).
+
+#### 13.11.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `FieldUnmaskGrant` | `BreakGlassService.requestGrant`, `BreakGlassService.revokeGrant`, `BreakGlassRevokerService.sweep` |
+
+Property column updates to `break_glass_eligible` / `confidentiality_class` go through the existing `PropertyDefinitionService` (already in the metadata-writers list).
+
+#### 13.11.7 Tests (self-test ≥ 14 assertions)
+
+1. **`break-glass-happy-path.spec.ts`** — request grant on eligible property; fresh WebAuthn assertion present; row created; signature chain extended; audit log row written; subsequent record-read returns the unmasked value within `granted_until`.
+2. **`break-glass-hard-deny-class-refused.spec.ts`** — property classified `never_reveal`; request grant → `BREAK_GLASS_PROPERTY_INELIGIBLE`; no row created. Repeat for each of the 5 hard-deny classes.
+3. **`break-glass-not-eligible.spec.ts`** — property with `break_glass_eligible=false` and `confidentiality_class='sensitive'`; request grant → `BREAK_GLASS_PROPERTY_INELIGIBLE`.
+4. **`break-glass-no-row-visibility.spec.ts`** — user lacks row-level read access to record; request grant returns canon §28 minimal 403 (cannot break-glass a row you can't see).
+5. **`break-glass-webauthn-required.spec.ts`** — request grant without fresh assertion → 401; with stale (> 60s) assertion → 401.
+6. **`break-glass-duration-cap.spec.ts`** — request 3700 seconds; clamped to 3600 (platform cap); response includes `grantedUntil` reflecting clamp.
+7. **`break-glass-pack-policy-cap.spec.ts`** — pack with `max_duration_seconds=600` overrides platform default; request 3000 → clamped to 600.
+8. **`break-glass-auto-revoke.spec.ts`** — grant with `granted_until = now()+5s`; wait > 5s + scheduler tick; row has `revoked_at, revocation_reason='auto_expired'`; subsequent record read returns masked.
+9. **`break-glass-evaluator-failsafe.spec.ts`** — grant expired but auto-revoker hasn't run yet (row's `revoked_at` still NULL); evaluator's `granted_until > now()` check returns `mask` (not unmask). The fail-safe holds without scheduler.
+10. **`break-glass-manual-revoke.spec.ts`** — grant created; admin revokes; subsequent reads return masked even before `granted_until`.
+11. **`break-glass-revoke-own.spec.ts`** — user with `revoke_own` revokes own grant; user without `revoke_own` cannot revoke someone else's grant.
+12. **`break-glass-cache-bust.spec.ts`** — grant insertion emits `compliance:break_glass:grant:invalidate`; concurrent request's cache picks up new grant on next field decision (assert via 2-request sequence + cache hit/miss counter).
+13. **`break-glass-forensic-query.spec.ts`** — Compliance Officer with `audit_read` permission queries all grants in date range; CSV export returns every grant including auto-revoke + manual-revoke entries.
+14. **`break-glass-property-validator-conflict.spec.ts`** — pack declares property with `break_glass_eligible=true AND confidentiality_class='legal_hold'`; pack publish refused with G11.1 `BREAK_GLASS_HARD_DENY_CONFLICT`.
+
+#### 13.11.8 PR breakdown for §3.10
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Property column migration + `confidentiality_class` enum + G11.1 validator + tests 2, 3, 14 | Migration 1; `metadata` entity area patch; pack-validator extension | Hard-deny classes refuse grant at validator AND at runtime; eligibility properly checked |
+| 2 | `field_unmask_grants` table + `BreakGlassService.requestGrant/revokeGrant` + WebAuthn re-auth + signature chain integration + tests 1, 4, 5, 6, 7, 10, 11 | Migrations 2+3; entity area patch; `apps/api/src/app/compliance/break-glass/**`; permission registry additions; reason-code seeds | Grants written via withAudit + signature chain; WebAuthn enforced; duration capped; revoke paths work |
+| 3 | `AuthorizationService.evaluateFieldDecision` three-stage extension + cache integration + tests 9, 12 | `libs/authorization/src/lib/authorization.service.ts` patch; cache-invalidation event wiring | Hard-deny first; grant short-circuit; fail-safe on expired-without-revoked grant; cache bust propagates |
+| 4 | `BreakGlassRevokerService` worker + Compliance Officer forensic query endpoint + canon §28.10 amendment + tests 8, 13 | `apps/worker/src/compliance/break-glass-revoker.service.ts`; `apps/api/src/app/compliance/break-glass/audit.controller.ts`; CLAUDE.md amendment | Sweep auto-revokes expired grants; CSV export from forensic endpoint; canon §28.10 merged |
+
+**Total: 4 PRs for §3.10. Estimated effort: ~7-9 working days.**
+
+---
+
+### 13.12 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.11 cover §3.1 — §3.10; the remaining 8 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (8 remaining sections — §3.1-§3.10 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -3132,7 +3297,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.7 mobile parity + UI primitives — §13.8 (8 PRs)
 - ✅ §3.8 AVA UI synthesis — §13.9 (3 PRs)
 - ✅ §3.9 public intake hardened — §13.10 (5 PRs)
-- §3.10 break-glass override (4 PRs)
+- ✅ §3.10 break-glass override — §13.11 (4 PRs)
 - §3.11 external-collaborator sessions (5 PRs)
 - §3.12 Storage / Evidence Attachment runtime (6 PRs)
 - §3.13 Connector runtime + simulators (5 PRs)
@@ -3156,7 +3321,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.12 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.13 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3177,7 +3342,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.13 What's left to do BEFORE code starts
+### 13.14 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
