@@ -1,8 +1,6 @@
 import { Global, Logger, Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
   IDENTITY_RESOLVER_PORT,
   JWT_REVOCATION_PORT,
@@ -132,38 +130,6 @@ import { ServiceTokenController } from './service-token.controller';
     PassportModule,
     RedisModule.forRoot(),
     EventBusModule.forRoot(),
-    // JwtModule remains registered for transitional reasons — passport
-    // and other downstream code that depends on `@nestjs/jwt` types still
-    // resolve through this module. Per canon §29 PR-B the platform no
-    // longer uses HS256 signing or JwtService.sign(); every token is
-    // minted via TokenIssuerService (ES256, KMS-backed). The legacy
-    // JWT_SECRET env var is accepted but unused — a warning is logged at
-    // startup so operators can clean it up. PR-D drops the JwtModule
-    // dependency entirely once no consumer still pulls JwtService.
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => {
-        const logger = new Logger('AuthModule');
-        const jwtSecret = configService.get<string>('JWT_SECRET');
-        if (jwtSecret) {
-          logger.warn(
-            'JWT_SECRET is set but unused — token signing migrated to ' +
-              'KMS-backed ES256 per canon §29 PR-A. Remove JWT_SECRET ' +
-              'once you have confirmed no client still relies on HS256 ' +
-              'tokens.',
-          );
-        }
-        // Provide a placeholder secret so JwtModule construction does
-        // not throw. The secret is not used by any code path post-§29
-        // PR-B; if it were, jwtVerify with the KMS public key would
-        // reject the token before this secret was even consulted.
-        return {
-          secret: jwtSecret || 'unused-post-canon-§29-pr-b',
-          signOptions: { expiresIn: '15m' },
-        };
-      },
-      inject: [ConfigService],
-    }),
     LdapModule,
     EmailModule,
     HttpModule.register({

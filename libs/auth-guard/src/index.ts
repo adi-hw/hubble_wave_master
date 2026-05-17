@@ -9,6 +9,7 @@ export * from './lib/roles.decorator';
 export * from './lib/roles.guard';
 export * from './lib/public.decorator';
 export * from './lib/allow-service-token.decorator';
+export * from './lib/require-service-scope.decorator';
 export * from './lib/permissions.decorator';
 export * from './lib/permissions.guard';
 export * from './lib/skip-maintenance-mode.decorator';
