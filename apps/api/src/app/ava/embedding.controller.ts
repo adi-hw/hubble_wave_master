@@ -19,11 +19,12 @@ import {
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
 import {
-  JwtAuthGuard,
-  CurrentUser,
-  Roles,
-  RolesGuard,
+  AuthenticatedOnly,
   AuthenticatedRequest,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequirePermission,
   extractContext,
 } from '@hubblewave/auth-guard';
 import { RedisService } from '@hubblewave/redis';
@@ -64,10 +65,18 @@ interface SearchDto {
   sourceTypes?: string[];
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 — AVA embeddings management.
+ * Semantic search is user-facing (per-document ACL applies inside
+ * the vector-store via the passed context). Indexing / reindex /
+ * initialize / queue operations are admin-only via method-level
+ * `@RequirePermission('ava:admin')`.
+ */
+@AuthenticatedOnly()
 @ApiTags('AI Embeddings')
 @ApiBearerAuth()
 @Controller('embeddings')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class EmbeddingController {
   private readonly logger = new Logger(EmbeddingController.name);
 
@@ -124,7 +133,7 @@ export class EmbeddingController {
   }
 
   @Post('initialize')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Initialize vector store for this instance' })
   @ApiResponse({ status: 200, description: 'Vector store initialized' })
   async initialize(@CurrentUser() _user: any) {
@@ -283,7 +292,7 @@ export class EmbeddingController {
   }
 
   @Post('reindex')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Schedule a full reindex for this instance' })
   @ApiResponse({ status: 200, description: 'Reindex scheduled' })
   async scheduleReindex(
