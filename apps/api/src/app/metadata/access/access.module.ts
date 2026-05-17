@@ -14,8 +14,8 @@ import {
   Group,
   User,
 } from '@hubblewave/instance-db';
+import { ACCESS_AUDIT_PORT } from '@hubblewave/auth-guard';
 import {
-  ACCESS_AUDIT_PORT,
   ACCESS_RULE_CACHE_INVALIDATION_PORT,
   AuthorizationService,
 } from '@hubblewave/authorization';

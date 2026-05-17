@@ -17,15 +17,13 @@ import {
 } from 'crypto';
 import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import {
+  ACCESS_AUDIT_PORT,
+  type AccessAuditPort,
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
   KEY_SIGNING_SERVICE,
   KeySigningService,
 } from '@hubblewave/auth-guard';
-import {
-  ACCESS_AUDIT_PORT,
-  type AccessAuditPort,
-} from '@hubblewave/authorization';
 import {
   RefreshToken,
   ServicePrincipal,

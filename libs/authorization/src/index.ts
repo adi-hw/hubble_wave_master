@@ -9,14 +9,22 @@ export type {
   FieldDecisionEffect,
 } from './lib/provenance';
 export { AbacService, SafePredicate, LeafPredicate, OrPredicate, NotPredicate } from './lib/abac.service';
+// W2 Stream 2 PR6: AccessAuditPort moved to @hubblewave/auth-guard so
+// the PermissionsGuard + CollectionAccessGuard can call it on 403
+// without creating a cycle through libs/authorization. The
+// authorization library still consumes the port (the evaluator may
+// log AccessDenied for field-level decisions), but it now imports
+// the symbols from auth-guard instead of defining them locally.
 export type {
   AccessAuditPort,
   AccessAuditEvent,
+  AccessDeniedEvent,
+  AuditedDecisionProvenance,
   SecurityAuditEvent,
   SecurityAuditEventKind,
   SecurityAuditSeverity,
-} from './lib/audit-port';
-export { ACCESS_AUDIT_PORT } from './lib/audit-port';
+} from '@hubblewave/auth-guard';
+export { ACCESS_AUDIT_PORT } from '@hubblewave/auth-guard';
 export type {
   AccessRuleCacheInvalidationPort,
   CollectionRuleChangeEvent,

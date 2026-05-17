@@ -21,7 +21,7 @@ import {
   PublicJwk,
   ResolvedIdentity,
 } from '@hubblewave/auth-guard';
-import type { AccessAuditPort } from '@hubblewave/authorization';
+import type { AccessAuditPort } from '@hubblewave/auth-guard';
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   TokenIssuerService,
@@ -278,6 +278,7 @@ function buildAuditPortMock(): AccessAuditPort {
   return {
     logAdminBypass: jest.fn(),
     logSecurityEvent: jest.fn(),
+    logAccessDenied: jest.fn(),
   };
 }
 

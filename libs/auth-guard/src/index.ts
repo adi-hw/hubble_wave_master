@@ -14,6 +14,7 @@ export * from './lib/require-collection-access.decorator';
 export * from './lib/collection-access.port';
 export * from './lib/collection-id-resolver.port';
 export * from './lib/collection-access.guard';
+export * from './lib/audit-port';
 export * from './lib/permissions.decorator';
 export * from './lib/permissions.guard';
 export * from './lib/skip-maintenance-mode.decorator';
