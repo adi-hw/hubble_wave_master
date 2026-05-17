@@ -405,91 +405,144 @@ export class TokenIssuerService implements OnModuleInit {
   }): Promise<RefreshTokenRotationResult> {
     const presentedHash = hashToken(params.presentedToken);
 
-    return this.dataSource.transaction(async (manager) => {
-      const repo = manager.getRepository(RefreshToken);
+    // The rotation logic must distinguish "side effects that must commit
+    // even when the call ends in a 401" from "side effects that must
+    // roll back on any failure". Family revocation on reuse-detection
+    // and family-expiry are in the former bucket — they're security
+    // actions that must persist regardless of the response shape.
+    // Throwing inside a `dataSource.transaction(...)` callback rolls
+    // the transaction back along with the throw, so the revocation
+    // UPDATEs go away with the exception. The rotation logic therefore
+    // runs the inspection + (on the happy path) the consume-and-mint
+    // inside the tx, returns a discriminated outcome, and the side
+    // effects + throw run AFTER the tx commits — outside its rollback
+    // boundary. The W2 Stream 1 PR5 integration test surfaced this:
+    // unit tests with mocked repos didn't show the rollback because the
+    // mock had no rollback semantics; a real Postgres made the bug
+    // visible.
+    type RotationOutcome =
+      | { kind: 'happy'; result: RefreshTokenRotationResult }
+      | { kind: 'unknown_token' }
+      | { kind: 'revoked' }
+      | { kind: 'family_expired'; familyId: string }
+      | {
+          kind: 'reuse_detected';
+          familyId: string;
+          userId: string;
+          sessionId: string;
+        };
 
-      const row = await repo
-        .createQueryBuilder('rt')
-        .where('rt.token_hash = :hash', { hash: presentedHash })
-        .setLock('pessimistic_write')
-        .getOne();
+    const outcome: RotationOutcome = await this.dataSource.transaction(
+      async (manager) => {
+        const repo = manager.getRepository(RefreshToken);
 
-      if (!row) {
-        // Token never existed (or evicted post-revocation). No audit
-        // event — would be too noisy from probes.
-        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
-      }
+        const row = await repo
+          .createQueryBuilder('rt')
+          .where('rt.token_hash = :hash', { hash: presentedHash })
+          .setLock('pessimistic_write')
+          .getOne();
 
-      // Family expiry — anchored to the family root's created_at + TTL.
-      // Successors inherit `expires_at` so the same check fires for
-      // every member of an expired family.
-      if (row.expiresAt < new Date()) {
-        await this.revokeFamily(manager, row.familyId, 'family_expired');
-        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
-      }
+        if (!row) {
+          return { kind: 'unknown_token' };
+        }
 
-      if (row.revokedAt !== null && row.revokedAt !== undefined) {
-        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
-      }
+        // Family expiry — anchored to the family root's created_at + TTL.
+        // Successors inherit `expires_at` so the same check fires for
+        // every member of an expired family.
+        if (row.expiresAt < new Date()) {
+          return { kind: 'family_expired', familyId: row.familyId };
+        }
 
-      if (row.lastUsedAt !== null && row.lastUsedAt !== undefined) {
-        // Canon §29.5 rule 2: token already used → reuse detected.
-        await this.handleReuseDetection({
-          manager,
+        if (row.revokedAt !== null && row.revokedAt !== undefined) {
+          return { kind: 'revoked' };
+        }
+
+        if (row.lastUsedAt !== null && row.lastUsedAt !== undefined) {
+          // Canon §29.5 rule 2: token already used → reuse detected.
+          return {
+            kind: 'reuse_detected',
+            familyId: row.familyId,
+            userId: row.userId,
+            sessionId: row.sessionId,
+          };
+        }
+
+        // Happy path — consume + mint successor.
+        const newToken = generateRefreshToken();
+        const newTokenHash = hashToken(newToken);
+        const now = new Date();
+        // Successor inherits the family root's expires_at (carried on
+        // every row). Rotation does NOT extend the family lifetime.
+        const newExpiresAt = row.expiresAt;
+
+        // Order matters: the `refresh_tokens_replaced_by_token_id_fkey`
+        // constraint requires `replaced_by_token_id` to point at an
+        // existing `token_hash`. INSERT the successor first so its
+        // token_hash exists, THEN UPDATE the predecessor to point at it.
+        // The transaction is atomic — observers outside still see a
+        // consistent rotation, but the FK check inside fires per-statement.
+        await repo.insert({
+          tokenHash: newTokenHash,
           familyId: row.familyId,
+          parentTokenId: presentedHash,
           userId: row.userId,
+          instanceId: row.instanceId,
           sessionId: row.sessionId,
-          userAgent: params.userAgent,
-          ipAddress: params.ipAddress,
+          deviceLabel: row.deviceLabel,
+          userAgentHash: params.userAgent
+            ? hashUserAgent(params.userAgent)
+            : row.userAgentHash,
+          ipAddressHash: params.ipAddress
+            ? hashIp(params.ipAddress)
+            : row.ipAddressHash,
+          createdAt: now,
+          expiresAt: newExpiresAt,
         });
-        throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
-      }
 
-      // Happy path — consume + mint successor.
-      const newToken = generateRefreshToken();
-      const newTokenHash = hashToken(newToken);
-      const now = new Date();
-      // Successor inherits the family root's expires_at (carried on
-      // every row). Rotation does NOT extend the family lifetime.
-      const newExpiresAt = row.expiresAt;
+        await repo.update(
+          { tokenHash: presentedHash },
+          { lastUsedAt: now, replacedByTokenId: newTokenHash },
+        );
 
-      // Order matters: the `refresh_tokens_replaced_by_token_id_fkey`
-      // constraint requires `replaced_by_token_id` to point at an
-      // existing `token_hash`. INSERT the successor first so its
-      // token_hash exists, THEN UPDATE the predecessor to point at it.
-      // The transaction is atomic — observers outside still see a
-      // consistent rotation, but the FK check inside fires per-statement.
-      await repo.insert({
-        tokenHash: newTokenHash,
-        familyId: row.familyId,
-        parentTokenId: presentedHash,
-        userId: row.userId,
-        instanceId: row.instanceId,
-        sessionId: row.sessionId,
-        deviceLabel: row.deviceLabel,
-        userAgentHash: params.userAgent
-          ? hashUserAgent(params.userAgent)
-          : row.userAgentHash,
-        ipAddressHash: params.ipAddress
-          ? hashIp(params.ipAddress)
-          : row.ipAddressHash,
-        createdAt: now,
-        expiresAt: newExpiresAt,
+        return {
+          kind: 'happy',
+          result: {
+            refreshToken: newToken,
+            expiresAt: newExpiresAt,
+            userId: row.userId,
+            sessionId: row.sessionId,
+            instanceId: row.instanceId ?? null,
+          },
+        };
+      },
+    );
+
+    // Side-effect dispatch + 401 raising happens OUTSIDE the inspection
+    // tx. Family revocation now uses its own fresh transaction so the
+    // UPDATE commits independently of the rotation outcome.
+    if (outcome.kind === 'unknown_token') {
+      throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+    }
+    if (outcome.kind === 'revoked') {
+      throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+    }
+    if (outcome.kind === 'family_expired') {
+      await this.dataSource.transaction(async (manager) => {
+        await this.revokeFamily(manager, outcome.familyId, 'family_expired');
       });
-
-      await repo.update(
-        { tokenHash: presentedHash },
-        { lastUsedAt: now, replacedByTokenId: newTokenHash },
-      );
-
-      return {
-        refreshToken: newToken,
-        expiresAt: newExpiresAt,
-        userId: row.userId,
-        sessionId: row.sessionId,
-        instanceId: row.instanceId ?? null,
-      };
-    });
+      throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+    }
+    if (outcome.kind === 'reuse_detected') {
+      await this.handleReuseDetection({
+        familyId: outcome.familyId,
+        userId: outcome.userId,
+        sessionId: outcome.sessionId,
+        userAgent: params.userAgent,
+        ipAddress: params.ipAddress,
+      });
+      throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
+    }
+    return outcome.result;
   }
 
   /**
@@ -549,16 +602,25 @@ export class TokenIssuerService implements OnModuleInit {
    *      IP and User-Agent flow into the audit payload — they are NEVER
    *      stored on the operational refresh_tokens row.
    *   4. Caller raises a generic 401 (handled by `rotateRefreshToken`).
+   *
+   * The family-revoke UPDATE runs in its own dedicated transaction so
+   * it commits independently of the rotation flow. The caller has
+   * already finished its inspection tx by the time this runs; the
+   * subsequent throw never has the opportunity to roll back this
+   * revocation. W2 Stream 1 PR5 (integration test) surfaced the bug
+   * the prior shape carried — see `rotateRefreshToken` for the
+   * narrative.
    */
   private async handleReuseDetection(params: {
-    manager: EntityManager;
     familyId: string;
     userId: string;
     sessionId: string;
     userAgent?: string;
     ipAddress?: string;
   }): Promise<void> {
-    await this.revokeFamily(params.manager, params.familyId, 'reuse_detected');
+    await this.dataSource.transaction(async (manager) => {
+      await this.revokeFamily(manager, params.familyId, 'reuse_detected');
+    });
     await this.sessionRevoker.revokeSession(params.sessionId);
 
     if (this.accessAudit) {
