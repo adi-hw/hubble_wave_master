@@ -4159,11 +4159,250 @@ Pack validator gains 4 publish gates:
 
 ---
 
-### 13.17 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.17 Worked example: §3.16 Financial Control Primitive (full artifact-level spec — approval limits + separation-of-duties + three-way match + budget envelopes)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.16 cover §3.1 — §3.15; the remaining 3 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.17.1 Tables
 
-**Substrate (3 remaining sections — §3.1-§3.15 ✅):**
+Five new tables in `schema: 'finance'` (NEW schema).
+
+**`finance.approval_limit_policy`** — per-(scope, role) approval caps.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `scope_kind` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{instance, cost_center, department, project}` |
+| `scope_ref` | `uuid` | — | NULL | NULL when `scope_kind='instance'`; otherwise FK to the appropriate collection |
+| `role_id` | `uuid` | — | NOT NULL | FK → `identity.roles(id)` |
+| `transaction_kind` | `varchar(64)` | — | NOT NULL | E.g. `capital_purchase`, `expense_reimbursement`, `contractor_invoice`, `key_issuance` |
+| `amount_min_cents` | `bigint` | `0` | NOT NULL | Inclusive lower bound (in instance base currency cents) |
+| `amount_max_cents` | `bigint` | — | NOT NULL | Inclusive upper bound; NULL would imply unlimited (validator G17.1 forbids) |
+| `co_sign_role_ids` | `uuid[]` | `'{}'::uuid[]` | NOT NULL | Additional roles whose approvals are required for amounts above `amount_min_cents` |
+| `currency_code` | `varchar(3)` | `'USD'` | NOT NULL | ISO 4217 |
+| `is_active` | `boolean` | `true` | NOT NULL | Deactivation does NOT cascade — historical approvals keep referencing |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; `ix_alp_scope_role ON (scope_kind, scope_ref, role_id, transaction_kind) WHERE is_active = true`; `ix_alp_active ON (is_active) WHERE is_active = true`.
+
+**`finance.transaction_approval`** — taskable; one row per approval lifecycle.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `transaction_kind` | `varchar(64)` | — | NOT NULL | Same enum as `approval_limit_policy.transaction_kind` |
+| `transaction_ref_collection_id` | `uuid` | — | NOT NULL | The collection of the underlying business transaction record (e.g., `purchase_orders`) |
+| `transaction_ref_record_id` | `uuid` | — | NOT NULL | The transaction record being approved |
+| `amount_cents` | `bigint` | — | NOT NULL | The transaction amount |
+| `currency_code` | `varchar(3)` | — | NOT NULL | — |
+| `requester_user_id` | `uuid` | — | NOT NULL | FK; user who initiated |
+| `scope_kind` | `varchar(32)` | — | NOT NULL | Resolved from the transaction's cost center / department |
+| `scope_ref` | `uuid` | — | NULL | — |
+| `current_approver_role_id` | `uuid` | — | NOT NULL | Whose approval is needed next (rotates as co-signers approve) |
+| `pending_co_sign_role_ids` | `uuid[]` | `'{}'::uuid[]` | NOT NULL | Remaining required co-signers |
+| `approved_by_user_ids` | `uuid[]` | `'{}'::uuid[]` | NOT NULL | Users who have approved so far (audit trail) |
+| `status` | `varchar(16)` | `'pending'` | NOT NULL | CHECK ∈ `{pending, approved, rejected, expired, withdrawn}` |
+| `decision_reason_code_id` | `uuid` | — | NULL | FK → `compliance.reason_codes(id)` when decision = approved/rejected |
+| `decided_at` | `timestamptz` | — | NULL | — |
+| `expires_at` | `timestamptz` | — | NOT NULL | Hard expiry (default 14 days; pack-overridable) |
+| `signature_chain_entry_ids` | `uuid[]` | `'{}'::uuid[]` | NOT NULL | FK array → `compliance.signature_chains(id)` — each co-signer's signature row |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_ta_pending ON (current_approver_role_id, expires_at) WHERE status = 'pending'`; `ix_ta_requester ON (requester_user_id, created_at DESC)`; `ix_ta_ref ON (transaction_ref_collection_id, transaction_ref_record_id)`.
+
+**`finance.three_way_match_record`** — invoice ↔ PO ↔ receipt reconciliation.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `purchase_order_record_id` | `uuid` | — | NOT NULL | FK → `purchase_orders.id` (pack-declared collection) |
+| `invoice_record_id` | `uuid` | — | NOT NULL | FK → `invoices.id` |
+| `receipt_record_id` | `uuid` | — | NOT NULL | FK → `receipts.id` |
+| `po_amount_cents` | `bigint` | — | NOT NULL | Snapshot at match time |
+| `invoice_amount_cents` | `bigint` | — | NOT NULL | Snapshot |
+| `receipt_amount_cents` | `bigint` | — | NOT NULL | Snapshot |
+| `variance_cents` | `bigint` | — | NOT NULL | `invoice - po` (positive = over) |
+| `variance_reason_code_id` | `uuid` | — | NULL | Required when `abs(variance_cents) > tolerance` |
+| `tolerance_cents` | `bigint` | — | NOT NULL | Policy-derived |
+| `matched_at` | `timestamptz` | — | NOT NULL | — |
+| `matched_by_user_id` | `uuid` | — | NOT NULL | FK |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+UNIQUE `(purchase_order_record_id, invoice_record_id, receipt_record_id)`.
+
+**`finance.budget_envelope`** — per-cost-center, per-period allocation tracking.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `cost_center_record_id` | `uuid` | — | NOT NULL | FK |
+| `period_start` | `date` | — | NOT NULL | — |
+| `period_end` | `date` | — | NOT NULL | CHECK `period_end > period_start` |
+| `allocated_amount_cents` | `bigint` | — | NOT NULL | — |
+| `consumed_amount_cents` | `bigint` | `0` | NOT NULL | Updated atomically by financial transactions |
+| `currency_code` | `varchar(3)` | — | NOT NULL | — |
+| `over_envelope_action` | `varchar(32)` | `'alert_and_allow'` | NOT NULL | CHECK ∈ `{alert_and_allow, block, require_executive_approval}` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+UNIQUE `(cost_center_record_id, period_start, period_end)`.
+
+**`finance.variance_reason_code`** — vocabulary for matching variances.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE — `<pack>__<slug>` |
+| `label` | `text` | — | NOT NULL | — |
+| `requires_co_approval` | `boolean` | `false` | NOT NULL | When true, variance with this reason code requires additional co-signer beyond standard policy |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+#### 13.17.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1942000000000-create-finance-schema.ts` | `CREATE SCHEMA finance;` |
+| 2 | `1942000000001-create-approval-limit-policy.ts` | Table + indexes |
+| 3 | `1942000000002-create-transaction-approval.ts` | Table + indexes |
+| 4 | `1942000000003-create-three-way-match-record.ts` | Table + indexes |
+| 5 | `1942000000004-create-budget-envelope.ts` | Table + indexes |
+| 6 | `1942000000005-create-variance-reason-code.ts` | Table + indexes |
+| 7 | `1942000000006-seed-platform-variance-reason-codes.ts` | Seed `platform__price_change`, `platform__quantity_variance`, `platform__tax_recalc`, `platform__currency_drift` |
+
+#### 13.17.3 Services
+
+`apps/api/src/app/finance/` (new module).
+
+**`ApprovalPolicyService`** — admin CRUD on `approval_limit_policy`. Authority: `finance:policy:manage` (`dangerous: true` — controls who can approve what).
+
+**`TransactionApprovalService`** — `apps/api/src/app/finance/transaction-approval.service.ts`:
+
+```typescript
+request(input: ApprovalRequestInput, ctx: UserRequestContext): Promise<TransactionApproval>;
+approve(approvalId: string, reasonCodeId: string, ctx: UserRequestContext): Promise<ApprovalDecision>;
+reject(approvalId: string, reasonCodeId: string, ctx: UserRequestContext): Promise<ApprovalDecision>;
+withdraw(approvalId: string, ctx: UserRequestContext): Promise<void>;
+listPending(filter: PendingFilter, ctx: UserRequestContext): Promise<TransactionApproval[]>;
+```
+
+`request(...)` flow:
+1. Resolve `approval_limit_policy` rows matching `(scope_kind, scope_ref, transaction_kind, amount_cents)`. If amount exceeds the highest matching policy's `amount_max_cents`, refuse with `AMOUNT_EXCEEDS_POLICY`.
+2. Validate `requester_user_id ≠ any role that holds approval authority on this transaction` — separation of duties; refuse with `SEPARATION_OF_DUTIES_VIOLATION` if requester is also a final approver per policy.
+3. Compute initial `current_approver_role_id` (lowest-tier role whose policy covers the amount) + `pending_co_sign_role_ids` (the policy's `co_sign_role_ids`).
+4. Insert `transaction_approval` row via `withAudit`; deliver notification to the approver role's members.
+
+`approve(...)` flow:
+1. Validate caller's roles include `current_approver_role_id` AND caller is NOT `requester_user_id`. Otherwise refuse with `SEPARATION_OF_DUTIES_VIOLATION` or `WRONG_APPROVER_ROLE`.
+2. Require fresh WebAuthn re-auth (canon §13.7.5.1 `responsibility` tier).
+3. Insert `electronic_signatures` row with `signature_meaning='approval'` + `reason_code_id`; append to `signature_chain_entry_ids[]`.
+4. Append caller to `approved_by_user_ids[]`. Remove caller's role from `pending_co_sign_role_ids[]`.
+5. If `pending_co_sign_role_ids` is now empty → stamp `status='approved'`, `decided_at=now()`. Emit `finance:transaction:approved` event for downstream workflows. If non-empty → advance `current_approver_role_id` to the next remaining role.
+6. Return `{ approvalId, status, remainingCoSigners, signatureChainEntryId }`.
+
+**`ThreeWayMatchService`** — `apps/api/src/app/finance/three-way-match.service.ts`:
+
+```typescript
+attemptMatch(input: MatchInput, ctx: UserRequestContext): Promise<ThreeWayMatchResult>;
+```
+
+1. Resolve PO + Invoice + Receipt records; validate they're cross-linked (invoice references PO; receipt references PO).
+2. Compute variances; resolve policy-defined `tolerance_cents`.
+3. If `abs(variance_cents) > tolerance` AND `variance_reason_code_id` not supplied → refuse with `VARIANCE_REASON_REQUIRED`.
+4. If variance reason has `requires_co_approval=true` → enqueue a follow-on `TransactionApproval` request.
+5. Insert `three_way_match_record` via `withAudit`. Mark the PO/Invoice/Receipt records as matched (status transition on each).
+
+**`BudgetEnvelopeService`** — `apps/api/src/app/finance/budget-envelope.service.ts`:
+
+```typescript
+allocate(input: AllocateInput, ctx: UserRequestContext): Promise<BudgetEnvelope>;
+checkAndConsume(input: ConsumeInput, ctx: RequestContext): Promise<ConsumeResult>;
+```
+
+`checkAndConsume(...)` runs inside the financial transaction's commit path:
+1. SELECT envelope row FOR UPDATE (row-level lock).
+2. Compute `would_consume = envelope.consumed_amount_cents + input.amount_cents`.
+3. If `would_consume <= envelope.allocated_amount_cents` → UPDATE consumed_amount; return `{ allowed: true }`.
+4. Else if policy `over_envelope_action='alert_and_allow'` → UPDATE + emit `RuntimeAnomaly`; return `{ allowed: true, over_by_cents }`.
+5. Else if `block` → refuse with `BUDGET_ENVELOPE_EXCEEDED`.
+6. Else if `require_executive_approval` → refuse + auto-create a `TransactionApproval` with `transaction_kind='executive_budget_override'` requesting executive approval.
+
+`SeparationOfDutiesEvaluator` — extends canon §28 evaluator with a new check function `enforceSeparationOfDuties(action, ctx)`. Workflow transitions on `transaction_approval` invoke this; the §28 evaluator hard-rejects when the same user appears in both `requester_user_id` and `approved_by_user_ids` for amounts above the policy's separation-of-duties threshold.
+
+#### 13.17.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/finance/policies` | `@RequirePermission('finance:policy:manage')` | policy params |
+| `GET` | `/api/finance/policies` | `@RequirePermission('finance:policy:read')` | — |
+| `POST` | `/api/finance/transaction-approvals` | `@RequirePermission('finance:approval:request')` | request params |
+| `POST` | `/api/finance/transaction-approvals/:id/approve` | `@RequirePermission('finance:approval:decide')` | `{ reasonCodeId, webauthnAssertion }` |
+| `POST` | `/api/finance/transaction-approvals/:id/reject` | `@RequirePermission('finance:approval:decide')` | `{ reasonCodeId, webauthnAssertion }` |
+| `POST` | `/api/finance/transaction-approvals/:id/withdraw` | request must be by `requester_user_id` | — |
+| `GET` | `/api/finance/transaction-approvals` | `@RequirePermission('finance:approval:read')` | — |
+| `POST` | `/api/finance/three-way-match` | `@RequirePermission('finance:match:perform')` | match params |
+| `POST` | `/api/finance/budget-envelopes` | `@RequirePermission('finance:budget:manage')` | allocate params |
+| `GET` | `/api/finance/budget-envelopes` | `@RequirePermission('finance:budget:read')` | — |
+
+#### 13.17.5 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G17.1** — `approval_limit_policy.amount_max_cents` MUST NOT be NULL (unlimited approval would defeat the primitive's purpose). Error: `UNLIMITED_APPROVAL_LIMIT`.
+2. **G17.2** — Pack `transaction_kind` values used in `transaction_approval` MUST be declared in pack manifest `finance.transaction_kinds[]`. Error: `UNDECLARED_TRANSACTION_KIND`.
+3. **G17.3** — Pack workflows that transition a record to `approved` MUST call `TransactionApprovalService.approve` (not directly mutate). Pack-validator AST-scan detects direct mutation. Error: `BYPASS_APPROVAL_SERVICE`.
+
+#### 13.17.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `ApprovalLimitPolicy` | `ApprovalPolicyService.*` |
+| `TransactionApproval` | `TransactionApprovalService.*`, `BudgetEnvelopeService.checkAndConsume` (executive override path only) |
+| `ThreeWayMatchRecord` | `ThreeWayMatchService.attemptMatch` |
+| `BudgetEnvelope` | `BudgetEnvelopeService.*` |
+| `VarianceReasonCode` | `VarianceReasonCodeService.*`, `PackInstaller.seedVarianceReasonCodes` |
+
+#### 13.17.7 Tests (self-test ≥ 13 assertions)
+
+1. **`finance-approval-single-tier.spec.ts`** — request approval at single-role tier; approver approves; status `approved`; signature chain row written.
+2. **`finance-approval-co-sign.spec.ts`** — policy requires co-sign by 2 roles; first approval advances; second completes; status `approved`.
+3. **`finance-separation-of-duties-self-approve.spec.ts`** — user has both requester role AND approver role; same user attempts approve own request → 403 with `SEPARATION_OF_DUTIES_VIOLATION`.
+4. **`finance-amount-exceeds-policy.spec.ts`** — request $50k where highest policy caps at $10k; refuse with `AMOUNT_EXCEEDS_POLICY`.
+5. **`finance-approval-webauthn-required.spec.ts`** — approve without fresh WebAuthn → 401.
+6. **`finance-approval-rejection.spec.ts`** — reject with reason; status `rejected`; signature chain row written; transaction not advanced.
+7. **`finance-approval-expiry.spec.ts`** — expiry past with `status='pending'`; sweeper job marks `expired`; subsequent approve attempt → 410.
+8. **`finance-three-way-match-clean.spec.ts`** — amounts within tolerance; match record written.
+9. **`finance-three-way-variance-requires-reason.spec.ts`** — variance > tolerance, no reason code → `VARIANCE_REASON_REQUIRED`.
+10. **`finance-three-way-variance-co-approval.spec.ts`** — variance with reason `requires_co_approval=true` → triggers `TransactionApproval` enqueue.
+11. **`finance-budget-envelope-block.spec.ts`** — envelope `over_envelope_action='block'`; attempt to overspend → `BUDGET_ENVELOPE_EXCEEDED`.
+12. **`finance-budget-envelope-executive-override.spec.ts`** — envelope `require_executive_approval`; consume request refused + new `TransactionApproval` auto-created.
+13. **`finance-validator-bypass-approval-service.spec.ts`** — pack workflow directly writes `transaction_approval.status='approved'` via raw SQL → G17.3 AST-scan fails CI.
+
+#### 13.17.8 PR breakdown for §3.16
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + tables + entities + `ApprovalPolicyService` + validator G17.1-G17.2 | Migrations 1-3+7; entity area patch; `apps/api/src/app/finance/policy.service.ts`; pack-validator extension | Policy CRUD works; validator catches unlimited + undeclared kinds |
+| 2 | `TransactionApprovalService.request/approve/reject` + separation-of-duties + WebAuthn integration + tests 1, 2, 3, 4, 5, 6, 7 | `apps/api/src/app/finance/transaction-approval.service.ts`; integration with §13.7 SignatureService; pending-sweeper worker | Single + co-sign paths work; SoD enforced; WebAuthn required; expiry sweeper runs |
+| 3 | `ThreeWayMatchService.attemptMatch` + variance + tests 8, 9, 10 | `apps/api/src/app/finance/three-way-match.service.ts`; variance auto-approval enqueue | Clean match writes row; variance gates reasoning |
+| 4 | `BudgetEnvelopeService.allocate/checkAndConsume` + `over_envelope_action` branches + tests 11, 12 | `apps/api/src/app/finance/budget-envelope.service.ts`; row-level locking | All 3 over-envelope actions tested |
+| 5 | `enforceSeparationOfDuties` extension to §28 evaluator + canon §42 amendment + AST-scan G17.3 + test 13 | `libs/authorization/src/lib/authorization.service.ts` extension; pack-validator AST extension; CLAUDE.md amendment | Workflows cannot bypass approval service; canon merged |
+
+**Total: 5 PRs for §3.16. Estimated effort: ~11-13 working days.**
+
+---
+
+### 13.18 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.17 cover §3.1 — §3.16; the remaining 2 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (2 remaining sections — §3.1-§3.16 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -4179,7 +4418,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.13 Connector runtime + simulators — §13.14 (6 PRs)
 - ✅ §3.14 Semantic Search / Vector Match — §13.15 (5 PRs)
 - ✅ §3.15 Spatial + Relationship Graph — §13.16 (5 PRs)
-- §3.16 Financial Control primitive (5 PRs)
+- ✅ §3.16 Financial Control primitive — §13.17 (5 PRs)
 - §3.17 Bulk Import / Commissioning Staging (4 PRs)
 - §3.18 Integration Secrets + Egress Policy (5 PRs)
 
@@ -4197,7 +4436,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.18 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.19 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -4218,7 +4457,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.19 What's left to do BEFORE code starts
+### 13.20 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
