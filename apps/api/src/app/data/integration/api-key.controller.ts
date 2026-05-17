@@ -17,7 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { ApiKeyService } from './api-key.service';
 import { ApiScope } from '@hubblewave/instance-db';
 
@@ -39,10 +39,19 @@ interface UpdateApiKeyDto {
   isActive?: boolean;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — user-owned API key administration. Each
+ * handler runs `assertOwnership(...)` so a non-admin user can only
+ * read or mutate the keys they themselves created; admins can act on
+ * any key. The route-level boundary is `@AuthenticatedOnly` —
+ * authorization is data-driven inside the handler, not a static
+ * capability code at the route.
+ */
 @ApiTags('API Keys')
 @ApiBearerAuth()
 @Controller('api-keys')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class ApiKeyController {
   constructor(private readonly apiKeyService: ApiKeyService) {}
 
