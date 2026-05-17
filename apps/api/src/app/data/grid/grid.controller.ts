@@ -16,7 +16,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard, InstanceRequest, assertUserContext } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  JwtAuthGuard,
+  InstanceRequest,
+  assertUserContext,
+} from '@hubblewave/auth-guard';
 import {
   GridQueryService,
   GridQueryRequest,
@@ -86,8 +91,15 @@ class GridAggregateDto {
 // CONTROLLER
 // =============================================================================
 
+/**
+ * Canon §28 / W2 Stream 3 — SSRM grid query surface. Each handler
+ * delegates to `GridQueryService` with a `UserRequestContext`; the
+ * service runs the same §28 RLS pipeline as `/data/*`. Route-level
+ * boundary is `@AuthenticatedOnly`.
+ */
 @Controller('data/grid')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class GridController {
   constructor(private readonly gridQueryService: GridQueryService) {}
 

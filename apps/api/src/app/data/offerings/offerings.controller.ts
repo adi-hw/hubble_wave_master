@@ -6,7 +6,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { OfferingsService, SubmitOfferingRequest } from './offerings.service';
 import { QueryOptions } from '../collection-data.service';
 
@@ -20,8 +20,13 @@ interface ListQueryDto {
   viewId?: string;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — catalog offering surface. Reads + submits
+ * run as the calling user; `OfferingsService` applies §28 row rules.
+ */
 @Controller('offerings')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class OfferingsController {
   constructor(private readonly offerings: OfferingsService) {}
 

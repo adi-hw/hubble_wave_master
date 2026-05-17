@@ -7,7 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
 import { QueryOptions } from '../collection-data.service';
 import { AddWorkCommentRequest, TransitionWorkItemRequest, WorkService } from './work.service';
 
@@ -21,8 +21,14 @@ interface ListQueryDto {
   viewId?: string;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — work-item surface. Each handler runs as
+ * the calling user; `WorkService` applies §28 row rules + assignment
+ * scoping.
+ */
 @Controller('work')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class WorkController {
   constructor(private readonly work: WorkService) {}
 
