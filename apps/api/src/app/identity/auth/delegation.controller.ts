@@ -155,7 +155,7 @@ export class DelegationController {
    */
   @Post(':delegationId/approve')
   @UseGuards(PermissionGuard)
-  @RequirePermission('delegations.approve')
+  @RequirePermission('identity:delegation:approve')
   @HttpCode(HttpStatus.OK)
   async approveDelegation(
     @Request() req: RequestWithUser,
@@ -271,7 +271,7 @@ export class DelegationController {
    */
   @Get()
   @UseGuards(PermissionGuard)
-  @RequirePermission('delegations.admin')
+  @RequirePermission('identity:delegation:manage')
   async listDelegations(
     @Query('delegatorId') delegatorId?: string,
     @Query('delegateId') delegateId?: string,

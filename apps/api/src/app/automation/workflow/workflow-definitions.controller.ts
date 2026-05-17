@@ -10,16 +10,16 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
 import { CreateWorkflowDefinitionRequest, UpdateWorkflowDefinitionRequest } from './workflow.types';
 
 // ADR-12 permission slugs. App Studio's Flows tab is gated client-side by
-// metadata.flows.edit; the API mirrors that grant so delegated flow editors
+// metadata:flow:manage; the API mirrors that grant so delegated flow editors
 // (non-admins) can list, mutate, and publish flows for collections they own.
-// PermissionsGuard's internal admin-bypass keeps platform admins permitted.
+// Platform admins reach the same code via seeded role-permission grants.
 @Controller('workflows/definitions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class WorkflowDefinitionsController {
   constructor(private readonly definitions: WorkflowDefinitionService) {}
 
   @Get()
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async list(
     @Query('collectionId') collectionId?: string,
     @Query('active') active?: string,
@@ -33,13 +33,13 @@ export class WorkflowDefinitionsController {
   }
 
   @Get(':id')
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async getById(@Param('id') id: string) {
     return this.definitions.getById(id);
   }
 
   @Post()
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async create(
     @Body() body: CreateWorkflowDefinitionRequest,
     @CurrentUser() user?: RequestUser,
@@ -48,7 +48,7 @@ export class WorkflowDefinitionsController {
   }
 
   @Put(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async update(
     @Param('id') id: string,
     @Body() body: UpdateWorkflowDefinitionRequest,
@@ -58,25 +58,25 @@ export class WorkflowDefinitionsController {
   }
 
   @Delete(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async delete(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
     return this.definitions.delete(id, user?.id);
   }
 
   @Post(':id/activate')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async activate(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
     return this.definitions.activate(id, user?.id);
   }
 
   @Post(':id/deactivate')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async deactivate(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
     return this.definitions.deactivate(id, user?.id);
   }
 
   @Post(':id/duplicate')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async duplicate(
     @Param('id') id: string,
     @Body() body: { code: string },
@@ -86,13 +86,13 @@ export class WorkflowDefinitionsController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async publish(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
     return this.definitions.publish(id, user?.id);
   }
 
   @Post(':id/deprecate')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async deprecate(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
     return this.definitions.deprecate(id, user?.id);
   }
@@ -102,7 +102,7 @@ export class WorkflowDefinitionsController {
    *
    * Runs the flow against caller-supplied mock input data inside a
    * "test-mode" context. The runner enforces:
-   *  - Caller must hold `metadata.flows.edit` for this collection
+   *  - Caller must hold `metadata:flow:manage` for this collection
    *    (already gated by the controller-level guard).
    *  - The flow runs as the caller (not the flow's runAs setting),
    *    so the caller's authz applies — they cannot test-run with
@@ -115,7 +115,7 @@ export class WorkflowDefinitionsController {
    *    when the canvas integrates against a real connector.
    */
   @Post(':id/test-run')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async testRun(
     @Param('id') id: string,
     @Body() body: { input?: Record<string, unknown>; recordId?: string; dryRun?: boolean },
@@ -133,7 +133,7 @@ export class WorkflowDefinitionsController {
   }
 
   @Get(':id/revisions')
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async listRevisions(@Param('id') id: string) {
     return this.definitions.listRevisions(id);
   }

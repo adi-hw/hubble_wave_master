@@ -72,7 +72,7 @@ export class BehavioralAnalyticsController {
    */
   @Get('profile/:userId')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async getUserProfile(@Param('userId') userId: string) {
     const summary = await this.analyticsService.getProfileSummary(userId);
 
@@ -98,7 +98,7 @@ export class BehavioralAnalyticsController {
    */
   @Post('events')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   @HttpCode(HttpStatus.OK)
   async recordEvent(@Body() event: BehaviorEvent) {
     const result = await this.analyticsService.recordEvent(event);
@@ -116,7 +116,7 @@ export class BehavioralAnalyticsController {
    */
   @Get('alerts')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async listAlerts(
     @Query('userId') userId?: string,
     @Query('status') status?: string,
@@ -189,7 +189,7 @@ export class BehavioralAnalyticsController {
    */
   @Patch('alerts/:alertId')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @HttpCode(HttpStatus.OK)
   async updateAlertStatus(
     @Request() req: RequestWithUser,
@@ -222,7 +222,7 @@ export class BehavioralAnalyticsController {
    */
   @Get('dashboard/anomalies')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async getRecentAnomalies(@Query('limit') limit?: string) {
     const anomalies = await this.analyticsService.getRecentAnomalies(
       limit ? parseInt(limit, 10) : 10,
@@ -249,7 +249,7 @@ export class BehavioralAnalyticsController {
    */
   @Get('dashboard/metrics')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async getSecurityMetrics() {
     return this.analyticsService.getSecurityMetrics();
   }

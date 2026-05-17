@@ -32,7 +32,7 @@ export class GuidedProcessController {
   constructor(private readonly service: GuidedProcessService) {}
 
   @Get()
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async list(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Query('includeInactive') includeInactive?: string,
@@ -42,7 +42,7 @@ export class GuidedProcessController {
   }
 
   @Get(':id')
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async get(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -55,7 +55,7 @@ export class GuidedProcessController {
   }
 
   @Post()
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async create(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() dto: CreateGuidedProcessDto,
@@ -66,7 +66,7 @@ export class GuidedProcessController {
   }
 
   @Put(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async update(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -82,7 +82,7 @@ export class GuidedProcessController {
   }
 
   @Put(':id/structure')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async replaceStructure(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -98,7 +98,7 @@ export class GuidedProcessController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.OK)
   async publish(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -114,7 +114,7 @@ export class GuidedProcessController {
   }
 
   @Delete(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,

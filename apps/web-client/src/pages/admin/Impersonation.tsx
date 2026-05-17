@@ -64,9 +64,9 @@ export function ImpersonationPage() {
   const [duration, setDuration] = useState(60);
   const [starting, setStarting] = useState(false);
 
-  const canImpersonate = hasPermission('users.impersonate');
-  const canViewAudit = hasPermission('system.audit');
-  const canTerminateAll = hasPermission('system.admin');
+  const canImpersonate = hasPermission('identity:impersonation:invoke');
+  const canViewAudit = hasPermission('audit:read');
+  const canTerminateAll = hasPermission('identity:impersonation:invoke');
 
   const loadSessions = async () => {
     if (!canViewAudit) return;

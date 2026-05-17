@@ -145,7 +145,7 @@ describe('ImpersonationService', () => {
   const mockPermissionResolver = {
     getUserPermissions: jest.fn().mockResolvedValue({
       roles: [{ code: 'admin', name: 'Admin' }],
-      permissions: new Set<string>(['users.impersonate']),
+      permissions: new Set<string>(['identity:impersonation:invoke']),
     }),
   };
 

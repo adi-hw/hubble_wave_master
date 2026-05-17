@@ -24,7 +24,7 @@ import { CreateApplicationDto, UpdateApplicationDto } from './application.dto';
  *
  * Authorization: any authenticated user can list and read applications
  * (so non-admin admins can see their app inventory). Mutations require
- * either `admin.settings` OR the platform admin role; ADR-5 lifecycle
+ * either `system:configure` OR the platform admin role; ADR-5 lifecycle
  * transitions (publish, deprecate) require the same.
  */
 @Controller('applications')
@@ -33,32 +33,32 @@ export class ApplicationController {
   constructor(private readonly applications: ApplicationService) {}
 
   @Get()
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   list() {
     return this.applications.list();
   }
 
   @Get(':id')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   getById(@Param('id', ParseUUIDPipe) id: string) {
     return this.applications.getById(id);
   }
 
   @Get('code/:code')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   getByCode(@Param('code') code: string) {
     return this.applications.getByCode(code);
   }
 
   @Get(':id/revisions')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   listRevisions(@Param('id', ParseUUIDPipe) id: string) {
     return this.applications.listRevisions(id);
   }
 
   @Post()
   @Roles('admin')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   create(
     @Body() dto: CreateApplicationDto,
     @CurrentUser() user: RequestUser,
@@ -68,7 +68,7 @@ export class ApplicationController {
 
   @Patch(':id')
   @Roles('admin')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateApplicationDto,
@@ -79,7 +79,7 @@ export class ApplicationController {
 
   @Post(':id/publish')
   @Roles('admin')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   publish(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
@@ -89,7 +89,7 @@ export class ApplicationController {
 
   @Post(':id/deprecate')
   @Roles('admin')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   deprecate(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,

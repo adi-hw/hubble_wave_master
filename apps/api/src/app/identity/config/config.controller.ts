@@ -10,14 +10,14 @@ export class ConfigController {
   constructor(private readonly configService: ConfigServiceLocal) {}
 
   @Get(':scope')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   @AbacResource('config', 'read')
   list() {
     return this.configService.list();
   }
 
   @Post(':scope')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   @AbacResource('config', 'update')
   set(
     @Req() req: { user?: { id?: string } },

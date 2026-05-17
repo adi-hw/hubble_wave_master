@@ -34,7 +34,7 @@ export class AuditEventsController {
   ) {}
 
   @Get()
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @UseGuards(PermissionGuard)
   async getAuditEvents(@Query() query: AuditEventQuery) {
     const page = query.page ? parseInt(query.page, 10) : 1;
@@ -96,7 +96,7 @@ export class AuditEventsController {
   }
 
   @Get('export')
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @UseGuards(PermissionGuard)
   async exportAuditEvents(
     @Query() query: AuditEventQuery,
@@ -167,7 +167,7 @@ export class AuditEventsController {
   }
 
   @Get('verify')
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @UseGuards(PermissionGuard)
   async verifyAuditChain() {
     const entries = await this.auditRepo.find({

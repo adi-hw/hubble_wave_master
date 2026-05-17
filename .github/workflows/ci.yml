@@ -116,10 +116,12 @@ jobs:
       - name: No untyped @Req() check (canon §29.3 + §29.6 / W2 Stream 1 PR6)
         run: npm run no-untyped-req:check
 
-      - name: Permission registry sync check (canon §28 + §29.7 / W2 Stream 2 PR1, reporting-only)
-        # Reporting-only in PR1 — informs the Stream 3 sweep + Stream 2 PR3
-        # registry expansion. Stream 2 PR3 flips this to `--strict` and
-        # adds it as a blocking gate. Exits 0 regardless of mismatches today.
+      - name: Permission registry sync check (canon §28 + §29.7 / W2 Stream 2 PR3)
+        # Hard gate (W2 Stream 2 PR3): scanner exits non-zero on any
+        # unregistered call site or orphan registry entry. The check
+        # binds @RequirePermission / @RequireServiceScope / JSX
+        # <RequirePermission permission="..."/> references to codes in
+        # libs/permission-registry as the single source of truth.
         run: npm run permission-registry:check
 
       - name: Route boundary coverage check (canon §28 / W2 Stream 3 PR1, reporting-only)

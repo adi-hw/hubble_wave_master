@@ -86,20 +86,28 @@ export interface PlatformPermission {
 
 /**
  * The canonical registry. New entries land via PR, never via silent
- * edit. Stream 3 sweeps the existing ~213 `@RequirePermission` sites
- * and adds codes for each capability family they reference; Stream 2
- * PR3 enforces sync between this constant and call sites as a hard CI
- * gate.
+ * edit. The `permission-registry-sync-check` scanner enforces the
+ * sync contract: every entry below MUST have at least one
+ * `@RequirePermission` / `@RequireServiceScope` reference somewhere
+ * in `apps/`, and every such reference MUST cite a code that appears
+ * here.
  *
- * Initial seed (W2 Stream 2 PR1):
- *   - Known capability families surfaced by canon §28 + §29.7 review.
- *   - Each entry is referenced by at least one existing call site OR
- *     by a Stream 2/4 PR that's already drafted.
- *   - `dashboard:read` is included because Stream 4a Task 34's
- *     `filterDashboardLayout` consumes it (canon §28 read check
- *     evaluated per widget).
+ * Population (W2 Stream 2 PR3): codes were coarsened to capability
+ * families to satisfy canon §2 ("exactly one obvious way") — the
+ * pre-W2 codebase had per-verb codes (`users.view` / `users.create`
+ * / `users.update` / `users.delete`) that doubled the surface area
+ * without adding meaningful authorization granularity at the
+ * platform level. The W2 contract collapses those into two codes
+ * per resource: `read` and `manage`. Where a capability has high
+ * blast radius (impersonation, system configuration) it gets its
+ * own code rather than folding into the generic `:manage` slot.
+ *
+ * Add a new entry only when a `@RequirePermission(...)` site needs
+ * it AND no existing coarse code fits. Delete an entry the moment
+ * its last call site is removed (canon §14).
  */
 export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
+  // Audit ------------------------------------------------------------------
   {
     code: 'audit:read',
     plane: 'instance',
@@ -108,13 +116,16 @@ export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
     dangerous: false,
     description: 'Read audit log entries.',
   },
+
+  // Identity ---------------------------------------------------------------
   {
-    code: 'audit:export',
+    code: 'identity:user:read',
     plane: 'instance',
-    domain: 'audit',
-    action: 'export',
-    dangerous: true,
-    description: 'Export audit log entries to external systems.',
+    domain: 'identity',
+    resource: 'user',
+    action: 'read',
+    dangerous: false,
+    description: 'Read platform user records.',
   },
   {
     code: 'identity:user:manage',
@@ -123,7 +134,17 @@ export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
     resource: 'user',
     action: 'manage',
     dangerous: true,
-    description: 'Create, update, and delete platform users.',
+    description:
+      'Create, update, and delete platform users; assign and revoke role grants on a user — mutates the identity boundary.',
+  },
+  {
+    code: 'identity:role:read',
+    plane: 'instance',
+    domain: 'identity',
+    resource: 'role',
+    action: 'read',
+    dangerous: false,
+    description: 'Read role definitions and their permission grants.',
   },
   {
     code: 'identity:role:manage',
@@ -132,71 +153,199 @@ export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
     resource: 'role',
     action: 'manage',
     dangerous: true,
-    description: 'Create, update, and delete platform roles.',
+    description:
+      'Create, update, and delete platform roles, including their permission and policy bindings.',
   },
   {
-    code: 'metadata:schema:manage',
+    code: 'identity:group:read',
     plane: 'instance',
-    domain: 'metadata',
-    resource: 'schema',
+    domain: 'identity',
+    resource: 'group',
+    action: 'read',
+    dangerous: false,
+    description: 'Read group definitions, memberships, and role assignments.',
+  },
+  {
+    code: 'identity:group:manage',
+    plane: 'instance',
+    domain: 'identity',
+    resource: 'group',
     action: 'manage',
     dangerous: true,
     description:
-      'Manage collection schemas (create, modify, delete) — changes the platform data model.',
+      'Create, update, and delete groups; manage group membership and group-role assignments.',
   },
   {
-    code: 'automation:invoke',
+    code: 'identity:delegation:approve',
     plane: 'instance',
-    domain: 'automation',
-    action: 'invoke',
+    domain: 'identity',
+    resource: 'delegation',
+    action: 'approve',
     dangerous: false,
-    description: 'Invoke automation rules and workflows.',
+    description: 'Approve or reject a delegation request raised against the caller.',
   },
   {
-    code: 'system:admin',
+    code: 'identity:delegation:manage',
     plane: 'instance',
-    domain: 'system',
-    action: 'admin',
+    domain: 'identity',
+    resource: 'delegation',
+    action: 'manage',
     dangerous: true,
-    description: 'Platform-wide administrative capability.',
+    description:
+      'Administer delegation policy across the instance — manage delegation rules, audit and revoke any active delegation.',
   },
   {
-    code: 'authorization:explain:read',
+    code: 'identity:impersonation:invoke',
+    plane: 'instance',
+    domain: 'identity',
+    resource: 'impersonation',
+    action: 'invoke',
+    dangerous: true,
+    description:
+      'Impersonate another user, terminate impersonation sessions — high blast radius, exposes administrative reach over every identity in the instance.',
+  },
+
+  // Authorization ----------------------------------------------------------
+  {
+    code: 'authorization:policy:read',
     plane: 'instance',
     domain: 'authorization',
-    resource: 'explain',
+    resource: 'policy',
     action: 'read',
+    dangerous: false,
+    description:
+      'Read authorization policy definitions (collection access rules, property access rules).',
+  },
+
+  // Metadata ---------------------------------------------------------------
+  {
+    code: 'metadata:collection:read',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'collection',
+    action: 'read',
+    dangerous: false,
+    description: 'Read collection definitions and their metadata.',
+  },
+  {
+    code: 'metadata:collection:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'collection',
+    action: 'manage',
     dangerous: true,
     description:
-      'Read authorization decisions for arbitrary users — exposes ACL reasoning.',
+      'Create, update, and delete collection definitions — mutates the platform data model.',
   },
   {
-    code: 'data:record:read',
+    code: 'metadata:property:read',
     plane: 'instance',
-    domain: 'data',
-    resource: 'record',
+    domain: 'metadata',
+    resource: 'property',
     action: 'read',
     dangerous: false,
-    description:
-      'Read records from collections (per-collection access via §28 ACL).',
+    description: 'Read property (column) definitions on collections.',
   },
   {
-    code: 'data:record:manage',
+    code: 'metadata:property:manage',
     plane: 'instance',
-    domain: 'data',
-    resource: 'record',
+    domain: 'metadata',
+    resource: 'property',
     action: 'manage',
-    dangerous: false,
+    dangerous: true,
     description:
-      'Create, update, and delete records (per-collection access via §28 ACL).',
+      'Create, update, and delete property definitions on collections — mutates the platform data model.',
   },
   {
-    code: 'dashboard:read',
+    code: 'metadata:flow:manage',
     plane: 'instance',
-    domain: 'dashboard',
-    action: 'read',
+    domain: 'metadata',
+    resource: 'flow',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Manage automation rules, workflows, decision tables, and guided processes — controls what executes on records.',
+  },
+  {
+    code: 'metadata:form:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'form',
+    action: 'manage',
+    dangerous: true,
+    description: 'Manage forms and view layouts.',
+  },
+  {
+    code: 'metadata:workspace:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'workspace',
+    action: 'manage',
+    dangerous: true,
+    description: 'Manage workspace definitions (canon §27 UI Builder).',
+  },
+  {
+    code: 'metadata:policy:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'policy',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Manage display rules, dependent-review policies, and other metadata-layer policy artifacts.',
+  },
+  {
+    code: 'metadata:change_package:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'change_package',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Manage and promote change packages — controls upgrade-safe metadata rollouts.',
+  },
+  {
+    code: 'metadata:navigation:manage',
+    plane: 'instance',
+    domain: 'metadata',
+    resource: 'navigation',
+    action: 'manage',
+    dangerous: true,
+    description:
+      'Manage the platform navigation tree — controls every user-facing entry point.',
+  },
+
+  // AVA --------------------------------------------------------------------
+  {
+    code: 'ava:admin',
+    plane: 'instance',
+    domain: 'ava',
+    action: 'admin',
+    dangerous: true,
+    description:
+      'Administer AVA — manage AI feature trust levels, audit proposals, kill autonomous executions.',
+  },
+
+  // Notifications ----------------------------------------------------------
+  {
+    code: 'notifications:send:invoke',
+    plane: 'instance',
+    domain: 'notifications',
+    resource: 'send',
+    action: 'invoke',
     dangerous: false,
     description:
-      'Read dashboards and their widget layouts (per-widget filtering via §28 collection-access checks).',
+      'Trigger a notification dispatch directly (not via an automation rule or scheduled job).',
+  },
+
+  // System -----------------------------------------------------------------
+  {
+    code: 'system:configure',
+    plane: 'instance',
+    domain: 'system',
+    action: 'configure',
+    dangerous: true,
+    description:
+      'Read and write platform-wide configuration: identity config scopes, admin UI theme, behavioural analytics ingestion, application metadata — every admin "settings" surface.',
   },
 ];

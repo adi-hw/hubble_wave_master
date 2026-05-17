@@ -32,7 +32,7 @@ export class ChangePackageController {
   constructor(private readonly service: ChangePackageService) {}
 
   @Get()
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async list(
     @Query('applicationId') applicationId?: string,
     @Query('status') status?: ChangePackageStatus,
@@ -41,19 +41,19 @@ export class ChangePackageController {
   }
 
   @Get(':id')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async get(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.get(id);
   }
 
   @Post()
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async create(@Body() dto: CreatePackageDto, @CurrentUser() user?: RequestUser) {
     return this.service.create(dto, user?.id);
   }
 
   @Post(':id/artifacts')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async addArtifact(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddArtifactDto,
@@ -63,7 +63,7 @@ export class ChangePackageController {
   }
 
   @Delete(':id/artifacts/:kind/:code')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async removeArtifact(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('kind') kind: MetadataChange['kind'],
@@ -74,7 +74,7 @@ export class ChangePackageController {
   }
 
   @Post(':id/complete')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async complete(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user?: RequestUser,
@@ -84,13 +84,13 @@ export class ChangePackageController {
   }
 
   @Get(':id/export')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   async exportJson(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.exportJson(id);
   }
 
   @Post('import')
-  @RequirePermission('metadata.change-packages.edit')
+  @RequirePermission('metadata:change_package:manage')
   @HttpCode(HttpStatus.CREATED)
   async importPackage(@Body() dto: ImportPackageDto, @CurrentUser() user?: RequestUser) {
     return this.service.importPackage(dto, user?.id);

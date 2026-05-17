@@ -22,7 +22,7 @@ import { DependentReviewQueueService } from './dependent-review-queue.service';
 
 /**
  * ADR-17 dependent-review queue endpoints. All methods require the
- * `metadata.policies.edit` slug — the queue is the artifact that
+ * `metadata:policy:manage` slug — the queue is the artifact that
  * surfaces "this publish needs follow-up review", which is editorial
  * authority over policies and rules. Acknowledge / dismiss share the
  * same slug since both are policy decisions about whether the
@@ -41,7 +41,7 @@ export class DependentReviewQueueController {
   constructor(private readonly service: DependentReviewQueueService) {}
 
   @Get()
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   list(
     @Query('collectionId') collectionId?: string,
     @Query('status') status?: 'needs_review' | 'acknowledged' | 'dismissed' | 'open',
@@ -56,14 +56,14 @@ export class DependentReviewQueueController {
 
   /** Open count — for the Studio dashboard badge. */
   @Get('count')
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   count(@Query('collectionId') collectionId?: string) {
     return this.service.countOpen(collectionId).then((open) => ({ open }));
   }
 
   @Post(':id/acknowledge')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   async acknowledge(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
@@ -75,7 +75,7 @@ export class DependentReviewQueueController {
 
   @Post(':id/dismiss')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   async dismiss(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,

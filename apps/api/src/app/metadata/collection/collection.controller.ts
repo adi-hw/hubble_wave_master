@@ -299,7 +299,7 @@ export class CollectionController {
    * mode. The dedicated `metadata.collections.spreadsheet.write`
    * permission is enforced explicitly inside the handler because
    * CollectionAccessGuard maps POST to collection.create /
-   * metadata.collections.edit, neither of which is the right
+   * metadata:collection:manage, neither of which is the right
    * acquaintance for spreadsheet write — those are schema-edit
    * permissions, not data-edit. The explicit check below closes that
    * gap and matches the frontend gate the SpreadsheetView shows.

@@ -170,19 +170,19 @@ export function App() {
               per-feature metadata.* edit slugs (ADR-12). The shell
               itself negotiates per-tab availability via TAB_REGISTRY's
               getTabAvailability — a delegated user with only
-              metadata.forms.edit lands on the shell and sees Forms
+              metadata:form:manage lands on the shell and sees Forms
               enabled while other tabs render disabled. */}
           <Route
             path="/studio/c/:code"
             element={
               <ProtectedRoute
                 anyPermission={[
-                  'metadata.collections.edit',
-                  'metadata.properties.edit',
-                  'metadata.forms.edit',
-                  'metadata.policies.edit',
-                  'metadata.flows.edit',
-                  'collection.read',
+                  'metadata:collection:manage',
+                  'metadata:property:manage',
+                  'metadata:form:manage',
+                  'metadata:policy:manage',
+                  'metadata:flow:manage',
+                  'metadata:collection:read',
                 ]}
               >
                 <TableBuilder />
@@ -194,12 +194,12 @@ export function App() {
             element={
               <ProtectedRoute
                 anyPermission={[
-                  'metadata.collections.edit',
-                  'metadata.properties.edit',
-                  'metadata.forms.edit',
-                  'metadata.policies.edit',
-                  'metadata.flows.edit',
-                  'collection.read',
+                  'metadata:collection:manage',
+                  'metadata:property:manage',
+                  'metadata:form:manage',
+                  'metadata:policy:manage',
+                  'metadata:flow:manage',
+                  'metadata:collection:read',
                 ]}
               >
                 <TableBuilder />
@@ -383,7 +383,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations"
             element={
-              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
+              <ProtectedRoute anyPermission={['metadata:collection:read', 'metadata:flow:manage']}>
                 <AutomationsListPage />
               </ProtectedRoute>
             }
@@ -391,7 +391,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations/new"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <AutomationEditorPage />
               </ProtectedRoute>
             }
@@ -399,7 +399,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automations/:automationId"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <AutomationEditorPage />
               </ProtectedRoute>
             }
@@ -407,7 +407,7 @@ export function App() {
           <Route
             path="/studio/collections/:id/automation-logs"
             element={
-              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
+              <ProtectedRoute anyPermission={['metadata:collection:read', 'metadata:flow:manage']}>
                 <AutomationLogsPage />
               </ProtectedRoute>
             }
@@ -487,7 +487,7 @@ export function App() {
           <Route
             path="/process-flows"
             element={
-              <ProtectedRoute anyPermission={['collection.read', 'metadata.flows.edit']}>
+              <ProtectedRoute anyPermission={['metadata:collection:read', 'metadata:flow:manage']}>
                 <ProcessFlowsListPage />
               </ProtectedRoute>
             }
@@ -495,7 +495,7 @@ export function App() {
           <Route
             path="/process-flows/new"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <ProcessFlowEditorPage />
               </ProtectedRoute>
             }
@@ -503,7 +503,7 @@ export function App() {
           <Route
             path="/process-flows/:id"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <ProcessFlowEditorPage />
               </ProtectedRoute>
             }
@@ -513,7 +513,7 @@ export function App() {
           <Route
             path="/decision-tables/new"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <DecisionTableEditor />
               </ProtectedRoute>
             }
@@ -521,7 +521,7 @@ export function App() {
           <Route
             path="/decision-tables/:id"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <DecisionTableEditor />
               </ProtectedRoute>
             }
@@ -531,7 +531,7 @@ export function App() {
           <Route
             path="/guided-processes/new"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <GuidedProcessEditor />
               </ProtectedRoute>
             }
@@ -539,7 +539,7 @@ export function App() {
           <Route
             path="/guided-processes/:id"
             element={
-              <ProtectedRoute permissions="metadata.flows.edit">
+              <ProtectedRoute permissions="metadata:flow:manage">
                 <GuidedProcessEditor />
               </ProtectedRoute>
             }
@@ -551,7 +551,7 @@ export function App() {
           <Route
             path="/studio/workspaces"
             element={
-              <ProtectedRoute permissions="metadata.workspaces.edit">
+              <ProtectedRoute permissions="metadata:workspace:manage">
                 <WorkspacesListPage />
               </ProtectedRoute>
             }
@@ -559,7 +559,7 @@ export function App() {
           <Route
             path="/studio/workspaces/:workspaceId"
             element={
-              <ProtectedRoute permissions="metadata.workspaces.edit">
+              <ProtectedRoute permissions="metadata:workspace:manage">
                 <WorkspaceBuilder />
               </ProtectedRoute>
             }
@@ -587,7 +587,7 @@ export function App() {
           <Route
             path="/app-studio/change-packages"
             element={
-              <ProtectedRoute permissions="metadata.change-packages.edit">
+              <ProtectedRoute permissions="metadata:change_package:manage">
                 <ChangePackageManager />
               </ProtectedRoute>
             }
@@ -595,7 +595,7 @@ export function App() {
           <Route
             path="/app-studio/change-packages/:id"
             element={
-              <ProtectedRoute permissions="metadata.change-packages.edit">
+              <ProtectedRoute permissions="metadata:change_package:manage">
                 <ChangePackageDiff />
               </ProtectedRoute>
             }

@@ -25,8 +25,8 @@ export const useHasPermission = (permission: string | string[]) => {
  * Pass if the user holds ANY of the supplied slugs (OR semantics).
  * Use for surfaces that accept multiple alternative permissions —
  * e.g. the App Studio tabbed shell, where a user with
- * `metadata.forms.edit` should reach the Forms tab even if they
- * don't have `metadata.collections.edit` or the admin role.
+ * `metadata:form:manage` should reach the Forms tab even if they
+ * don't have `metadata:collection:manage` or the admin role.
  */
 export const useHasAnyPermission = (permission: string | string[]) => {
   const { auth } = useAuth();

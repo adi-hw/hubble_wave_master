@@ -162,14 +162,14 @@ export class DelegationService {
     }
 
     // Verify approver has authority. The controller already gates this endpoint
-    // with @RequirePermission('delegations.approve'); this service-level check
+    // with @RequirePermission('identity:delegation:approve'); this service-level check
     // is a defense-in-depth guarantee for any caller that bypasses the
     // controller (internal callers, schedulers, future entry points).
     const approverPerms = await this.permissionResolver.getUserPermissions(approverId);
     const hasApproverAuthority =
-      approverPerms.permissions.has('delegations.approve') ||
-      approverPerms.permissions.has('delegations.admin') ||
-      approverPerms.permissions.has('admin.audit');
+      approverPerms.permissions.has('identity:delegation:approve') ||
+      approverPerms.permissions.has('identity:delegation:manage') ||
+      approverPerms.permissions.has('audit:read');
     if (!hasApproverAuthority) {
       throw new ForbiddenException('Not authorized to approve this delegation');
     }

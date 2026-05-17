@@ -62,14 +62,14 @@ export class RulesController {
   }
 
   // ADR-12 — App Studio's Flows tab gates the Automation Rules sub-tab
-  // by metadata.flows.edit. The collection-scoped routes below mirror
+  // by metadata:flow:manage. The collection-scoped routes below mirror
   // that grant so delegated flow editors can manage rules without
   // platform-admin role. Cross-collection list / scheduled jobs / AVA
   // helpers stay on the coarse-grained @Roles('admin') gate.
 
   @Get('collections/:collectionId/automations')
   @UseGuards(PermissionsGuard)
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async listAutomations(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Query('includeInactive') includeInactive?: string,
@@ -82,14 +82,14 @@ export class RulesController {
 
   @Get('automations/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async getAutomation(@Param('id', ParseUUIDPipe) id: string) {
     return this.automationService.getAutomation(id);
   }
 
   @Post('collections/:collectionId/automations')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async createAutomation(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -103,7 +103,7 @@ export class RulesController {
 
   @Put('automations/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async updateAutomation(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -114,7 +114,7 @@ export class RulesController {
 
   @Delete('automations/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async deleteAutomation(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('force') force?: string,
@@ -124,7 +124,7 @@ export class RulesController {
 
   @Post('automations/:id/toggle')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async toggleAutomation(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -134,7 +134,7 @@ export class RulesController {
 
   @Post('automations/:id/publish')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async publishAutomation(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -144,7 +144,7 @@ export class RulesController {
 
   @Post('automations/:id/deprecate')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async deprecateAutomation(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -154,14 +154,14 @@ export class RulesController {
 
   @Get('automations/:id/revisions')
   @UseGuards(PermissionsGuard)
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async listAutomationRevisions(@Param('id', ParseUUIDPipe) id: string) {
     return this.automationService.listRevisions(id);
   }
 
   @Put('collections/:collectionId/automations/reorder')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async reorderAutomations(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() body: { order: Array<{ id: string; executionOrder: number }> },
@@ -182,11 +182,11 @@ export class RulesController {
   // Scheduled-job mutation routes inherit the class-level RolesGuard
   // but had no @Roles decorator — RolesGuard allows when no metadata
   // is present, so any authenticated user could mutate. Gate them
-  // behind metadata.flows.edit (delegated flow editors) plus the
-  // admin bypass in PermissionsGuard.
+  // behind metadata:flow:manage (delegated flow editors); admins reach
+  // the same code via the seeded admin role-permission grants.
   @Get('collections/:collectionId/scheduled-jobs')
   @UseGuards(PermissionsGuard)
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async listCollectionScheduledJobs(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
   ) {
@@ -195,14 +195,14 @@ export class RulesController {
 
   @Get('scheduled-jobs/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async getScheduledJob(@Param('id', ParseUUIDPipe) id: string) {
     return this.scheduledJobService.getJob(id);
   }
 
   @Post('scheduled-jobs')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async createScheduledJob(
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateScheduledJobDto,
@@ -212,7 +212,7 @@ export class RulesController {
 
   @Put('scheduled-jobs/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async updateScheduledJob(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -223,14 +223,14 @@ export class RulesController {
 
   @Delete('scheduled-jobs/:id')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async deleteScheduledJob(@Param('id', ParseUUIDPipe) id: string) {
     return this.scheduledJobService.deleteJob(id);
   }
 
   @Post('scheduled-jobs/:id/toggle')
   @UseGuards(PermissionsGuard)
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async toggleScheduledJob(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,

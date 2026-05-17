@@ -34,7 +34,7 @@ export class PoliciesController {
    * - includeInactive: Include inactive policies (default: false)
    */
   @Get()
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async listPolicies(
     @Query('collectionId') collectionId?: string,
@@ -61,7 +61,7 @@ export class PoliciesController {
    * Get policy statistics
    */
   @Get('stats')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPolicyStats() {
     const stats = await this.policiesService.getPolicyStats();
@@ -72,7 +72,7 @@ export class PoliciesController {
    * Get policies for a specific collection (both row-level and field-level)
    */
   @Get('collection/:collectionId')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPoliciesForCollection(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -91,7 +91,7 @@ export class PoliciesController {
    * Get policies assigned to a specific role
    */
   @Get('role/:roleId')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPoliciesForRole(@Param('roleId', ParseUUIDPipe) roleId: string) {
     const policies = await this.policiesService.getPoliciesForRole(roleId);
@@ -102,7 +102,7 @@ export class PoliciesController {
    * Get policies assigned to a specific group
    */
   @Get('group/:groupId')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPoliciesForGroup(@Param('groupId', ParseUUIDPipe) groupId: string) {
     const policies = await this.policiesService.getPoliciesForGroup(groupId);
@@ -113,7 +113,7 @@ export class PoliciesController {
    * Get policies assigned to a specific user
    */
   @Get('user/:userId')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPoliciesForUser(@Param('userId', ParseUUIDPipe) userId: string) {
     const policies = await this.policiesService.getPoliciesForUser(userId);
@@ -124,7 +124,7 @@ export class PoliciesController {
    * Get a specific policy by ID
    */
   @Get(':id')
-  @RequirePermission('admin.policies.view')
+  @RequirePermission('authorization:policy:read')
   @UseGuards(PermissionGuard)
   async getPolicy(@Param('id', ParseUUIDPipe) id: string) {
     const policy = await this.policiesService.getPolicyById(id);

@@ -46,7 +46,7 @@ export class ImpersonationController {
    * Start impersonating a user
    */
   @Post('start')
-  @RequirePermission('users.impersonate')
+  @RequirePermission('identity:impersonation:invoke')
   @HttpCode(HttpStatus.OK)
   async startImpersonation(
     @Request() req: RequestWithUser,
@@ -78,7 +78,7 @@ export class ImpersonationController {
    * End impersonation session
    */
   @Post('end')
-  @RequirePermission('users.impersonate')
+  @RequirePermission('identity:impersonation:invoke')
   @HttpCode(HttpStatus.OK)
   async endImpersonation(@Request() req: RequestWithUser) {
     const impersonation = req.user.impersonation;
@@ -107,7 +107,7 @@ export class ImpersonationController {
    * Get current impersonation status
    */
   @Get('status')
-  @RequirePermission('users.impersonate')
+  @RequirePermission('identity:impersonation:invoke')
   @HttpCode(HttpStatus.OK)
   async getImpersonationStatus(@Request() req: RequestWithUser) {
     const session = await this.impersonationService.getActiveSession(req.user.sub);
@@ -137,7 +137,7 @@ export class ImpersonationController {
    * List impersonation sessions (admin view)
    */
   @Get('sessions')
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async listSessions(
     @Query('impersonatorId') impersonatorId?: string,
     @Query('targetUserId') targetUserId?: string,
@@ -181,7 +181,7 @@ export class ImpersonationController {
    * Get details of a specific impersonation session
    */
   @Get('sessions/:sessionId')
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async getSessionDetails(@Param('sessionId') sessionId: string) {
     const context = await this.impersonationService.getImpersonationContext(sessionId);
 
@@ -201,7 +201,7 @@ export class ImpersonationController {
    * Terminate all active impersonation sessions (emergency)
    */
   @Post('terminate-all')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   @HttpCode(HttpStatus.OK)
   async terminateAllSessions(@Request() _req: RequestWithUser) {
     const count = await this.impersonationService.terminateAllSessions();

@@ -189,7 +189,7 @@ export const decisionTablesApi = {
     return response.data;
   },
 
-  /** Editor-only — evaluate a draft table; requires metadata.flows.edit. */
+  /** Editor-only — evaluate a draft table; requires metadata:flow:manage. */
   evaluateDraft: async (
     collectionId: string,
     id: string,

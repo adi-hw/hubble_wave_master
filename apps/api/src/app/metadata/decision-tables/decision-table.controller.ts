@@ -34,7 +34,7 @@ export class DecisionTableController {
   constructor(private readonly service: DecisionTableService) {}
 
   @Get()
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async list(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Query('includeInactive') includeInactive?: string,
@@ -44,7 +44,7 @@ export class DecisionTableController {
   }
 
   @Get(':id')
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   async get(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -57,7 +57,7 @@ export class DecisionTableController {
   }
 
   @Post()
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async create(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() dto: CreateDecisionTableDto,
@@ -68,7 +68,7 @@ export class DecisionTableController {
   }
 
   @Put(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async update(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -84,7 +84,7 @@ export class DecisionTableController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.OK)
   async publish(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -100,7 +100,7 @@ export class DecisionTableController {
   }
 
   @Delete(':id')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -114,7 +114,7 @@ export class DecisionTableController {
   }
 
   @Post(':id/rows')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async createRow(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -128,7 +128,7 @@ export class DecisionTableController {
   }
 
   @Put(':id/rows/:rowId')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   async updateRow(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -143,7 +143,7 @@ export class DecisionTableController {
   }
 
   @Delete(':id/rows/:rowId')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeRow(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -160,11 +160,11 @@ export class DecisionTableController {
   /**
    * Evaluate the table against caller-supplied inputs. Used by the
    * Flow Action `MakeDecision` and by ad-hoc admin testing.
-   * Requires `collection.read` since evaluation is observational
+   * Requires `metadata:collection:read` since evaluation is observational
    * (no state mutation).
    */
   @Post(':id/evaluate')
-  @RequirePermission(['collection.read', 'metadata.flows.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:flow:manage'], 'any')
   @HttpCode(HttpStatus.OK)
   async evaluate(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -182,11 +182,11 @@ export class DecisionTableController {
    * Editor-only evaluation against a draft table. Used by the
    * DecisionTableEditor's Test runner so authors can verify rows
    * before publish. Tighter gate than `evaluate`: requires
-   * `metadata.flows.edit` (no `collection.read` fallback) so
+   * `metadata:flow:manage` (no `metadata:collection:read` fallback) so
    * runtime callers cannot skip the published-status check.
    */
   @Post(':id/evaluate-draft')
-  @RequirePermission('metadata.flows.edit')
+  @RequirePermission('metadata:flow:manage')
   @HttpCode(HttpStatus.OK)
   async evaluateDraft(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,

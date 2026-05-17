@@ -27,7 +27,7 @@ export class PropertyController {
   ) {}
 
   @Get('suggest')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async suggest(
     @Query('name') name: string,
     @CurrentUser() user: RequestUser,
@@ -40,7 +40,7 @@ export class PropertyController {
   }
 
   @Post('detect-type')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async detectType(
     @Body() body: { samples: string[] },
     @CurrentUser() user: RequestUser,
@@ -52,7 +52,7 @@ export class PropertyController {
   }
 
   @Get()
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async list(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Query('includeSystem') includeSystem?: string,
@@ -67,7 +67,7 @@ export class PropertyController {
   }
 
   @Get('by-code/:code')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async getByCode(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('code') code: string,
@@ -76,7 +76,7 @@ export class PropertyController {
   }
 
   @Get('check-code/:code')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async checkCode(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('code') code: string,
@@ -86,7 +86,7 @@ export class PropertyController {
   }
 
   @Get(':id')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async getById(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -106,7 +106,7 @@ export class PropertyController {
    * the admin UI's pre-delete inspection view.
    */
   @Get(':id/references')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async references(
     @Param('id', ParseUUIDPipe) id: string,
   ) {
@@ -114,7 +114,7 @@ export class PropertyController {
   }
 
   @Post()
-  @RequirePermission('property.create')
+  @RequirePermission('metadata:property:manage')
   async create(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -132,7 +132,7 @@ export class PropertyController {
   }
 
   @Post('bulk')
-  @RequirePermission('property.create')
+  @RequirePermission('metadata:property:manage')
   async bulkCreate(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -156,7 +156,7 @@ export class PropertyController {
   }
 
   @Put('reorder')
-  @RequirePermission('property.update')
+  @RequirePermission('metadata:property:manage')
   async reorder(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -173,7 +173,7 @@ export class PropertyController {
   }
 
   @Put(':id')
-  @RequirePermission('property.update')
+  @RequirePermission('metadata:property:manage')
   async update(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -199,7 +199,7 @@ export class PropertyController {
   }
 
   @Delete(':id')
-  @RequirePermission('property.delete')
+  @RequirePermission('metadata:property:manage')
   async delete(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -223,7 +223,7 @@ export class PropertyController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('property.update')
+  @RequirePermission('metadata:property:manage')
   async publish(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -245,7 +245,7 @@ export class PropertyController {
   }
 
   @Post(':id/deprecate')
-  @RequirePermission('property.update')
+  @RequirePermission('metadata:property:manage')
   async deprecate(
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -267,7 +267,7 @@ export class PropertyController {
   }
 
   @Get(':id/revisions')
-  @RequirePermission('property.read')
+  @RequirePermission('metadata:property:read')
   async listRevisions(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,

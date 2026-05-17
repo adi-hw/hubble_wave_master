@@ -14,7 +14,7 @@ export class ViewController {
   constructor(private readonly viewService: ViewService) {}
 
   @Post()
-  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
+  @RequirePermission(['metadata:form:manage', 'metadata:collection:manage'], 'any')
   async createDraft(
     @Body() body: CreateViewRequest,
     @CurrentUser() user?: RequestUser,
@@ -24,7 +24,7 @@ export class ViewController {
 
   @Get()
   @RequirePermission(
-    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    ['metadata:collection:read', 'metadata:form:manage', 'metadata:collection:manage', 'metadata:workspace:manage'],
     'any',
   )
   async listDefinitions(
@@ -36,7 +36,7 @@ export class ViewController {
   }
 
   @Post(':viewCode/publish')
-  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
+  @RequirePermission(['metadata:form:manage', 'metadata:collection:manage'], 'any')
   async publish(
     @Param('viewCode') viewCode: string,
     @Body() body: PublishViewRequest,
@@ -47,7 +47,7 @@ export class ViewController {
 
   @Get(':viewCode/revisions')
   @RequirePermission(
-    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    ['metadata:collection:read', 'metadata:form:manage', 'metadata:collection:manage', 'metadata:workspace:manage'],
     'any',
   )
   async listRevisions(@Param('viewCode') viewCode: string) {
@@ -56,7 +56,7 @@ export class ViewController {
 
   @Get(':viewCode/revisions/:revisionId')
   @RequirePermission(
-    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    ['metadata:collection:read', 'metadata:form:manage', 'metadata:collection:manage', 'metadata:workspace:manage'],
     'any',
   )
   async getRevision(
@@ -68,7 +68,7 @@ export class ViewController {
 
   @Get(':viewCode/variants')
   @RequirePermission(
-    ['collection.read', 'metadata.forms.edit', 'metadata.collections.edit', 'metadata.workspaces.edit'],
+    ['metadata:collection:read', 'metadata:form:manage', 'metadata:collection:manage', 'metadata:workspace:manage'],
     'any',
   )
   async listVariants(@Param('viewCode') viewCode: string) {
@@ -76,7 +76,7 @@ export class ViewController {
   }
 
   @Post(':viewCode/variants')
-  @RequirePermission(['metadata.forms.edit', 'metadata.collections.edit'], 'any')
+  @RequirePermission(['metadata:form:manage', 'metadata:collection:manage'], 'any')
   async addVariant(
     @Param('viewCode') viewCode: string,
     @Body() body: CreateViewRequest['variant'],
