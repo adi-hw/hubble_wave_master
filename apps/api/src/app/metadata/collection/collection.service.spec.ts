@@ -164,6 +164,28 @@ describe('CollectionService.createCollection (W1.4 atomicity)', () => {
     expect(result.collection).toBeDefined();
   });
 
+  it('sets secureFieldsByDefault: true on new collections (canon §28.2 / W2 Stream 2 PR4)', async () => {
+    // New collections default to canon §28.2 level-7 default-deny: a field
+    // with no matching rule resolves to canRead=false / canWrite=false /
+    // mask='FULL'. Customers explicitly opt-out per-collection (entity
+    // field flips to false) when they need the legacy default-allow
+    // posture.
+    await service.createCollection({
+      code: 'widget',
+      label: 'Widget',
+      storageTable: 'u_widget',
+    });
+
+    // The first `manager.create` call is for CollectionDefinition; subsequent
+    // calls are revisions + properties. Find the CollectionDefinition payload.
+    const createCalls = queryRunner.manager.create.mock.calls;
+    const collectionPayload = createCalls.find(
+      (call: unknown[]) => call[0] === CollectionDefinition,
+    )?.[1] as Record<string, unknown> | undefined;
+    expect(collectionPayload).toBeDefined();
+    expect(collectionPayload?.['secureFieldsByDefault']).toBe(true);
+  });
+
   it('takes a transaction-scoped advisory lock keyed by collection code before DDL', async () => {
     await service.createCollection({
       code: 'widget',

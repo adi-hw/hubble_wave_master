@@ -167,17 +167,24 @@ export class CollectionDefinition {
   defaultAccess!: string;
 
   /**
-   * Canon §28.2 level 7 (default-deny fallback). When `true`, the field-
-   * access evaluator returns canRead=false, canWrite=false,
-   * maskingStrategy='FULL' for any field on this collection that no
-   * explicit (levels 1-2) or wildcard (levels 3-4) rule matched. When
-   * `false` (the default), the evaluator preserves the pre-§28 default-
-   * allow behaviour: canRead=true, canWrite=!isSystem, mask='NONE'.
+   * Canon §28.2 level 7 (default-deny fallback). When `true` (the platform
+   * default per W2 Pre-W2 baseline + Stream 2 PR4), the field-access
+   * evaluator returns canRead=false, canWrite=false, maskingStrategy='FULL'
+   * for any field on this collection that no explicit (levels 1-2) or
+   * wildcard (levels 3-4) rule matched.
    *
-   * Opt-in per collection — flipping the platform default in one step
-   * would cascade access regressions across every customer pack.
+   * Customers who need the legacy default-allow behavior on a specific
+   * collection set this flag to `false` explicitly — the §28 evaluator
+   * preserves the canRead=true, canWrite=!isSystem, mask='NONE' branch
+   * as a per-collection customer-facing opt-out (two protected tests in
+   * `authorization.service.spec.ts` guard the explicit-opt-out branch).
+   *
+   * The Pre-W2 baseline already carries `DEFAULT true` on the column;
+   * this entity-level default keeps the runtime + schema in lockstep so
+   * code paths that read the entity before re-fetching the row see the
+   * right value.
    */
-  @Column({ name: 'secure_fields_by_default', type: 'boolean', default: false })
+  @Column({ name: 'secure_fields_by_default', type: 'boolean', default: true })
   secureFieldsByDefault!: boolean;
 
   // ─────────────────────────────────────────────────────────────────
