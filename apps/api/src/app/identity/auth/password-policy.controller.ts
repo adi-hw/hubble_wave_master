@@ -3,13 +3,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { PasswordPolicy } from '@hubblewave/instance-db';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { Roles } from './decorators/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
 import { SkipAbac } from '../abac/abac.guard';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 20 — password policy administration
+ * is gated by `@RequirePermission('system:configure')`. The
+ * pre-Stream-3 class-level `@Roles('admin')` was redundant once the
+ * capability model expressed the same authority.
+ */
 @Controller('admin/auth/password-policy')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 @SkipAbac()
 export class PasswordPolicyController {
   constructor(

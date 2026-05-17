@@ -15,9 +15,8 @@ import {
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
   JwtAuthGuard,
-  RolesGuard,
   PermissionsGuard,
-  Roles,
+  RequirePermission,
   type UserRequestContext,
 } from '@hubblewave/auth-guard';
 import { ExplainCollectionDto, ExplainFieldDto } from './dto/explain.dto';
@@ -33,9 +32,13 @@ import { ExplainCollectionDto, ExplainFieldDto } from './dto/explain.dto';
  * Y" workflow.
  *
  * Access posture:
- *   - Admin-only via the existing `@Roles('admin')` decorator (RolesGuard
- *     wired through global guards). Non-admins receive a 403 from the
- *     guard chain before the handler runs.
+ *   - Gated by `@RequirePermission('authorization:explain:read')` per
+ *     canon §28.6 + W2 Stream 3 Task 20. The capability is registered
+ *     `dangerous: true` because it surfaces ACL reasoning over arbitrary
+ *     users — a sensitive capability that the admin role holds via
+ *     seeded `role_permissions` rows. The pre-Stream-3 `@Roles('admin')`
+ *     check was redundant once the capability model expressed the same
+ *     authority; the bare `@Roles` was retired alongside.
  *   - The target user's identity is freshly resolved through the
  *     `IdentityResolverPort` — the same path the JWT auth guard uses for
  *     the live request principal. Deactivated users and unknown UUIDs
@@ -49,8 +52,8 @@ import { ExplainCollectionDto, ExplainFieldDto } from './dto/explain.dto';
  * implementation reflects.
  */
 @Controller('authorization/explain')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('authorization:explain:read')
 export class ExplainController {
   constructor(
     private readonly authz: AuthorizationService,

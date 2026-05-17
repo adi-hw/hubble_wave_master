@@ -4,13 +4,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { LdapConfig } from '@hubblewave/instance-db';
 import { LdapService } from './ldap.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
 import { SkipAbac } from '../abac/abac.guard';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 20 — LDAP configuration is gated by
+ * `@RequirePermission('system:configure')`. The pre-Stream-3
+ * class-level `@Roles('admin')` was redundant once the capability
+ * model expressed the same authority.
+ */
 @Controller('admin/auth/ldap')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 @SkipAbac()
 export class LdapController {
   constructor(
