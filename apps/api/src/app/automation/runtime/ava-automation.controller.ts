@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  AuthenticatedOnly,
   JwtAuthGuard,
   RequireApprovedProposal,
   RequireApprovedProposalGuard,
@@ -44,6 +45,7 @@ export class AvaAutomationController {
   ) {}
 
   @Post('execute')
+  @AuthenticatedOnly()
   @UseGuards(JwtAuthGuard, RequireApprovedProposalGuard)
   @RequireApprovedProposal()
   @ApiOperation({
