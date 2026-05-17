@@ -70,6 +70,7 @@
     "permission-registry:check:strict": "npx tsx tools/scanners/permission-registry-sync-check.ts --strict",
     "selftest:permission-registry": "npx tsx tools/scanners/permission-registry-sync-check-selftest.ts",
     "route-boundary:check": "npx tsx tools/scanners/route-boundary-coverage-check.ts",
+    "route-boundary:check:reporting": "npx tsx tools/scanners/route-boundary-coverage-check.ts --reporting",
     "route-boundary:check:strict": "npx tsx tools/scanners/route-boundary-coverage-check.ts --strict",
     "selftest:route-boundary": "npx tsx tools/scanners/route-boundary-coverage-check-selftest.ts",
     "cross-domain:check": "npx tsx tools/scanners/cross-domain-import-check.ts",

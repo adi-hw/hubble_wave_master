@@ -124,12 +124,15 @@ jobs:
         # libs/permission-registry as the single source of truth.
         run: npm run permission-registry:check
 
-      - name: Route boundary coverage check (canon §28 / W2 Stream 3 PR1, reporting-only)
-        # Reporting-only at Stream 3 PR1 — informs the Stream 3 sweep
-        # (~881 handlers across 28 controllers). Stream 3 PR-final flips
-        # this to `--strict` once the sweep completes. The structured
-        # report at `dist/route-boundary-report.json` is the work-item
-        # ledger for the sweep PRs (tasks 20-30).
+      - name: Route boundary coverage check (canon §28 / W2 Stream 3 PR-final, hard gate)
+        # Hard gate as of Stream 3 PR-final (2026-05-17). Every handler
+        # under apps/api/src and apps/control-plane/src must declare
+        # exactly one primary boundary decorator and pass every rule
+        # the scanner enforces (registered codes, no untyped @Req(),
+        # no bare @Roles, mutual-exclusion). Failures fail the build.
+        # The legacy `--strict` flag is preserved as a no-op alias for
+        # any pre-flip callers; `--reporting` opts back into exit-0
+        # mode for ad-hoc local exploration only.
         run: npm run route-boundary:check
 
       - name: Scanner self-tests (W0 task 2 + per-scanner suites)
