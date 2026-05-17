@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   UnauthorizedException,
   ConflictException,
@@ -6,7 +7,10 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import {
+  KEY_SIGNING_SERVICE,
+  KeySigningService,
+} from '@hubblewave/auth-guard';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -58,10 +62,23 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: ControlPlaneRole;
+  iss?: string;
+  aud?: string;
   jti?: string;
   iat?: number;
   exp?: number;
 }
+
+/**
+ * Per canon §29.4 the control-plane access token TTL is short-lived; the
+ * web-control-plane silently refreshes via the refresh-token rotation flow.
+ * 15 minutes preserves the pre-Stream-1-PR3 UX (no premature mid-action
+ * 401s) while staying within the canon range.
+ */
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+
+const CONTROL_PLANE_ISSUER = 'hubblewave-control-plane';
+const CONTROL_PLANE_AUDIENCE = 'hubblewave-control-plane';
 
 export interface LogoutContext {
   userId: string;
@@ -103,7 +120,8 @@ export class AuthService {
     private readonly revokedTokenRepo: Repository<RevokedToken>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
-    private readonly jwtService: JwtService,
+    @Inject(KEY_SIGNING_SERVICE)
+    private readonly keySigning: KeySigningService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -182,7 +200,7 @@ export class AuthService {
     await this.userRepo.save(user);
 
     const family = crypto.randomUUID();
-    const { accessToken } = this.signAccessToken(user, family);
+    const { accessToken } = await this.signAccessToken(user, family);
     const { token: refreshToken, expiresAt: refreshExpiresAt } =
       await this.issueRefreshToken(user.id, family, ipAddress, userAgent);
 
@@ -206,16 +224,30 @@ export class AuthService {
    * family id under a custom `fam` claim. JwtStrategy.validate() surfaces
    * `fam` so the logout flow can revoke the entire family along with the
    * specific access-token jti.
+   *
+   * Signs ES256 via the canonical `KeySigningService` (canon §29.1 + §29.9).
+   * The pre-Stream-1-PR3 HS256 path is gone.
    */
-  private signAccessToken(user: ControlPlaneUser, family: string): { accessToken: string; jti: string } {
+  private async signAccessToken(
+    user: ControlPlaneUser,
+    family: string,
+  ): Promise<{ accessToken: string; jti: string }> {
     const jti = crypto.randomUUID();
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const payload: JwtPayload & { fam: string } = {
       sub: user.id,
       email: user.email,
       role: user.role,
       fam: family,
+      jti,
+      iss: CONTROL_PLANE_ISSUER,
+      aud: CONTROL_PLANE_AUDIENCE,
+      iat: nowSeconds,
+      exp: nowSeconds + ACCESS_TOKEN_TTL_SECONDS,
     };
-    const accessToken = this.jwtService.sign(payload, { jwtid: jti });
+    const accessToken = await this.keySigning.sign(
+      payload as unknown as Record<string, unknown>,
+    );
     return { accessToken, jti };
   }
 
@@ -302,7 +334,7 @@ export class AuthService {
     row.replacedBy = successor.row.id;
     await this.refreshTokenRepo.save(row);
 
-    const { accessToken } = this.signAccessToken(user, row.family);
+    const { accessToken } = await this.signAccessToken(user, row.family);
 
     return {
       accessToken,
@@ -340,10 +372,11 @@ export class AuthService {
    */
   async revokeToken(context: LogoutContext): Promise<void> {
     if (!context.jti || !context.expiresAt) {
-      // Tokens issued before this rollout do not carry a jti. We cannot
-      // surgically revoke them; the operator must rotate JWT_SECRET to
-      // invalidate the entire signing key. Fail closed by raising so the
-      // controller can return a clear error rather than silently no-op.
+      // ES256 tokens always carry a jti (assigned at sign time); a token
+      // without one is either malformed or pre-Stream-1-PR3 archaeology
+      // and cannot be surgically revoked. Operator remediation is to
+      // rotate the active signing key via `KeySigningService.rotateKey()`
+      // — that invalidates every token signed under the old kid.
       throw new UnauthorizedException(
         'Token does not carry a jti claim and cannot be individually revoked. ' +
         'Re-authenticate to obtain a token issued by the current platform.',

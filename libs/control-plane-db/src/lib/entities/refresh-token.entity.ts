@@ -23,7 +23,12 @@ import {
  * `tokenHash` stores SHA-256 of the raw refresh token; the raw value is
  * never persisted server-side.
  */
-@Entity({ name: 'refresh_tokens', schema: 'identity' })
+// `public` is implicit on the control-plane DB; this entity intentionally
+// omits the schema field. The pre-W2 `schema: 'identity'` declaration was a
+// copy-paste from the instance plane (which uses an `identity` schema) and
+// would have produced "relation identity.refresh_tokens does not exist" on
+// every refresh-token query. Fixed by Stream 1 PR3.
+@Entity({ name: 'refresh_tokens' })
 @Index(['tokenHash'], { unique: true })
 @Index(['family'])
 @Index(['userId'])

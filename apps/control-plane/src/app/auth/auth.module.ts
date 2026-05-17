@@ -1,8 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ControlPlaneUser, RevokedToken, RefreshToken } from '@hubblewave/control-plane-db';
 import { AuthController } from './auth.controller';
@@ -10,38 +8,29 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
+import { JwksController } from './jwks.controller';
+import { ControlPlaneKeySigningModule } from './key-signing/control-plane-key-signing.module';
 
+/**
+ * Canon §29.1 + §29.9: control-plane JWTs are signed ES256 via the
+ * `KeySigningService` provided by `ControlPlaneKeySigningModule.forRoot()`.
+ * The pre-Stream-1-PR3 `JwtModule.registerAsync({ secret })` HS256 path is
+ * gone — HS256 is forbidden everywhere on the platform.
+ */
 @Module({
   imports: [
     TypeOrmModule.forFeature([ControlPlaneUser, RevokedToken, RefreshToken]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService): JwtModuleOptions => {
-        const secret = configService.get<string>('JWT_SECRET');
-        if (!secret) {
-          throw new Error('JWT_SECRET is required for control plane API');
-        }
-        return {
-          secret,
-          signOptions: {
-            expiresIn: 86400, // 24 hours in seconds
-          },
-        };
-      },
-    }),
+    ControlPlaneKeySigningModule.forRoot(),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, JwksController],
   providers: [
     AuthService,
     JwtStrategy,
-    // Apply JWT auth globally
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    // Apply roles guard globally
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
@@ -53,7 +42,6 @@ export class AuthModule implements OnModuleInit {
   constructor(private readonly authService: AuthService) {}
 
   async onModuleInit() {
-    // Seed initial admin user on startup
     await this.authService.seedAdminUser();
   }
 }
