@@ -15,7 +15,12 @@ import {
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AIReportsService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import { ReportFormat, ReportStatus } from '@hubblewave/instance-db';
 import createDOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
@@ -64,6 +69,14 @@ interface CreateTemplateDto {
   isPublic?: boolean;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — AI report generation is a
+ * user-facing AI feature. Authenticated identity is sufficient; no
+ * specific capability gate (per-collection ACL applies when reports
+ * query data, but the report-authoring routes themselves are open
+ * to every authenticated user).
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - AI Report Generator')
 @ApiBearerAuth()
 @Controller('phase7/reports')

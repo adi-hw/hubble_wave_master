@@ -13,7 +13,12 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AgileDevelopmentService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import { DataSource, Repository } from 'typeorm';
 import { AvaStory, SprintRecording, StoryStatus } from '@hubblewave/instance-db';
 
@@ -60,6 +65,14 @@ interface UpdateStoryDto {
  * the minimum-impact persistence path until that column exists.
  */
 const ASSIGNMENT_FLOW_KIND = 'assignment';
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — AVA-powered agile
+ * development is a user-facing AI feature surface. Every handler
+ * operates on the caller's own stories / sprints / recordings via
+ * `@CurrentUser`. Authenticated identity is sufficient; no specific
+ * capability gate.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - AVA-Powered Agile Development')
 @ApiBearerAuth()
 @Controller('phase7/agile')

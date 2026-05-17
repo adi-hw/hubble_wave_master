@@ -11,7 +11,12 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { NLQueryService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 
 interface ExecuteQueryDto {
   query: string;
@@ -22,6 +27,13 @@ interface SaveQueryDto {
   query: string;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — natural-language query is a
+ * user-facing AI feature. Per-collection ACL applies when the query
+ * compiles to SQL/Typesense filters; the route itself is open to
+ * every authenticated user.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Natural Language Queries')
 @ApiBearerAuth()
 @Controller('phase7/nl-query')
