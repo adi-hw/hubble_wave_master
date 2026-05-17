@@ -4808,6 +4808,348 @@ Self-test: 8 assertions covering (a) wrapped call passes; (b) unwrapped axios.ge
 
 ---
 
+## 14. Pack Composition Implementation Plans
+
+§13's worked examples specify the platform's 18 substrate primitives. §14 specifies how the four customer-facing packs compose those primitives. Each pack section follows the same shape: collections (with taskable/sync/vector flags + key columns + substrate dependencies), workflows (state machines with transitions/guards/audit), automation rules, views, workspaces, plugin components, integration adapters, and PR breakdown.
+
+The pack specs are denser than substrate worked examples because each enumerates ~50 collections, ~20 workflows, and ~30 plugins. Per-item depth is calibrated so the spec is implementable without further design (column types implicit when canonical; full property catalogs deferred to pack manifest files that ship with the pack code).
+
+### 14.1 `maintenance-core` pack (~25 PRs)
+
+The platform's flagship pack — every overlay (clinical, facilities, OT-security) composes on top. 51 collections, 18 workflows, ~25 automation rules, ~50 views, 9 workspaces, 32 React+RN plugin components, 7 integration adapters.
+
+#### 14.1.1 Collections (51 total)
+
+All collections live in `schema: 'maintenance_core'` and are pack-namespaced under `cust__maintenance_core__<collection_id>` for customer-namespaced extensions (canon §17.5). Taskable collections opt into the §3.1 capability; regulated collections require §3.6 reason codes + e-signatures on closure transitions; mobile-sync collections declare a `mobile_sync_policies` row per §3.7.
+
+**Asset hierarchy (5 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `asset` | — | ✓ assigned_only | ✓ name + description | `id`, `asset_type_id`, `asset_class` (vehicle/key/equipment/space), `serial_number`, `manufacturer`, `model`, `location_id`, `status`, `criticality_score`, `purchase_date`, `acquisition_cost_cents`, `residual_value_cents`, `expected_useful_life_years` | §3.5 observation_streams subject, §3.10 PHI-class metadata, §3.15 graph node |
+| `asset_type` | — | ✓ full | — | `id`, `code`, `label`, `discriminator` ∈ {vehicle, physical_key, equipment, space, ot_device, clinical_device}, `metadata_schema_id` | — |
+| `asset_relationship` | — | ✓ full | — | `id`, `parent_asset_id`, `child_asset_id`, `relationship_kind` (component-of/dependency-of/redundant-with/spare-for), `metadata` | §3.15 relationship_edge writer |
+| `asset_meter` | — | ✓ assigned_only | — | `id`, `asset_id`, `meter_kind` (runtime_hours/mileage/cycle_count/temperature), `unit_code`, `current_reading`, `last_reading_at`, `rollover_threshold` | §3.5 observation_streams subject |
+| `asset_pin` | — | ✓ assigned_only | ✓ voice_note_transcript | `id`, `asset_id`, `pin_kind` (voice_note/photo_marker/text_note), `body`, `location_3d` (x/y/z within asset bounding box), `captured_by_user_id`, `captured_at` | §3.12 attachment_uploads, §3.14 vector index |
+
+**Locations + spaces (3 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `location` | — | ✓ full | ✓ name + address | `id`, `code`, `label`, `address`, `geo_lat`, `geo_lon`, `parent_location_id`, `location_kind` (campus/building/floor/zone) | §3.15 graph node |
+| `location_relationship` | — | ✓ full | — | `id`, `src_location_id`, `dst_location_id`, `edge_kind` (contains/adjacent_to/connects_via) | §3.15 relationship_edge writer |
+| `space` | — | ✓ assigned_only | ✓ name + label | `id`, `location_id`, `space_code`, `label`, `space_kind` (room/corridor/elevator/utility_closet), `floor_plan_coordinates`, `capacity` | §3.15 graph node |
+
+**Work orders + PMs (8 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `maintenance_work_order` | ✓ | ✓ assigned_only | ✓ title + description | `id`, `wo_number`, `asset_id`, `requesting_user_id`, `assigned_technician_id`, `priority`, `status`, `wo_kind` (corrective/preventive/inspection/permit), `opened_at`, `closed_at`, `sla_due_at`, `task_projection_id` | §3.1 taskable; §3.2 projection; §3.6 closure signature |
+| `maintenance_work_task` | ✓ | ✓ assigned_only | — | `id`, `work_order_id`, `task_kind`, `sequence`, `assigned_user_id`, `status`, `started_at`, `completed_at`, `dependency_task_ids[]` | §3.1 taskable |
+| `pm_schedule` | — | — | — | `id`, `code`, `label`, `trigger_kind` (calendar/utilization/condition), `rrule`, `meter_kind`, `meter_threshold`, `condition_predicate`, `next_due_at`, `last_generated_at` | §3.3 scheduling primitives |
+| `pm_asset_assignment` | — | — | — | `id`, `pm_schedule_id`, `asset_id`, `local_overrides_jsonb`, `last_pm_completed_at` | — |
+| `maintenance_definition` | — | — | — | `id`, `code`, `label`, `task_template`, `required_skills[]`, `estimated_duration_minutes`, `required_parts[]` | — |
+| `checklist_template` | — | ✓ full | — | `id`, `code`, `label`, `items[]` (each `{id, prompt, response_kind, required, signature_meaning?}`), `applicable_wo_kinds[]` | §3.6 signature linkage |
+| `checklist_instance` | — | ✓ assigned_only | — | `id`, `work_order_id`, `template_id`, `responses[]`, `completed_at`, `completed_by_user_id` | §3.6 signature linkage |
+| `inspection` | ✓ | ✓ assigned_only | — | `id`, `inspection_kind`, `asset_id`, `inspector_user_id`, `scheduled_at`, `completed_at`, `finding_count`, `status` | §3.1 taskable |
+
+**Inspections + findings + rounds (5 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `deficiency` | ✓ | ✓ assigned_only | ✓ description | `id`, `inspection_id`, `asset_id`, `severity`, `description`, `linked_work_order_id`, `status`, `discovered_at`, `resolved_at` | §3.1 taskable; §3.14 vector index |
+| `work_round_definition` | — | ✓ full | — | `id`, `code`, `label`, `ordered_asset_ids[]`, `observation_prompts_per_asset[]`, `target_duration_minutes` | — |
+| `work_round_session` | — (NOT taskable per marquee #25) | ✓ assigned_only | — | `id`, `round_definition_id`, `technician_user_id`, `started_at`, `completed_at`, `observations_recorded` (count), `failures_spawned_wo_ids[]` | §3.5 observation_streams writer |
+| `work_order_dependency` | — | ✓ full | — | `id`, `predecessor_wo_id`, `successor_wo_id`, `dependency_kind` (finish_to_start/start_to_start/cannot_overlap) | §3.15 graph |
+| `advisory` | — | ✓ assigned_only | ✓ title + body | `id`, `source` (ecri/fda/vendor/internal), `severity`, `affected_asset_query`, `body`, `published_at`, `action_required`, `status` | §3.14 vector index |
+
+**Vendors + contracts (6 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `vendor` | — | — | ✓ name + capabilities | `id`, `name`, `vendor_kind`, `tax_id`, `address`, `capabilities[]`, `rating` | §3.14 vector for vendor search |
+| `vendor_contact` | — | — | — | `id`, `vendor_id`, `name`, `email`, `phone`, `role` | — |
+| `service_contract` | ✓ | — | — | `id`, `vendor_id`, `contract_number`, `start_date`, `end_date`, `auto_renewal`, `covered_asset_ids[]`, `value_cents`, `currency_code`, `status` | §3.1 taskable for renewal workflow |
+| `warranty` | — | — | — | `id`, `asset_id`, `vendor_id`, `warranty_number`, `coverage_kind`, `start_date`, `end_date`, `claim_history_count` | — |
+| `master_service_agreement` | — | — | — | `id`, `vendor_id`, `msa_number`, `effective_date`, `expiry_date`, `rate_card_jsonb`, `payment_terms` | — |
+| `vendor_scorecard` | — | — | — | `id`, `vendor_id`, `evaluation_period`, `responsiveness_score`, `quality_score`, `cost_variance_score`, `overall_grade` | — |
+
+**Procurement + financial (4 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `purchase_order` | ✓ | — | — | `id`, `po_number`, `vendor_id`, `total_cents`, `currency_code`, `line_items[]`, `cost_center_id`, `status`, `approval_id` | §3.1 taskable; §3.16 transaction_approval |
+| `procurement_proposal` | ✓ | — | — | `id`, `proposal_number`, `vendor_id`, `requested_by_user_id`, `line_items[]` (each with `ava_provenance_jsonb`), `status` ∈ {proposed, reviewed, approved_to_po, rejected}, `converted_po_id` | §3.1; §3.16; §3.8 AVA |
+| `vendor_invoice` | ✓ | — | ✓ extracted_line_text | `id`, `invoice_number`, `vendor_id`, `pdf_attachment_id`, `extracted_line_items_jsonb`, `linked_po_id`, `reconciliation_status` ∈ {received, ai_reconciled, discrepancy_flagged, human_review, approved, paid}, `variance_cents`, `payment_authorization_id` | §3.12 attachment; §3.14 vector; §3.16 three_way_match |
+| `capital_replacement_request` | ✓ | — | — | `id`, `asset_id`, `proposed_by_user_id`, `repair_cost_estimate_cents`, `replacement_cost_estimate_cents`, `residual_value_cents`, `urgency_score`, `status` ∈ {proposed, director_review, approved, procurement_proposal_linked, asset_decommissioned}, `linked_procurement_proposal_id` | §3.1; §3.16 |
+
+**Inventory + parts (9 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `parts_catalog` | — | ✓ full | ✓ name + part_number | `id`, `part_number`, `manufacturer`, `description`, `category`, `unit_of_measure`, `reorder_threshold`, `replenishment_lead_days` | §3.14 vector |
+| `inventory_location` | — | ✓ full | — | `id`, `code`, `label`, `kind` (warehouse/truck/cabinet), `parent_location_id` | — |
+| `inventory_bin` | — | ✓ full | — | `id`, `inventory_location_id`, `bin_code`, `capacity` | — |
+| `inventory_lot` | — | ✓ assigned_only | — | `id`, `parts_catalog_id`, `lot_number`, `expiration_date`, `quantity_on_hand`, `bin_id` | — |
+| `inventory_serial` | — | ✓ assigned_only | — | `id`, `parts_catalog_id`, `serial_number`, `status`, `current_location_id` | — |
+| `mobile_inventory_holding` | — | ✓ assigned_only | — | `id`, `technician_user_id`, `parts_catalog_id`, `quantity`, `last_reconciled_at` | — |
+| `technician_presence` | — | ✓ full | — | `id`, `technician_user_id`, `current_location_id`, `last_seen_at`, `status` | — |
+| `parts_requisition` | ✓ | ✓ assigned_only | — | `id`, `requisition_number`, `requesting_user_id`, `work_order_id`, `line_items[]`, `status`, `approval_id` | §3.1; §3.16 |
+| `parts_consumption` | — | ✓ assigned_only | — | `id`, `work_order_id`, `parts_catalog_id`, `quantity_consumed`, `consumed_by_user_id`, `consumed_at`, `lot_or_serial_id` | — |
+
+**Stock + documents + recalls (4 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `stock_movement` | — | — | — | `id`, `parts_catalog_id`, `from_bin_id`, `to_bin_id`, `quantity`, `kind` (receive/issue/transfer/adjustment), `triggered_by_user_id`, `at_timestamp` | — |
+| `document` | — | ✓ assigned_only | ✓ title + extracted_text | `id`, `title`, `document_kind`, `attached_to_collection_id`, `attached_to_record_id`, `evidence_artifact_id`, `extracted_text` | §3.12; §3.14 |
+| `recall_response` | ✓ regulated | ✓ assigned_only | — | `id`, `advisory_id`, `affected_asset_id`, `action_kind`, `target_completion_date`, `completed_at`, `signature_chain_id`, `evidence_attachment_ids[]` | §3.1; §3.6 closure signature; §3.12 |
+| `dispatch_plan` | — | — | — | `id`, `dispatch_kind` (daily/event/emergency), `assigned_at`, `dispatcher_user_id`, `plan_jsonb` (the sprint board snapshot) | — |
+
+**Dispatch + permits (3 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `dispatch_assignment` | — | ✓ assigned_only | — | `id`, `dispatch_plan_id`, `work_order_id`, `technician_user_id`, `eta_at`, `status` (queued/in_route/on_site/completed) | §3.15 graph for routing |
+| `permit_to_work` | ✓ regulated | ✓ assigned_only | — | `id`, `permit_number`, `work_order_id`, `hazard_class`, `requestor_user_id`, `authorizer_user_id`, `valid_from`, `valid_until`, `signature_chain_id`, `loto_check_ids[]` | §3.1; §3.6 |
+| `loto_step_check` | — regulated | ✓ assigned_only | — | `id`, `permit_to_work_id`, `step_sequence`, `step_kind` (lockout_applied/voltage_zero/etc.), `verifier_user_id`, `verified_at`, `signature_chain_id`, `photo_attachment_id` | §3.6; §3.12 |
+
+**Pack-specific feature collections (4 collections per marquees #33, #35):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate dependencies |
+|---|---|---|---|---|---|
+| `asset_import_batch` | ✓ | — | — | Thin alias / view over `import.import_batch` with `purpose='asset_commissioning'`. Pack-side normalization rules implement asset-specific AVA tool. | §3.17 import primitive |
+| `key_record` | — | ✓ assigned_only | — | `id`, `key_serial`, `key_class` (master/sub_master/operating/control), `parent_master_key_id`, `opens_locks[]` (lock_ids), `status` (issued/recovered/lost/destroyed), `current_custodian_user_id` | §3.15 graph (key hierarchy) |
+| `key_assignment` | ✓ regulated | ✓ assigned_only | — | `id`, `key_record_id`, `assigned_to_user_id`, `assigned_by_user_id`, `assigned_at`, `expected_return_at`, `actual_return_at`, `signature_chain_id`, `status` | §3.1; §3.6 signature |
+| `unrecovered_key_flag` | ✓ | — | — | `id`, `key_assignment_id`, `terminated_user_id`, `flag_created_at`, `recovery_wo_id`, `escalation_state`, `cleared_at` | §3.1 |
+
+**Total: 51 collections.** All §28 access rules are seeded by the pack installer with role grants to the 7 maintenance personas (technician, dispatcher, maintenance_manager, biomed_engineer, facilities_manager, compliance_officer, fca_inspector); ABAC rules constrain by `location_id` cost-center where applicable.
+
+#### 14.1.2 Workflows (18 state machines)
+
+Each workflow is a state machine on a taskable collection. States, transitions, guards, audit events, and roles authorized are pack-manifest declarations. Format below: state diagram (terse ASCII) + transition table.
+
+**WF-1: WO intake/triage** (on `maintenance_work_order`)
+```
+draft → submitted → triaged → assigned → in_progress → blocked → in_progress → completed
+                              → rejected
+                              → entitlement_intercept (marquee #23)
+```
+Roles: `requester` submits; `dispatcher` triages + assigns; `technician` advances in_progress/blocked/completed. Audit on every transition. Guards: `triaged` requires `priority` set; `entitlement_intercept` requires `vendor_id` resolved + service_contract lookup.
+
+**WF-2: WO triage with entitlement intercept** (extension of WF-1 per marquee #23)
+- On triage, if asset has an active `service_contract` covering the failure mode, divert to vendor workflow before assigning internal technician.
+- Transitions: `triaged → entitlement_proposed → vendor_dispatched → vendor_completed → human_close_out`. Guards: `entitlement_proposed` requires AVA's contract match + confidence ≥ 0.85.
+
+**WF-3: WO approval** (separate from WF-1 for high-value orders > approval threshold)
+- States: `awaiting_approval → approved → in_progress` OR `awaiting_approval → rejected`. Uses §3.16 `TransactionApprovalService.request/approve/reject`. Required when WO estimated cost > policy threshold.
+
+**WF-4: PM generation orchestration** (on `pm_schedule`)
+- Triggered by §3.3 scheduling primitives on `next_due_at`. State: `pending → wo_generated → completed`. Guards: idempotency on `next_due_at` (no double-generation). Failure path: `pending → generation_failed` emits `RuntimeAnomaly`.
+
+**WF-5: Calibration signoff** (on inspection where `inspection_kind='calibration'`)
+- States: `scheduled → in_progress → calibrated → signed_off → expired`. `signed_off` requires §3.6 closure signature with `signature_meaning='verification'`; certificate attachment via §3.12.
+
+**WF-6: Recall remediation** (on `recall_response`)
+- States: `pending → in_progress → remediated → verified → closed`. `verified` requires §3.6 e-signature + evidence attachment. SLA driven by advisory severity.
+
+**WF-7: FCA review** (lite version; full version in facilities overlay §14.3)
+- States: `scheduled → in_progress → findings_logged → resolved`. Each finding creates a `deficiency` row.
+
+**WF-8: Permit-to-work auth** (on `permit_to_work`)
+- States: `requested → hazard_assessed → authorized → loto_in_progress → work_in_progress → loto_removed → closed`. Every transition with §3.6 signature; `loto_step_check` rows accumulate.
+
+**WF-9: Parts reorder**
+- Triggered by `parts_catalog.reorder_threshold` watch + automation rule. States: `triggered → procurement_proposal_drafted → po_generated → received → stock_updated`. Uses §3.16 financial controls if total > approval threshold.
+
+**WF-10: AEM review** (lite; full clinical version in §14.2)
+- States: `assessed → committee_review → outcome (membership_added | excluded | re-evaluate)`. Used for non-clinical equivalents (e.g., legacy industrial equipment).
+
+**WF-11: WO escalation loop** (background; not user-driven)
+- Triggered by SLA timer: `sla_warning → sla_breached → escalated_to_manager`. Generates §3.5 anomaly when breached.
+
+**WF-12: WO close-out**
+- States: `completed → review → closed_final` OR `completed → reopened`. `closed_final` requires checklist 100% complete + closure signature (§3.6) + cost reconciliation against `purchase_order` if any.
+
+**WF-13: round_completion_review** (on `work_round_session`; marquee #25)
+- Observation entries flow into §3.5; only failed observations spawn reactive `maintenance_work_order`. States: `started → in_progress → completed → reviewed`. NOT taskable — the round itself is sample-not-task; only spawned WOs become tasks.
+
+**WF-14: contract_renewal_cycle** (on `service_contract`)
+- Scheduled checks at T-90, T-30, T-7 from `end_date` emit notifications; T-0 transitions `service_contract.status` to `expiring` then `expired`. Renewal path branches to `procurement_proposal` flow for new MSA/contract.
+
+**WF-15: capital_replacement_review** (per marquee #27, on `capital_replacement_request`)
+- States: `proposed → director_review → approved → procurement_proposal_linked → asset_decommissioned`. Director approval uses §3.16 with `transaction_kind='capital_purchase'`. Auto-decommission writes `asset.status='decommissioned'` + cascades `pm_asset_assignment` deactivation.
+
+**WF-16: procurement_proposal_approval** (per marquee #28)
+- States: `proposed → reviewed → approved_to_po → po_generated`. AVA drafts; Procurement Manager Approves All / Edits / Skips per line. Approved lines flow to `purchase_order` creation.
+
+**WF-17: vendor_invoice_reconciliation** (per marquee #29)
+- States: `received → ai_reconciled → matched | discrepancy_flagged → human_review → approved → paid`. AI reconciliation cross-references `time_on_site` + MSA rate card + `parts_consumption`. §3.16 three-way match record on success.
+
+**WF-18: fleet_telematics_to_pm** (per marquee #30)
+- Triggered by OBD2 mileage threshold breach (via §3.5 observation alert). States: `threshold_breached → pm_schedule_consulted → wo_generated`. Idempotent via `pm_schedule.last_generated_at + meter_reading_snapshot`.
+
+**WF-19: asset_import_commissioning** (per marquee #33) — delegates to §3.17 `import.import_batch` lifecycle; the pack supplies the AVA normalization tool for asset-row → `asset` + `asset_meter` extraction.
+
+**WF-20: key_revocation_on_termination** (per marquee #35)
+- Automation rule on `users.status='terminated'` event: for every open `key_assignment` for that user, emit `unrecovered_key_flag` + create recovery WO. Security Officer notified. States on `unrecovered_key_flag`: `created → recovery_in_progress → recovered | escalated_to_lock_change`.
+
+#### 14.1.3 Automation rules (~25)
+
+Declared in pack manifest under `automation_rules[]`. Each is a `(trigger, condition, action)` triple per canon §8 (one engine, two modes).
+
+| # | Trigger | Condition | Action | Mode |
+|---:|---|---|---|---|
+| 1 | `before save maintenance_work_order` | `priority='emergency'` AND no `assigned_technician_id` | Block save with structured error `EMERGENCY_REQUIRES_ASSIGNEE` | rule |
+| 2 | `after save maintenance_work_order` | status transition `→ closed_final` | Stamp `closed_at` + emit `wo.closed` event for projection | rule |
+| 3 | `before save permit_to_work` | `valid_from > valid_until` | Block save | rule |
+| 4 | `after save loto_step_check` | step_kind='voltage_zero' AND value not in expected range | Spawn safety-escalation WO | rule |
+| 5 | `scheduled every 15min` | — | Refresh `task_projection` for new/changed taskable rows (W2 stream4b) | rule |
+| 6 | `scheduled every hour` | `parts_catalog.reorder_threshold` exceeded | Enqueue WF-9 parts reorder | rule |
+| 7 | `scheduled daily 02:00` | `service_contract.end_date - 90 days = today` | Emit T-90 notification per WF-14 | rule |
+| 8 | `scheduled daily 02:00` | `service_contract.end_date - 30 days = today` | Emit T-30 notification | rule |
+| 9 | `scheduled daily 02:00` | `service_contract.end_date - 7 days = today` | Emit T-7 notification | rule |
+| 10 | `scheduled hourly` | `asset_meter.current_reading > rollover_threshold` | Roll meter; emit anomaly if too far past threshold | rule |
+| 11 | `scheduled every 5min` | `maintenance_work_order.sla_due_at < now()` AND `status NOT IN ('completed', 'closed_final')` | Mark `sla_breached` + page-on-call | rule |
+| 12 | `before delete asset_type` | Reference scan finds `asset` rows | Refuse with `IN_USE` listing references (canon §14) | rule |
+| 13 | `after save inspection` | `inspection_kind='calibration'` AND status='scheduled' | Auto-instantiate checklist_instance from calibration template | rule |
+| 14 | `after save advisory` | `source='ecri' OR 'fda'` AND severity='critical' | Notify Compliance Officer immediately | rule |
+| 15 | `after save users` | `status` transition `→ terminated` | Enqueue WF-20 key_revocation_on_termination | rule |
+| 16 | `after save observation` | observation matches `pm_schedule.condition_predicate` | Enqueue WF-4 PM generation | rule |
+| 17 | `after save vendor_invoice` | status='received' | Enqueue WF-17 AI reconciliation worker | rule |
+| 18 | `before save purchase_order` | `total_cents > approval_threshold` | Block until linked `transaction_approval.status='approved'` | rule |
+| 19 | `scheduled weekly Mon 06:00` | — | Recompute `vendor_scorecard` rows for active vendors | rule |
+| 20 | `after save work_round_session` | observation entry has `verdict='failed'` | Spawn reactive `maintenance_work_order` (WF-13) | rule |
+| 21 | `after save capital_replacement_request` | status='approved' | Auto-create `procurement_proposal` row (WF-15 → WF-16 chain) | rule |
+| 22 | `scheduled every 10min` | `dispatch_assignment.eta_at < now() - 30min` AND status NOT IN final states | Notify dispatcher of stale assignment | rule |
+| 23 | `before save key_assignment` | `key_record.status != 'available'` | Block save with `KEY_NOT_AVAILABLE` | rule |
+| 24 | `workflow on capital_replacement_request approved` | — | Persist multi-day approval state; checkpoint each transition | workflow |
+| 25 | `workflow on vendor_invoice in discrepancy_flagged` | — | Human-review queue with reason-code routing | workflow |
+
+#### 14.1.4 Views (~50)
+
+Views are pack-namespaced; canon §7 (SOFTEN) collapses to customer-namespaced + role views. Maintenance-core ships:
+
+- **Per-collection default views (51)**: `<collection>_default_grid` — flat grid with the 6-8 most relevant columns; one per collection.
+- **Role-tuned views (32)**: 
+  - Technician: `my_open_work_orders`, `nearby_assets`, `my_inventory_holdings`, `my_pending_signatures`, `today_rounds`
+  - Dispatcher: `unassigned_queue`, `in_progress_map`, `sla_breach_warning`, `vendor_dispatched_queue`
+  - Maintenance Manager: `pm_compliance_dashboard`, `mttr_by_asset_class`, `mtbf_trend`, `vendor_scorecard_grid`, `contract_renewal_board`, `capital_replacement_pipeline`, `replacement_urgency_ranked`
+  - Biomed Engineer: `clinical_devices_due_for_calibration`, `recall_response_open`
+  - Facilities Manager: (handled in §14.3 overlay)
+  - Compliance Officer: `signature_chain_browser`, `permit_to_work_active`, `recall_response_audit_trail`, `key_custody_ledger`, `unrecovered_keys_open`
+  - FCA Inspector: `fca_open_assessments`, `deficiency_log_by_severity`
+- **Cross-cutting views (~12)**: `assets_by_criticality`, `assets_by_location`, `assets_due_pm_30d`, `assets_warranty_expiring_60d`, `procurement_open`, `invoice_open_discrepancies`, `parts_below_reorder`, `inventory_aging`, `dispatch_today`, `dispatch_tomorrow`, `mobile_inventory_reconciliation_due`, `pending_advisories`
+
+All views are validator-checked at pack publish for column code resolution (canon §7 + §13.8 G8.4 mobile-primitive eligibility on sync-eligible views).
+
+#### 14.1.5 Workspaces (9 OOTB, all UI-Builder-authored)
+
+Per canon §27, every workspace is authored via the same UI Builder customers use — eat-our-own-dog-food proof.
+
+| Workspace | Page composition | Primitives used | Surface |
+|---|---|---|---|
+| `ws_technician_mobile_first` | 4 pages: Home / Work / Rounds / Assets. Home = `<TodayBriefing>` + `<MyOpenWorkOrders>` grid; Work = `<TriageDeck>` swipe through `<MaintenanceWorkOrderCard>`; Rounds = `<RoundsRunner>` glove-mode swipe-deck; Assets = barcode scanner → `<AssetDetail>` + `<AssetPinsCard>` | foundation + capture (`BarcodeScanner`, `NameplateCamera`) + field-tool primitives | mobile-first |
+| `ws_dispatcher` | 2 pages: Sprint Board (drag-to-assign Kanban using `<SprintBoard>` + `<DispatchMap>`) / Vendor Dispatch (entitlement-intercept queue) | foundation + `<PivotKanban>` + `<DispatchMap>` | web |
+| `ws_maintenance_manager` | 3 pages: KPI Dash (`<AssetUtilizationChart>`, `<PredictiveFailureHeatmap>`) / Replacement Board (`<ReplacementUrgencyScore>`, `<CapitalReplacementCard>`) / Contracts (`<ContractRenewalBoard>`, `<VendorScorecard>`) | foundation + Chart | web |
+| `ws_biomed_engineer` | (Clinical overlay-aware; declared in maintenance-core, populated by clinical-maintenance overlay) | foundation + UDI primitives (overlay) | web |
+| `ws_facilities_manager` | (Facilities overlay-aware) | (overlay) | web |
+| `ws_compliance_officer` | 4 pages: Readiness Dashboard (compliance score per area) / Audit Trail (signature chain browser) / E-Signature Ledger (all signatures + Merkle batches) / Kiosk Sessions (issue + revoke per §3.11) | foundation + signature-chain viewer | web |
+| `ws_fca_inspector` | 2 pages: Mobile FCA Capture (`<FloorPlanOverlay>` + finding-pin tap-to-create) / Deficiency Log | foundation + `<FloorPlanOverlay>` | mobile-first |
+| `ws_auditor_kiosk` | 1 read-only page: `<AuditorKioskShell>` (binds to §3.11 kiosk session; renders the assigned workspace's surface in read-only mode) | foundation only — no actions | tablet |
+| `ws_ot_security_officer` | (OT-security overlay-aware; declared here, populated by §14.4) | (overlay) | web |
+
+All workspaces consume `task_projection` (§3.2) for queue surfaces; canon §13.8 G8.4 enforces mobile-primitive eligibility on mobile surfaces.
+
+#### 14.1.6 Plugin components (32 React + RN via `@hubblewave/maintenance-plugins`)
+
+Each component exports both web and mobile variants (via the §3.7 primitive parity scanner). Listed with primary props + the surface they serve.
+
+| Component | Props (essential) | Surface | Substrate |
+|---|---|---|---|
+| `<AssetUtilizationChart>` | `{ assetId, range }` | web (manager KPI) | §3.5 rollups |
+| `<PredictiveFailureHeatmap>` | `{ scope, dimension }` | web | §3.5 + §3.14 |
+| `<FloorPlanOverlay>` | `{ locationId, overlayKind, onPinClick }` | web + mobile | §3.15 spatial |
+| `<FloorPlanRouter>` | `{ locationId, from, to, weightingPolicy }` | web | §3.15 routeSolve |
+| `<CalibrationCalendar>` | `{ scope, range }` | web | scheduling primitives |
+| `<RecallResponseTracker>` | `{ recallId }` | web | — |
+| `<DispatchMap>` | `{ planId, onDragAssign }` | web | §3.15 |
+| `<ChecklistRunner>` | `{ instanceId, onItemComplete }` | mobile | foundation + signature primitive |
+| `<SignatureCapture>` | `{ meaning, reasonCodeId, onSigned }` | mobile + web | §3.6 |
+| `<RoundsRunner>` | `{ sessionId, swipeMode }` | mobile (glove-mode) | §3.7 SwipeProgressCard |
+| `<BreakGlassButton>` | `{ propertyId, recordId }` | both | §3.10 |
+| `<PartFinder>` | `{ workOrderId }` | mobile | §3.14 vector |
+| `<AssetPinsCard>` | `{ assetId }` | mobile | §3.12 + §3.14 |
+| `<LotoStepRunner>` | `{ permitId }` | mobile | §3.6 |
+| `<AuditorKioskShell>` | `{ kioskSessionId, workspaceId }` | tablet (kiosk audience) | §3.11 |
+| `<ContractorPortal>` | `{ collaboratorInvitationId }` | web (external) | §3.11 |
+| `<SprintBoard>` | `{ scope, columns, onMove }` | web | task_projection |
+| `<ReplacementUrgencyScore>` | `{ assetId }` | web | — |
+| `<ContractRenewalBoard>` | `{ horizon }` | web | scheduling alerts |
+| `<CapitalReplacementCard>` | `{ requestId }` | web | §3.16 |
+| `<ProcurementProposalCart>` | `{ proposalId, onLineApprove }` | web | §3.16 + AVA |
+| `<InvoiceDiscrepancyBoard>` | `{ scope }` | web | §3.16 three-way-match |
+| `<FleetTelemetryPanel>` | `{ vehicleAssetId }` | web | §3.5 |
+| `<SemanticRecallMatchBoard>` | `{ advisoryId }` | web | §3.14 |
+| `<AnalyzerBlastRadiusBoard>` | `{ incidentNodeId, depth, timeWindow }` | web | §3.15 blastRadius |
+| `<AssetImportWizard>` | `{ batchId }` | web | §3.17 |
+| `<KeyCustodyLedger>` | `{ scope }` | web | §3.6 signature chain |
+| `<PivotKanban>` | `{ pivot, taskQuery }` | web | task_projection |
+| `<DualAxisTimeline>` | `{ scope, axes }` | web | — |
+| `<TriageDeck>` | `{ taskQuery, swipeActions }` | mobile | §3.7 |
+| `<LiveCommandMap>` | `{ scope, refreshInterval }` | web | task_projection + §3.15 |
+| `<DependencyGraph>` | `{ rootRecordId, edgeKinds }` | web | §3.15 graph |
+
+#### 14.1.7 Integration adapters (7)
+
+Declared via `@hubblewave/integration-adapter-sdk` (§3.13). Each ships in `-live` + `-simulator` flavors per the canon §39 conformance contract.
+
+| Adapter | Operations (selected) | Conformance fixtures | Used by marquees |
+|---|---|---|---|
+| `bacnet-generic` | `read_point`, `subscribe_cov`, `write_point` | `bacnet-generic-fixtures-v1` (24 fixtures) | building observability |
+| `modbus` | `read_holding`, `read_input`, `write_holding` | `modbus-fixtures-v1` | industrial/utility metering |
+| `mqtt-generic` | `subscribe`, `publish` | `mqtt-fixtures-v1` | sensor ingestion |
+| `mobile-barcode` | `decode`, `validate_format` | `barcode-fixtures-v1` | technician scanning |
+| `s3-evidence-store` | `presign_upload`, `presign_download`, `enforce_object_lock` | `s3-evidence-fixtures-v1` | §3.12 |
+| `ad-scim-roster` | `pull_user_changes`, `push_user_disabled` | `ad-scim-fixtures-v1` | identity reconciliation + WF-20 trigger |
+| `obd2-telematics-feed` | `subscribe_vehicle`, `decode_pid`, `enqueue_observation` | `obd2-fixtures-v1` (10 fixtures including engine_rpm, coolant_temp, mileage, gps_lat/lon, fault_code DTCs) | #30 Fleet-as-Asset |
+
+Each adapter declares `egress_allowlist_entry` requirements at pack install per §3.18 G19.1.
+
+#### 14.1.8 PR breakdown for maintenance-core (~25 PRs)
+
+| PR | Goal | Files / scope | Acceptance |
+|---:|---|---|---|
+| 1 | Pack scaffold + manifest + namespace + RBAC roles + permission registry seeding | `packs/maintenance-core/manifest.yaml`; `permissions[]`; `roles[]`; pack-installer plumbing | Pack installs cleanly into a fresh instance; 7 roles seeded; permission codes registered |
+| 2 | Asset hierarchy (5 collections) + per-collection migrations + entities + validator + §3.15 graph wiring | `packs/maintenance-core/collections/asset/**`, `asset_type`, `asset_relationship`, `asset_meter`, `asset_pin` | 5 collections render in metadata; relationships create graph edges; meters tie to §3.5 |
+| 3 | Locations + spaces (3 collections) + spatial graph integration | `location`, `location_relationship`, `space` collection scaffolds | §3.15 graph populated; floor-plan primitives can resolve adjacency |
+| 4 | Work orders core (3 collections) + WF-1 + WF-12 state machines + WF-11 escalation loop | `maintenance_work_order`, `maintenance_work_task`, `work_order_dependency` + workflow definitions | WO intake + close-out work end-to-end with §3.1 taskable + §3.2 projection + §3.6 closure signature |
+| 5 | PM machinery (3 collections) + WF-4 PM generation + scheduled rules | `pm_schedule`, `pm_asset_assignment`, `maintenance_definition` + scheduling integration | PMs generate from rrule + utilization + condition triggers; idempotent |
+| 6 | Checklists + inspections (4 collections) + WF-5 calibration + auto-instantiate rule | `checklist_template`, `checklist_instance`, `inspection`, `deficiency` | Calibration signoff round-trips; checklists complete with signature linkage |
+| 7 | Rounds (2 collections) + WF-13 round_completion_review + observation stream wiring | `work_round_definition`, `work_round_session` + automation rule 20 | Glove-mode `<RoundsRunner>` records observations; failures spawn reactive WOs |
+| 8 | Vendors + contracts (6 collections) + WF-14 contract_renewal_cycle + T-90/30/7 schedules | `vendor`, `vendor_contact`, `service_contract`, `warranty`, `master_service_agreement`, `vendor_scorecard` + scheduled rules 7-9 + rule 19 | Renewal notifications fire on schedule; scorecard recomputes weekly |
+| 9 | Procurement (4 collections) + WF-3 + WF-15 + WF-16 + §3.16 transaction_approval integration | `purchase_order`, `procurement_proposal`, `vendor_invoice`, `capital_replacement_request` | Approval flow works; co-sign roles enforced; AVA-drafted carts flow through |
+| 10 | Inventory (9 collections) + stock movements + parts reorder (WF-9) | All 9 inventory collections + automation rule 6 | Lots, serials, bins reconcile; reorder triggers procurement_proposal |
+| 11 | Stock movement + documents + recalls (4 collections) + WF-6 recall_remediation | `stock_movement`, `document`, `recall_response`, `dispatch_plan` | Recall responses close with §3.6 signature + evidence |
+| 12 | Dispatch (3 collections) + WF-2 entitlement intercept + AVA contract match | `dispatch_assignment`, `permit_to_work`, `loto_step_check` + workflow extensions | Entitlement intercept diverts vendor-eligible WOs; permit-to-work requires LOTO chain |
+| 13 | Key custody (3 collections per marquee #35) + WF-20 + automation rule 15 | `key_record`, `key_assignment`, `unrecovered_key_flag` | HR termination → automatic flag + recovery WO |
+| 14 | Asset import wizard (1 collection, alias over §3.17) + WF-19 + AVA normalization tool | `asset_import_batch` thin alias + `<AssetImportWizard>` plugin | CSV → AVA-normalized review → publish lands assets atomically |
+| 15 | Fleet telematics integration + WF-18 + `obd2-telematics-feed` adapter | OBD2 adapter + integration into §3.5 observation streams | Mileage triggers PMs; idempotent per `pm_schedule` |
+| 16 | Vendor invoice reconciliation (WF-17) + AI three-way-match cross-reference | `vendor_invoice` + §3.16 three_way_match writer | AI reconciliation matches > 90% in fixtures; discrepancies queue with reason codes |
+| 17 | UI Builder workspaces 1-5 (technician, dispatcher, manager, biomed, facilities placeholders) | UI Builder page definitions; §3.7 mobile parity assertions | Workspaces render on web + mobile; overlay slots clean |
+| 18 | UI Builder workspaces 6-9 (compliance officer, FCA inspector, auditor kiosk, OT security placeholder) | UI Builder page definitions | All 9 OOTB workspaces render |
+| 19 | Plugin components 1-10 (foundation viewers) | `@hubblewave/maintenance-plugins/foundation/**` | 10 components pass §3.7 parity scanner; storybook stories per primitive |
+| 20 | Plugin components 11-20 (workflow triggers + external-collaborator surfaces) | continuing plugin package | 10 more components; same gates |
+| 21 | Plugin components 21-32 (persona dashboards + fluid WO views) | continuing plugin package | 12 more components; full 32-component set complete |
+| 22 | ~50 views: per-collection default grids + role-tuned + cross-cutting | View definitions in pack manifest | Pack publish validator approves all views; mobile-eligibility honored |
+| 23 | ~25 automation rules end-to-end | Pack manifest `automation_rules[]` + sandbox script tests | All rules fire correctly under fixtures; SLA breach paging works |
+| 24 | Integration adapter conformance: 6 of 7 (bacnet, modbus, mqtt, barcode, s3, ad-scim) | `@hubblewave/<adapter>-live` + `-simulator` packages + fixture sets | Conformance replays pass; pack install refuses if any adapter unavailable |
+| 25 | Pack-validator final gates + RBAC seed migration + cross-pack integration smoke tests + canon §17.5 amendment confirmation | Validator extensions; pack-install smoke harness; CLAUDE.md amendment | maintenance-core installs cleanly; all 51 collections accessible per persona; canon merged |
+
+**Total: 25 PRs for maintenance-core. Estimated effort: ~45-55 working days for one engineer + AI agents.**
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -4832,8 +5174,8 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 
-**Packs (4 packs):**
-- `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2.
+**Packs (4 packs, 1 of 4 specified):**
+- ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
 - `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
 - `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
