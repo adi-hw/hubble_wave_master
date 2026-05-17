@@ -4008,11 +4008,162 @@ Pack validator gains 2 publish gates:
 
 ---
 
-### 13.16 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.16 Worked example: §3.15 Spatial + Relationship Graph Primitive (full artifact-level spec — generic edges + traversal + route-solve + blast-radius)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.15 cover §3.1 — §3.14; the remaining 4 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.16.1 Tables
 
-**Substrate (4 remaining sections — §3.1-§3.14 ✅):**
+Two new tables in `schema: 'graph'` (NEW schema).
+
+**`graph.relationship_edge`** — every edge in the platform's relationship graph, partitioned by `edge_kind` (LIST).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK component (with `edge_kind`) |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `edge_kind` | `varchar(64)` | — | NOT NULL | LIST partition key; e.g. `floor_connects_to`, `asset_depends_on`, `room_contains_asset`, `corridor_links_rooms`, `key_owned_by`, `circuit_protects` |
+| `src_collection_id` | `uuid` | — | NOT NULL | Source node's collection |
+| `src_record_id` | `uuid` | — | NOT NULL | Source node |
+| `dst_collection_id` | `uuid` | — | NOT NULL | Target node's collection |
+| `dst_record_id` | `uuid` | — | NOT NULL | Target node |
+| `weight` | `double precision` | `1.0` | NOT NULL | Edge weight (distance / cost / dependency strength) |
+| `directed` | `boolean` | `true` | NOT NULL | When `false`, edge is treated as bidirectional in traversal |
+| `metadata` | `jsonb` | `'{}'::jsonb` | NOT NULL | Pack-defined edge properties (e.g. `door_locked_after_hours`, `corridor_width_meters`) |
+| `valid_from` | `timestamptz` | `now()` | NOT NULL | Edge effective-from (for time-windowed graphs like roster history) |
+| `valid_until` | `timestamptz` | — | NULL | NULL = currently valid; non-NULL = retired edge retained for historical traversal |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+**Partitioning:**
+```sql
+CREATE TABLE graph.relationship_edge (...) PARTITION BY LIST (edge_kind);
+-- Per-edge-kind partitions are created on first use via DDL migration.
+```
+
+Indexes (per partition):
+- PK on `(id, edge_kind)`.
+- `ix_re_src ON (src_collection_id, src_record_id) WHERE valid_until IS NULL` — partial; supports "outgoing edges from this node" queries.
+- `ix_re_dst ON (dst_collection_id, dst_record_id) WHERE valid_until IS NULL` — partial; incoming-edge queries.
+- `ix_re_undirected ON (LEAST(src_record_id, dst_record_id), GREATEST(src_record_id, dst_record_id)) WHERE directed = false`.
+- GIN `ix_re_metadata ON (metadata jsonb_path_ops)` for edge-attribute filtering.
+
+**`graph.graph_index_hint`** — per-collection per-edge-kind indexing strategy overrides for high-degree nodes.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `edge_kind` | `varchar(64)` | — | NOT NULL | UNIQUE per `(instance_id)` |
+| `degree_skew_strategy` | `varchar(32)` | `'default'` | NOT NULL | CHECK ∈ `{default, materialized_neighbors, capped_fanout}`. `materialized_neighbors`: maintains a per-node materialized neighbor list to avoid scanning the partition for "neighbors of node X" with millions of edges. `capped_fanout`: traversal refuses to expand a node with > `max_fanout` edges. |
+| `max_fanout` | `int` | — | NULL | Used when strategy = `capped_fanout` |
+| `materialization_table` | `text` | — | NULL | When strategy = `materialized_neighbors`, the auxiliary table name |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+#### 13.16.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1941000000000-create-graph-schema.ts` | `CREATE SCHEMA graph;` |
+| 2 | `1941000000001-create-relationship-edge-parent.ts` | Parent partitioned table + indexes on parent template |
+| 3 | `1941000000002-create-graph-index-hint.ts` | Table |
+| 4 | `1941000000003-seed-default-edge-kinds.ts` | Create per-pack partitions on pack install via `PackInstaller` hook (no static seed; partition creation is dynamic) |
+
+#### 13.16.3 Services
+
+`apps/api/src/app/graph/` (new module).
+
+**`GraphEdgeService`** — `apps/api/src/app/graph/graph-edge.service.ts`:
+
+```typescript
+upsertEdge(input: EdgeInput, ctx: UserRequestContext): Promise<RelationshipEdge>;
+retireEdge(edgeId: string, ctx: UserRequestContext): Promise<void>;
+listEdges(filter: EdgeFilter, ctx: UserRequestContext): Promise<RelationshipEdge[]>;
+```
+
+Edge writes flow through `withAudit`; pack-validator runs `cycle_check`/`orphan_check` per declared invariant.
+
+**`GraphTraversalService`** — `apps/api/src/app/graph/graph-traversal.service.ts`:
+
+```typescript
+traverse(input: TraverseInput, ctx: UserRequestContext): Promise<TraverseResult>;
+routeSolve(input: RouteInput, ctx: UserRequestContext): Promise<RouteResult>;
+blastRadius(input: BlastRadiusInput, ctx: UserRequestContext): Promise<BlastRadiusResult>;
+```
+
+`traverse(...)`:
+- `{ startNodeCollectionId, startNodeRecordId, edgeFilter: { kinds: string[], metadataPredicate?, weightRange? }, depthLimit: 1-10, options: { algorithm: 'bfs' | 'dfs', cycleDetection: 'strict' | 'merge_revisit', maxNodes?: int } }`.
+- §28 authz applied per-node: a traversal returning a node the user can't see is suppressed (with optional `omitted_count` in the response). Traversal cannot leak existence of forbidden nodes.
+- Cycle detection: `strict` mode rejects when a cycle is encountered on a pack-declared DAG edge kind; `merge_revisit` allows but marks the revisit count.
+- Honors `graph_index_hint.capped_fanout` — refuses to expand a node whose outgoing edge count exceeds the cap with `GRAPH_FANOUT_EXCEEDED` (avoids accidental N² scans).
+
+`routeSolve(...)`:
+- Bidirectional Dijkstra (or A* if `heuristic` provided) over edges filtered to `edgeFilter`.
+- Returns `{ path: [{nodeId, edgeId, cumulativeWeight}], totalDistance, found: boolean }`.
+- For floor-plan navigation (marquees #12, #24): Dijkstra over `corridor_links_rooms` + `room_contains_asset` edges with `weight = distance_meters` + door-locked filter from `metadata.door_locked_after_hours`.
+
+`blastRadius(...)`:
+- BFS from a starting node along `edge_kind` for `depth_limit` hops, intersected with a time window (returns nodes touched by the failure event within `time_window`).
+- Used by Analyzer marquee #32 (blast-radius forensics on a suspected security incident).
+
+#### 13.16.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/graph/edges` | `@RequirePermission('graph:edge:manage')` | `{ edgeKind, srcCollectionId, srcRecordId, dstCollectionId, dstRecordId, weight?, metadata?, directed? }` |
+| `DELETE` | `/api/graph/edges/:id` | `@RequirePermission('graph:edge:manage')` | — sets `valid_until=now()` |
+| `GET` | `/api/graph/edges` | `@RequirePermission('graph:edge:read')` | filter params |
+| `POST` | `/api/graph/traverse` | `@RequirePermission('graph:query:read')` | traverse params |
+| `POST` | `/api/graph/route` | `@RequirePermission('graph:query:read')` | route params |
+| `POST` | `/api/graph/blast-radius` | `@RequirePermission('graph:query:read')` | blast-radius params |
+
+#### 13.16.5 Validator extensions
+
+Pack validator gains 4 publish gates:
+
+1. **G16.1** — Pack `graph.edge_kinds[]` MUST declare `(kind, src_collection_id, dst_collection_id, directed, dag?: boolean)`. Error: `MISSING_EDGE_KIND_DECLARATION`.
+2. **G16.2** — Edges declared `dag=true` cannot form cycles in seeded data; pack-install runs cycle-check via `GraphValidator.detectCycles`. Error: `CYCLE_IN_DAG_EDGE_KIND` (lists the offending cycle path).
+3. **G16.3** — Spatial graph kinds (`corridor_links_rooms`, `floor_connects_to`) MUST NOT have orphan rooms (rooms with zero corridor connections) in seeded floor plans; orphan-check at pack install. Error: `ORPHAN_NODE_IN_SPATIAL_GRAPH` (lists orphan node IDs).
+4. **G16.4** — `graph_index_hint.max_fanout` MUST be ≥ 50 (platform minimum). Error: `FANOUT_CAP_TOO_LOW`.
+
+#### 13.16.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `RelationshipEdge` | `GraphEdgeService.*`, `PackInstaller.seedGraphEdges` |
+| `GraphIndexHint` | `GraphIndexHintService.*` (admin-only) |
+
+#### 13.16.7 Tests (self-test ≥ 11 assertions)
+
+1. **`graph-edge-upsert.spec.ts`** — upsert edge; row written; partition picked correctly by `edge_kind`.
+2. **`graph-retire-edge.spec.ts`** — retire edge; `valid_until` stamped; subsequent traversals exclude it; historical traversal (`as_of` timestamp option) still includes it.
+3. **`graph-traverse-bfs.spec.ts`** — 5-node chain; traverse(depth=3) returns 3 hops; cycle in graph; `strict` mode rejects, `merge_revisit` mode marks revisit count.
+4. **`graph-traverse-authz.spec.ts`** — user lacks §28 read on node X; traversal omits X; `omitted_count` reflects it.
+5. **`graph-route-solve-shortest.spec.ts`** — corridor graph with multiple paths; routeSolve returns shortest weighted path.
+6. **`graph-route-solve-door-locked.spec.ts`** — door locked after hours; routeSolve at 21:00 excludes that edge; finds alternate path or returns `found=false`.
+7. **`graph-blast-radius-bfs.spec.ts`** — incident on node X; blastRadius(depth=2, time_window=1h) returns nodes reachable via `circuit_protects` edges within window.
+8. **`graph-fanout-cap.spec.ts`** — node with 10k outgoing edges; `capped_fanout` strategy with `max_fanout=1000` refuses with `GRAPH_FANOUT_EXCEEDED`.
+9. **`graph-cycle-detection-validator.spec.ts`** — pack seeds A→B→C→A on `asset_depends_on` (declared `dag=true`); pack install refused with G16.2.
+10. **`graph-orphan-room-validator.spec.ts`** — pack seeds room R with no corridor edges; G16.3 refusal.
+11. **`graph-cross-collection-edge.spec.ts`** — edge from `assets` (R1) to `rooms` (R2); upsert + traverse both directions; cross-collection edges work.
+
+#### 13.16.8 PR breakdown for §3.15
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + parent partitioned table + entities + `GraphEdgeService` + dynamic partition creation on pack install + tests 1, 2, 11 | Migrations 1-3; entity area patch; `apps/api/src/app/graph/graph-edge.service.ts`; pack-installer hook | Upsert + retire work; per-edge-kind partitions created on demand |
+| 2 | `GraphTraversalService.traverse` with BFS/DFS + §28 authz integration + cycle detection + tests 3, 4 | `apps/api/src/app/graph/graph-traversal.service.ts` traverse path | Cycles detected; authz suppresses unauthorized nodes |
+| 3 | `routeSolve` Dijkstra + door-locked metadata filter + tests 5, 6 | Dijkstra impl; door-time filter helper | Shortest path found; lockout windows respected |
+| 4 | `blastRadius` BFS + time window + test 7 | BFS impl; temporal filter | Blast radius computed within window |
+| 5 | `graph_index_hint` + fanout cap + validator G16.1-G16.4 + canon §41 amendment + tests 8, 9, 10 | `apps/api/src/app/graph/graph-index-hint.service.ts`; pack-validator extension; CLAUDE.md amendment | Fanout cap enforced; cycle/orphan detection at pack publish; canon merged |
+
+**Total: 5 PRs for §3.15. Estimated effort: ~10-12 working days.**
+
+---
+
+### 13.17 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.16 cover §3.1 — §3.15; the remaining 3 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (3 remaining sections — §3.1-§3.15 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -4027,7 +4178,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.12 Storage / Evidence Attachment runtime — §13.13 (6 PRs)
 - ✅ §3.13 Connector runtime + simulators — §13.14 (6 PRs)
 - ✅ §3.14 Semantic Search / Vector Match — §13.15 (5 PRs)
-- §3.15 Spatial + Relationship Graph (5 PRs)
+- ✅ §3.15 Spatial + Relationship Graph — §13.16 (5 PRs)
 - §3.16 Financial Control primitive (5 PRs)
 - §3.17 Bulk Import / Commissioning Staging (4 PRs)
 - §3.18 Integration Secrets + Egress Policy (5 PRs)
@@ -4046,7 +4197,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.17 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.18 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -4067,7 +4218,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.18 What's left to do BEFORE code starts
+### 13.19 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
