@@ -1,5 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { LocalizationService, PublishLocalizationRequest } from './localization.service';
 import { LocalizationRequestService, CreateTranslationRequest } from './localization-request.service';
 import {
@@ -19,9 +26,16 @@ import {
  * its users. There is therefore no per-tenant filter applied here, and there
  * must not be one: introducing a tenantId column would constitute a
  * cross-customer data sharing model, which the architecture forbids.
+ *
+ * Canon §28 / W2 Stream 3 — reads (bundles, locales, keys, values, the
+ * caller's own translation requests) are open to any authenticated user;
+ * writes against the catalog (publish, value upsert/update, request
+ * adjudication) mutate platform configuration and are gated by
+ * `system:configure`.
  */
 @Controller('localization')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@AuthenticatedOnly()
 export class LocalizationController {
   constructor(
     private readonly localizationService: LocalizationService,
@@ -30,7 +44,7 @@ export class LocalizationController {
   ) {}
 
   @Post('publish')
-  @Roles('admin')
+  @RequirePermission('system:configure')
   async publish(@Body() body: PublishLocalizationRequest, @CurrentUser() user?: RequestUser) {
     return this.localizationService.publishBundles(body || {}, user?.id);
   }
@@ -70,7 +84,7 @@ export class LocalizationController {
   }
 
   @Post('values')
-  @Roles('admin')
+  @RequirePermission('system:configure')
   async upsertValue(
     @Body() body: UpsertTranslationValue,
     @CurrentUser() user?: RequestUser,
@@ -79,7 +93,7 @@ export class LocalizationController {
   }
 
   @Patch('values/:id')
-  @Roles('admin')
+  @RequirePermission('system:configure')
   async updateValue(
     @Param('id') id: string,
     @Body() body: UpdateTranslationValue,
@@ -94,6 +108,7 @@ export class LocalizationController {
   }
 
   @Patch('requests/:id')
+  @RequirePermission('system:configure')
   async updateRequest(
     @Param('id') id: string,
     @Body() body: UpdateTranslationRequest,

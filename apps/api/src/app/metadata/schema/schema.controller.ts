@@ -1,5 +1,11 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { SchemaDiffService } from './schema-diff.service';
 import { SchemaDeployService } from './schema-deploy.service';
 
@@ -8,8 +14,13 @@ type SchemaRequest = {
   collectionCodes?: string[];
 };
 
+/**
+ * Canon §28 / W2 Stream 3 — schema diff + deploy surface. Reading the
+ * plan is `metadata:collection:read`; applying it mutates the platform
+ * data model and requires `metadata:collection:manage`.
+ */
 @Controller('schema')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SchemaController {
   constructor(
     private readonly diffService: SchemaDiffService,
@@ -17,6 +28,7 @@ export class SchemaController {
   ) {}
 
   @Get('plan')
+  @RequirePermission('metadata:collection:read')
   getPlan(
     @Query('schema') schema?: string,
     @Query('collectionCodes') collectionCodes?: string,
@@ -31,8 +43,7 @@ export class SchemaController {
   }
 
   @Post('deploy')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @RequirePermission('metadata:collection:manage')
   deployPlan(
     @Body() body: SchemaRequest,
     @CurrentUser() user?: RequestUser,

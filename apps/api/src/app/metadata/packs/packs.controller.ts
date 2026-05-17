@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
-import { Public, SkipMaintenanceMode } from '@hubblewave/auth-guard';
+import { InstanceRequest, isUserContext, Public, SkipMaintenanceMode } from '@hubblewave/auth-guard';
 import { PackInstallGuard } from './pack-install.guard';
 import { PacksService } from './packs.service';
 import { PackCatalogInstallRequest, PackInstallRequest, PackReleaseQuery, PackRollbackRequest } from './packs.dto';
@@ -35,8 +34,9 @@ export class PacksController {
   }
 
   @Post('install')
-  install(@Body() body: PackInstallRequest, @Req() request: Request) {
-    const userId = (request as any)?.context?.userId;
+  install(@Body() body: PackInstallRequest, @Req() request: InstanceRequest) {
+    const ctx = request.context;
+    const userId = ctx && isUserContext(ctx) ? ctx.userId : undefined;
     const actorId = isUuid(userId) ? userId : undefined;
     const context = {
       ipAddress: request.ip,
@@ -51,9 +51,10 @@ export class PacksController {
   }
 
   @Post('catalog/install')
-  async installFromCatalog(@Body() body: PackCatalogInstallRequest, @Req() request: Request) {
+  async installFromCatalog(@Body() body: PackCatalogInstallRequest, @Req() request: InstanceRequest) {
     const artifact = await this.catalogService.fetchArtifactBundle(body.packCode, body.releaseId);
-    const userId = (request as any)?.context?.userId;
+    const ctx = request.context;
+    const userId = ctx && isUserContext(ctx) ? ctx.userId : undefined;
     const actorId = isUuid(userId) ? userId : undefined;
     const context = {
       ipAddress: request.ip,
@@ -72,8 +73,9 @@ export class PacksController {
   }
 
   @Post('rollback')
-  rollback(@Body() body: PackRollbackRequest, @Req() request: Request) {
-    const userId = (request as any)?.context?.userId;
+  rollback(@Body() body: PackRollbackRequest, @Req() request: InstanceRequest) {
+    const ctx = request.context;
+    const userId = ctx && isUserContext(ctx) ? ctx.userId : undefined;
     const actorId = isUuid(userId) ? userId : undefined;
     const context = {
       ipAddress: request.ip,
