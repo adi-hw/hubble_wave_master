@@ -68,6 +68,54 @@ const TRANSACTIONAL_WRAPPER_PATTERNS = [
   /\bentityManager\s*\.\s*transaction\s*\(/,
 ];
 
+/**
+ * Plan Fix 41 / F042 — flag any `AuditLog` repo path that calls
+ * `.save([...])` or `.insert([...])` with an array argument. Batched
+ * inserts on the hash-chained audit_logs table fork the chain because
+ * TypeORM's `SubjectExecutor` fires `beforeInsert` for every subject
+ * before any INSERT runs; all N entries read the same predecessor and
+ * produce N rows branching off one ancestor.
+ *
+ * The rule is intentionally narrow: only `AuditLog`-bound repos and only
+ * array literal / variable-array arguments to `.save` / `.insert`. Direct
+ * single-row saves remain allowed everywhere because the
+ * `AuditLogSubscriber.beforeInsert` advisory lock serializes them
+ * correctly. The pattern triggers on:
+ *
+ *   repo.save([entry1, entry2])           // array literal
+ *   repo.save(entries)                     // probable array variable
+ *   getRepository(AuditLog).save([...])    // inline acquire
+ *   getRepository(AuditLog).save(entries)
+ *   manager.insert(AuditLog, [...])        // insert path
+ *
+ * Exported so the self-test can exercise it directly.
+ */
+export const AUDIT_LOG_BULK_INSERT_PATTERN =
+  /(?:getRepository\s*\(\s*AuditLog\s*\)|auditLog(?:Repo|Repository)?|auditLogs?\b)\s*\.\s*(?:save|insert)\s*\(\s*(?:\[|entries\b|events\b|rows\b|items\b|batch\b|all\b|records\b)/;
+
+/**
+ * AuditLog bulk-insert rule. Returns true if the method body contains a
+ * batched audit save / insert pattern. Distinct from `hasNonAuditRepoMutate`
+ * because the bulk-save concern is orthogonal to the audit-in-transaction
+ * concern — both rules can fire on the same method, or on entirely
+ * different methods.
+ */
+export function hasAuditLogBulkInsert(methodBody: string): boolean {
+  return AUDIT_LOG_BULK_INSERT_PATTERN.test(methodBody);
+}
+
+/**
+ * Files that intentionally batch-save into audit_logs because they own
+ * a DB-native chain writer that computes both `previous_hash` and
+ * `hash` atomically. Empty today (the W2 design retains JavaScript-
+ * side chain extension via `AuditLogSubscriber`); any future entry
+ * here is an architecture amendment and gets reviewed accordingly.
+ */
+const AUDIT_LOG_BULK_INSERT_ALLOWLIST: Array<{
+  file: string;
+  rationale: string;
+}> = [];
+
 function walk(dir: string, files: string[] = []): string[] {
   let entries: string[] = [];
   try {
@@ -200,14 +248,45 @@ export function extractMethodBodies(content: string): string[] {
   return methods;
 }
 
+function isAuditBulkInsertAllowlisted(file: string): boolean {
+  const rel = relPath(file);
+  return AUDIT_LOG_BULK_INSERT_ALLOWLIST.some((entry) => entry.file === rel);
+}
+
 function analyzeFile(file: string): Violation[] {
   const content = readFileSync(file, 'utf8');
+  const violations: Violation[] = [];
+
+  // Plan Fix 41 / F042 — AuditLog bulk-insert rule runs against the
+  // FULL file, not per-method-body, because TypeORM array saves can
+  // be one-liners outside any method scope. The rule fires regardless
+  // of whether the surrounding code is inside a transaction wrapper —
+  // wrapping a bulk save in `withAudit` does not fix the
+  // `beforeInsert` batching problem. Allowlist gates only the bulk-
+  // insert rule (not the save-then-audit rule).
+  if (!isAuditBulkInsertAllowlisted(file) && hasAuditLogBulkInsert(content)) {
+    const match = AUDIT_LOG_BULK_INSERT_PATTERN.exec(content);
+    const idx = match?.index ?? 0;
+    const snippet = content
+      .slice(Math.max(0, idx - 20), idx + 100)
+      .replace(/\s+/g, ' ')
+      .slice(0, 140);
+    violations.push({
+      file,
+      reason:
+        `AuditLog bulk save/insert detected (Plan Fix 41 / F042). ` +
+        `TypeORM array saves fork the hash chain because beforeInsert ` +
+        `fires for every subject before any INSERT runs. Save per-row ` +
+        `instead, or add an allowlist entry if this is a DB-native ` +
+        `chain writer. Snippet: ${snippet}...`,
+    });
+  }
+
   if (isDeferred(file)) {
-    return [];
+    return violations;
   }
 
   const methods = extractMethodBodies(content);
-  const violations: Violation[] = [];
 
   for (const body of methods) {
     if (methodHasUnsafePattern(body)) {
@@ -217,7 +296,8 @@ function analyzeFile(file: string): Violation[] {
         file,
         reason: `Save-then-audit pattern outside withAudit/transaction wrapper. Snippet: ${snippet}...`,
       });
-      // Only report once per file to avoid noise.
+      // Only report the save-then-audit rule once per file to avoid noise;
+      // the bulk-insert rule already fired (or not) above on its own surface.
       break;
     }
   }

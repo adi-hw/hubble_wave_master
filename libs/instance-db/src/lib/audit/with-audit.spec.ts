@@ -6,7 +6,11 @@ describe('withAudit', () => {
   function buildMockEntityManager() {
     const auditRepo = {
       create: jest.fn((entry: Partial<AuditLog>) => ({ ...entry })),
-      save: jest.fn(async (entries: Array<Partial<AuditLog>>) => entries),
+      // Per Plan Fix 41 / F042 the production code now saves entries one
+      // at a time, so the mock signature accepts a single entity. The
+      // assertions below check `save.mock.calls.length` against the
+      // number of recorded events.
+      save: jest.fn(async (entry: Partial<AuditLog>) => entry),
     };
     const mgr = {
       getRepository: jest.fn((entity) => {
@@ -46,8 +50,9 @@ describe('withAudit', () => {
     expect(auditRepo.create).toHaveBeenCalledTimes(1);
     expect(auditRepo.save).toHaveBeenCalledTimes(1);
     const saved = auditRepo.save.mock.calls[0][0];
-    expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({
+    // Plan Fix 41 / F042: each event is saved individually (not in an array).
+    expect(Array.isArray(saved)).toBe(false);
+    expect(saved).toMatchObject({
       userId: 'u-1',
       collectionCode: 'incidents',
       recordId: 'r-1',
@@ -141,7 +146,7 @@ describe('withAudit', () => {
     expect(dataMutation).toHaveBeenCalled();
   });
 
-  it('persists multiple audit events in a single save call', async () => {
+  it('persists multiple audit events as sequential individual saves (Plan Fix 41 / F042)', async () => {
     const { mgr, auditRepo } = buildMockEntityManager();
     const dataSource = buildMockDataSource(mgr);
 
@@ -158,9 +163,54 @@ describe('withAudit', () => {
       });
     });
 
-    expect(auditRepo.save).toHaveBeenCalledTimes(1);
-    const saved = auditRepo.save.mock.calls[0][0];
-    expect(saved).toHaveLength(2);
+    // F042: each recorded event must produce its own save call so the
+    // AuditLogSubscriber's hash-chain extension hook fires per row.
+    // Array saves batch the beforeInsert hooks → fork the chain.
+    expect(auditRepo.save).toHaveBeenCalledTimes(2);
+    const firstSaved = auditRepo.save.mock.calls[0][0];
+    const secondSaved = auditRepo.save.mock.calls[1][0];
+    expect(Array.isArray(firstSaved)).toBe(false);
+    expect(Array.isArray(secondSaved)).toBe(false);
+    expect(firstSaved).toMatchObject({ recordId: 'r-1' });
+    expect(secondSaved).toMatchObject({ recordId: 'r-2' });
+  });
+
+  it('rolls back when a per-row audit save fails mid-flush (Plan Fix 41 / F042)', async () => {
+    // Two events recorded; first save succeeds, second fails. The
+    // transaction-callback rejects on the second save's throw, and the
+    // wrapping `dataSource.transaction` aborts both the data mutation
+    // and the first audit row.
+    const calls: Array<Partial<AuditLog>> = [];
+    const auditRepo = {
+      create: jest.fn((entry: Partial<AuditLog>) => entry),
+      save: jest.fn(async (entry: Partial<AuditLog>) => {
+        calls.push(entry);
+        if (calls.length === 2) {
+          throw new Error('second audit save failed');
+        }
+        return entry;
+      }),
+    };
+    const mgr = {
+      getRepository: jest.fn(() => auditRepo),
+    } as unknown as EntityManager;
+    const dataSource = {
+      transaction: jest.fn(
+        async <T,>(fn: (m: EntityManager) => Promise<T>): Promise<T> => fn(mgr),
+      ),
+    } as unknown as DataSource;
+
+    await expect(
+      withAudit(dataSource, async (_mgr, recordAudit) => {
+        recordAudit({ action: 'create', collectionCode: 'a', recordId: 'r-1' });
+        recordAudit({ action: 'create', collectionCode: 'a', recordId: 'r-2' });
+      }),
+    ).rejects.toThrow('second audit save failed');
+
+    // First save fired; the second's throw rejected the transaction
+    // callback, which would unwind the surrounding tx in production.
+    expect(auditRepo.save).toHaveBeenCalledTimes(2);
+    expect(calls[0]).toMatchObject({ recordId: 'r-1' });
   });
 
   it('opens exactly one transaction per call', async () => {

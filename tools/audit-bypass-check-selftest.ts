@@ -551,4 +551,78 @@ export class PlantedSafeService {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Part F: Plan Fix 41 / F042 — AuditLog bulk insert rule.
+// ─────────────────────────────────────────────────────────────────────────
+
+console.log('\n--- Part F: AuditLog bulk insert rule (Plan Fix 41 / F042) ---\n');
+
+/**
+ * Mirror of `AUDIT_LOG_BULK_INSERT_PATTERN` from the scanner. Kept inline
+ * (not imported) to keep the self-test framework dependency-free per the
+ * existing convention.
+ */
+const AUDIT_LOG_BULK_INSERT_PATTERN_TEST =
+  /(?:getRepository\s*\(\s*AuditLog\s*\)|auditLog(?:Repo|Repository)?|auditLogs?\b)\s*\.\s*(?:save|insert)\s*\(\s*(?:\[|entries\b|events\b|rows\b|items\b|batch\b|all\b|records\b)/;
+
+function flagsBulkAuditInsert(content: string): boolean {
+  return AUDIT_LOG_BULK_INSERT_PATTERN_TEST.test(content);
+}
+
+// F042-1: array-literal save on AuditLog repo → flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `await this.auditLogRepo.save([{ action: 'x' }, { action: 'y' }]);`,
+  );
+  t.assert(flagged, 'F042-1: auditLogRepo.save([...]) is flagged');
+}
+
+// F042-2: array-variable save on AuditLog repo → flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `const entries = events.map(...); await this.auditLogRepo.save(entries);`,
+  );
+  t.assert(flagged, 'F042-2: auditLogRepo.save(entries) is flagged');
+}
+
+// F042-3: inline-acquire `getRepository(AuditLog).save([...])` → flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `await mgr.getRepository(AuditLog).save([{ action: 'a' }]);`,
+  );
+  t.assert(flagged, 'F042-3: getRepository(AuditLog).save([...]) is flagged');
+}
+
+// F042-4: `.insert([...])` path → flagged (matches the insert pattern variant).
+{
+  const flagged = flagsBulkAuditInsert(
+    `await this.auditLogRepo.insert([{ action: 'a' }]);`,
+  );
+  t.assert(flagged, 'F042-4: auditLogRepo.insert([...]) is flagged');
+}
+
+// F042-5 (negative): single-entity save on AuditLog repo → NOT flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `await this.auditLogRepo.save({ action: 'login', userId });`,
+  );
+  t.assert(!flagged, 'F042-5: single-entity auditLogRepo.save(entry) is NOT flagged');
+}
+
+// F042-6 (negative): bulk save on a NON-audit repo → NOT flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `await this.sessionRepo.save([{ id: 1 }, { id: 2 }]);`,
+  );
+  t.assert(!flagged, 'F042-6: sessionRepo.save([...]) (non-audit) is NOT flagged');
+}
+
+// F042-7 (negative): a non-audit repo loop → NOT flagged.
+{
+  const flagged = flagsBulkAuditInsert(
+    `for (const event of events) { await otherRepo.save(event); }`,
+  );
+  t.assert(!flagged, 'F042-7: non-audit repo loop is NOT flagged');
+}
+
 t.report();

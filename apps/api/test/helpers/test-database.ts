@@ -11,6 +11,13 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 export async function createTestDataSource(opts?: {
   entities?: DataSourceOptions['entities'];
   /**
+   * TypeORM subscribers to attach to the per-test datasource. Plan Fix 41
+   * / F042 stress test needs `AuditLogSubscriber` registered so the hash-
+   * chain extension hook fires; integration tests that only exercise
+   * entity behaviour can omit it.
+   */
+  subscribers?: DataSourceOptions['subscribers'];
+  /**
    * Names of Postgres schemas the entities require (e.g. `'identity'`).
    * Schemas are created BEFORE TypeORM's synchronize runs so entity
    * decorators that carry `schema: '...'` resolve cleanly. Defaults to
@@ -64,6 +71,7 @@ export async function createTestDataSource(opts?: {
     password: process.env.POSTGRES_PASSWORD ?? 'postgres',
     database: dbName,
     entities: opts?.entities ?? [],
+    subscribers: opts?.subscribers ?? [],
     synchronize: true, // OK in tests; never in prod
   });
   await dataSource.initialize();
