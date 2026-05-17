@@ -5473,6 +5473,147 @@ The `wifi-beacon-occupancy` adapter's privacy invariant is enforced at the adapt
 
 ---
 
+### 14.4 `ot-security-maintenance` overlay (~10 PRs) — Nuvolo OT Cyber Security parity
+
+OT (Operational Technology) cyber-security overlay. Where clinical-maintenance and facilities-maintenance extend maintenance-core with regulatory and physical-domain data, ot-security extends it with **cyber-risk + network-policy + vulnerability lifecycle** data, plus the convergence point with maintenance via marquee #26 (AVA proposing attached-patch-step to an upcoming PM rather than scheduling separate vulnerability remediation).
+
+This overlay POPULATES the `ws_ot_security_officer` workspace declared as the 9th OOTB workspace by maintenance-core. Hard requirement: install refuses if maintenance-core is not present; recommended pairing: `clinical-maintenance` (for medical-device-class signals) OR `facilities-maintenance` (for OT-in-building-systems signals).
+
+The most security-critical aspect: the `nac-quarantine` adapter (§3.18) — flipping an OT device to network-isolated state has direct clinical-operations consequences. This pack consumes the canon §3.18 dual-confirmation NAC guardrails as a HARD dependency (install refuses if §3.18 not at the required version).
+
+#### 14.4.1 Collections (6 total)
+
+All in `schema: 'ot_security_maintenance'`.
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / posture |
+|---|---|---|---|---|---|
+| `ot_asset_vulnerability` | ✓ | ✓ assigned_only | ✓ summary + cve_description | `id`, `asset_id` (FK to maintenance-core asset), `cve_id`, `cvss_score`, `exploitability` ∈ {none, theoretical, poc_available, exploited_in_wild}, `exposure` ∈ {internet_facing, internal_network, isolated_segment, air_gapped}, `summary`, `vendor_advisory_url`, `discovered_at`, `discovered_via` (adapter id), `mitigation_kind` ∈ {patch, config_change, network_isolation, compensating_control, accepted_risk}, `target_mitigation_at`, `mitigated_at`, `signature_chain_id`, `status` ∈ {open, triaging, mitigating, mitigated, accepted_risk, suppressed_false_positive} | §3.1; §3.14 vector for CVE search; §3.6 closure signature on mitigated; depends on maintenance-core asset |
+| `network_policy` | — | — | — | `id`, `code`, `label`, `policy_kind` ∈ {allowlist, denylist, segmentation_rule, baseline}, `asset_id_set[]` (FK to maintenance-core asset), `ingress_rules` (jsonb: protocol/port/source CIDR), `egress_rules` (jsonb: protocol/port/dest), `last_audited_at`, `owner_user_id`, `is_active`, `signature_chain_id` (signed on creation + major edit) | §3.6 signature for policy edits — every change requires `signature_meaning='approval'` |
+| `security_advisory` | — | ✓ assigned_only | ✓ summary + affected_asset_query | `id`, `source` ∈ {claroty, medigate, asimily, ecri, fda, manufacturer, internal}, `ref_id`, `affected_asset_query` (jsonb predicate evaluated by AVA via §3.14 vector + §3.15 graph), `severity`, `published_at`, `action_required`, `action_deadline`, `status` ∈ {ingested, distributed, acknowledged, acted, suppressed} | §3.14 vector for cross-source dedup |
+| `discovery_event` | — | — | — | `id`, `source_adapter` ∈ {claroty, medigate, asimily, internal_nmap, manual}, `discovered_at`, `raw_payload` (jsonb), `mac_address_hash`, `ip_address_hash`, `firmware_signature`, `mapped_asset_id` (FK to maintenance-core asset), `status` ∈ {new, mapped, ignored, ambiguous} | MAC/IP hashed at adapter layer — never persist plaintext network identifiers |
+| `risk_score` | — | ✓ assigned_only | — | `id`, `asset_id` (FK to maintenance-core asset), `computed_at`, `score` (0-100), `factors_jsonb` (`{ open_vuln_count_weighted_by_cvss, exposure_factor, clinical_criticality (from clinical-maintenance if present), patch_age_days_max, mitigating_controls_count, baseline_drift_severity }`), `computed_by_rule_set_version` | Cross-pack: reads `clinical_criticality_score` from clinical-maintenance when present; falls back to maintenance-core `criticality` when absent |
+| `network_baseline` | — | — | — | `id`, `asset_id` (FK), `baseline_captured_at`, `allowed_traffic_pattern` (jsonb: protocols, port distribution, peer set), `baseline_validity_window_days`, `last_compared_at`, `drift_severity_at_last_compare` ∈ {within_baseline, minor_drift, significant_drift, anomalous} | Anomaly detection driver for WF-OT2 |
+
+**Total: 6 collections.** The pack does NOT add asset-class collections — OT devices ARE maintenance-core `asset` rows with `asset_type` and additional ot-security relationship rows. This is the cleanest cross-pack integration: ot-security is purely about cyber-risk semantics over existing assets.
+
+#### 14.4.2 Workflows (4 state machines)
+
+**WF-OT1: vulnerability_response** (on `ot_asset_vulnerability`)
+```
+open → triaging → mitigation_plan_drafted → mitigation_approved → mitigating → mitigated → verified → closed
+                                          → mitigation_rejected → triaging
+                                          → accepted_risk (with signature + reason) → archived
+                                          → suppressed_false_positive (with signature + reason) → archived
+```
+Roles: AVA performs initial triage (CVSS + exposure → risk score); `ot_security_officer` reviews; `compliance_officer` countersigns `accepted_risk` decisions. Guards:
+- `mitigation_approved` requires §3.16 `transaction_approval` if mitigation cost > threshold OR `mitigation_kind='accepted_risk'`.
+- `verified` requires evidence_artifact via §3.12 (e.g., post-patch nmap scan showing port closed; vendor confirmation).
+- `accepted_risk` requires §3.6 signature with `signature_meaning='responsibility'` from ot_security_officer + countersign from compliance_officer.
+
+**WF-OT2: network_anomaly_review** (on `network_baseline` drift detection)
+```
+within_baseline → minor_drift → reviewed_acceptable → continue_monitoring
+                              → reviewed_requires_action → policy_update_or_quarantine
+                → significant_drift → escalated_to_officer → policy_update_or_quarantine
+                → anomalous → auto_alert + escalated_to_officer → quarantine_proposed → quarantine_executed (NAC dual-confirmation required)
+```
+Branch to NAC quarantine flows through §3.18 `KillswitchService.trip` with the dual-confirmation requirements; this overlay supplies the "is this asset clinically safe to quarantine right now" pre-check evidence (linking back to clinical-maintenance `life_support_designation` if present, falling back to maintenance-core `criticality_score`).
+
+**WF-OT3: security_advisory_distribution** (on `security_advisory`)
+```
+ingested → asset_query_run (AVA via §3.14 + §3.15) → affected_assets_identified → notifications_sent → acknowledgements_collected → action_tracking → closed
+                                                                                                                          → action_deadline_breached → escalated_to_officer
+```
+Distinguishes from clinical-maintenance's `WF-OC3 ecri_advisory_response` (ECRI-specific) by source diversity (Claroty/Medigate/Asimily/manufacturer). The pack-installer enforces dedup via §3.14 vector match against existing advisories.
+
+**WF-OT4: ava_convergence_routing** (per marquee #26 — the differentiator)
+```
+ot_vulnerability_opened + upcoming_pm_for_same_asset_exists → ava_proposes_convergence → security_officer_reviews → approved → pm_modified_to_include_patch_step → vulnerability_marked_closed_as_merged
+                                                                                                                → rejected → standard_WF-OT1_flow
+                                                                                                                → modified (technician + scope edits) → approved + signed_off
+```
+AVA pattern matching: when an `ot_asset_vulnerability` opens with `mitigation_kind='patch'` AND the same asset has a `maintenance_work_order` scheduled within the next 14 days (configurable), AVA emits a `synthesizeConvergenceProposal` via §3.8 — a transient form rendering the merged plan. OT Security Officer one-taps approve → `pm_modified_to_include_patch_step` writes an additional checklist_item to the existing WO + the vulnerability ticket auto-closes with `mitigation_kind='converged_with_pm'`. The `signature_chains` records the convergence decision linking both records (vulnerability_id + work_order_id).
+
+This is the structural payoff of having ot-security as an OVERLAY rather than a separate platform — convergence routing requires reading + writing across maintenance-core + ot-security collections in one transaction, which a separate platform couldn't do cleanly.
+
+#### 14.4.3 Automation rules (~5)
+
+| # | Trigger | Condition | Action | Mode |
+|---:|---|---|---|---|
+| 1 | `after save discovery_event` | `mapped_asset_id IS NULL` AND firmware_signature matches existing asset | Auto-map; transition `status='mapped'` | rule |
+| 2 | `after save ot_asset_vulnerability` | `mitigation_kind='patch'` AND asset has upcoming maintenance_work_order ≤ 14d | Enqueue WF-OT4 convergence proposal | rule |
+| 3 | `scheduled hourly` | `network_baseline.last_compared_at + INTERVAL '1 hour' < now()` for any active baseline | Compare current traffic snapshot → update drift_severity_at_last_compare; if drift transition → trigger WF-OT2 | rule |
+| 4 | `before save network_policy` | active=true AND signature_chain_id IS NULL | Block save with `NETWORK_POLICY_REQUIRES_SIGNATURE` | rule |
+| 5 | `after save security_advisory` | severity='critical' AND action_deadline < now() + 24h | Page on-call OT security officer | rule |
+
+#### 14.4.4 Views
+
+8 OT-security views populating `ws_ot_security_officer`:
+- `vulnerabilities_open_by_cvss` (sorted by CVSS desc, exposure desc)
+- `vulnerabilities_action_deadline_30d` (overdue board)
+- `network_policies_active` (with signature audit trail)
+- `network_baseline_drift_today`
+- `advisories_inbox_by_source` (Claroty/Medigate/Asimily/manufacturer columns)
+- `risk_scores_by_asset_grid` (sortable + filterable by criticality intersection)
+- `convergence_proposals_pending` (WF-OT4 queue)
+- `quarantined_assets_active` (the NAC-isolated set; cross-references safety-check evidence)
+
+#### 14.4.5 Workspace population
+
+Populates `ws_ot_security_officer` (declared in §14.1.5). 4 pages:
+
+| Page | Composition | Primitives | Surface |
+|---|---|---|---|
+| Risk Map | `<OtAssetRiskMap>` (risk-colored floorplan) + risk_score sortable grid | foundation + §3.15 | web |
+| Vulnerability Triage | `<VulnerabilityTracker>` per-asset CVE board with remediation timeline | foundation + Card | web |
+| Network Baselines | `<NetworkBaselineDashboard>` (deviation visualization per asset) + active policy list | foundation + Chart | web |
+| Convergence + Advisories | WF-OT4 proposal queue + advisory inbox per source | foundation | web |
+
+#### 14.4.6 Plugin components (3, in `@hubblewave/ot-security-maintenance-plugins`)
+
+| Component | Props | Surface | Substrate |
+|---|---|---|---|
+| `<OtAssetRiskMap>` | `{ locationId, scoringMode }` | web | §3.15 spatial + Chart for color scale |
+| `<VulnerabilityTracker>` | `{ assetId? OR scope }` | web | task_projection + signature chain reader |
+| `<NetworkBaselineDashboard>` | `{ assetId? OR scope, range }` | web | §3.5 observation_streams + Chart |
+
+#### 14.4.7 Integration adapters (5)
+
+| Adapter | Operations | Conformance fixtures | Purpose |
+|---|---|---|---|
+| `claroty-medical-device-security` | `pull_devices`, `pull_vulnerabilities`, `subscribe_advisory_events` | `claroty-fixtures-v1` | Primary medical-device-security feed |
+| `medigate-asset-feed` | `pull_assets`, `pull_vulnerabilities`, `subscribe_baseline_drift` | `medigate-fixtures-v1` | Alternative asset + vuln feed |
+| `asimily-vulnerability-feed` | `pull_vulnerabilities`, `risk_score_explain` | `asimily-fixtures-v1` | Vulnerability + risk feed |
+| `generic-cmdb-export` | `push_asset_inventory`, `push_vuln_mitigation_status` | `cmdb-export-fixtures-v1` | Outbound push to customer-owned CMDB (ServiceNow CMDB, BMC Helix, etc.) — gives security teams cross-platform visibility |
+| `nac-quarantine` | `quarantine_asset`, `release_quarantine`, `query_status` | `nac-fixtures-v1` | **Dual-confirmation HARD requirement per §3.18** — wraps Cisco ISE / Aruba ClearPass / Forescout / Fortinet etc. Every quarantine call goes through §3.18 KillswitchService NAC dual-confirmation flow |
+
+All five adapters declare egress allowlist entries (§3.18 G19.1) — `nac-quarantine` is the only one with `dual_confirmation_required=true` flagged in pack manifest per §3.18 G19.3.
+
+The `generic-cmdb-export` adapter is "outbound only" — it pushes data to a customer-owned CMDB but does NOT accept inbound writes. This is by design to avoid the "two sources of truth" trap: HubbleWave is THE source for assets it tracks; CMDB integration is a one-way mirror.
+
+#### 14.4.8 PR breakdown for ot-security-maintenance (~10 PRs)
+
+| PR | Goal | Files / scope | Acceptance |
+|---:|---|---|---|
+| 1 | Overlay pack scaffold + dependency on maintenance-core + §3.18 minimum version + `ot_asset_vulnerability` table + WF-OT1 | `packs/ot-security-maintenance/manifest.yaml`; schema + first migration + entity; workflow definition | Pack refuses install when maintenance-core or §3.18 NAC guardrails absent; vulnerability lifecycle workflow round-trips with §3.1 + §3.6 |
+| 2 | `network_policy` + auto rule 4 (signature enforcement on save) + signature audit trail | Network policy collection + entity + automation rule | Policy edits require §3.6 signature; auto rule 4 blocks unsigned saves |
+| 3 | `security_advisory` + WF-OT3 distribution + §3.14 dedup at install | Security advisory + workflow + AVA tool registration | Advisories ingest from multiple sources; dedup via §3.14 vector |
+| 4 | `discovery_event` + auto rule 1 firmware-signature mapping + Claroty + Medigate adapters (live + simulator) | Discovery event collection + 2 adapter packages | Discovery events from both adapters map to existing maintenance-core assets |
+| 5 | `risk_score` + cross-pack reading of clinical_criticality_score (when clinical-maintenance present) + score recomputation worker | Risk score collection + worker + view | Risk scores include clinical criticality when overlay present; fall back to maintenance-core criticality otherwise |
+| 6 | `network_baseline` + WF-OT2 + auto rule 3 (hourly comparison) | Baseline collection + workflow + scheduled rule | Baseline drift detected; minor/significant/anomalous transitions trigger appropriate response |
+| 7 | Asimily adapter + `generic-cmdb-export` adapter (outbound-only with one-way mirror invariant) | 2 adapter packages with conformance fixtures | Both adapters pass conformance; CMDB export pushes asset inventory without accepting inbound writes |
+| 8 | `nac-quarantine` adapter integration with §3.18 dual-confirmation + safety-check evidence linkage (clinical_criticality > 70 OR life_support_designation present → block without dual approval + safety evidence) | Adapter package; §3.18 NAC guardrails consumer | Quarantine ALWAYS requires dual confirmation; clinical-criticality-aware refusals when guardrails missing |
+| 9 | WF-OT4 ava_convergence_routing per marquee #26 + AVA tool registration + auto rule 2 (14d horizon) + `<VulnerabilityTracker>` plugin | Workflow + AVA tool + plugin | Convergence proposal fires when patch + upcoming PM coincide; one-tap approve merges; signature_chain records both records |
+| 10 | `<OtAssetRiskMap>` + `<NetworkBaselineDashboard>` plugins + `ws_ot_security_officer` 4-page population + canon §44 amendment | UI Builder pages + 2 plugins + CLAUDE.md amendment | Risk map renders with score color-coding; baseline drift visualized; canon merged |
+
+**Total: 10 PRs for ot-security-maintenance overlay. Estimated effort: ~20-24 working days.**
+
+---
+
+**Pack composition complete: 4 of 4 pack specs landed (§14.1 maintenance-core, §14.2 clinical-maintenance, §14.3 facilities-maintenance, §14.4 ot-security-maintenance).** Total pack PR scope: ~53 PRs across the four packs, layered on top of the ~103 substrate PRs from §13's worked examples. Remaining Phase 4 design: 30 workflow state machines (detail dives beyond the pack-level summaries above) + 35 marquee end-to-end specs.
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -5497,10 +5638,11 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 
-**Packs (4 packs, 3 of 4 specified):**
+**Packs (4 packs, ALL 4 specified ✅):**
 - ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
 - ✅ `clinical-maintenance` overlay — 12 collections, 3 workflows, 6 automation rules, 3 plugins, 4 integrations. ~8 PRs. **Spec at §14.2.**
 - ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
+- ✅ `ot-security-maintenance` overlay — 6 collections, 4 workflows, 5 automation rules, 3 plugins, 5 integrations, 1 workspace. ~10 PRs. **Spec at §14.4.**
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
 - `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
 - `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
