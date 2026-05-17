@@ -1163,12 +1163,363 @@ Extend `tools/service-boundary-check.ts`:
 
 **Total: 5 PRs for §3.1. Estimated effort: ~4-6 working days for one engineer + AI agents.**
 
-### 13.3 Remaining implementation specs (to be written before §3.1 work begins)
+### 13.3 Worked example: §3.2 Task Projection (full artifact-level spec — the largest substrate section)
 
-Same artifact-level detail required for each of:
+#### 13.3.1 Tables
 
-**Substrate (17 remaining sections):**
-- §3.2 task_projection (10-12 PRs estimated — largest substrate section)
+**`data.task_projection`** — denormalized projection of every active taskable record across all opted-in collections.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | — | NOT NULL | = `source_record_id`; part of composite PK with `task_kind` |
+| `source_collection_id` | `uuid` | — | NOT NULL | FK → `metadata.collection_definitions(id)` (NOT VALIDATED — projection lives outside the source schema) |
+| `source_collection_code` | `varchar(120)` | — | NOT NULL | Denormalized for query speed; avoids join on every list query |
+| `task_kind` | `varchar(64)` | — | NOT NULL | LIST partition key; values from `taskable_capabilities.task_kind` |
+| `number` | `text` | — | NULL | Semantic field `number` mapped via `taskable_capabilities.field_mapping` |
+| `title` | `text` | — | NULL | Semantic field `title` |
+| `state` | `varchar(64)` | — | NOT NULL | Semantic field `state`; lifecycle position |
+| `priority` | `smallint` | — | NULL | Derived from priority `ChoiceItem.order` for sort-stable ordering |
+| `assigned_to` | `uuid` | — | NULL | User FK |
+| `assigned_group` | `uuid` | — | NULL | Group FK |
+| `requested_by` | `uuid` | — | NULL | User FK |
+| `opened_at` | `timestamptz` | `now()` | NOT NULL | RANGE partition key (monthly) within each `task_kind` LIST partition |
+| `due_at` | `timestamptz` | — | NULL | — |
+| `closed_at` | `timestamptz` | — | NULL | NOT NULL on closed/cancelled rows |
+| `sla_breach_at` | `timestamptz` | — | NULL | Computed at projection time from `sla_instance` |
+| `customer_acl_hash` | `bytea(32)` | — | NULL | §28 cached principal-set signature for ACL pre-filter |
+| `last_projected_at` | `timestamptz` | `now()` | NOT NULL | When this row was last upserted by consumer |
+| `source_version` | `int` | — | NOT NULL | Row version on source record at projection time (stale detection) |
+| `deleted_at` | `timestamptz` | — | NULL | Tombstone marker; rows kept N hours then GC'd |
+| `attrs_jsonb` | `jsonb` | `'{}'::jsonb` | NOT NULL | Pack-declared chips; every key must appear in pack's `task_projection.attrs[]` schema per §3.2 |
+
+**Partitioning strategy:**
+```sql
+CREATE TABLE data.task_projection (...) PARTITION BY LIST (task_kind);
+-- Per task_kind:
+CREATE TABLE data.task_projection_maintenance_work_order PARTITION OF data.task_projection
+  FOR VALUES IN ('maintenance_work_order') PARTITION BY RANGE (opened_at);
+-- pg_partman manages monthly sub-partitions of each LIST partition:
+SELECT partman.create_parent(
+  'data.task_projection_maintenance_work_order',
+  'opened_at', 'native', 'monthly',
+  p_premake := 3, p_start_partition := '2026-01-01'
+);
+```
+
+**Indexes** (each per LIST sub-partition):
+| Index | Columns / WHERE | Purpose |
+|---|---|---|
+| PK | `(id, task_kind)` | Required composite due to LIST partitioning |
+| `ix_assignee_state` | `(assigned_to, state) WHERE deleted_at IS NULL` | Technician's "my open work" |
+| `ix_group_state` | `(assigned_group, state) WHERE deleted_at IS NULL` | Dispatcher queue |
+| `ix_due_at` | `(due_at) WHERE deleted_at IS NULL AND closed_at IS NULL` | SLA queue |
+| `ix_sla_breach_at` | `(sla_breach_at) WHERE deleted_at IS NULL AND closed_at IS NULL` | SLA escalation |
+| `ix_acl_hash` | `(customer_acl_hash) WHERE deleted_at IS NULL` | §28 ACL bucket pre-filter |
+| `ix_attrs_gin` | `GIN(attrs_jsonb)` | Pivot-Kanban / chip queries |
+| `ix_source_record` | `(source_collection_id, id) WHERE deleted_at IS NULL` | Reconciler join key |
+
+All indexes created `CONCURRENTLY` on populated partitions per Plan Fix 26.
+
+**`data.task_projection_archive`** — identical schema; receives detached cold partitions (rows with `closed_at < now() - archive_age_months`) via the `partition-steward.job.ts` worker.
+
+**`data.task_projection_lag`** — per-collection consumer cursor.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `collection_id` | `uuid` | — | NOT NULL | PK |
+| `task_kind` | `varchar(64)` | — | NOT NULL | Denormalized for ops dashboards |
+| `last_outbox_seq` | `bigint` | `0` | NOT NULL | Last consumed `instance_event_outbox.seq` for this collection |
+| `last_projected_at` | `timestamptz` | `now()` | NOT NULL | Wall-clock of last successful projection write |
+| `lag_seconds` | `int` | `0` | NOT NULL | Trigger-computed from `(now() - last_projected_at)`; surfaces on Maintenance Manager workspace |
+| `circuit_open_above_seconds` | `int` | `30` | NOT NULL | Per-kind override threshold for the circuit-breaker (§3.2) |
+| `bucket_rebuilding` | `boolean` | `false` | NOT NULL | Set true during a §28 `CollectionAccessRule` invalidation rebuild |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK on `(collection_id)`; `ix_lag` on `(lag_seconds DESC)` for ops dashboards.
+
+**`automation.processed_events`** — idempotency ledger for **all** worker consumers (not just task_projection).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `consumer_name` | `varchar(120)` | — | NOT NULL | Part of PK; e.g. `task_projection_consumer`, `rollup_consumer`, `pm_generator` |
+| `event_id` | `uuid` | — | NOT NULL | Part of PK; from `instance_event_outbox.event_id` |
+| `received_at` | `timestamptz` | `now()` | NOT NULL | RANGE partition key (monthly via pg_partman) |
+| `processed_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `outcome` | `varchar(32)` | `'applied'` | NOT NULL | `applied` / `skipped` / `error` |
+
+**Partitioning:** `PARTITION BY RANGE (received_at)` monthly; pg_partman auto-creates next month + drops > 90 days.
+**PK:** `(consumer_name, event_id)` — composite PK IS the idempotency check. `INSERT ... ON CONFLICT DO NOTHING` is the gate.
+
+#### 13.3.2 Migrations
+
+Files in `libs/instance-db/src/lib/migrations/`:
+
+1. `1937100000000-add-task-projection.ts` — creates `data.task_projection` as LIST partitioned root + `data.task_projection_archive` + `data.task_projection_lag`. Does NOT create per-task_kind sub-partitions (those are added on `taskable_capability` insert via service code, not migration).
+2. `1937100000001-add-processed-events.ts` — creates `automation.processed_events` partitioned root + initial 3 monthly partitions.
+3. `1937100000002-add-task-projection-pg-partman-config.ts` — registers each task_kind's sub-partition with `partman.create_parent`. Calls are wrapped in `IF NOT EXISTS` patterns so re-run is safe.
+4. `1937100000003-add-task-projection-indexes-concurrent.ts` — `static transaction = false`; creates indexes `CONCURRENTLY` per Plan Fix 26 (the empty initial state means CONCURRENT isn't strictly required, but the migration is forward-compatible with later non-empty re-runs).
+
+Each migration file extends `MigrationInterface` with `up()` + `down()`. `down()` for #1 drops the tables; `down()` for #4 drops the indexes only.
+
+#### 13.3.3 TypeORM entities
+
+**New file:** `libs/instance-db/src/lib/entities/projection.entity.ts`
+
+```typescript
+@Entity({ schema: 'data', name: 'task_projection' })
+export class TaskProjection {
+  @PrimaryColumn('uuid') id: string;
+  @PrimaryColumn('varchar', { length: 64, name: 'task_kind' }) taskKind: string;
+  @Column('uuid', { name: 'source_collection_id' }) sourceCollectionId: string;
+  @Column('varchar', { length: 120, name: 'source_collection_code' }) sourceCollectionCode: string;
+  @Column('text', { nullable: true }) number?: string;
+  @Column('text', { nullable: true }) title?: string;
+  @Column('varchar', { length: 64 }) state: string;
+  @Column('smallint', { nullable: true }) priority?: number;
+  @Column('uuid', { name: 'assigned_to', nullable: true }) assignedTo?: string;
+  @Column('uuid', { name: 'assigned_group', nullable: true }) assignedGroup?: string;
+  @Column('uuid', { name: 'requested_by', nullable: true }) requestedBy?: string;
+  @Column('timestamptz', { name: 'opened_at' }) openedAt: Date;
+  @Column('timestamptz', { name: 'due_at', nullable: true }) dueAt?: Date;
+  @Column('timestamptz', { name: 'closed_at', nullable: true }) closedAt?: Date;
+  @Column('timestamptz', { name: 'sla_breach_at', nullable: true }) slaBreachAt?: Date;
+  @Column('bytea', { name: 'customer_acl_hash', nullable: true }) customerAclHash?: Buffer;
+  @Column('timestamptz', { name: 'last_projected_at' }) lastProjectedAt: Date;
+  @Column('int', { name: 'source_version' }) sourceVersion: number;
+  @Column('timestamptz', { name: 'deleted_at', nullable: true }) deletedAt?: Date;
+  @Column('jsonb', { name: 'attrs_jsonb', default: () => `'{}'::jsonb` }) attrsJsonb: Record<string, unknown>;
+}
+
+@Entity({ schema: 'data', name: 'task_projection_lag' })
+export class TaskProjectionLag {
+  @PrimaryColumn('uuid', { name: 'collection_id' }) collectionId: string;
+  @Column('varchar', { length: 64, name: 'task_kind' }) taskKind: string;
+  @Column('bigint', { name: 'last_outbox_seq' }) lastOutboxSeq: string; // bigint as string per TypeORM convention
+  @Column('timestamptz', { name: 'last_projected_at' }) lastProjectedAt: Date;
+  @Column('int', { name: 'lag_seconds' }) lagSeconds: number;
+  @Column('int', { name: 'circuit_open_above_seconds', default: 30 }) circuitOpenAboveSeconds: number;
+  @Column('boolean', { name: 'bucket_rebuilding', default: false }) bucketRebuilding: boolean;
+  @Column('timestamptz', { name: 'updated_at' }) updatedAt: Date;
+}
+
+@Entity({ schema: 'automation', name: 'processed_events' })
+export class ProcessedEvent {
+  @PrimaryColumn('varchar', { length: 120, name: 'consumer_name' }) consumerName: string;
+  @PrimaryColumn('uuid', { name: 'event_id' }) eventId: string;
+  @Column('timestamptz', { name: 'received_at' }) receivedAt: Date;
+  @Column('timestamptz', { name: 'processed_at' }) processedAt: Date;
+  @Column('varchar', { length: 32, default: 'applied' }) outcome: string;
+}
+```
+
+Register in `libs/instance-db/src/lib/entities/index.ts` and `instanceEntities` array.
+
+#### 13.3.4 Services (worker + API)
+
+**File:** `apps/worker/src/projections/task-projection/task-projection.consumer.ts` (NEW)
+
+```typescript
+@Injectable()
+export class TaskProjectionConsumer {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly capabilityRegistry: CapabilityRegistryService,
+    private readonly authzService: AuthorizationService,
+    private readonly logger: Logger,
+  ) {}
+
+  /** Entry point — Redis Consumer Group handler. */
+  async handleOutboxBatch(messages: OutboxMessage[]): Promise<void> {
+    for (const msg of messages) {
+      await this.dataSource.transaction(async (em) => {
+        // 1. Insert processed_events row (or skip if duplicate delivery)
+        const insert = await em
+          .createQueryBuilder()
+          .insert()
+          .into(ProcessedEvent)
+          .values({ consumerName: 'task_projection_consumer', eventId: msg.eventId, receivedAt: new Date(), processedAt: new Date(), outcome: 'applied' })
+          .orIgnore()  // ON CONFLICT DO NOTHING
+          .execute();
+        if (insert.identifiers.length === 0) {
+          // Duplicate delivery → no-op; XACK after commit
+          return;
+        }
+        // 2. Apply the mutation
+        switch (msg.kind) {
+          case 'record.write': await this.upsertProjection(em, msg); break;
+          case 'record.delete': await this.tombstoneProjection(em, msg); break;
+          case 'rule.invalidate': await this.markBucketRebuilding(em, msg); break;
+        }
+      });
+      // 3. XACK ONLY AFTER transaction commits — Redis Streams ack semantics
+      await this.ackOutboxMessage(msg);
+    }
+  }
+
+  private async upsertProjection(em: EntityManager, msg: OutboxMessage): Promise<void> {
+    // a. Resolve the taskable capability for the source collection
+    const cap = await this.capabilityRegistry.getCapability(msg.collectionId);
+    if (!cap || !cap.projectionEnabled) return;
+    // b. Read the source row at msg.recordId; apply field_mapping
+    const source = await em.findOne(/* dynamic */, { where: { id: msg.recordId } });
+    if (!source) return;
+    const projectionRow = this.mapToProjection(source, cap);
+    // c. Filter attrs_jsonb to only the pack-declared projection_safe keys (per §3.2 attrs schema)
+    projectionRow.attrsJsonb = this.filterToProjectionSafe(projectionRow.attrsJsonb, cap);
+    // d. Compute customer_acl_hash via §28 cache
+    projectionRow.customerAclHash = await this.authzService.computeAclBucketHash(msg.collectionId, source);
+    // e. UPSERT — idempotent
+    await em
+      .createQueryBuilder()
+      .insert()
+      .into(TaskProjection)
+      .values(projectionRow)
+      .orUpdate(/* all columns except id+task_kind */)
+      .execute();
+    // f. Update lag cursor
+    await em
+      .createQueryBuilder()
+      .update(TaskProjectionLag)
+      .set({ lastOutboxSeq: msg.seq, lastProjectedAt: new Date() })
+      .where({ collectionId: msg.collectionId })
+      .execute();
+  }
+
+  private async tombstoneProjection(em: EntityManager, msg: OutboxMessage): Promise<void> {
+    await em
+      .createQueryBuilder()
+      .update(TaskProjection)
+      .set({ deletedAt: new Date() })
+      .where({ id: msg.recordId, taskKind: msg.taskKind })
+      .execute();
+  }
+
+  private async markBucketRebuilding(em: EntityManager, msg: OutboxMessage): Promise<void> {
+    // Mark the lag row as bucket_rebuilding; the reconciler picks up affected rows asynchronously
+    await em.update(TaskProjectionLag, { collectionId: msg.collectionId }, { bucketRebuilding: true });
+    // Schedule a follow-up batch job to re-project affected rows
+  }
+}
+```
+
+**File:** `apps/worker/src/projections/task-projection/task-projection.reconciler.ts` (NEW) — scheduled daily; diffs source ↔ projection per partition pair; emits missing/orphan/stale-by-version repair operations. Uses `ACCESS SHARE` lock only on active partitions.
+
+**File:** `apps/api/src/app/views/list-reader.service.ts` (extends existing) — adds the circuit-breaker logic:
+
+```typescript
+async listTasks(query: ListQuery, ctx: RequestContext): Promise<ListResult> {
+  const cap = await this.capabilityRegistry.getCapability(query.collectionId);
+  if (!cap || !cap.projectionEnabled) throw new BadRequestException('Collection is not projection-enabled');
+
+  const lag = await this.lagRepo.findOne({ where: { collectionId: query.collectionId } });
+  if (lag && lag.lagSeconds > lag.circuitOpenAboveSeconds) {
+    // CIRCUIT OPEN — serve stale + banner; DO NOT fallback to source on list endpoints
+    return this.servStaleWithBanner(query, ctx, lag.lastProjectedAt);
+  }
+
+  // Normal path: §28 evaluator pre-filters via customer_acl_hash bucket
+  const buckets = await this.authzService.getApplicableAclBuckets(query.collectionId, ctx);
+  const candidates = await this.projectionRepo.find({
+    where: { sourceCollectionId: query.collectionId, customerAclHash: In(buckets), deletedAt: IsNull() },
+    take: query.limit, skip: query.offset,
+  });
+  // Final post-filter through centralized authz (the security gate)
+  const visible = await this.authzService.applyRowConditions(candidates, ctx);
+  // Field-masking on the projection-safe attrs
+  return this.authzService.applyFieldMasking(visible, ctx);
+}
+```
+
+#### 13.3.5 API endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/views/:viewId/list` | `@Roles` per view | List endpoint (circuit-breaker gated) — returns `{ rows, totalCount, isStale, staleAsOf, bannerMessage? }` |
+| `GET` | `/projection/:collectionId/lag` | `@Roles('maintenance_admin', 'ops')` | Operations endpoint — returns `task_projection_lag` row |
+| `POST` | `/projection/:collectionId/rebuild` | `@Roles('platform_admin')` | Manual reconciler trigger for a single collection |
+| `GET` | `/projection/:taskKind/_health` | `@AllowServiceToken @RequireServiceScope('projection:read')` | Internal health check for monitoring; returns lag + last-projected timestamp |
+
+#### 13.3.6 Validator extensions
+
+Pack publish validator (`apps/api/src/app/metadata/packs/pack-validator.service.ts`):
+
+1. **Projection_safe attrs schema gate.** For every collection with `taskable_capabilities.projection_enabled = true`, the pack manifest must declare `task_projection.attrs[]` schema. Every attrs key has `projection_safe: true` AND `confidentiality_class ∈ {public, internal}`. Validator refuses publish with structured error if attrs key references a property whose `confidentiality_class` is `sensitive` / `never_reveal` / etc.
+2. **Task_kind uniqueness gate.** No two pack-declared taskable collections may share the same `task_kind` value within the same instance. Validator refuses publish on conflict.
+3. **field_mapping cross-pack collision.** If a collection's `field_mapping` references properties from another pack (e.g., a clinical overlay references a maintenance-core property), the pack-dependency graph must include that pack and the property must exist at publish-eval time.
+
+#### 13.3.7 Service-boundary scanner rules
+
+```typescript
+// tools/service-boundary-check.ts entries
+'data.task_projection': {
+  writers: ['apps/worker/src/projections/task-projection/**'],
+  readers: ['apps/api/src/app/views/**', 'apps/api/src/app/search/**', 'apps/api/src/app/ai/**'],
+  /* No direct API-process writes — list endpoint is read-only on this table. */
+},
+'data.task_projection_archive': {
+  writers: ['apps/worker/src/archive/partition-steward.job.ts'],
+  readers: ['apps/api/src/app/archive/**'],
+},
+'data.task_projection_lag': {
+  writers: ['apps/worker/src/projections/task-projection/**'],
+  readers: ['apps/api/src/app/views/**', 'apps/api/src/app/ops/**'],
+},
+'automation.processed_events': {
+  writers: ['apps/worker/src/projections/**', 'apps/worker/src/maintenance/**', 'apps/worker/src/observations/**'],
+  readers: ['apps/api/src/app/ops/**'],
+},
+```
+
+**Bulk-import bypass allowlist** (per §7 risk #1 mitigation): explicit allowlist entries in `service-boundary-check.ts` for `apps/api/src/app/import/bulk-import-projection-write.service.ts` to write `task_projection` rows in the same transaction as the source row, named with a comment explaining the architectural carve-out.
+
+#### 13.3.8 Tests (self-test ≥ 15 assertions)
+
+1. Insert a `taskable_capability` for a synthetic collection → consumer wakes → outbox row → projection upsert → row visible via list endpoint.
+2. Duplicate delivery: send the same outbox event twice → `processed_events` insert succeeds first time, fails (ON CONFLICT) second time → `task_projection` upserted exactly once.
+3. `record.delete` event → projection row gets `deleted_at` set → list endpoint excludes the row → archive partition steward later moves it.
+4. `rule.invalidate` event → lag row's `bucket_rebuilding = true` → reconciler picks up affected rows → ACL bucket recomputed → `bucket_rebuilding` flips false on completion.
+5. **Circuit breaker:** inject lag of 60s on one task_kind → list endpoint returns `isStale: true` + banner + serves last-projected rows → NO source-table queries fired (verified via DB query log).
+6. **Single-record fallback:** circuit open → single-record fetch endpoint still queries source-table → returns the freshest data.
+7. **Reconciler diff:** seed 100 source rows; delete 5 directly from projection; run reconciler → 5 missing-in-projection diff entries surfaced → reproject restores them.
+8. **Reconciler ACCESS SHARE only:** during reconciler run, concurrent INSERTs into the source partition succeed without blocking (verified via pg_stat_activity).
+9. **Bulk-import bypass:** 200k WO bulk import → projection rows + source rows written in same transaction via the allowlisted path → no queue saturation.
+10. **Tombstone GC:** rows with `deleted_at < now() - 7 days` GC'd by partition steward; archive partition contains them.
+11. **Partition steward:** closed rows older than `archive_age_months` (default 24) get detached from active partition + attached to archive.
+12. **Projection_safe filtering:** an `attrs_jsonb` value containing a key not in the pack-declared schema is REJECTED at consumer write time + logged as RuntimeAnomaly.
+13. **task_kind uniqueness:** publishing a second pack with the same task_kind fails with structured error.
+14. **Bigint serialization:** `last_outbox_seq` is stored and read correctly as bigint (not lossy on values > 2^53).
+15. **Authz post-filter:** synthetic deny rule edited → centralized post-filter excludes the affected rows even before the rebuild lands; stale-projection-cannot-grant-access verified.
+
+Integration tests in `apps/api/test/integration/task-projection.spec.ts` and `apps/worker/test/integration/task-projection-consumer.spec.ts`.
+
+#### 13.3.9 PR breakdown for §3.2
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Tables + migrations | 4 migration files; `data` + `automation` schemas | All migrations run forward + backward; baseline empty; scanner pass |
+| 2 | TypeORM entities + module wiring | `libs/instance-db/src/lib/entities/projection.entity.ts`; index update | Entities load in `instanceEntities`; `TypeOrmModule.forFeature` wired |
+| 3 | ProcessedEvent ledger + idempotency helper | New `libs/instance-db/src/lib/projection/processed-event.helper.ts` exposing `consumeIdempotently()` | Self-test: duplicate insert returns no-op; ON CONFLICT works |
+| 4 | TaskProjectionConsumer (worker) — happy path | `apps/worker/src/projections/task-projection/task-projection.consumer.ts`; Redis Consumer Group wiring | Outbox event → projection upsert → idempotent on replay |
+| 5 | TaskProjectionConsumer — tombstone + rule.invalidate paths | Same consumer extended | Self-test cases 3, 4 pass |
+| 6 | TaskProjectionReconciler (worker) | `task-projection.reconciler.ts` | Self-test cases 7, 8 pass |
+| 7 | List endpoint with circuit-breaker | `apps/api/src/app/views/list-reader.service.ts` extension | Self-test case 5 pass: zero source-table queries when circuit open |
+| 8 | Bulk-import bypass + service-boundary allowlist | `apps/api/src/app/import/bulk-import-projection-write.service.ts` + scanner entry | 200k-row import doesn't saturate queue |
+| 9 | Partition steward — active/archive transitions | `apps/worker/src/archive/partition-steward.job.ts` | Self-test case 11 pass |
+| 10 | Pack validator extensions — projection_safe attrs + task_kind uniqueness | `pack-validator.service.ts` extensions | Self-test cases 12, 13 pass |
+| 11 | Authz integration — bucket hash + post-filter wiring | `apps/api/src/app/views/list-reader.service.ts` + `authorization.service.ts` extension | Self-test case 15 pass; §28 evaluator verified |
+| 12 | Canon §34 amendment + ops dashboard endpoints + docs | `CLAUDE.md`; lag/health endpoints; `docs/operations/task-projection-runbook.md` | Canon merged; runbook published; smoke test on perf-staging confirms circuit-breaker behavior under burst |
+
+**Total: 12 PRs for §3.2. Estimated effort: ~10-12 working days for one engineer + AI agents.**
+
+---
+
+### 13.4 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. The §13.2 / §13.3 worked examples cover §3.1 + §3.2; the remaining 16 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (16 remaining sections — §3.1 ✅ §13.2; §3.2 ✅ §13.3):**
+- ✅ §3.1 taskable capability — §13.2 (5 PRs)
+- ✅ §3.2 task_projection — §13.3 (12 PRs)
 - §3.3 scheduling primitives (5 PRs)
 - §3.4 list-scale primitives (4 PRs)
 - §3.5 observations + pg_partman + rollup jobs (6 PRs)
@@ -1200,7 +1551,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.4 Convention for spec doc filenames + ownership
+### 13.5 Convention for spec doc filenames (now superseded — see §13.4 note)
 
 ```
 docs/
@@ -1221,7 +1572,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.5 What's left to do BEFORE code starts
+### 13.6 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
