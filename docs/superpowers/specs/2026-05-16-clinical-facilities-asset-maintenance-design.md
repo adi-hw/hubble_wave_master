@@ -4583,11 +4583,236 @@ Pack validator gains 3 publish gates:
 
 ---
 
-### 13.19 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.19 Worked example: §3.18 Integration Secrets + Egress Policy (full artifact-level spec — KMS-encrypted secrets + deny-all egress allowlist + per-adapter killswitch + NAC dual-confirmation)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.18 cover §3.1 — §3.17; the remaining 1 substrate section + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.19.1 Tables
 
-**Substrate (1 remaining section — §3.1-§3.17 ✅):**
+Four new tables, two in `schema: 'integrations'` (existing from §13.14) and two NEW.
+
+**`integrations.integration_secret`** — KMS-encrypted secret values; never exposed in API responses.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `adapter_id` | `varchar(120)` | — | NOT NULL | FK → `integrations.integration_adapter_registry(adapter_id)` |
+| `secret_handle` | `varchar(120)` | — | NOT NULL | UNIQUE per `(instance_id, adapter_id)`; the opaque identifier callers reference |
+| `kms_key_arn` | `text` | — | NOT NULL | AWS KMS key ARN used to encrypt this value |
+| `encrypted_value` | `bytea` | — | NOT NULL | KMS Encrypt output (`CiphertextBlob`) |
+| `value_kind` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{api_key, oauth_token, basic_credentials, ssh_key, x509_cert_pair, opaque_blob}` |
+| `rotated_at` | `timestamptz` | `now()` | NOT NULL | When the secret last received a new value |
+| `expires_at` | `timestamptz` | — | NULL | When provider-side credential expires (used for rotation alerts) |
+| `last_used_at` | `timestamptz` | — | NULL | Updated by `SecretResolver.resolve` on each fetch |
+| `use_count` | `bigint` | `0` | NOT NULL | Atomic increment per fetch |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(instance_id, adapter_id, secret_handle)`; `ix_is_expiring ON (expires_at) WHERE expires_at IS NOT NULL`.
+
+**`integrations.egress_allowlist_entry`** — per-adapter allowed outbound destinations; deny-all default.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `adapter_id` | `varchar(120)` | — | NOT NULL | FK |
+| `target_host` | `varchar(255)` | — | NOT NULL | FQDN; CIDR notation accepted for IP-range allowance |
+| `target_port` | `int` | — | NOT NULL | CHECK `target_port BETWEEN 1 AND 65535` |
+| `target_protocol` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{https, http, tcp, udp, mqtt, mqtts, ws, wss}` |
+| `purpose` | `varchar(120)` | — | NOT NULL | Free-form audit text — why this destination |
+| `added_by_user_id` | `uuid` | — | NOT NULL | FK |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+UNIQUE `(instance_id, adapter_id, target_host, target_port, target_protocol)`; `ix_eae_adapter_active ON (adapter_id, is_active) WHERE is_active = true`.
+
+**`integrations.outbound_call_log`** — every outbound HTTP/TCP call; partitioned monthly via pg_partman.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `bigserial` | — | NOT NULL | PK component with `called_at` |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `adapter_id` | `varchar(120)` | — | NOT NULL | — |
+| `op_id` | `varchar(120)` | — | NOT NULL | The operation invoked |
+| `target_host` | `varchar(255)` | — | NOT NULL | Resolved destination |
+| `target_port` | `int` | — | NOT NULL | — |
+| `verdict` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{allowed, blocked_by_allowlist, blocked_by_killswitch, error_returned, success}` |
+| `response_status` | `int` | — | NULL | HTTP-equivalent status (when applicable) |
+| `latency_ms` | `int` | — | NULL | Round-trip latency |
+| `request_size_bytes` | `bigint` | — | NULL | — |
+| `response_size_bytes` | `bigint` | — | NULL | — |
+| `called_at` | `timestamptz` | `now()` | NOT NULL | RANGE partition key |
+| `correlation_id` | `uuid` | — | NULL | Inbound request that triggered the outbound call (W2 stream4b request-trace plumbing) |
+
+**Partitioning:**
+```sql
+CREATE TABLE integrations.outbound_call_log (...) PARTITION BY RANGE (called_at);
+SELECT partman.create_parent('integrations.outbound_call_log', 'called_at', 'native', 'monthly', p_premake := 3);
+```
+
+Indexes (per monthly partition): PK on `(id, called_at)`; BRIN on `(called_at)`; `ix_ocl_adapter_verdict ON (adapter_id, verdict, called_at DESC)`; `ix_ocl_correlation ON (correlation_id) WHERE correlation_id IS NOT NULL`.
+
+**`integrations.adapter_killswitch_state`** — per-adapter emergency-stop.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `adapter_id` | `varchar(120)` | — | NOT NULL | UNIQUE per `(instance_id)` |
+| `killed` | `boolean` | `false` | NOT NULL | When `true`, all adapter calls fail-closed |
+| `killed_at` | `timestamptz` | — | NULL | — |
+| `killed_by_user_id` | `uuid` | — | NULL | FK |
+| `killed_reason` | `text` | — | NULL | — |
+| `unkilled_at` | `timestamptz` | — | NULL | — |
+| `unkilled_by_user_id` | `uuid` | — | NULL | FK |
+| `dual_confirmation_state` | `jsonb` | — | NULL | For NAC-quarantine adapter: `{ confirmer_1_user_id, confirmer_1_role, confirmer_2_user_id, confirmer_2_role, customer_override_flag_set_at, safety_check_passed_evidence_id }` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+UNIQUE `(instance_id, adapter_id)`.
+
+#### 13.19.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1944000000000-create-integration-secret.ts` | Table + indexes |
+| 2 | `1944000000001-create-egress-allowlist-entry.ts` | Table + indexes |
+| 3 | `1944000000002-create-outbound-call-log-parent.ts` | Partitioned table + pg_partman setup |
+| 4 | `1944000000003-create-adapter-killswitch-state.ts` | Table |
+
+#### 13.19.3 Services
+
+`apps/api/src/app/integrations/secrets/` (new submodule) + `apps/worker/src/integrations/egress/` (new submodule).
+
+**`IntegrationSecretService`** — `apps/api/src/app/integrations/secrets/integration-secret.service.ts`:
+
+```typescript
+create(input: CreateSecretInput, ctx: UserRequestContext): Promise<{ secretHandle: string }>;
+rotate(secretHandle: string, newValue: string, ctx: UserRequestContext): Promise<void>;
+delete(secretHandle: string, ctx: UserRequestContext): Promise<void>;
+listMetadata(filter: SecretFilter, ctx: UserRequestContext): Promise<SecretMetadata[]>;  // never includes encrypted_value
+```
+
+Plaintext secrets enter the system ONLY via `create` and `rotate`, and ONLY when the caller holds `integrations:secret:manage` (`dangerous: true`). Encryption: `KMSClient.encrypt({ KeyId: kms_key_arn, Plaintext: Buffer.from(value, 'utf-8') })`; ciphertext stored. The plaintext is held in memory for ≤ the duration of one HTTP request; never logged.
+
+**`SecretResolver`** — internal helper used by adapters at call time:
+
+```typescript
+async resolve(secretHandle: string, instanceId: string): Promise<Buffer>;
+```
+
+Per call:
+1. Look up `integration_secret` row by `(instance_id, secret_handle)`.
+2. Call KMS Decrypt with the row's `encrypted_value`.
+3. Atomic UPDATE `last_used_at = now(), use_count = use_count + 1`.
+4. Return plaintext Buffer; caller MUST zero the buffer after use (helper provided).
+
+`SecretResolver` is NOT exposed via any HTTP endpoint. It's package-internal to `apps/api/src/app/integrations/` and `apps/worker/src/integrations/`. Service-boundary scanner forbids imports from any other package.
+
+**`EgressAllowlistEnforcer`** — wraps every outbound HTTP/TCP call from worker:
+
+```typescript
+async authorizedCall<T>(adapterId: string, op: () => Promise<T>, target: { host: string; port: number; protocol: string }): Promise<T>;
+```
+
+1. Check `adapter_killswitch_state` for the adapter; if `killed=true` → write `outbound_call_log` row with `verdict='blocked_by_killswitch'`; throw `KillSwitchActive`.
+2. Check `egress_allowlist_entry` for `(adapter_id, target_host, target_port, target_protocol)`; if no active entry → write log with `verdict='blocked_by_allowlist'`; throw `EgressNotAllowlisted`.
+3. Start timer; invoke `op()`; measure latency.
+4. On success: write log with `verdict='success', latency_ms, response_status, response_size_bytes`.
+5. On error: write log with `verdict='error_returned'`; rethrow.
+
+Every adapter's actual HTTP client (axios / undici / node-fetch) MUST be wrapped in `authorizedCall(...)`. The new `tools/egress-enforcer-check.ts` scanner (introduced in PR-6) greps adapter code for unwrapped HTTP-client calls; violations fail CI.
+
+**`KillswitchService`** — `apps/api/src/app/integrations/secrets/killswitch.service.ts`:
+
+```typescript
+trip(adapterId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+reset(adapterId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+```
+
+`trip(...)` for the NAC-quarantine adapter (§3.18 prose) follows special dual-confirmation:
+1. First call: insert/update row with `dual_confirmation_state.confirmer_1_*` set; row's `killed` stays `false` (or `true` based on direction — trip=true setting it false would be backwards; trip raises killed to `true` to STOP quarantine).
+2. Second call from a DIFFERENT user with role `maintenance_manager` (when first was `security_officer`, or vice versa) flips `killed = true` IF customer-override flag set AND `safety_check_passed_evidence_id` present.
+3. Missing requirements → refuse with `NAC_GUARDRAIL_NOT_SATISFIED` listing missing pieces.
+
+(Important note: the NAC-quarantine adapter's "killswitch" semantically prevents accidental clinical-operations impact — it requires more checks to ARM than to disarm. Other adapters use the simpler single-call trip/reset.)
+
+#### 13.19.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/integrations/secrets` | `@RequirePermission('integrations:secret:manage')` (`dangerous: true`) | `{ adapterId, secretHandle, value, valueKind, expiresAt? }` — value never logged |
+| `POST` | `/api/integrations/secrets/:handle/rotate` | `@RequirePermission('integrations:secret:manage')` | `{ value }` |
+| `DELETE` | `/api/integrations/secrets/:handle` | `@RequirePermission('integrations:secret:manage')` | `{ reason }` |
+| `GET` | `/api/integrations/secrets` | `@RequirePermission('integrations:secret:read')` | — never returns plaintext |
+| `POST` | `/api/integrations/egress-allowlist` | `@RequirePermission('integrations:egress:manage')` (`dangerous: true`) | entry params |
+| `DELETE` | `/api/integrations/egress-allowlist/:id` | `@RequirePermission('integrations:egress:manage')` | `{ reason }` |
+| `GET` | `/api/integrations/egress-allowlist` | `@RequirePermission('integrations:egress:read')` | — |
+| `GET` | `/api/integrations/outbound-call-log` | `@RequirePermission('integrations:egress:audit_read')` | filter |
+| `POST` | `/api/integrations/killswitch/:adapterId/trip` | `@RequirePermission('integrations:killswitch:operate')` (`dangerous: true`) | `{ reason, dualConfirmationPayload? }` |
+| `POST` | `/api/integrations/killswitch/:adapterId/reset` | `@RequirePermission('integrations:killswitch:operate')` (`dangerous: true`) | `{ reason }` |
+| `GET` | `/api/integrations/killswitch/:adapterId` | `@RequirePermission('integrations:killswitch:read')` | — |
+
+#### 13.19.5 Validator extensions
+
+Pack validator gains 4 publish gates:
+
+1. **G19.1** — Pack `integrations[]` MUST declare an `egress_allowlist[]` enumerating every outbound destination it needs. Install refuses if any declared destination is missing from instance `egress_allowlist_entry` rows. Error: `MISSING_EGRESS_ALLOWLIST_ENTRY` (install-time, not publish-time).
+2. **G19.2** — Pack adapter code MUST wrap every outbound HTTP/TCP client call in `EgressAllowlistEnforcer.authorizedCall(...)`. AST-scan detects unwrapped calls. Error: `BYPASS_EGRESS_ENFORCER`.
+3. **G19.3** — `nac-quarantine` adapter declarations MUST include `dual_confirmation_required = true` AND `safety_check_evidence_kind = '<kind>'`. Error: `NAC_QUARANTINE_MISSING_GUARDRAILS`.
+4. **G19.4** — Adapter code MUST resolve secrets only through `SecretResolver.resolve(...)`. AST-scan for direct `integration_secret.encrypted_value` reads outside the resolver fails CI. Error: `DIRECT_SECRET_READ`.
+
+#### 13.19.6 Service-boundary scanner rules + NEW egress scanner
+
+| Entity | Allowed writers |
+|---|---|
+| `IntegrationSecret` | `IntegrationSecretService.*` |
+| `EgressAllowlistEntry` | `EgressAllowlistService.*` |
+| `OutboundCallLog` | `EgressAllowlistEnforcer.authorizedCall` only |
+| `AdapterKillswitchState` | `KillswitchService.*` |
+
+`tools/egress-enforcer-check.ts` (NEW scanner): greps `apps/worker/src/integrations/**` and `apps/api/src/app/integrations/**` for HTTP-client imports (`axios`, `undici`, `node-fetch`, `got`, `request`); for each, asserts that the call is wrapped in `EgressAllowlistEnforcer.authorizedCall(...)` within the same function. Unwrapped HTTP calls fail CI with `UNWRAPPED_EGRESS_CALL`.
+
+Self-test: 8 assertions covering (a) wrapped call passes; (b) unwrapped axios.get fails; (c) unwrapped fetch fails; (d) wrapped via different identifier name passes; (e) commented-out unwrapped call doesn't fail (false-positive guard); (f) non-adapter directory ignored; (g) Windows + Linux path stability; (h) self-test runs deterministically.
+
+#### 13.19.7 Tests (self-test ≥ 14 assertions)
+
+1. **`secret-create-and-resolve.spec.ts`** — create secret; `SecretResolver.resolve` returns plaintext that matches original; `last_used_at` + `use_count` updated.
+2. **`secret-never-leaked-in-response.spec.ts`** — `GET /secrets` response body never contains plaintext OR `encrypted_value` (only metadata).
+3. **`secret-rotation.spec.ts`** — rotate; old plaintext no longer decrypts; new value resolves correctly; `rotated_at` updated.
+4. **`secret-direct-read-scanner.spec.ts`** — adding adapter code that reads `integration_secret.encrypted_value` directly fails G19.4 AST-scan.
+5. **`egress-deny-all-default.spec.ts`** — fresh adapter with no allowlist entries; `authorizedCall` blocks with `EgressNotAllowlisted`; `outbound_call_log` records `verdict='blocked_by_allowlist'`.
+6. **`egress-allowlist-grant.spec.ts`** — add allowlist entry; subsequent call succeeds; log row `verdict='success'`.
+7. **`egress-enforcer-scanner.spec.ts`** — add direct `axios.get(...)` in adapter code; `egress-enforcer-check.ts` fails CI.
+8. **`killswitch-trip.spec.ts`** — trip killswitch on `hl7v2`; subsequent calls fail with `KillSwitchActive`; log `verdict='blocked_by_killswitch'`.
+9. **`killswitch-reset.spec.ts`** — reset; calls succeed again.
+10. **`killswitch-nac-dual-confirmation.spec.ts`** — single security officer trip → refused with `NAC_GUARDRAIL_NOT_SATISFIED`; second user (maintenance_manager) AFTER customer override + safety check evidence → trip succeeds.
+11. **`killswitch-nac-missing-evidence.spec.ts`** — both confirmers present but `safety_check_passed_evidence_id` missing → still refused.
+12. **`outbound-log-partition.spec.ts`** — pg_partman creates next-month partition; log row lands in correct partition by `called_at`.
+13. **`outbound-log-correlation-id.spec.ts`** — outbound call from inside an inbound request flow carries `correlation_id`; allows tracing inbound→outbound paths in audit.
+14. **`secret-expiration-alert.spec.ts`** — secret with `expires_at` in 24h; scheduled job emits `RuntimeAnomaly` with kind `secret_expiring_soon`.
+
+#### 13.19.8 PR breakdown for §3.18
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Migrations + entities + `IntegrationSecretService.create/rotate/delete/listMetadata` + `SecretResolver` + tests 1, 2, 3, 14 | Migrations 1-4; entity area patch; `apps/api/src/app/integrations/secrets/**`; KMS client wiring | KMS encrypt/decrypt round-trips; plaintext never leaked; expiration alerts |
+| 2 | `EgressAllowlistEnforcer` + outbound_call_log writes + tests 5, 6, 12, 13 | `apps/worker/src/integrations/egress/egress-enforcer.ts`; `outbound_call_log` writer; pg_partman maintenance task | Deny-all default; allowlist grants; partitions roll; correlation_id propagates |
+| 3 | `KillswitchService` simple trip/reset + adapter call routing + tests 8, 9 | `apps/api/src/app/integrations/secrets/killswitch.service.ts`; `AdapterCallExecutor` integration with killswitch lookup | Killswitch flips honored; subsequent calls fail-closed |
+| 4 | NAC dual-confirmation flow + tests 10, 11 + validator G19.3 | `apps/api/src/app/integrations/secrets/nac-guardrails.service.ts`; pack-validator extension | Dual confirmation required; safety evidence required; refusal when guardrails missing |
+| 5 | `egress-enforcer-check.ts` scanner + AST-scan for `SecretResolver` direct-read + validator G19.1, G19.2, G19.4 + tests 4, 7 | `tools/egress-enforcer-check.ts` + self-test; pack-validator AST extensions | Scanner blocks bypass; validator catches direct secret reads |
+| 6 | Canon §44 amendment + service-boundary rule additions | CLAUDE.md amendment; `tools/service-boundary-check.ts` updates | Canon merged; writers pinned |
+
+**Total: 6 PRs for §3.18. Estimated effort: ~12-15 working days. (Tracker said 5 PRs; final estimate is 6 once NAC dual-confirmation + the AST-scan for direct secret reads are broken out.)**
+
+---
+
+### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (0 remaining — §3.1-§3.18 ✅ ALL DONE):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -4605,7 +4830,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.15 Spatial + Relationship Graph — §13.16 (5 PRs)
 - ✅ §3.16 Financial Control primitive — §13.17 (5 PRs)
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
-- §3.18 Integration Secrets + Egress Policy (5 PRs)
+- ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 
 **Packs (4 packs):**
 - `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2.
@@ -4621,7 +4846,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.20 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.21 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -4642,7 +4867,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.21 What's left to do BEFORE code starts
+### 13.22 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
