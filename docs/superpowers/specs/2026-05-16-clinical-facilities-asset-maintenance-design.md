@@ -1513,14 +1513,323 @@ Integration tests in `apps/api/test/integration/task-projection.spec.ts` and `ap
 
 ---
 
-### 13.4 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.4 Worked example: §3.3 Scheduling Primitives (full artifact-level spec)
+
+#### 13.4.1 Tables
+
+All tables live in `schema: 'automation'`. All are platform-generic — no asset/PM/WO domain coupling. Pack-level semantics bound on top at consumer time.
+
+**`automation.recurrence_definitions`** — reusable RRULE templates.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE per instance — packs reference by code (stable across upgrades) |
+| `name` | `varchar(255)` | — | NOT NULL | Human-readable |
+| `rrule` | `text` | — | NOT NULL | RFC 5545 RRULE string, e.g. `FREQ=MONTHLY;BYMONTHDAY=1;COUNT=120` |
+| `timezone` | `varchar(64)` | `'UTC'` | NOT NULL | IANA timezone name; affects DST boundaries |
+| `business_hours_id` | `uuid` | — | NULL | FK → `automation.business_hours(id)`; if set, recurrence fires only within business hours |
+| `blackout_calendar_id` | `uuid` | — | NULL | FK → `automation.blackout_calendars(id)`; firings inside blackout dates are skipped |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+| `source` | `varchar(64)` | `'pack'` | NOT NULL | `pack` / `customer` |
+
+Indexes: PK on `(id)`; UNIQUE on `(code)`; `ix_recurrence_active ON (is_active) WHERE is_active = true`.
+
+**`automation.suppression_windows`** — time-bounded suppression for scheduled generation.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE |
+| `name` | `varchar(255)` | — | NOT NULL | — |
+| `start_at` | `timestamptz` | — | NOT NULL | — |
+| `end_at` | `timestamptz` | — | NOT NULL | CHECK (`end_at > start_at`) |
+| `reason` | `text` | — | NULL | Human-readable suppression rationale; written into `audit_logs` when a generation is suppressed |
+| `scope` | `varchar(64)` | `'global'` | NOT NULL | `global` / `collection` / `record` — determines breadth |
+| `scope_collection_id` | `uuid` | — | NULL | FK → `metadata.collection_definitions(id)`; required when `scope = 'collection'` or `'record'` |
+| `scope_record_id` | `uuid` | — | NULL | Required when `scope = 'record'` |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `source` | `varchar(64)` | `'customer'` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(code)`; `ix_suppression_active_range ON (start_at, end_at) WHERE is_active = true`; partial `ix_suppression_scope_record ON (scope_collection_id, scope_record_id) WHERE scope = 'record' AND is_active = true`.
+
+**`automation.blackout_calendars`** — date-range exclusion sets.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE |
+| `name` | `varchar(255)` | — | NOT NULL | e.g., "US Federal Holidays 2026", "Hospital Closure 2026-12-25" |
+| `dates` | `jsonb` | `'[]'::jsonb` | NOT NULL | Array of `{date: ISO-8601, label?: string}` entries OR RRULE for recurring holidays |
+| `recurrence_rrule` | `text` | — | NULL | Optional RRULE for recurring blackouts (e.g., every US federal holiday) |
+| `timezone` | `varchar(64)` | `'UTC'` | NOT NULL | — |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `source` | `varchar(64)` | `'pack'` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(code)`; `ix_blackout_active ON (is_active) WHERE is_active = true`; GIN `(dates jsonb_path_ops)` per Plan Fix 26.
+
+**`automation.shift_calendars`** — technician shift bindings (extends `BusinessHours` semantics).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE |
+| `name` | `varchar(255)` | — | NOT NULL | — |
+| `timezone` | `varchar(64)` | `'UTC'` | NOT NULL | — |
+| `shifts` | `jsonb` | `'[]'::jsonb` | NOT NULL | Array of `{dayOfWeek: 0-6, start: 'HH:MM', end: 'HH:MM', code: string}` |
+| `technician_group_id` | `uuid` | — | NULL | FK → `identity.groups(id)`; binds shift to a tech group |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(code)`; `ix_shift_group ON (technician_group_id) WHERE technician_group_id IS NOT NULL AND is_active = true`.
+
+**`automation.generation_runs`** — generic idempotency ledger for ANY scheduled-generation domain (PM-from-schedule, scheduled-inspection, recurring-permit, etc.). Platform-generic; no asset/PM/WO knowledge.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `source_collection_id` | `uuid` | — | NOT NULL | The schedule's collection (e.g., `pm_schedule` for PM generation) |
+| `source_record_id` | `uuid` | — | NOT NULL | The schedule's record (e.g., a specific PM schedule) |
+| `subject_collection_id` | `uuid` | — | NOT NULL | What the generation acts ON (e.g., `asset` for PM, `space` for recurring inspection) |
+| `subject_record_id` | `uuid` | — | NOT NULL | The specific subject (e.g., a specific asset) |
+| `fire_at` | `timestamptz` | — | NOT NULL | The scheduled fire time |
+| `generated_collection_id` | `uuid` | — | NOT NULL | What was generated (e.g., `maintenance_work_order`) |
+| `generated_record_id` | `uuid` | — | NULL | NULL until generation succeeds; populated on insert success |
+| `idempotency_key` | `text` | — | NOT NULL | **UNIQUE** — typically `${source_collection_code}/${source_record_id}/${subject_record_id}/${fire_at_iso}`; the unique constraint is the correctness gate |
+| `run_kind` | `varchar(64)` | — | NOT NULL | Pack-defined; e.g., `pm_generation`, `inspection_generation`, `recurring_permit` |
+| `suppressed_by` | `uuid` | — | NULL | FK → `automation.suppression_windows(id)` if a suppression caused skip |
+| `status` | `varchar(32)` | `'pending'` | NOT NULL | `pending` / `generated` / `suppressed` / `failed` |
+| `error_message` | `text` | — | NULL | Failure detail when `status = 'failed'` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes:
+- PK on `(id)`
+- **UNIQUE `(idempotency_key)`** — the correctness gate (not check-then-write); second scoop fails INSERT and skips
+- `ix_generation_source ON (source_collection_id, source_record_id)` — for "show me all WOs generated from this schedule"
+- `ix_generation_subject ON (subject_collection_id, subject_record_id)` — for "show me all generations against this asset"
+- `ix_generation_fire_at ON (fire_at) WHERE status = 'pending'` — for retry sweep
+- `ix_generation_run_kind ON (run_kind)` — operational filter
+
+#### 13.4.2 Migrations
+
+1. `1937200000000-add-recurrence-definitions.ts` — creates `automation.recurrence_definitions` + index.
+2. `1937200000001-add-suppression-windows.ts` — creates `automation.suppression_windows` + indexes; includes the CHECK constraint on `end_at > start_at`.
+3. `1937200000002-add-blackout-calendars.ts` — creates `automation.blackout_calendars` + GIN index on `dates`.
+4. `1937200000003-add-shift-calendars.ts` — creates `automation.shift_calendars`.
+5. `1937200000004-add-generation-runs.ts` — creates `automation.generation_runs` + ALL indexes including the UNIQUE `(idempotency_key)` (the load-bearing one).
+
+All migrations stand alone; no inter-table dependencies that force ordering. Five small migrations rather than one mega-migration so each can be reverted independently if needed.
+
+#### 13.4.3 TypeORM entities
+
+**New file:** `libs/instance-db/src/lib/entities/scheduling.entity.ts`
+
+```typescript
+@Entity({ schema: 'automation', name: 'recurrence_definitions' })
+@Unique(['code'])
+export class RecurrenceDefinition {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('varchar', { length: 120 }) code: string;
+  @Column('varchar', { length: 255 }) name: string;
+  @Column('text') rrule: string;
+  @Column('varchar', { length: 64, default: 'UTC' }) timezone: string;
+  @Column('uuid', { name: 'business_hours_id', nullable: true }) businessHoursId?: string;
+  @ManyToOne(() => BusinessHours) @JoinColumn({ name: 'business_hours_id' }) businessHours?: BusinessHours;
+  @Column('uuid', { name: 'blackout_calendar_id', nullable: true }) blackoutCalendarId?: string;
+  @Column('boolean', { name: 'is_active', default: true }) isActive: boolean;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' }) createdAt: Date;
+  @Column('timestamptz', { name: 'updated_at', default: () => 'now()' }) updatedAt: Date;
+  @Column('varchar', { length: 64, default: 'pack' }) source: string;
+}
+
+@Entity({ schema: 'automation', name: 'suppression_windows' })
+@Unique(['code'])
+@Check('"end_at" > "start_at"')
+export class SuppressionWindow {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('varchar', { length: 120 }) code: string;
+  @Column('varchar', { length: 255 }) name: string;
+  @Column('timestamptz', { name: 'start_at' }) startAt: Date;
+  @Column('timestamptz', { name: 'end_at' }) endAt: Date;
+  @Column('text', { nullable: true }) reason?: string;
+  @Column('varchar', { length: 64, default: 'global' }) scope: 'global' | 'collection' | 'record';
+  @Column('uuid', { name: 'scope_collection_id', nullable: true }) scopeCollectionId?: string;
+  @Column('uuid', { name: 'scope_record_id', nullable: true }) scopeRecordId?: string;
+  @Column('boolean', { name: 'is_active', default: true }) isActive: boolean;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' }) createdAt: Date;
+  @Column('varchar', { length: 64, default: 'customer' }) source: string;
+}
+
+@Entity({ schema: 'automation', name: 'blackout_calendars' })
+@Unique(['code'])
+export class BlackoutCalendar {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('varchar', { length: 120 }) code: string;
+  @Column('varchar', { length: 255 }) name: string;
+  @Column('jsonb', { default: () => `'[]'::jsonb` }) dates: Array<{ date: string; label?: string }>;
+  @Column('text', { name: 'recurrence_rrule', nullable: true }) recurrenceRrule?: string;
+  @Column('varchar', { length: 64, default: 'UTC' }) timezone: string;
+  @Column('boolean', { name: 'is_active', default: true }) isActive: boolean;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' }) createdAt: Date;
+  @Column('varchar', { length: 64, default: 'pack' }) source: string;
+}
+
+@Entity({ schema: 'automation', name: 'shift_calendars' })
+@Unique(['code'])
+export class ShiftCalendar {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('varchar', { length: 120 }) code: string;
+  @Column('varchar', { length: 255 }) name: string;
+  @Column('varchar', { length: 64, default: 'UTC' }) timezone: string;
+  @Column('jsonb', { default: () => `'[]'::jsonb` }) shifts: Array<{ dayOfWeek: number; start: string; end: string; code: string }>;
+  @Column('uuid', { name: 'technician_group_id', nullable: true }) technicianGroupId?: string;
+  @Column('boolean', { name: 'is_active', default: true }) isActive: boolean;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' }) createdAt: Date;
+}
+
+@Entity({ schema: 'automation', name: 'generation_runs' })
+@Unique(['idempotencyKey'])
+@Index(['sourceCollectionId', 'sourceRecordId'])
+@Index(['subjectCollectionId', 'subjectRecordId'])
+export class GenerationRun {
+  @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('uuid', { name: 'source_collection_id' }) sourceCollectionId: string;
+  @Column('uuid', { name: 'source_record_id' }) sourceRecordId: string;
+  @Column('uuid', { name: 'subject_collection_id' }) subjectCollectionId: string;
+  @Column('uuid', { name: 'subject_record_id' }) subjectRecordId: string;
+  @Column('timestamptz', { name: 'fire_at' }) fireAt: Date;
+  @Column('uuid', { name: 'generated_collection_id' }) generatedCollectionId: string;
+  @Column('uuid', { name: 'generated_record_id', nullable: true }) generatedRecordId?: string;
+  @Column('text', { name: 'idempotency_key' }) idempotencyKey: string;
+  @Column('varchar', { length: 64, name: 'run_kind' }) runKind: string;
+  @Column('uuid', { name: 'suppressed_by', nullable: true }) suppressedBy?: string;
+  @Column('varchar', { length: 32, default: 'pending' }) status: 'pending' | 'generated' | 'suppressed' | 'failed';
+  @Column('text', { name: 'error_message', nullable: true }) errorMessage?: string;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' }) createdAt: Date;
+}
+```
+
+Register all five entities in `libs/instance-db/src/lib/entities/index.ts`.
+
+#### 13.4.4 Services + RRULE library
+
+**New library:** `libs/scheduling/` (Nx-buildable library, importable as `@hubblewave/scheduling`).
+
+- Wraps `rrule.js` (battle-tested RFC 5545 implementation; MIT licensed).
+- Exports `evaluateRRule(rrule: string, from: Date, until: Date, timezone: string): Date[]` returning all fire times in window.
+- Exports `applyBlackoutMask(fireTimes: Date[], blackoutCalendarId: string): Promise<Date[]>` filtering out blackout dates.
+- Exports `applyBusinessHours(fireTime: Date, businessHoursId?: string): Promise<Date>` shifting fire time to the next valid business-hours window if it falls outside.
+- Exports `applyShiftMask(fireTime: Date, shiftCalendarId?: string): Promise<{within: boolean, nextValid: Date}>`.
+- Self-test corpus of ≥ 20 RRULE strings with expected fire times across DST boundaries (high-stakes correctness; RRULE bugs are insidious).
+
+**New worker service:** `apps/worker/src/scheduling/generation.service.ts` — the generic generation dispatcher.
+
+```typescript
+@Injectable()
+export class GenerationDispatcher {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly scheduling: SchedulingService, // wraps libs/scheduling
+    private readonly logger: Logger,
+  ) {}
+
+  /** Called periodically (e.g., every 5 minutes) per registered run_kind. */
+  async dispatchPending(input: DispatchInput): Promise<DispatchResult> {
+    // 1. Query all active schedules for input.runKind (e.g., pm_schedule rows with is_active = true)
+    //    Each schedule has a recurrence_definition_id; resolve the RRULE.
+    // 2. For each schedule, compute fire times in the [now, now + lookahead_minutes] window.
+    // 3. For each fire time per subject record:
+    //    a. Build idempotency_key
+    //    b. Check active suppression_windows scoping to this subject/collection
+    //    c. INSERT INTO generation_runs ... ON CONFLICT (idempotency_key) DO NOTHING
+    //    d. If insert succeeded:
+    //       - if suppressed → mark status=suppressed, suppressed_by=window_id, write audit
+    //       - else → invoke the pack-registered handler (e.g., maintenance-core's create-WO action)
+    //         on success: UPDATE generation_runs SET status='generated', generated_record_id=...
+    //         on failure: status='failed', error_message=..., RuntimeAnomaly emitted
+  }
+}
+```
+
+The dispatcher is **generic** — the maintenance-core pack provides a handler for `run_kind = 'pm_generation'` that creates `maintenance_work_order` rows. The platform never references `pm_schedule` or `maintenance_work_order` by name.
+
+#### 13.4.5 API endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/automation/recurrences` | `@Roles('automation_admin')` | List all recurrence definitions |
+| `POST` | `/automation/recurrences` | `@Roles('automation_admin')` | Create recurrence definition; validates RRULE via `libs/scheduling` parser |
+| `PUT` | `/automation/recurrences/:id` | `@Roles('automation_admin')` | Update; deactivating an in-use recurrence refuses via W2.A reference-checker |
+| `POST` | `/automation/suppression-windows` | `@Roles('automation_admin', 'maintenance_admin')` | Create suppression window |
+| `POST` | `/automation/blackout-calendars` | `@Roles('automation_admin')` | — |
+| `POST` | `/automation/shift-calendars` | `@Roles('automation_admin', 'hr_admin')` | — |
+| `GET` | `/automation/generation-runs` | `@Roles('automation_admin', 'maintenance_admin')` | Filterable list of generation runs; shows status + suppressed_by + error_message |
+| `POST` | `/automation/generation-runs/:id/retry` | `@Roles('automation_admin')` | Retry a failed generation (must be `status = failed`) |
+
+#### 13.4.6 Validator extensions
+
+Pack-publish validator:
+1. **RRULE validity gate.** Every `recurrence_definition` declared in a pack manifest is parsed via `libs/scheduling.evaluateRRule()` against a 1-year horizon. Validator refuses publish if RRULE fails to parse or generates zero fire times.
+2. **Suppression-window scope gate.** A `scope = 'record'` suppression window's `scope_record_id` must resolve to an existing record in `scope_collection_id`.
+3. **`run_kind` namespace gate.** Pack-declared run_kinds must be prefixed with the pack id (e.g., `maintenance-core/pm_generation`) to prevent collision across packs.
+
+#### 13.4.7 Service-boundary scanner rules
+
+```typescript
+'automation.recurrence_definitions': { writers: ['apps/api/src/app/automation/scheduling/**'], readers: ['apps/worker/src/scheduling/**'] },
+'automation.suppression_windows': { writers: ['apps/api/src/app/automation/scheduling/**'], readers: ['apps/worker/src/scheduling/**'] },
+'automation.blackout_calendars': { writers: ['apps/api/src/app/automation/scheduling/**'], readers: ['apps/worker/src/scheduling/**', 'apps/worker/src/maintenance/**'] },
+'automation.shift_calendars': { writers: ['apps/api/src/app/automation/scheduling/**'], readers: ['apps/worker/src/maintenance/**', 'apps/api/src/app/views/**'] },
+'automation.generation_runs': { writers: ['apps/worker/src/scheduling/**'], readers: ['apps/api/src/app/automation/scheduling/**'] },
+```
+
+#### 13.4.8 Tests (self-test ≥ 15 assertions)
+
+1. RRULE library: 20-entry corpus of RFC 5545 strings → expected fire times match (DST boundaries, leap years, end-of-month edge cases).
+2. Generation idempotency: two concurrent worker pods dispatch the same schedule for the same subject + fire_at → only one `generation_runs` row created; the other INSERT fails on UNIQUE.
+3. Suppression: a fire time inside an active suppression window → row gets `status = 'suppressed'`, `suppressed_by = window_id`, audit row written.
+4. Blackout calendar mask: RRULE that would fire on a holiday → masked out → no `generation_runs` insert.
+5. Business-hours mask: fire time outside business hours → shifted to next valid window per `BusinessHours.id` policy.
+6. Shift calendar mask: a `pm_generation` for a technician group whose shift calendar is "M-F 8am-5pm" + fire time at Saturday 2am → next valid Monday morning slot.
+7. Pack-validator RRULE failure: malformed RRULE → publish refused with structured error.
+8. Pack-validator run_kind namespace: an un-namespaced `run_kind` fails publish.
+9. Failed generation: handler throws → `status = 'failed'`, `error_message` populated, `RuntimeAnomaly` row inserted.
+10. Retry endpoint: retry of a failed generation → handler re-invoked; on success, `status = 'generated'`.
+11. Scope-record suppression validator: a window with `scope_record_id` referencing a deleted record fails publish.
+12. Recurrence reference-check (W2.A): deleting a `recurrence_definition` referenced by an active `pm_schedule` refuses with structured "in-use" error.
+13. DST forward-shift correctness: an RRULE firing at 2:30am on a DST-spring-forward day → resolved to 3:30am same day (not skipped).
+14. DST backward-shift correctness: an RRULE firing at 1:30am on a DST-fall-back day → fires once (not twice).
+15. Cross-month boundary: an RRULE with `FREQ=MONTHLY;BYMONTHDAY=31` → February → no fire (not Feb 28/29 fallback unless explicitly configured).
+
+Integration tests in `apps/worker/test/integration/generation-dispatcher.spec.ts` exercise the full path against a Postgres testcontainer.
+
+#### 13.4.9 PR breakdown for §3.3
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Tables + migrations | 5 migration files | All migrations forward + backward; scanner pass |
+| 2 | TypeORM entities + module wiring | `libs/instance-db/src/lib/entities/scheduling.entity.ts`; index update | Entities load in `instanceEntities` |
+| 3 | `libs/scheduling/` RRULE wrapper + self-test corpus | `libs/scheduling/src/` (Nx lib); 20-test corpus | Self-test ≥ 20 RRULE assertions pass including DST edge cases |
+| 4 | `GenerationDispatcher` worker service | `apps/worker/src/scheduling/generation.service.ts`; BullMQ wiring | Self-test cases 2, 3, 9 pass |
+| 5 | API endpoints (recurrence/suppression/blackout/shift CRUD + generation-runs read + retry) | `apps/api/src/app/automation/scheduling/`; 8 controllers/services | Integration tests for all 8 endpoints; authz verified |
+| 6 | Pack validator extensions | `pack-validator.service.ts` extensions | Self-test cases 7, 8, 11 pass |
+
+**Total: 6 PRs for §3.3. Estimated effort: ~5-7 working days.**
+
+---
+
+### 13.5 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. The §13.2 / §13.3 worked examples cover §3.1 + §3.2; the remaining 16 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
 
 **Substrate (16 remaining sections — §3.1 ✅ §13.2; §3.2 ✅ §13.3):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
-- §3.3 scheduling primitives (5 PRs)
+- ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
 - §3.4 list-scale primitives (4 PRs)
 - §3.5 observations + pg_partman + rollup jobs (6 PRs)
 - §3.6 regulated-action + Merkle batch (6 PRs)
@@ -1551,7 +1860,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.5 Convention for spec doc filenames (now superseded — see §13.4 note)
+### 13.6 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -1572,7 +1881,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.6 What's left to do BEFORE code starts
+### 13.7 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
