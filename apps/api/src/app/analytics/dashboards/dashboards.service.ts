@@ -1,9 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { UserRequestContext } from '@hubblewave/auth-guard';
-import { AuthorizationService } from '@hubblewave/authorization';
-import { AuditLog, CollectionDefinition, DashboardDefinition, DashboardScope } from '@hubblewave/instance-db';
+import { AuthorizationService, FILTER_UNRESOLVED } from '@hubblewave/authorization';
+import { CollectionDefinition, DashboardDefinition, DashboardScope, withAudit } from '@hubblewave/instance-db';
 
 export type DashboardDefinitionInput = {
   code: string;
@@ -20,16 +20,29 @@ const ALLOWED_METADATA_STATUSES: readonly string[] = ['draft', 'published', 'arc
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+/**
+ * Action code for the per-read audit row written when one or more
+ * widgets were dropped by the F146 widget-authz filter. The shape
+ * mirrors other read-side audit codes (`<domain>.<event>.<modifier>`)
+ * and is short enough to fit `audit_logs.action` (varchar 50).
+ *
+ * One row per dashboard read (not one row per dropped widget): the
+ * payload carries `droppedWidgetCount` plus the compact `droppedWidgets`
+ * array so operators can answer "which widgets did user X see hidden
+ * from dashboard Y on date Z" without joining N rows.
+ */
+const DASHBOARD_READ_FILTERED_ACTION = 'dashboard.read.filtered';
+
 @Injectable()
 export class DashboardsService {
   constructor(
     @InjectRepository(DashboardDefinition)
     private readonly dashboardRepo: Repository<DashboardDefinition>,
-    @InjectRepository(AuditLog)
-    private readonly auditRepo: Repository<AuditLog>,
     @InjectRepository(CollectionDefinition)
     private readonly collectionRepo: Repository<CollectionDefinition>,
     private readonly authz: AuthorizationService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(context: UserRequestContext): Promise<DashboardDefinition[]> {
@@ -39,7 +52,7 @@ export class DashboardsService {
     });
     const visible = dashboards.filter((dashboard) => this.canRead(context, dashboard));
     for (const dashboard of visible) {
-      dashboard.layout = await this.filterLayoutByCollectionAccess(context, dashboard.layout);
+      dashboard.layout = await this.filterAndAuditLayout(context, dashboard);
     }
     return visible;
   }
@@ -52,7 +65,7 @@ export class DashboardsService {
     if (!this.canRead(context, dashboard)) {
       throw new ForbiddenException('Dashboard access denied');
     }
-    dashboard.layout = await this.filterLayoutByCollectionAccess(context, dashboard.layout);
+    dashboard.layout = await this.filterAndAuditLayout(context, dashboard);
     return dashboard;
   }
 
@@ -77,11 +90,20 @@ export class DashboardsService {
       updatedBy: context.userId,
     });
 
-    const saved = await this.dashboardRepo.save(created);
-    await this.writeAudit(context.userId, 'dashboard.create', saved.id, {
-      code: saved.code,
-      name: saved.name,
-      scope: saved.scope,
+    const saved = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(DashboardDefinition).save(created);
+      recordAudit({
+        userId: context.userId,
+        action: 'dashboard.create',
+        collectionCode: 'dashboard_definition',
+        recordId: persisted.id,
+        newValues: {
+          code: persisted.code,
+          name: persisted.name,
+          scope: persisted.scope,
+        },
+      });
+      return persisted;
     });
     return saved;
   }
@@ -116,11 +138,20 @@ export class DashboardsService {
     dashboard.metadata = payload.metadata ?? {};
     dashboard.updatedBy = context.userId;
 
-    const saved = await this.dashboardRepo.save(dashboard);
-    await this.writeAudit(context.userId, 'dashboard.update', saved.id, {
-      code: saved.code,
-      name: saved.name,
-      scope: saved.scope,
+    const saved = await withAudit(this.dataSource, async (mgr, recordAudit) => {
+      const persisted = await mgr.getRepository(DashboardDefinition).save(dashboard);
+      recordAudit({
+        userId: context.userId,
+        action: 'dashboard.update',
+        collectionCode: 'dashboard_definition',
+        recordId: persisted.id,
+        newValues: {
+          code: persisted.code,
+          name: persisted.name,
+          scope: persisted.scope,
+        },
+      });
+      return persisted;
     });
     return saved;
   }
@@ -153,105 +184,123 @@ export class DashboardsService {
   }
 
   /**
-   * Per-widget collection-access filter (F146). The dashboard-level scope
-   * check (canRead) decides whether the viewer can see the dashboard at all;
-   * this method decides which widgets within an authorized dashboard the
-   * viewer can see. Widgets that reference a collection the viewer cannot
-   * read are silently dropped — partial dashboards beat broken dashboards,
-   * and this mirrors metrics.service.ts which already filters individual
-   * metric reads by collection access.
+   * F146 + canon §10 — per-widget collection-access filter with
+   * transactional audit. Delegates the layout walk to
+   * `AuthorizationService.filterDashboardLayout` so the §28 evaluator
+   * remains the single source of truth for collection access; this
+   * method's responsibility is to (a) resolve widget collection
+   * references in this service's own way and (b) write the §10 audit
+   * row inside the same transaction when widgets were dropped.
    *
-   * Widget reference conventions supported (both shapes observed in the
-   * codebase / frontend):
-   *   - widget.collectionId (UUID): direct collection access check.
-   *   - widget.drilldown.collectionCode (code): resolved to id via the
-   *     CollectionDefinition repo, then access-checked.
-   *   - widget.collectionCode (code): same resolution path.
-   *
-   * Widgets with no recognizable collection reference (e.g. static text,
-   * dashboard-overview tiles, AVA chat panels) pass through unchanged so
-   * that a non-data widget cannot be accidentally dropped by this filter.
+   * Audit emission is conditional on drops occurring: a dashboard with
+   * zero forbidden widgets writes no audit row, mirroring the pattern
+   * the rest of the read API uses (read paths that produce no
+   * effective trust decision do not pollute the audit table).
    */
-  private async filterLayoutByCollectionAccess(
+  private async filterAndAuditLayout(
     context: UserRequestContext,
-    layout: Record<string, unknown> | null | undefined,
+    dashboard: DashboardDefinition,
   ): Promise<Record<string, unknown>> {
-    if (!layout || typeof layout !== 'object') {
-      return {};
-    }
-    const widgetsRaw = (layout as { widgets?: unknown }).widgets;
-    if (!Array.isArray(widgetsRaw)) {
-      return { ...layout };
+    const { layout, droppedWidgetCount, droppedWidgets } = await this.authz.filterDashboardLayout(
+      dashboard.layout,
+      context,
+      (widget) => this.resolveWidgetCollectionId(widget),
+    );
+
+    if (droppedWidgetCount === 0) {
+      return layout;
     }
 
-    // Admin bypass: skip per-widget checks. The dashboard-level canRead
-    // already cleared the admin; nothing further to do.
-    if (context.isAdmin) {
-      return { ...layout };
-    }
+    // Canon §10: the audit row that records WHICH widgets were hidden
+    // must commit together with the read-time projection it describes.
+    // The dashboard read itself is non-mutating, so the transaction
+    // wraps only the audit insert — but the wrap is required because
+    // a future PR that adds an associated mutation (last-viewed
+    // bookkeeping, per-user dismissal of widget warnings) must extend
+    // this transaction, not bolt a parallel one onto the side.
+    await withAudit(this.dataSource, async (_mgr, recordAudit) => {
+      recordAudit({
+        userId: context.userId,
+        action: DASHBOARD_READ_FILTERED_ACTION,
+        collectionCode: 'dashboard_definition',
+        recordId: dashboard.id,
+        newValues: {
+          dashboardCode: dashboard.code,
+          droppedWidgetCount,
+          droppedWidgets,
+        },
+      });
+    });
 
-    const filteredWidgets: unknown[] = [];
-    for (const widget of widgetsRaw) {
-      if (await this.widgetAuthorized(context, widget)) {
-        filteredWidgets.push(widget);
-      }
-    }
-
-    return { ...layout, widgets: filteredWidgets };
+    return layout;
   }
 
   /**
-   * Decide whether a single widget passes the per-widget authz gate. A
-   * widget with no recognizable collection reference is treated as
-   * authorized (no collection to gate on). A widget whose collection
-   * reference cannot be resolved (unknown code, malformed id) is also
-   * dropped — fail closed.
+   * Hook handed to `AuthorizationService.filterDashboardLayout` so the
+   * authz library never has to reach into a CollectionDefinition repo.
+   * Three widget shapes are supported (all observed in shipped packs and
+   * in the studio's authoring model):
+   *   1. `widget.collectionId` (UUID) — pre-resolved.
+   *   2. `widget.dataSource.collectionId` (UUID) — the W2 plan shape.
+   *   3. `widget.collectionCode` / `widget.drilldown.collectionCode`
+   *      (code) — looked up against `CollectionDefinition` by code.
+   *
+   * Returns:
+   *   - `null` when the widget carries NO recognizable collection
+   *     reference (static text, AVA chat, layout label, etc.).
+   *   - A `collectionId` UUID string when the reference resolves.
+   *   - `FILTER_UNRESOLVED` when the widget cites a code that no longer
+   *     points at any collection. The filter treats this as a drop,
+   *     fail-closed.
    */
-  private async widgetAuthorized(context: UserRequestContext, widget: unknown): Promise<boolean> {
-    if (!widget || typeof widget !== 'object') {
-      return true;
-    }
-    const w = widget as Record<string, unknown>;
-
-    const directId = typeof w.collectionId === 'string' && UUID_REGEX.test(w.collectionId.toLowerCase())
-      ? w.collectionId
+  private async resolveWidgetCollectionId(
+    widget: Record<string, unknown>,
+  ): Promise<string | null | typeof FILTER_UNRESOLVED> {
+    const directId = typeof widget.collectionId === 'string' && UUID_REGEX.test(widget.collectionId.toLowerCase())
+      ? widget.collectionId
       : null;
     if (directId) {
-      return this.authz.canAccessCollection(context, directId, 'read');
+      return directId;
+    }
+
+    const dataSource = widget.dataSource;
+    if (dataSource && typeof dataSource === 'object') {
+      const nested = (dataSource as { collectionId?: unknown }).collectionId;
+      if (typeof nested === 'string' && UUID_REGEX.test(nested.toLowerCase())) {
+        return nested;
+      }
     }
 
     const codes: string[] = [];
-    if (typeof w.collectionCode === 'string' && w.collectionCode.length > 0) {
-      codes.push(w.collectionCode);
+    if (typeof widget.collectionCode === 'string' && widget.collectionCode.length > 0) {
+      codes.push(widget.collectionCode);
     }
-    const drilldown = w.drilldown;
+    const drilldown = widget.drilldown;
     if (drilldown && typeof drilldown === 'object') {
       const code = (drilldown as { collectionCode?: unknown }).collectionCode;
       if (typeof code === 'string' && code.length > 0) {
         codes.push(code);
       }
     }
-
     if (codes.length === 0) {
-      // No recognizable collection reference; treat as a non-collection
-      // widget (e.g. static text, AVA chat) and let it through.
-      return true;
+      return null;
     }
 
+    // Resolve the first code that maps to a CollectionDefinition. A
+    // widget that lists multiple codes (drilldown + primary) and has
+    // one unresolved code falls through to UNRESOLVED, fail-closed.
     for (const code of codes) {
       const collection = await this.collectionRepo.findOne({ where: { code } });
       if (!collection) {
-        // Unresolved code → fail closed; the alternative is leaking the
-        // existence of a renamed/deleted collection by including the
-        // widget anyway.
-        return false;
+        return FILTER_UNRESOLVED;
       }
-      const allowed = await this.authz.canAccessCollection(context, collection.id, 'read');
-      if (!allowed) {
-        return false;
-      }
+      // The widget's primary collection is the first one that resolves.
+      // Multiple codes in one widget are rare in practice; the
+      // §28 evaluator gates one collectionId per call so we surface
+      // the first resolved id.
+      return collection.id;
     }
-    return true;
+    return FILTER_UNRESOLVED;
   }
 
   private readRoleList(metadata: Record<string, unknown> | null | undefined): string[] {
@@ -349,21 +398,5 @@ export class DashboardsService {
     if (!context.isAdmin) {
       throw new ForbiddenException('Admin role is required to manage dashboards');
     }
-  }
-
-  private async writeAudit(
-    userId: string,
-    action: string,
-    recordId: string,
-    newValues: Record<string, unknown>,
-  ): Promise<void> {
-    const entry = this.auditRepo.create({
-      userId,
-      collectionCode: 'dashboard_definition',
-      recordId,
-      action,
-      newValues,
-    });
-    await this.auditRepo.save(entry);
   }
 }
