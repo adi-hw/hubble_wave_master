@@ -1,17 +1,14 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
 import { ModelRegistryService } from './model-registry.service';
 
 /**
- * Model endpoints for collection metadata
- *
- * Provides collection/model information:
- * - GET /models/:collectionCode - Get collection metadata
- * - GET /models/:collectionCode/properties - Get collection properties
- * - GET /models/:collectionCode/layout - Get collection layout
+ * Canon §28 / W2 Stream 3 — collection model + properties + layout
+ * read surface. Gated by `metadata:collection:read`.
  */
 @Controller('models')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('metadata:collection:read')
 export class ModelController {
   constructor(private readonly modelRegistry: ModelRegistryService) {}
 

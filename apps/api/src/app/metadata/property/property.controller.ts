@@ -13,8 +13,7 @@ import {
   NotFoundException,
   Req,
 } from '@nestjs/common';
-import { Request } from 'express';
-import { JwtAuthGuard, CurrentUser, RequestUser, RequirePermission } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, CurrentUser, InstanceRequest, RequestUser, RequirePermission } from '@hubblewave/auth-guard';
 import { PropertyService, CreatePropertyDto, UpdatePropertyDto } from './property.service';
 import { PropertyAvaService } from './property-ava.service';
 
@@ -119,7 +118,7 @@ export class PropertyController {
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() dto: CreatePropertyDto,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
@@ -137,7 +136,7 @@ export class PropertyController {
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() body: { properties: CreatePropertyDto[]; stopOnError?: boolean },
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
@@ -179,7 +178,7 @@ export class PropertyController {
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePropertyDto,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
@@ -204,7 +203,7 @@ export class PropertyController {
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
     @Query('force') force?: string,
   ) {
     if (!user) {
@@ -228,7 +227,7 @@ export class PropertyController {
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
@@ -250,7 +249,7 @@ export class PropertyController {
     @CurrentUser() user: RequestUser,
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ) {
     if (!user) {
       throw new ForbiddenException('Authentication required');
