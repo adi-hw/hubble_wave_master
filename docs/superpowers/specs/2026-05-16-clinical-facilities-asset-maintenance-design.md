@@ -5302,6 +5302,177 @@ All four adapters declare egress allowlist entries: `hl7-v2` uses internal-only 
 
 ---
 
+### 14.3 `facilities-maintenance` overlay (~10 PRs)
+
+Facilities-vertical overlay on top of maintenance-core. Adds **building-system management, regulatory compliance for facilities, space + seat + move management, and invisible-occupancy aggregate analytics**. Like clinical-maintenance, this overlay populates a workspace declared by maintenance-core (`ws_facilities_manager`).
+
+Distinctive design call: facilities collections lean heavily on **§3.15 spatial+relationship graph** (room/corridor/floor relationships, asset-to-space binding) and **§3.5 observation streams** (occupancy beacons aggregated to 5-minute buckets per room, never per-individual — privacy preservation is binding).
+
+#### 14.3.1 Collections (14 total)
+
+All in `schema: 'facilities_maintenance'`.
+
+**Building systems + regulatory infrastructure (4 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / regulatory posture |
+|---|---|---|---|---|---|
+| `building_system` | — | ✓ assigned_only | ✓ name + description | `id`, `code`, `system_kind` ∈ {hvac, electrical, plumbing, fire_life_safety, vertical_transport, security}, `location_id`, `parent_system_id`, `criticality`, `owner_user_id`, `commissioning_date`, `status` | §3.15 graph for sub-system traversal; binds to maintenance-core `asset` via FK |
+| `refrigerant_inventory` | — | — | — | `id`, `building_system_id`, `refrigerant_kind` (R-410A/R-134a/R-22/etc.), `gwp_value`, `quantity_lbs`, `last_inventoried_at`, `epa_phase_out_status` | EPA Section 608 reporting requirement |
+| `refrigerant_log` | ✓ regulated | — | — | `id`, `refrigerant_inventory_id`, `event_kind` ∈ {leak_detected, refill, recovery, disposal}, `quantity_change_lbs`, `event_date`, `technician_certification_number`, `epa_form_filed_id`, `signature_chain_id`, `status` | §3.1 + §3.6 signature; EPA reporting deadlines codified in workflow |
+| `building_compliance_certificate` | — regulated | — | — | `id`, `location_id`, `cert_kind` ∈ {fire_inspection, elevator_inspection, boiler_inspection, certificate_of_occupancy, energy_star, leed}, `issuing_authority`, `issued_at`, `expires_at`, `pdf_evidence_artifact_id`, `next_renewal_due` | §3.12 evidence_artifact for PDF; expiry triggers renewal workflow |
+
+**FCA (Facility Condition Assessment) + CAD/BIM links (4 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / posture |
+|---|---|---|---|---|---|
+| `fca_assessment` | ✓ | ✓ assigned_only | — | `id`, `location_id`, `inspector_user_id`, `scheduled_at`, `completed_at`, `methodology` (uniformat_ii/format/custom), `findings_count`, `status` | §3.1 |
+| `fca_finding` | ✓ | ✓ assigned_only | ✓ description | `id`, `fca_assessment_id`, `system_kind`, `severity` ∈ {acceptable, fair, poor, critical}, `replacement_cost_estimate_cents`, `remaining_useful_life_years`, `location_3d` (within floor plan), `photo_evidence_attachment_ids[]`, `linked_capital_replacement_request_id`, `status` | §3.1; §3.12 photos; §3.14 vector |
+| `cad_drawing_link` | — | — | — | `id`, `location_id`, `cad_file_evidence_artifact_id`, `drawing_kind` (architectural/mep/structural/civil), `revision`, `last_updated_at`, `coordinate_system`, `scale` | §3.12 |
+| `ifc_space_link` | — | — | — | `id`, `space_id` (from maintenance-core), `ifc_file_evidence_artifact_id`, `ifc_global_id`, `ifc_class` (IfcSpace/IfcZone/IfcStorey), `imported_at` | §3.12 for BIM file; bridges maintenance-core `space` to BIM model |
+
+**Energy + commissioning (2 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / posture |
+|---|---|---|---|---|---|
+| `energy_baseline` | — | — | — | `id`, `location_id`, `baseline_period_start`, `baseline_period_end`, `kwh_per_sqft_per_year`, `gas_therms_per_sqft_per_year`, `weather_normalized` (bool), `methodology` (ashrae_14/iso_50006) | Drives §3.5 anomaly detection on energy meters |
+| `commissioning_record` | ✓ regulated | — | — | `id`, `building_system_id`, `commissioning_kind` (initial/retro/ongoing/monitoring_based), `commissioning_authority`, `started_at`, `completed_at`, `findings_count`, `signature_chain_id`, `status` | §3.1; §3.6 closure signature with `signature_meaning='approval'` |
+
+**Space management (4 collections — marquees #21, #24, occupancy-aware ops):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / posture |
+|---|---|---|---|---|---|
+| `space_reservation` | ✓ | ✓ assigned_only | — | `id`, `space_id`, `requester_user_id`, `start_at`, `end_at`, `purpose` ∈ {meeting, maintenance_window, training, vendor_visit, event}, `status`, `conflict_resolution_id` | §3.1; cross-references §3.15 for adjacency-aware booking |
+| `seat_assignment` | — | ✓ assigned_only | — | `id`, `space_id`, `occupant_user_id`, `assignment_kind` ∈ {permanent, hot_desk, temporary}, `valid_from`, `valid_until` | Drives §28 evaluator for "my seat" + "nearby colleagues" personalization |
+| `move_request` | ✓ | ✓ assigned_only | — | `id`, `requester_user_id`, `from_space_id`, `to_space_id`, `asset_ids_to_move[]`, `assigned_team`, `scheduled_at`, `priority`, `status`, `approval_id` | §3.1; §3.15 for routing the move |
+| `occupancy_log` | — | — | — | `space_id`, `observed_at`, `occupant_count`, `source` ∈ {badge_reader, sensor, manual_count, beacon_aggregate}, `confidence` | Partitioned monthly via pg_partman; **only aggregated bucket counts — NEVER per-individual occupancy** (privacy invariant codified in §3.18 G19.2 AST-scan equivalent — see §14.3.6) |
+
+**Total: 14 collections.**
+
+#### 14.3.2 Workflows (5 state machines)
+
+**WF-OF1: fca_assessment_cycle** (on `fca_assessment`)
+```
+scheduled → in_progress → findings_logged → reviewed → approved
+                                          → re-inspection_requested → in_progress
+```
+Roles: `fca_inspector` performs; `facilities_manager` reviews; `compliance_officer` approves with §3.6 signature. Guards:
+- `findings_logged` requires at least one `fca_finding` row OR explicit "no findings" attestation via signature.
+- `approved` requires all findings have either `status='resolved'` OR `linked_capital_replacement_request_id` populated (no orphan critical-severity findings).
+
+**WF-OF2: refrigerant_leak_response** (on `refrigerant_log` where `event_kind='leak_detected'`)
+```
+detected → isolated → quantified → epa_form_drafted → epa_form_filed → repaired → re-charged → verified
+                                                                                → exceeds_25pct_annual_loss → epa_violation_response_workflow
+```
+EPA Section 608 mandates reporting if annual loss exceeds 25% of refrigerant inventory for systems > 50 lb capacity. Roles: `epa_certified_technician` (auto-mapped to `service_contract` if vendor) performs; `facilities_manager` files EPA form; `compliance_officer` countersigns.
+- Guard `epa_form_filed` requires `epa_form_filed_id` (links to §3.12 attachment of the form PDF).
+- Cumulative annual loss tracked via materialized view across `refrigerant_log` entries; exceeding 25% triggers escalation branch.
+
+**WF-OF3: commissioning_signoff** (on `commissioning_record`)
+```
+in_progress → cx_testing → punch_list_resolved → final_acceptance_review → signed_off → ongoing_monitoring
+                                                                       → rejected → cx_testing
+```
+Closure requires §3.6 signature with `signature_meaning='approval'`. `ongoing_monitoring` is a terminal-but-active state used by retro-commissioning cycles.
+
+**WF-OF4: move_request_approval** (on `move_request`)
+```
+proposed → originator_review → facility_manager_review → it_review → safety_review → scheduled → executed → closed
+                                                                                  → rejected (any reviewer can reject) → originator_review
+```
+Multi-stage approval. Each stage may be skipped if no relevant assets (e.g., IT review skipped if `asset_ids_to_move[]` empty). Guards: `executed` requires linked WO with checklist completion; `closed` requires §3.6 closure signature.
+
+**WF-OF5: space_reservation_conflict_resolution**
+```
+on save space_reservation: 
+  check for overlapping reservations on same space_id with overlapping time window AND status ∈ {confirmed, in_progress}
+  → no_conflict → confirmed
+  → conflict_detected → priority_rule_applied → (incumbent_wins → declined) OR (new_wins → incumbent_canceled + alternate_suggested)
+```
+Priority rule (configurable per pack): `maintenance_window > event > training > vendor_visit > meeting`. AVA suggests alternate spaces (via §3.15 adjacency + capacity match) when conflicts arise.
+
+#### 14.3.3 Automation rules (~7)
+
+| # | Trigger | Condition | Action | Mode |
+|---:|---|---|---|---|
+| 1 | `after save refrigerant_log` | cumulative annual loss > 25% for the system | Trigger WF-OF2 escalation branch; page-on-call to compliance_officer | rule |
+| 2 | `scheduled daily` | `building_compliance_certificate.expires_at - 60 days = today` | Notify facilities_manager + create renewal WO | rule |
+| 3 | `scheduled hourly` | `space_reservation.end_at < now()` AND status='in_progress' | Auto-transition to 'completed' | rule |
+| 4 | `after save observation` | observation on energy meter; deviation > 20% from baseline | Emit anomaly to facilities_manager; if sustained > 4 hours, create reactive WO | rule |
+| 5 | `before save move_request` | `to_space_id` has existing `seat_assignment` rows for a different `occupant_user_id` | Block save with `DESTINATION_SEAT_OCCUPIED` listing conflicts | rule |
+| 6 | `before save occupancy_log` | `source != 'beacon_aggregate'` AND row count for `(space_id, observed_at_bucket)` > 1 | Aggregate by bucket; do NOT persist individual rows (privacy invariant) | rule |
+| 7 | `scheduled daily 06:00` | — | Recompute `energy_baseline` rolling 12-month windows; flag drift for review | rule |
+
+#### 14.3.4 Views
+
+Adds 10 facilities-specific views populating the `ws_facilities_manager` workspace:
+- `building_systems_by_criticality` (color-coded per system_kind)
+- `fca_open_assessments` + `deficiency_log_by_severity` (extends maintenance-core's view)
+- `refrigerant_leak_history_12mo` (chart with 25% threshold line)
+- `compliance_certificates_expiring_60d`
+- `energy_consumption_vs_baseline` (deviation chart)
+- `commissioning_records_active` (incl. ongoing monitoring)
+- `space_reservations_today` + `space_reservations_week_ahead`
+- `move_requests_open` (Kanban by stage)
+- `occupancy_heatmap_today` (room utilization aggregate)
+- `building_compliance_score_card` (combined certificate + commissioning + FCA status)
+
+#### 14.3.5 Workspace population
+
+Populates `ws_facilities_manager` (declared in §14.1.5). 5 pages:
+
+| Page | Composition | Primitives | Surface |
+|---|---|---|---|
+| Building Systems | `<FloorPlanOverlay>` overlay-kind='building_systems' + system tree + criticality chart | foundation + §3.15 | web |
+| FCA + Deficiencies | `<FcaDeficiencyMap>` + deficiency severity Kanban + linked capital replacement requests | foundation | web |
+| Refrigerant + Compliance | `<RefrigerantLedger>` + compliance certificate calendar + EPA filings | foundation + Chart | web |
+| Energy + Commissioning | `<EnergyDashboard>` (baseline + actual + drift) + `<CommissioningTracker>` | foundation + Chart | web |
+| Spaces + Moves + Occupancy | `<SpaceReservationCalendar>` + `<MoveRequestBoard>` + `<OccupancyHeatmap>` + `<LiveOperationalCanvas>` (per marquee #24) | foundation + §3.15 + §3.7 | web (Canvas needs WebGL) |
+
+#### 14.3.6 Plugin components (7, in `@hubblewave/facilities-maintenance-plugins`)
+
+| Component | Props | Surface | Substrate |
+|---|---|---|---|
+| `<RefrigerantLedger>` | `{ scope, range }` | web | foundation + Chart |
+| `<FcaDeficiencyMap>` | `{ assessmentId, onFindingClick }` | web | §3.15 spatial + Card |
+| `<EnergyDashboard>` | `{ locationId, range }` | web | §3.5 rollups + Chart |
+| `<SpaceReservationCalendar>` | `{ scope, range, onSlotClick }` | web | foundation |
+| `<MoveRequestBoard>` | `{ scope }` | web | task_projection |
+| `<OccupancyHeatmap>` | `{ locationId, range, bucketMinutes }` | web | §3.5 (bucket-aggregated) |
+| `<LiveOperationalCanvas>` | `{ locationId, layerSet }` | web (WebGL via Three.js / Mapbox GL) | §3.15 graph + task_projection + §3.5 streams; per marquee #24 |
+
+**Privacy-aware data shaping in `<OccupancyHeatmap>`**: the component refuses to render data where the bucket count is < 3 (the k-anonymity threshold codified in canon §44 if §3.18 adopts it; for now this is a per-component refusal). Single-individual presence is NEVER inferable from rendered output.
+
+#### 14.3.7 Integration adapters (4)
+
+| Adapter | Operations | Conformance fixtures | Purpose |
+|---|---|---|---|
+| `bacnet-building-pack` | (superset of maintenance-core's `bacnet-generic`) `read_point`, `subscribe_cov`, `write_point`, `discover_devices`, `read_schedule`, `write_schedule` | `bacnet-building-fixtures-v1` (richer 60+ fixtures incl. schedules + trends) | Full BACnet building-stack integration; replaces `bacnet-generic` when this overlay installed |
+| `autocad-dwg` | `parse_dwg`, `extract_layers`, `render_layer_image`, `find_room_boundaries` | `autocad-fixtures-v1` (8 sample DWG sets) | Imports CAD drawings into `cad_drawing_link`; AVA can resolve "room 3N-407" to coordinates |
+| `ifc-bim` | `parse_ifc`, `extract_spaces`, `extract_systems`, `link_to_facility` | `ifc-fixtures-v1` (sample IFC4 buildings) | Imports BIM models; bridges to maintenance-core `space` |
+| `wifi-beacon-occupancy` | `subscribe_beacon_events`, `aggregate_5min_buckets`, `enqueue_occupancy_log` | `wifi-beacon-fixtures-v1` | Wi-Fi controller + BLE + badge feed → bucket-aggregated occupancy; per marquee #24; NEVER persists per-individual events |
+
+The `wifi-beacon-occupancy` adapter's privacy invariant is enforced at the adapter layer: it discards per-MAC-address events after aggregation; raw per-individual data never reaches `occupancy_log`. Pack-validator G18.4 (NEW for §14.3): adapter declaration must include `privacy_invariant: 'aggregate_only'` for occupancy data sources.
+
+#### 14.3.8 PR breakdown for facilities-maintenance (~10 PRs)
+
+| PR | Goal | Files / scope | Acceptance |
+|---:|---|---|---|
+| 1 | Overlay pack scaffold + dependency on maintenance-core + `building_system` + `refrigerant_inventory` + `building_compliance_certificate` | `packs/facilities-maintenance/manifest.yaml`; facilities schema + 3 migrations + entities | Pack installs; 6-system_kind enum loaded; certificate calendar grid renders |
+| 2 | `refrigerant_log` + WF-OF2 leak response + auto rule 1 (25% annual loss escalation) + EPA form attachment via §3.12 | `refrigerant_log` collection + workflow + EPA form template | Leak workflow round-trips; 25% threshold triggers escalation; EPA form PDF attached |
+| 3 | `fca_assessment` + `fca_finding` + WF-OF1 + `<FcaDeficiencyMap>` plugin | 2 collections + workflow + plugin | FCA cycle works; findings link to capital_replacement_request from maintenance-core |
+| 4 | `cad_drawing_link` + `ifc_space_link` + `autocad-dwg` + `ifc-bim` adapters | Linkage collections + 2 adapter packages with conformance fixtures | CAD/BIM import works against fixtures; spaces bridge to maintenance-core |
+| 5 | `energy_baseline` + `commissioning_record` + WF-OF3 + `<EnergyDashboard>` + auto rules 4, 7 | Tables + workflow + plugin + scheduled tasks | Energy deviation alerts fire; commissioning sign-off requires §3.6 signature |
+| 6 | `space_reservation` + WF-OF5 conflict resolution + `<SpaceReservationCalendar>` + auto rule 3 | Reservation table + workflow + plugin | Concurrent reservations resolve per priority; AVA alternates suggested |
+| 7 | `seat_assignment` + `move_request` + WF-OF4 + `<MoveRequestBoard>` + auto rule 5 | 2 collections + workflow + plugin | Move workflow gates per reviewer; destination-occupied blocks save |
+| 8 | `occupancy_log` (partitioned monthly) + `wifi-beacon-occupancy` adapter (aggregate-only invariant) + `<OccupancyHeatmap>` (k-anonymity threshold k=3) + auto rule 6 | Partition + adapter + plugin + validator G18.4 | Privacy invariant: per-individual data never reaches DB or UI; k=3 rendered floor; pack-validator catches non-aggregate adapter declarations |
+| 9 | `bacnet-building-pack` adapter (replaces `bacnet-generic` when overlay installed) + 10 facilities-specific views | Adapter package + view definitions | Richer BACnet conformance passes; views render on facilities_manager workspace |
+| 10 | `ws_facilities_manager` workspace population (5 pages incl. `<LiveOperationalCanvas>` per marquee #24) + canon amendment for privacy invariant | UI Builder pages + WebGL Canvas integration + CLAUDE.md amendment | All 5 pages render; Canvas updates in near-real-time; canon merged |
+
+**Total: 10 PRs for facilities-maintenance overlay. Estimated effort: ~22-26 working days.**
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -5326,9 +5497,10 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 
-**Packs (4 packs, 2 of 4 specified):**
+**Packs (4 packs, 3 of 4 specified):**
 - ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
 - ✅ `clinical-maintenance` overlay — 12 collections, 3 workflows, 6 automation rules, 3 plugins, 4 integrations. ~8 PRs. **Spec at §14.2.**
+- ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
 - `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
 - `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
