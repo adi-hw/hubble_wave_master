@@ -31,9 +31,16 @@ import {
   UseInterceptors,
   ForbiddenException,
 } from '@nestjs/common';
-import { Request } from 'express';
 // Removed TenantId decorator
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  InstanceRequest,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import {
   CollectionService,
   CreateCollectionDto,
@@ -41,14 +48,29 @@ import {
   CollectionQueryOptions,
 } from './collection.service';
 
-import { CollectionAccessGuard } from '../access/guards/collection-access.guard';
 import { PropertyAccessInterceptor } from '../access/interceptors/property-access.interceptor';
 import { AccessAuditService } from '../access/services/access-audit.service';
 import { PublishImpactService } from '../publish-impact/publish-impact.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 21 — collection metadata management.
+ * Class-level `@RequirePermission('metadata:collection:read')` gates
+ * the default read tier; write paths (POST/PUT/DELETE on collection
+ * definitions) carry method-level
+ * `@RequirePermission('metadata:collection:manage')`. AVA-assist
+ * routes carry `@AuthenticatedOnly()` — they propose changes;
+ * applying them goes through the manage-gated write path.
+ *
+ * The pre-W2 `CollectionAccessGuard` (HTTP-verb → legacy dot-style
+ * permission mapping) was retired. Admin holds both capability codes
+ * via seeded `role_permissions`. Per-collection ACL on collection
+ * DEFINITIONS is not a concept — `CollectionAccessRule` rows gate
+ * RECORD access, not metadata management.
+ */
 @Controller('collections')
-@UseGuards(JwtAuthGuard, CollectionAccessGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @UseInterceptors(PropertyAccessInterceptor)
+@RequirePermission('metadata:collection:read')
 export class CollectionController {
   constructor(
     private readonly collectionService: CollectionService,
@@ -191,11 +213,12 @@ export class CollectionController {
    * Create a new collection with automatic storage provisioning
    */
   @Post()
+  @RequirePermission('metadata:collection:manage')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Body() dto: CreateCollectionDto,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -208,11 +231,12 @@ export class CollectionController {
    * Update a collection
    */
   @Put(':id')
+  @RequirePermission('metadata:collection:manage')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCollectionDto,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -225,10 +249,11 @@ export class CollectionController {
    * Delete a collection (soft delete)
    */
   @Delete(':id')
+  @RequirePermission('metadata:collection:manage')
   delete(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -245,10 +270,11 @@ export class CollectionController {
    * Publish a draft collection
    */
   @Post(':id/publish')
+  @RequirePermission('metadata:collection:manage')
   publish(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -261,11 +287,12 @@ export class CollectionController {
    * Deprecate a published collection
    */
   @Post(':id/deprecate')
+  @RequirePermission('metadata:collection:manage')
   deprecate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { message: string; replacementCollectionId?: string },
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -305,11 +332,12 @@ export class CollectionController {
    * gap and matches the frontend gate the SpreadsheetView shows.
    */
   @Post(':id/spreadsheet/audit-edit-mode-entry')
+  @RequirePermission('metadata:collection:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async auditSpreadsheetEditModeEntry(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request,
+    @Req() request: InstanceRequest,
   ): Promise<void> {
     if (!user?.id) {
       throw new ForbiddenException('Authentication required');
@@ -357,10 +385,11 @@ export class CollectionController {
    * Restore a soft-deleted collection
    */
   @Post(':id/restore')
+  @RequirePermission('metadata:collection:manage')
   restore(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
-    @Req() request: Request
+    @Req() request: InstanceRequest
   ) {
     const context = {
       ipAddress: request.ip,
@@ -373,6 +402,7 @@ export class CollectionController {
    * Clone a collection
    */
   @Post(':id/clone')
+  @RequirePermission('metadata:collection:manage')
   @HttpCode(HttpStatus.CREATED)
   clone(
     @Param('id', ParseUUIDPipe) id: string,
@@ -390,6 +420,7 @@ export class CollectionController {
    * Get AVA suggestions for collection naming (simplified endpoint)
    */
   @Post('suggest')
+  @AuthenticatedOnly()
   suggest(@Body() body: { input: string }) {
     return this.collectionService.getSuggestions(body.input);
   }
@@ -398,6 +429,7 @@ export class CollectionController {
    * Analyze imported data for schema suggestions (simplified endpoint)
    */
   @Post('analyze-import')
+  @AuthenticatedOnly()
   analyzeImportSimple(
     @Body()
     body: {
@@ -420,6 +452,7 @@ export class CollectionController {
    * Get AVA suggestions for collection naming
    */
   @Post('ava/suggest/naming')
+  @AuthenticatedOnly()
   suggestNaming(@Body() body: { input: string }) {
     return this.collectionService.getSuggestions(body.input);
   }
@@ -428,6 +461,7 @@ export class CollectionController {
    * Analyze imported data for schema suggestions
    */
   @Post('ava/analyze-import')
+  @AuthenticatedOnly()
   analyzeImport(
     @Body()
     body: {
@@ -447,6 +481,7 @@ export class CollectionController {
    * Ask AVA a natural language question about collections
    */
   @Post('ava/query')
+  @AuthenticatedOnly()
   askAva(@Body() body: { question: string }) {
     return this.collectionService.askAva(body.question);
   }
