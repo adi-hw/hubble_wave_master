@@ -2,7 +2,7 @@ import { Body, Controller, Get, Put, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { UiService } from './ui.service';
-import { Request } from 'express';
+import { InstanceRequest, assertUserContext } from '@hubblewave/auth-guard';
 import { AuthenticatedOnly } from '../auth/decorators/public.decorator';
 import { RequirePermission } from '../roles/decorators/permission.decorator';
 
@@ -35,9 +35,9 @@ export class UiController {
 
   @Put('admin/ui/theme')
   @RequirePermission('system:configure')
-  updateAdminTheme(@Req() req: Request, @Body() body: any) {
-    const userId = (req as any).user?.userId;
-    return this.uiService.updateTheme(body ?? {}, userId);
+  updateAdminTheme(@Req() req: InstanceRequest, @Body() body: any) {
+    const ctx = assertUserContext(req.context);
+    return this.uiService.updateTheme(body ?? {}, ctx.userId);
   }
 
   @Get('admin/ui/nav-profile')

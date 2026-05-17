@@ -9,10 +9,18 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { InstanceRequest, JwtAuthGuard, isUserContext } from '@hubblewave/auth-guard';
 import { SessionService, SessionInfo } from './session.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedOnly } from './decorators/public.decorator';
+
+function currentSessionId(req: InstanceRequest): string | undefined {
+  const ctx = req.context;
+  if (ctx && isUserContext(ctx)) {
+    return ctx.sessionId;
+  }
+  return undefined;
+}
 
 interface AuthenticatedUser {
   id: string;
@@ -33,20 +41,16 @@ export class SessionController {
   @Get()
   async listSessions(
     @CurrentUser() user: AuthenticatedUser,
-    @Req() req: any,
+    @Req() req: InstanceRequest,
   ): Promise<{ sessions: SessionInfo[] }> {
     const userId = user.userId || user.id;
 
-    // Try to get current token ID from request (if available)
     // canon §29.5: the JWT's `session_id` claim identifies the family
     // backing the current session. Plumb it through so the session list
     // can mark "this device" correctly.
-    const currentTokenId =
-      (req?.user?.sessionId as string | undefined) || undefined;
-
     const sessions = await this.sessionService.getActiveSessionsForUser(
       userId,
-      currentTokenId,
+      currentSessionId(req),
     );
 
     return { sessions };
@@ -86,12 +90,12 @@ export class SessionController {
   async revokeSession(
     @CurrentUser() user: AuthenticatedUser,
     @Param('sessionId') sessionId: string,
-    @Req() req: any,
+    @Req() req: InstanceRequest,
   ): Promise<{ success: boolean; message: string }> {
     const userId = user.userId || user.id;
 
     // Prevent revoking current session through this endpoint
-    const currentTokenId = req?.user?.sessionId as string | undefined;
+    const currentTokenId = currentSessionId(req);
     if (currentTokenId && currentTokenId === sessionId) {
       throw new ForbiddenException(
         'Cannot revoke current session. Use logout instead.',
@@ -114,18 +118,15 @@ export class SessionController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async revokeOtherSessions(
     @CurrentUser() user: AuthenticatedUser,
-    @Req() req: any,
+    @Req() req: InstanceRequest,
   ): Promise<{ success: boolean; count: number; message: string }> {
     const userId = user.userId || user.id;
     // canon §29.5: the JWT's `session_id` claim identifies the family
     // backing the current session. Plumb it through so the session list
     // can mark "this device" correctly.
-    const currentTokenId =
-      (req?.user?.sessionId as string | undefined) || undefined;
-
     const count = await this.sessionService.revokeAllOtherSessions(
       userId,
-      currentTokenId,
+      currentSessionId(req),
     );
 
     return {
