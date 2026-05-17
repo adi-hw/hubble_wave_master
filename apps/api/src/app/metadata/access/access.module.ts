@@ -19,6 +19,7 @@ import {
   ACCESS_RULE_CACHE_INVALIDATION_PORT,
   AuthorizationService,
 } from '@hubblewave/authorization';
+import { EventBusModule } from '@hubblewave/event-bus';
 import { AccessRuleService } from './services/access-rule.service';
 import { AccessAuditService } from './services/access-audit.service';
 import { BreakGlassService } from './services/break-glass.service';
@@ -43,6 +44,7 @@ import { ExplainController } from './explain.controller';
       User,
     ]),
     CacheModule.register(),
+    EventBusModule.forRoot(),
   ],
   // §28.7: explain endpoint exposed via ExplainController. The controller
   // depends on AuthorizationService (already injected from the authorization

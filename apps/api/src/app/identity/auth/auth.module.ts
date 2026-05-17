@@ -38,6 +38,7 @@ import {
   AuditLog,
 } from '@hubblewave/instance-db';
 import { RedisModule } from '@hubblewave/redis';
+import { EventBusModule } from '@hubblewave/event-bus';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
@@ -130,6 +131,7 @@ import { ServiceTokenController } from './service-token.controller';
     RolesModule,
     PassportModule,
     RedisModule.forRoot(),
+    EventBusModule.forRoot(),
     // JwtModule remains registered for transitional reasons — passport
     // and other downstream code that depends on `@nestjs/jwt` types still
     // resolve through this module. Per canon §29 PR-B the platform no

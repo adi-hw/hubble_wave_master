@@ -55,7 +55,7 @@ describe('IdentityCacheInvalidationSubscriber', () => {
     } as unknown as never;
   }
 
-  it('publishes identity.user-role.changed when a UserRole is inserted', async () => {
+  it('publishes permission.invalidate (scope=identity) when a UserRole is inserted', async () => {
     subscriber.afterInsert(
       makeInsertEvent(UserRole, {
         userId: 'user-1',
@@ -68,13 +68,13 @@ describe('IdentityCacheInvalidationSubscriber', () => {
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.user-role.changed',
-        payload: { userIds: ['user-1'], roleIds: ['role-1'] },
+        topic: 'permission.invalidate',
+        payload: { scope: 'identity', userIds: ['user-1'], roleIds: ['role-1'] },
       },
     ]);
   });
 
-  it('publishes identity.user-role.changed when a UserRole is removed', async () => {
+  it('publishes permission.invalidate (scope=identity) when a UserRole is removed', async () => {
     subscriber.afterRemove({
       entity: { userId: 'user-2', roleId: 'role-2' },
       databaseEntity: undefined,
@@ -85,8 +85,9 @@ describe('IdentityCacheInvalidationSubscriber', () => {
     await Promise.resolve();
 
     expect(publishCalls).toHaveLength(1);
-    expect(publishCalls[0].topic).toBe('identity.user-role.changed');
+    expect(publishCalls[0].topic).toBe('permission.invalidate');
     expect(publishCalls[0].payload).toEqual({
+      scope: 'identity',
       userIds: ['user-2'],
       roleIds: ['role-2'],
     });
@@ -104,13 +105,13 @@ describe('IdentityCacheInvalidationSubscriber', () => {
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.user-role.changed',
-        payload: { userIds: ['user-3'], roleIds: ['role-3'] },
+        topic: 'permission.invalidate',
+        payload: { scope: 'identity', userIds: ['user-3'], roleIds: ['role-3'] },
       },
     ]);
   });
 
-  it('publishes identity.role-permission.changed when a RolePermission changes', async () => {
+  it('publishes permission.invalidate (scope=permissions) when a RolePermission changes', async () => {
     subscriber.afterInsert(
       makeInsertEvent(RolePermission, {
         roleId: 'role-x',
@@ -122,13 +123,13 @@ describe('IdentityCacheInvalidationSubscriber', () => {
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.role-permission.changed',
-        payload: { roleIds: ['role-x'] },
+        topic: 'permission.invalidate',
+        payload: { scope: 'permissions', roleIds: ['role-x'] },
       },
     ]);
   });
 
-  it('publishes identity.role-permission.changed when a GroupRole changes', async () => {
+  it('publishes permission.invalidate (scope=permissions) when a GroupRole changes', async () => {
     subscriber.afterInsert(
       makeInsertEvent(GroupRole, {
         groupId: 'group-1',
@@ -140,13 +141,13 @@ describe('IdentityCacheInvalidationSubscriber', () => {
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.role-permission.changed',
-        payload: { roleIds: ['role-y'] },
+        topic: 'permission.invalidate',
+        payload: { scope: 'permissions', roleIds: ['role-y'] },
       },
     ]);
   });
 
-  it('publishes identity.group-membership.changed when a GroupMember changes', async () => {
+  it('publishes permission.invalidate (scope=identity) when a GroupMember changes', async () => {
     subscriber.afterInsert(
       makeInsertEvent(GroupMember, {
         userId: 'user-9',
@@ -158,8 +159,8 @@ describe('IdentityCacheInvalidationSubscriber', () => {
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.group-membership.changed',
-        payload: { userIds: ['user-9'], groupIds: ['group-9'] },
+        topic: 'permission.invalidate',
+        payload: { scope: 'identity', userIds: ['user-9'], groupIds: ['group-9'] },
       },
     ]);
   });

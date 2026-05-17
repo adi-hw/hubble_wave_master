@@ -1,17 +1,30 @@
 import { Logger } from '@nestjs/common';
 import type { QueryRunner } from 'typeorm';
 
+import {
+  CollectionAccessRule,
+  PropertyAccessRule,
+} from '../entities/access-rule.entity';
 import { GroupMember, GroupRole } from '../entities/group.entity';
 import { RolePermission, UserRole } from '../entities/role-permission.entity';
+import { Role } from '../entities/role.entity';
 import {
   IdentityCacheEventPublisher,
   IdentityCacheInvalidationSubscriber,
 } from './identity-cache-invalidation.subscriber';
 
 /**
- * F043: identity cache invalidation events must publish AFTER the
- * transaction commits, never before. These tests exercise the queue
- * mechanism directly by:
+ * W2 Stream 1 PR2 / F025: the subscriber publishes every cache-invalidation
+ * event on a single unified topic `permission.invalidate`. The payload
+ * carries a `scope` discriminator (`identity` | `permissions` | `acl`) plus
+ * the affected IDs. The pre-W2 per-entity topics
+ * (`identity.user-role.changed`, `identity.role-permission.changed`,
+ * `identity.group-membership.changed`) are gone — every consumer cache now
+ * routes through this one channel.
+ *
+ * F043 still applies: events publish AFTER the surrounding transaction
+ * commits (never before, never if rolled back). These tests exercise the
+ * queue mechanism directly by:
  *   - constructing synthetic InsertEvent/UpdateEvent/RemoveEvent objects
  *     carrying a fake QueryRunner;
  *   - feeding them to the public `afterInsert`/`afterUpdate`/`afterRemove`
@@ -24,7 +37,9 @@ import {
  * a "non-transactional" one where the subscriber must publish inline (no
  * commit/rollback hook will fire to drain a queue otherwise).
  */
-describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', () => {
+describe('IdentityCacheInvalidationSubscriber (W2 Stream 1 PR2 / F025 unified channel + F043 publish-after-commit)', () => {
+  const TOPIC = 'permission.invalidate';
+
   let subscriber: IdentityCacheInvalidationSubscriber;
   let publishCalls: Array<{ topic: string; payload: unknown }>;
   let publisher: IdentityCacheEventPublisher;
@@ -113,8 +128,12 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.user-role.changed',
-        payload: { userIds: ['u-1'], roleIds: ['r-1'] },
+        topic: TOPIC,
+        payload: {
+          scope: 'identity',
+          userIds: ['u-1'],
+          roleIds: ['r-1'],
+        },
       },
     ]);
   });
@@ -179,19 +198,28 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
     await Promise.resolve();
 
     expect(publishCalls).toHaveLength(4);
+    // Every event goes to the unified topic.
     expect(publishCalls.map((c) => c.topic)).toEqual([
-      'identity.user-role.changed',
-      'identity.role-permission.changed',
-      'identity.role-permission.changed',
-      'identity.group-membership.changed',
+      TOPIC,
+      TOPIC,
+      TOPIC,
+      TOPIC,
     ]);
     expect(publishCalls[0].payload).toEqual({
+      scope: 'identity',
       userIds: ['u-a'],
       roleIds: ['r-a'],
     });
-    expect(publishCalls[1].payload).toEqual({ roleIds: ['r-b'] });
-    expect(publishCalls[2].payload).toEqual({ roleIds: ['r-c'] });
+    expect(publishCalls[1].payload).toEqual({
+      scope: 'permissions',
+      roleIds: ['r-b'],
+    });
+    expect(publishCalls[2].payload).toEqual({
+      scope: 'permissions',
+      roleIds: ['r-c'],
+    });
     expect(publishCalls[3].payload).toEqual({
+      scope: 'identity',
       userIds: ['u-d'],
       groupIds: ['g-d'],
     });
@@ -225,12 +253,12 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
 
     expect(publishCalls).toHaveLength(2);
     expect(publishCalls[0]).toEqual({
-      topic: 'identity.user-role.changed',
-      payload: { userIds: ['u-A'], roleIds: ['r-A'] },
+      topic: TOPIC,
+      payload: { scope: 'identity', userIds: ['u-A'], roleIds: ['r-A'] },
     });
     expect(publishCalls[1]).toEqual({
-      topic: 'identity.role-permission.changed',
-      payload: { roleIds: ['r-A2'] },
+      topic: TOPIC,
+      payload: { scope: 'permissions', roleIds: ['r-A2'] },
     });
   });
 
@@ -250,6 +278,7 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
     await Promise.resolve();
     expect(publishCalls).toHaveLength(1);
     expect(publishCalls[0].payload).toEqual({
+      scope: 'identity',
       userIds: ['u-A'],
       roleIds: ['r-A'],
     });
@@ -259,6 +288,7 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
     await Promise.resolve();
     expect(publishCalls).toHaveLength(2);
     expect(publishCalls[1].payload).toEqual({
+      scope: 'identity',
       userIds: ['u-B'],
       roleIds: ['r-B'],
     });
@@ -297,7 +327,7 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
     expect(errorLog).toHaveBeenCalled();
     const firstCall = errorLog.mock.calls[0];
     expect(String(firstCall[0])).toContain(
-      'Failed to publish identity.user-role.changed after commit',
+      `Failed to publish ${TOPIC} after commit`,
     );
     expect(String(firstCall[0])).toContain('event bus down');
   });
@@ -315,8 +345,12 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.user-role.changed',
-        payload: { userIds: ['u-direct'], roleIds: ['r-direct'] },
+        topic: TOPIC,
+        payload: {
+          scope: 'identity',
+          userIds: ['u-direct'],
+          roleIds: ['r-direct'],
+        },
       },
     ]);
   });
@@ -339,19 +373,29 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
   });
 
   // --- entity-type routing on the deferred path ---------------------------
+  // Every entity routes to the same TOPIC; the discriminator lives in
+  // `payload.scope`. These tests pin both the scope mapping and the ID
+  // fields each entity contributes to the payload.
 
-  it('routes each entity type to the correct topic on commit', async () => {
+  it('routes UserRole mutation to identity scope with userIds + roleIds', async () => {
     const qr = makeQueryRunner(true);
-
     subscriber.afterInsert(
       makeInsertEvent(UserRole, { userId: 'u1', roleId: 'r1' }, qr),
     );
-    subscriber.afterInsert(
-      makeInsertEvent(RolePermission, { roleId: 'r2', permissionId: 'p1' }, qr),
-    );
-    subscriber.afterInsert(
-      makeInsertEvent(GroupRole, { groupId: 'g1', roleId: 'r3' }, qr),
-    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: { scope: 'identity', userIds: ['u1'], roleIds: ['r1'] },
+      },
+    ]);
+  });
+
+  it('routes GroupMember mutation to identity scope with userIds + groupIds', async () => {
+    const qr = makeQueryRunner(true);
     subscriber.afterInsert(
       makeInsertEvent(GroupMember, { userId: 'u2', groupId: 'g2' }, qr),
     );
@@ -359,11 +403,118 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(publishCalls.map((c) => c.topic)).toEqual([
-      'identity.user-role.changed',
-      'identity.role-permission.changed',
-      'identity.role-permission.changed',
-      'identity.group-membership.changed',
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: { scope: 'identity', userIds: ['u2'], groupIds: ['g2'] },
+      },
+    ]);
+  });
+
+  it('routes Role mutation to permissions scope with roleIds (new entity, W2 Stream 1 PR2)', async () => {
+    const qr = makeQueryRunner(true);
+    subscriber.afterInsert(
+      makeInsertEvent(Role, { id: 'role-new', name: 'Editor' }, qr),
+    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: { scope: 'permissions', roleIds: ['role-new'] },
+      },
+    ]);
+  });
+
+  it('routes RolePermission mutation to permissions scope with roleIds', async () => {
+    const qr = makeQueryRunner(true);
+    subscriber.afterInsert(
+      makeInsertEvent(RolePermission, { roleId: 'r2', permissionId: 'p1' }, qr),
+    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: { scope: 'permissions', roleIds: ['r2'] },
+      },
+    ]);
+  });
+
+  it('routes GroupRole mutation to permissions scope with roleIds', async () => {
+    const qr = makeQueryRunner(true);
+    subscriber.afterInsert(
+      makeInsertEvent(GroupRole, { groupId: 'g1', roleId: 'r3' }, qr),
+    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: { scope: 'permissions', roleIds: ['r3'] },
+      },
+    ]);
+  });
+
+  it('routes CollectionAccessRule mutation to acl scope with collectionIds + roleIds (new entity, W2 Stream 1 PR2)', async () => {
+    const qr = makeQueryRunner(true);
+    subscriber.afterInsert(
+      makeInsertEvent(
+        CollectionAccessRule,
+        { id: 'car-1', collectionId: 'coll-1', roleId: 'role-1' },
+        qr,
+      ),
+    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: {
+          scope: 'acl',
+          collectionIds: ['coll-1'],
+          roleIds: ['role-1'],
+        },
+      },
+    ]);
+  });
+
+  it('routes PropertyAccessRule mutation to acl scope with propertyIds + wildcard collectionIds + roleIds (new entity, W2 Stream 1 PR2)', async () => {
+    const qr = makeQueryRunner(true);
+    subscriber.afterInsert(
+      makeInsertEvent(
+        PropertyAccessRule,
+        {
+          id: 'par-1',
+          propertyId: 'prop-1',
+          wildcardCollectionId: 'coll-wild',
+          roleId: 'role-2',
+        },
+        qr,
+      ),
+    );
+    subscriber.afterTransactionCommit(makeTransactionEvent(qr));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(publishCalls).toEqual([
+      {
+        topic: TOPIC,
+        payload: {
+          scope: 'acl',
+          propertyIds: ['prop-1'],
+          collectionIds: ['coll-wild'],
+          roleIds: ['role-2'],
+        },
+      },
     ]);
   });
 
@@ -397,8 +548,8 @@ describe('IdentityCacheInvalidationSubscriber (F043 — publish after commit)', 
 
     expect(publishCalls).toEqual([
       {
-        topic: 'identity.user-role.changed',
-        payload: { userIds: ['u-db'], roleIds: ['r-db'] },
+        topic: TOPIC,
+        payload: { scope: 'identity', userIds: ['u-db'], roleIds: ['r-db'] },
       },
     ]);
   });

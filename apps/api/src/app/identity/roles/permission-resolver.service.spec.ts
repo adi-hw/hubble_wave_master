@@ -94,12 +94,13 @@ describe('PermissionResolverService', () => {
     );
   }
 
-  it('clears the cached entry for a user when identity.user-role.changed fires', async () => {
+  it('clears the cached entry for a user when permission.invalidate (scope=identity) fires', async () => {
     seedCache('user-1');
     seedCache('user-2');
     expect(isCached('user-1')).toBe(true);
 
-    await bus.deliver(EventTopic.IdentityUserRoleChanged, {
+    await bus.deliver(EventTopic.PermissionInvalidate, {
+      scope: 'identity',
       userIds: ['user-1'],
     });
 
@@ -107,12 +108,13 @@ describe('PermissionResolverService', () => {
     expect(isCached('user-2')).toBe(true);
   });
 
-  it('clears multiple users in a single user-role event', async () => {
+  it('clears multiple users in a single scope=identity event', async () => {
     seedCache('user-a');
     seedCache('user-b');
     seedCache('user-c');
 
-    await bus.deliver(EventTopic.IdentityUserRoleChanged, {
+    await bus.deliver(EventTopic.PermissionInvalidate, {
+      scope: 'identity',
       userIds: ['user-a', 'user-b'],
     });
 
@@ -121,7 +123,7 @@ describe('PermissionResolverService', () => {
     expect(isCached('user-c')).toBe(true);
   });
 
-  it('clears all users holding a role when identity.role-permission.changed fires', async () => {
+  it('clears all users holding a role when permission.invalidate (scope=permissions) fires', async () => {
     seedCache('user-1');
     seedCache('user-2');
     seedCache('unrelated');
@@ -131,7 +133,8 @@ describe('PermissionResolverService', () => {
       { userId: 'user-2' },
     ]);
 
-    await bus.deliver(EventTopic.IdentityRolePermissionChanged, {
+    await bus.deliver(EventTopic.PermissionInvalidate, {
+      scope: 'permissions',
       roleIds: ['role-x'],
     });
 
@@ -144,11 +147,12 @@ describe('PermissionResolverService', () => {
     expect(isCached('unrelated')).toBe(true);
   });
 
-  it('clears users when identity.group-membership.changed fires', async () => {
+  it('clears users when permission.invalidate (scope=identity, group-membership change) fires', async () => {
     seedCache('user-1');
     seedCache('other');
 
-    await bus.deliver(EventTopic.IdentityGroupMembershipChanged, {
+    await bus.deliver(EventTopic.PermissionInvalidate, {
+      scope: 'identity',
       userIds: ['user-1'],
     });
 
@@ -166,8 +170,11 @@ describe('PermissionResolverService', () => {
   it('tolerates events with empty/missing userIds gracefully', async () => {
     seedCache('user-1');
 
-    await bus.deliver(EventTopic.IdentityUserRoleChanged, {});
-    await bus.deliver(EventTopic.IdentityUserRoleChanged, { userIds: [] });
+    await bus.deliver(EventTopic.PermissionInvalidate, { scope: 'identity' });
+    await bus.deliver(EventTopic.PermissionInvalidate, {
+      scope: 'identity',
+      userIds: [],
+    });
 
     expect(isCached('user-1')).toBe(true);
   });

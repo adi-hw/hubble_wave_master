@@ -1,12 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '@hubblewave/instance-db';
+import { User, UserRole } from '@hubblewave/instance-db';
 import {
   IdentityResolverPort,
   ResolvedIdentity,
 } from '@hubblewave/auth-guard';
+import { In } from 'typeorm';
 import { RedisService } from '@hubblewave/redis';
+import {
+  EventBusService,
+  EventTopic,
+  PermissionInvalidatePayload,
+} from '@hubblewave/event-bus';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 
 /**
@@ -41,24 +47,66 @@ interface CachedIdentity {
  *
  * Walks the same path JwtStrategy uses (User lookup + PermissionResolver)
  * so the two authentication surfaces stay functionally consistent. Adds a
- * thin Redis cache so the new per-request DB round trip the guard now
- * makes does not turn into a hot loop on busy endpoints.
+ * thin Redis cache so the per-request DB round trip the guard makes does
+ * not turn into a hot loop on busy endpoints.
  *
- * Cache invalidation is implicit via the short TTL plus the event-driven
- * invalidation on `PermissionResolverService` — when a role changes, the
- * in-process cache flushes immediately and the Redis cache expires within
- * a minute. For force-immediate scenarios (admin "log out everywhere"),
- * the parallel `JwtRevocationAdapter` writes a revoke-before timestamp
- * that the guard checks after identity resolution.
+ * Cache invalidation (W2 Stream 1 PR2 / F025): subscribes to the unified
+ * `permission.invalidate` event bus channel and evicts Redis cache
+ * entries on every relevant scope:
+ *   - `identity`    → evict by `userIds`.
+ *   - `permissions` → fan out from `roleIds` → users holding the role →
+ *                     evict each. A role-permission change affects every
+ *                     user holding the role, so the same fan-out the
+ *                     PermissionResolverService does for the in-process
+ *                     cache happens here for the Redis cache.
+ *   - `acl`         → not the identity cache's concern; the
+ *                     `AuthorizationService` handles ACL-rule cache.
+ *
+ * The 60s TTL remains as a safety net for missed-message scenarios — under
+ * a healthy bus, role revocations propagate in well under a second.
  */
 @Injectable()
-export class IdentityResolverAdapter implements IdentityResolverPort {
+export class IdentityResolverAdapter
+  implements IdentityResolverPort, OnModuleInit
+{
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(UserRole)
+    private readonly userRoleRepo: Repository<UserRole>,
     private readonly permissionResolver: PermissionResolverService,
     private readonly redis: RedisService,
+    private readonly eventBus: EventBusService,
   ) {}
+
+  onModuleInit(): void {
+    this.eventBus.subscribe<PermissionInvalidatePayload>(
+      EventTopic.PermissionInvalidate,
+      async (payload) => {
+        if (payload.scope === 'identity') {
+          await Promise.all(
+            (payload.userIds ?? []).map((userId) => this.invalidate(userId)),
+          );
+          return;
+        }
+        if (payload.scope === 'permissions') {
+          // Fan out: every user holding the affected role(s) has stale
+          // identity cache. Resolve users from the user_roles table.
+          const roleIds = payload.roleIds ?? [];
+          if (roleIds.length === 0) return;
+          const rows = await this.userRoleRepo.find({
+            where: { roleId: In(roleIds) },
+            select: ['userId'],
+          });
+          const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+          await Promise.all(userIds.map((userId) => this.invalidate(userId)));
+          return;
+        }
+        // payload.scope === 'acl' — out of scope here; AuthorizationService
+        // owns the ACL-rule cache.
+      },
+    );
+  }
 
   async resolveIdentity(userId: string): Promise<ResolvedIdentity | null> {
     if (!userId) return null;

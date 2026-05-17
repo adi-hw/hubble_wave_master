@@ -1,7 +1,12 @@
-import { Injectable, Inject, Optional, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, Inject, Optional, OnModuleInit, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { UserRequestContext } from '@hubblewave/auth-guard';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import {
+  EventBusService,
+  EventTopic,
+  PermissionInvalidatePayload,
+} from '@hubblewave/event-bus';
 import {
   AuthorizedPropertyMeta,
   PropertyMeta,
@@ -73,7 +78,9 @@ interface CollectionDefinitionLookupRepo {
 }
 
 @Injectable()
-export class AuthorizationService implements AccessRuleCacheInvalidationPort {
+export class AuthorizationService
+  implements AccessRuleCacheInvalidationPort, OnModuleInit
+{
   private readonly logger = new Logger(AuthorizationService.name);
   private readonly CACHE_TTL = 300000; // 5 minutes
 
@@ -89,7 +96,62 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     private readonly policyCompiler: PolicyCompilerService,
     @Optional() @Inject(COLLECTION_DEFINITION_REPOSITORY)
     private readonly collectionDefinitionRepo: CollectionDefinitionLookupRepo | null = null,
+    @Optional()
+    private readonly eventBus: EventBusService | null = null,
   ) {}
+
+  /**
+   * W2 Stream 1 PR2 / F025 — subscribe to the unified `permission.invalidate`
+   * channel. The ACL-rule cache evicts on `scope=acl` payloads. The
+   * existing in-process `AccessRuleCacheInvalidationSubscriber` continues
+   * to provide same-process invalidation; the event-bus path adds cross-
+   * instance correctness so a write on one node evicts the cache on every
+   * other node. Retiring the in-process subscriber is a follow-up (the two
+   * paths fire identical invalidations today; this PR adds the missing
+   * cross-instance path without deleting the existing one).
+   *
+   * `eventBus` is optional — unit-test contexts that don't wire the event
+   * bus silently skip the subscription.
+   */
+  onModuleInit(): void {
+    if (!this.eventBus) return;
+    this.eventBus.subscribe<PermissionInvalidatePayload>(
+      EventTopic.PermissionInvalidate,
+      async (payload) => {
+        if (payload.scope !== 'acl') return;
+        const collectionIds = payload.collectionIds ?? [];
+        const propertyIds = payload.propertyIds ?? [];
+        // Collection-rule cache eviction.
+        await Promise.all(
+          collectionIds.map((collectionId) =>
+            this.invalidateCollectionRules({
+              collectionId,
+              operation: 'update',
+            }).catch((err: Error) => {
+              this.logger.warn(
+                `event-bus acl invalidation for collection ${collectionId} failed: ${err.message}`,
+              );
+            }),
+          ),
+        );
+        // Property-rule cache eviction. Property events carry the
+        // owning collectionId so the cache key is reachable.
+        await Promise.all(
+          propertyIds.map((propertyId) =>
+            this.invalidatePropertyRules({
+              propertyId,
+              collectionId: collectionIds[0],
+              operation: 'update',
+            }).catch((err: Error) => {
+              this.logger.warn(
+                `event-bus acl invalidation for property ${propertyId} failed: ${err.message}`,
+              );
+            }),
+          ),
+        );
+      },
+    );
+  }
   // Note: AccessAuditPort (ACCESS_AUDIT_PORT) injection was removed by Plan
   // Fix 33 (canon §28.6) because the `auditAdminBypass` helper — the sole
   // consumer — was deleted along with the bypass sites. The port interface

@@ -10,8 +10,13 @@ import {
 } from 'typeorm';
 import type { QueryRunner } from 'typeorm';
 
+import {
+  CollectionAccessRule,
+  PropertyAccessRule,
+} from '../entities/access-rule.entity';
 import { GroupMember, GroupRole } from '../entities/group.entity';
 import { RolePermission, UserRole } from '../entities/role-permission.entity';
+import { Role } from '../entities/role.entity';
 
 /**
  * Minimal contract a subscriber needs from the event bus. We avoid importing
@@ -23,18 +28,45 @@ export interface IdentityCacheEventPublisher {
   publish<T>(topic: string, payload: T): Promise<void>;
 }
 
-const TOPIC_USER_ROLE_CHANGED = 'identity.user-role.changed';
-const TOPIC_ROLE_PERMISSION_CHANGED = 'identity.role-permission.changed';
-const TOPIC_GROUP_MEMBERSHIP_CHANGED = 'identity.group-membership.changed';
+/**
+ * The unified invalidation topic name. Mirrors
+ * `EventTopic.PermissionInvalidate` in `@hubblewave/event-bus`; duplicated
+ * here as a literal because the subscriber must not import from the event-
+ * bus library (no DI cycle, no module-init ordering hazard).
+ */
+const TOPIC_PERMISSION_INVALIDATE = 'permission.invalidate';
+
+type InvalidateScope = 'identity' | 'permissions' | 'acl';
 
 interface PendingEvent {
   topic: string;
   payload: Record<string, unknown>;
 }
 
+interface InvalidatePayload extends Record<string, unknown> {
+  scope: InvalidateScope;
+  userIds?: string[];
+  roleIds?: string[];
+  groupIds?: string[];
+  collectionIds?: string[];
+  propertyIds?: string[];
+}
+
 /**
  * TypeORM entity subscriber that emits cache-invalidation events whenever
  * the source-of-truth tables for permissions change.
+ *
+ * Topic + payload (W2 Stream 1 PR2 / F025): single unified channel
+ * `permission.invalidate` with a `scope` discriminator. The pre-W2
+ * per-entity topics (user-role / role-permission / group-membership) were
+ * collapsed into this one channel so every consumer cache routes through
+ * one path. Scope mapping by entity:
+ *
+ *   - `identity`    — UserRole, GroupMember (user → role / user → group)
+ *   - `permissions` — Role, RolePermission, GroupRole (role itself or
+ *                     role → permission)
+ *   - `acl`         — CollectionAccessRule, PropertyAccessRule (record-
+ *                     level or field-level rule)
  *
  * Publish timing (F043): events are NOT published inline from
  * `afterInsert`/`afterUpdate`/`afterRemove`. Doing so risks two failure
@@ -46,24 +78,25 @@ interface PendingEvent {
  *      keep serving stale data until the cache TTL elapses.
  *
  * Instead the entity hooks enqueue pending events keyed by the
- * transaction's QueryRunner in a per-transaction WeakMap. `afterTransactionCommit`
- * drains the queue and publishes; `afterTransactionRollback` drops the
- * queue without publishing. Writes outside an explicit transaction
- * (`event.queryRunner.isTransactionActive === false`) publish immediately
- * since no commit/rollback hook will fire for them.
+ * transaction's QueryRunner in a per-transaction WeakMap.
+ * `afterTransactionCommit` drains the queue and publishes;
+ * `afterTransactionRollback` drops the queue without publishing. Writes
+ * outside an explicit transaction (`event.queryRunner.isTransactionActive ===
+ * false`) publish immediately since no commit/rollback hook will fire for
+ * them.
  *
  * Publish failures on the post-commit path are best-effort by definition
  * (the business write has already landed), but they are surfaced via
  * `logger.error` so operations can alert on a degraded event bus rather
  * than discovering it through stale-cache symptoms.
  *
- * Why a static holder for the publisher? TypeORM constructs subscribers when
- * the data source initialises — that happens during Nest's bootstrap, before
- * application providers like `EventBusService` are fully resolved. Wiring the
- * publisher via `IdentityCacheInvalidationSubscriber.setPublisher(...)` from
- * `onApplicationBootstrap` (or any module-init hook) keeps the subscriber
- * class free of DI concerns while still letting it reach a live publisher at
- * runtime.
+ * Why a static holder for the publisher? TypeORM constructs subscribers
+ * when the data source initialises — that happens during Nest's bootstrap,
+ * before application providers like `EventBusService` are fully resolved.
+ * Wiring the publisher via
+ * `IdentityCacheInvalidationSubscriber.setPublisher(...)` from an
+ * `onModuleInit` / constructor hook keeps the subscriber class free of DI
+ * concerns while still letting it reach a live publisher at runtime.
  *
  * Until the publisher is set the subscriber is silent — events are dropped
  * with a debug log. This is intentional: it lets the database boot before
@@ -136,7 +169,7 @@ export class IdentityCacheInvalidationSubscriber
     const publisher = IdentityCacheInvalidationSubscriber.publisher;
     if (!publisher) {
       IdentityCacheInvalidationSubscriber.logger.debug(
-        `Dropping ${pending.length} identity invalidation event(s) — event bus publisher not yet wired`,
+        `Dropping ${pending.length} permission-invalidate event(s) — event bus publisher not yet wired`,
       );
       return;
     }
@@ -168,34 +201,14 @@ export class IdentityCacheInvalidationSubscriber
       return;
     }
 
+    // identity scope — user → role / user → group mapping changed
     if (target === UserRole) {
       const userRole = entity as Partial<UserRole>;
       if (userRole.userId) {
-        this.enqueue(queryRunner, TOPIC_USER_ROLE_CHANGED, {
+        this.enqueue(queryRunner, {
+          scope: 'identity',
           userIds: [userRole.userId],
           roleIds: userRole.roleId ? [userRole.roleId] : undefined,
-        });
-      }
-      return;
-    }
-
-    if (target === RolePermission) {
-      const rolePerm = entity as Partial<RolePermission>;
-      if (rolePerm.roleId) {
-        this.enqueue(queryRunner, TOPIC_ROLE_PERMISSION_CHANGED, {
-          roleIds: [rolePerm.roleId],
-        });
-      }
-      return;
-    }
-
-    if (target === GroupRole) {
-      // A group's role changing affects every user in the group. Subscribers
-      // resolve the affected users from the role; we only carry the role IDs.
-      const groupRole = entity as Partial<GroupRole>;
-      if (groupRole.roleId) {
-        this.enqueue(queryRunner, TOPIC_ROLE_PERMISSION_CHANGED, {
-          roleIds: [groupRole.roleId],
         });
       }
       return;
@@ -204,11 +217,72 @@ export class IdentityCacheInvalidationSubscriber
     if (target === GroupMember) {
       const member = entity as Partial<GroupMember>;
       if (member.userId) {
-        this.enqueue(queryRunner, TOPIC_GROUP_MEMBERSHIP_CHANGED, {
+        this.enqueue(queryRunner, {
+          scope: 'identity',
           userIds: [member.userId],
           groupIds: member.groupId ? [member.groupId] : undefined,
         });
       }
+      return;
+    }
+
+    // permissions scope — role itself or role → permission mapping changed
+    if (target === Role) {
+      const role = entity as Partial<Role>;
+      if (role.id) {
+        this.enqueue(queryRunner, {
+          scope: 'permissions',
+          roleIds: [role.id],
+        });
+      }
+      return;
+    }
+
+    if (target === RolePermission) {
+      const rolePerm = entity as Partial<RolePermission>;
+      if (rolePerm.roleId) {
+        this.enqueue(queryRunner, {
+          scope: 'permissions',
+          roleIds: [rolePerm.roleId],
+        });
+      }
+      return;
+    }
+
+    if (target === GroupRole) {
+      // A group's role changing affects every user in the group. Consumers
+      // resolve the affected users from the role; we only carry the role IDs.
+      const groupRole = entity as Partial<GroupRole>;
+      if (groupRole.roleId) {
+        this.enqueue(queryRunner, {
+          scope: 'permissions',
+          roleIds: [groupRole.roleId],
+        });
+      }
+      return;
+    }
+
+    // acl scope — record-level or field-level rule changed
+    if (target === CollectionAccessRule) {
+      const rule = entity as Partial<CollectionAccessRule>;
+      this.enqueue(queryRunner, {
+        scope: 'acl',
+        collectionIds: rule.collectionId ? [rule.collectionId] : undefined,
+        roleIds: rule.roleId ? [rule.roleId] : undefined,
+      });
+      return;
+    }
+
+    if (target === PropertyAccessRule) {
+      const rule = entity as Partial<PropertyAccessRule>;
+      this.enqueue(queryRunner, {
+        scope: 'acl',
+        propertyIds: rule.propertyId ? [rule.propertyId] : undefined,
+        collectionIds: rule.wildcardCollectionId
+          ? [rule.wildcardCollectionId]
+          : undefined,
+        roleIds: rule.roleId ? [rule.roleId] : undefined,
+      });
       return;
     }
   }
@@ -220,11 +294,10 @@ export class IdentityCacheInvalidationSubscriber
    */
   private enqueue(
     queryRunner: QueryRunner,
-    topic: string,
-    payload: Record<string, unknown>,
+    payload: InvalidatePayload,
   ): void {
     if (!queryRunner?.isTransactionActive) {
-      this.publishNow(topic, payload);
+      this.publishNow(payload);
       return;
     }
 
@@ -233,7 +306,7 @@ export class IdentityCacheInvalidationSubscriber
       queue = [];
       this.pendingByQueryRunner.set(queryRunner, queue);
     }
-    queue.push({ topic, payload });
+    queue.push({ topic: TOPIC_PERMISSION_INVALIDATE, payload });
   }
 
   /**
@@ -241,20 +314,22 @@ export class IdentityCacheInvalidationSubscriber
    * semantics as the post-commit path: the caller's write has already
    * landed by the time this runs.
    */
-  private publishNow(topic: string, payload: Record<string, unknown>): void {
+  private publishNow(payload: InvalidatePayload): void {
     const publisher = IdentityCacheInvalidationSubscriber.publisher;
     if (!publisher) {
       IdentityCacheInvalidationSubscriber.logger.debug(
-        `Dropping ${topic} — event bus publisher not yet wired`,
+        `Dropping ${TOPIC_PERMISSION_INVALIDATE} — event bus publisher not yet wired`,
       );
       return;
     }
 
-    publisher.publish(topic, payload).catch((error: Error) => {
-      IdentityCacheInvalidationSubscriber.logger.error(
-        `Failed to publish ${topic}: ${error.message}`,
-        error.stack,
-      );
-    });
+    publisher
+      .publish(TOPIC_PERMISSION_INVALIDATE, payload)
+      .catch((error: Error) => {
+        IdentityCacheInvalidationSubscriber.logger.error(
+          `Failed to publish ${TOPIC_PERMISSION_INVALIDATE}: ${error.message}`,
+          error.stack,
+        );
+      });
   }
 }
