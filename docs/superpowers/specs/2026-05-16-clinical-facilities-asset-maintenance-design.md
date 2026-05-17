@@ -3650,11 +3650,205 @@ Pack consumers MUST call `StoragePresignService.requestUpload(...)` for uploads;
 
 ---
 
-### 13.14 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.14 Worked example: §3.13 Connector Runtime + Certified Simulators (full artifact-level spec — IntegrationAdapter SDK + fixture-replay conformance)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.13 cover §3.1 — §3.12; the remaining 6 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.14.1 Tables
 
-**Substrate (6 remaining sections — §3.1-§3.12 ✅):**
+Two new tables in `schema: 'integrations'` (NEW schema).
+
+**`integrations.integration_adapter_registry`** — per-instance enabled adapters.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `adapter_id` | `varchar(120)` | — | NOT NULL | UNIQUE per `(instance_id)`; canonical adapter identifier (e.g. `hl7v2`, `bacnet`, `obd2-telematics`, `nac-quarantine`) |
+| `adapter_version` | `varchar(32)` | — | NOT NULL | Semver; the registered build |
+| `mode` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{live, simulator}`; live = real integration; simulator = certified simulator stub |
+| `config_handle` | `text` | — | NOT NULL | Opaque reference into `integrations.integration_secret` (§3.18); never the secret value |
+| `conformance_declaration` | `jsonb` | — | NOT NULL | `{ operations: [{op_id, version}], fixture_set_id, hash_of_fixtures }` |
+| `last_health_check_at` | `timestamptz` | — | NULL | Stamped by `AdapterHealthCheckProcessor` |
+| `last_health_check_verdict` | `varchar(16)` | — | NULL | `ok` / `degraded` / `down` |
+| `enabled` | `boolean` | `true` | NOT NULL | Operator can disable without uninstalling |
+| `installed_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `installed_by_user_id` | `uuid` | — | NOT NULL | FK |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; UNIQUE `(instance_id, adapter_id)`; `ix_iar_health ON (last_health_check_verdict, last_health_check_at) WHERE enabled = true`.
+
+**`integrations.adapter_conformance_records`** — per-replay run pass/fail history.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `adapter_registry_id` | `uuid` | — | NOT NULL | FK → `integration_adapter_registry(id)` |
+| `fixture_set_id` | `varchar(120)` | — | NOT NULL | E.g. `hl7v2-adt-fixtures-v3`; canonical fixture bundle identifier |
+| `fixture_count` | `int` | — | NOT NULL | Number of fixtures in the bundle |
+| `passed_count` | `int` | — | NOT NULL | — |
+| `failed_count` | `int` | — | NOT NULL | — |
+| `results` | `jsonb` | — | NOT NULL | Per-fixture: `[{fixture_id, op_id, expected_hash, actual_hash, verdict}]` |
+| `replay_started_at` | `timestamptz` | — | NOT NULL | — |
+| `replay_finished_at` | `timestamptz` | — | NOT NULL | — |
+| `gate_acceptance_run` | `boolean` | `false` | NOT NULL | `true` when this replay was the gate-acceptance proof for a deploy/upgrade (immutable evidence) |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; `ix_acr_adapter ON (adapter_registry_id, replay_finished_at DESC)`; `ix_acr_gate ON (gate_acceptance_run, replay_finished_at DESC) WHERE gate_acceptance_run = true`.
+
+#### 13.14.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1939000000000-create-integrations-schema.ts` | `CREATE SCHEMA integrations;` |
+| 2 | `1939000000001-create-integration-adapter-registry.ts` | Table + indexes |
+| 3 | `1939000000002-create-adapter-conformance-records.ts` | Table + indexes |
+
+#### 13.14.3 Adapter SDK contract
+
+`libs/integration-adapter-sdk` (new package) exports:
+
+```typescript
+export interface IntegrationAdapter<TConfig, TPayload, TResult> {
+  readonly adapterId: string;            // e.g. 'hl7v2'
+  readonly adapterVersion: string;       // semver
+  readonly mode: 'live' | 'simulator';
+  readonly conformance: ConformanceDeclaration;
+
+  init(secretHandle: string, config: TConfig): Promise<void>;
+  healthCheck(): Promise<{ verdict: 'ok' | 'degraded' | 'down'; details?: Record<string, unknown> }>;
+  executeOperation(opId: string, payload: TPayload): Promise<TResult>;
+  shutdown(): Promise<void>;
+}
+
+export interface ConformanceDeclaration {
+  fixtureSetId: string;
+  operations: Array<{ opId: string; version: string }>;
+  fixturesPath: string;  // relative to adapter package root
+}
+```
+
+Every adapter ships in **two flavors**: a `<adapterId>-live` and `<adapterId>-simulator` package; both implement the same interface. The simulator's `conformance.fixtureSetId` declares which fixture bundle it conforms to.
+
+Fixture bundle format: `<adapter>/fixtures/<fixtureSetId>/<opId>/{request.json,expected_response.json}`. Bundle hash (SHA-256 of canonical bytes) stored in `conformance_declaration.hash_of_fixtures` so drift is detectable.
+
+#### 13.14.4 Services
+
+`apps/api/src/app/integrations/` (new module) + `apps/worker/src/integrations/` (new module).
+
+**`AdapterRegistryService`** — `apps/api/src/app/integrations/adapter-registry.service.ts`:
+
+```typescript
+register(input: RegisterAdapterRequest, ctx: UserRequestContext): Promise<AdapterRegistry>;
+setMode(adapterId: string, mode: 'live' | 'simulator', ctx: UserRequestContext): Promise<void>;
+enable(adapterId: string, ctx: UserRequestContext): Promise<void>;
+disable(adapterId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+list(filter: RegistryFilter, ctx: UserRequestContext): Promise<AdapterRegistry[]>;
+```
+
+`register(...)` flow:
+1. Authority: `integrations:adapter:install` permission (admin / Compliance Officer).
+2. Validate the requested `(adapterId, adapterVersion, mode)` matches a package available in the deployment's adapter manifest (a build-time-frozen list of supported adapters per release).
+3. Run an immediate conformance replay (PR-2 acceptance) — refuse registration if `failed_count > 0`.
+4. Initialize adapter via `adapter.init(secretHandle, config)`; refuse with structured error if `init` throws.
+5. Insert `integration_adapter_registry` row via `withAudit`; first health check fires immediately.
+
+`setMode(...)` switches an adapter between live and simulator. Switching is a significant operational event — emits high-severity audit row + page-on-call notification.
+
+**`ConformanceReplayService`** — runs the fixture replay loop:
+```typescript
+replay(adapterRegistryId: string, gateAcceptance: boolean, ctx: RequestContext): Promise<ConformanceRecord>;
+```
+1. Loads fixtures from `adapter.conformance.fixturesPath`.
+2. Verifies bundle hash matches `conformance_declaration.hash_of_fixtures`; mismatch → fixture-tampering error.
+3. For each fixture: calls `adapter.executeOperation(opId, request)` and compares the canonical hash of the response to `expected_response`'s canonical hash.
+4. Writes `adapter_conformance_records` row with full results.
+5. When `gateAcceptance=true`, the row is marked immutable (any UPDATE attempt fails via row-level trigger).
+
+**`AdapterHealthCheckProcessor`** — worker; scheduled every 60 seconds for each enabled adapter:
+1. Calls `adapter.healthCheck()` with a 5-second timeout.
+2. Updates `last_health_check_at` + `last_health_check_verdict`.
+3. Verdict transition `ok → degraded/down` emits RuntimeAnomaly.
+
+**`AdapterCallExecutor`** — the call surface every pack-side integration code uses:
+```typescript
+execute(adapterId: string, opId: string, payload: unknown): Promise<unknown>;
+```
+1. Resolves adapter from registry; refuses with 503 if `enabled=false` OR `last_health_check_verdict='down'`.
+2. Looks up the adapter's killswitch state (§3.18 link): if killed, refuses fail-closed.
+3. Logs the call (request shape, NOT raw secret) to `integrations.outbound_call_log` (§3.18 table).
+4. Calls `adapter.executeOperation(opId, payload)`.
+5. Returns result OR re-throws.
+
+#### 13.14.5 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/integrations/adapters` | `@RequirePermission('integrations:adapter:install')` | `{ adapterId, adapterVersion, mode, config }` |
+| `PATCH` | `/api/integrations/adapters/:id` | `@RequirePermission('integrations:adapter:configure')` | `{ mode?, enabled? }` |
+| `DELETE` | `/api/integrations/adapters/:id` | `@RequirePermission('integrations:adapter:uninstall')` | `{ reason }` |
+| `GET` | `/api/integrations/adapters` | `@RequirePermission('integrations:adapter:read')` | — |
+| `POST` | `/api/integrations/adapters/:id/replay-conformance` | `@RequirePermission('integrations:adapter:replay')` | `{ gateAcceptance? }` |
+| `GET` | `/api/integrations/adapters/:id/conformance-records` | `@RequirePermission('integrations:adapter:read')` | — |
+| `GET` | `/api/integrations/adapters/:id/health` | `@RequirePermission('integrations:adapter:read')` | — |
+
+New permission codes:
+- `integrations:adapter:install` (`dangerous: true`)
+- `integrations:adapter:configure`
+- `integrations:adapter:uninstall` (`dangerous: true`)
+- `integrations:adapter:read`
+- `integrations:adapter:replay`
+
+#### 13.14.6 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G14.1** — Pack manifest `integrations[]` MUST declare required `adapter_id` + `minimum_conformance_version`. Error: `MISSING_ADAPTER_DEPENDENCY`.
+2. **G14.2** — At install time, each declared adapter MUST have a registered row with `enabled=true` AND `conformance_declaration.fixture_set_id` ≥ pack's `minimum_conformance_version`. Error: `ADAPTER_NOT_AVAILABLE` (install-time, not publish-time).
+3. **G14.3** — Pack code-path calls to `AdapterCallExecutor.execute(adapterId, ...)` MUST use only `adapterId` values declared in the pack's `integrations[]`. Error: `UNDECLARED_ADAPTER_USAGE` (catches packs that try to use platform-shared adapters they didn't declare).
+
+#### 13.14.7 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `AdapterRegistry` | `AdapterRegistryService.*`, `AdapterHealthCheckProcessor.updateHealth` |
+| `ConformanceRecord` | `ConformanceReplayService.replay` |
+
+Additionally: `tools/integration-call-check.ts` (NEW scanner) — grep pack code for direct adapter package imports; require all integration calls to flow through `AdapterCallExecutor.execute`. Direct import of an adapter package outside `apps/api/src/app/integrations/**` fails CI.
+
+#### 13.14.8 Tests (self-test ≥ 12 assertions)
+
+1. **`adapter-register-with-conformance.spec.ts`** — register `hl7v2-simulator`; conformance replay passes all fixtures; row created with healthy verdict.
+2. **`adapter-register-conformance-fail.spec.ts`** — register with broken fixture set (one expected_response edited); replay fails; registration refused; no row created.
+3. **`adapter-fixture-hash-tamper.spec.ts`** — fixture bundle hash on disk does NOT match `conformance_declaration.hash_of_fixtures`; replay refuses with `FIXTURE_BUNDLE_TAMPERED`.
+4. **`adapter-set-mode-live-to-sim.spec.ts`** — switch mode live→simulator; high-severity audit row written; subsequent calls go through simulator.
+5. **`adapter-health-check-degraded.spec.ts`** — simulator returns `verdict='degraded'`; health check stamps row; RuntimeAnomaly emitted on first degraded transition.
+6. **`adapter-call-routed.spec.ts`** — `AdapterCallExecutor.execute('hl7v2', 'ADT-A08', payload)` → call routed to active adapter; result returned; `outbound_call_log` row written.
+7. **`adapter-killswitch-fail-closed.spec.ts`** — flip §3.18 killswitch; subsequent `execute()` calls refuse with 503; no adapter code invoked.
+8. **`adapter-down-fail-closed.spec.ts`** — adapter health `down`; `execute()` refuses fail-closed.
+9. **`adapter-pack-undeclared-usage.spec.ts`** — pack calls `execute('hl7v2', ...)` without declaring `hl7v2` in its manifest; scanner G14.3 fails CI.
+10. **`adapter-pack-install-missing-adapter.spec.ts`** — pack with `integrations: [{adapter_id: 'hl7v2', minimum_conformance_version: 'v3'}]`; instance has no `hl7v2` registered; pack install refused.
+11. **`adapter-gate-acceptance-immutable.spec.ts`** — conformance record with `gate_acceptance_run=true` cannot be modified; UPDATE attempt fails via trigger.
+12. **`adapter-direct-import-scanner.spec.ts`** — pack code imports `@hubblewave/hl7v2-live` directly (bypassing AdapterCallExecutor); scanner fails CI.
+
+#### 13.14.9 PR breakdown for §3.13
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + tables + entities + SDK package + `AdapterRegistryService.register/list` + tests 1, 2, 3 | Migrations 1-3; `libs/integration-adapter-sdk/**`; `apps/api/src/app/integrations/adapter-registry.service.ts`; canonical hash helper | Registration validates conformance; tampered fixtures refused |
+| 2 | `ConformanceReplayService` + replay endpoint + gate-acceptance immutability + test 11 | `apps/api/src/app/integrations/conformance-replay.service.ts`; replay controller; immutable trigger | Replay round-trips; gate-acceptance rows immutable |
+| 3 | `AdapterHealthCheckProcessor` + health endpoint + tests 5, 8 | `apps/worker/src/integrations/health-check.processor.ts`; SchedulingModule wire; RuntimeAnomaly hook | Healthy + degraded + down all stamped; alert emitted on transition |
+| 4 | `AdapterCallExecutor` + outbound_call_log wire + tests 6, 7 | `apps/api/src/app/integrations/adapter-call-executor.ts`; §3.18 outbound_call_log dependency stub | Calls routed; killswitch fail-closed |
+| 5 | Mode-switch endpoint + setMode + tests 4 + canon §39 amendment + validator G14.1-G14.2 | `apps/api/src/app/integrations/mode-switch.controller.ts`; pack-validator extension; CLAUDE.md amendment | Mode flip emits audit + alert; pack install enforces adapter availability |
+| 6 | Service-boundary scanner extension + `integration-call-check.ts` NEW scanner + tests 9, 10, 12 | `tools/integration-call-check.ts` + self-test; G14.3 validator | Undeclared adapter usage fails; direct adapter import fails; scanner CI-gated |
+
+**Total: 6 PRs for §3.13. Estimated effort: ~11-14 working days. (Tracker said 5 PRs; final estimate is 6 once mode-switch + validator gates were broken out.)**
+
+---
+
+### 13.15 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.14 cover §3.1 — §3.13; the remaining 5 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (5 remaining sections — §3.1-§3.13 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -3667,7 +3861,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.10 break-glass override — §13.11 (4 PRs)
 - ✅ §3.11 external-collaborator sessions — §13.12 (5 PRs)
 - ✅ §3.12 Storage / Evidence Attachment runtime — §13.13 (6 PRs)
-- §3.13 Connector runtime + simulators (5 PRs)
+- ✅ §3.13 Connector runtime + simulators — §13.14 (6 PRs)
 - §3.14 Semantic Search / Vector Match (4 PRs)
 - §3.15 Spatial + Relationship Graph (5 PRs)
 - §3.16 Financial Control primitive (5 PRs)
@@ -3688,7 +3882,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.15 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.16 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3709,7 +3903,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.16 What's left to do BEFORE code starts
+### 13.17 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
