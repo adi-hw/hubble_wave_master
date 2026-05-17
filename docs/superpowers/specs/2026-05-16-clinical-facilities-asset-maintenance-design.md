@@ -2121,19 +2121,419 @@ Rollup-refresh lag visible in `task_projection_lag`-equivalent operational table
 
 ---
 
-### 13.7 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.7 Worked example: §3.6 Regulated-Action Primitives (full artifact-level spec — e-signature + Merkle batch + Part 11 envelope)
 
-Per user direction, all implementation detail is inline in this single mega-spec. The §13.2 / §13.3 worked examples cover §3.1 + §3.2; the remaining 16 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.7.1 Tables
 
-**Substrate (16 remaining sections — §3.1 ✅ §13.2; §3.2 ✅ §13.3):**
+All tables live in `schema: 'compliance'` (NEW dedicated schema). Five tables: `reason_codes`, `electronic_signatures`, `signature_chains`, `evidence_artifacts`, `attestation_jobs`. The platform never deletes from `signature_chains`, `electronic_signatures`, or `evidence_artifacts` — 7-year retention via active/archive partitioning per canon §34.
+
+**`compliance.reason_codes`** — seeded vocabulary; one row per pack-scoped reason.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE; pack-owned rows MUST be `<pack-id>__<slug>` (validator-enforced) |
+| `label` | `text` | — | NOT NULL | Human-readable, locale-keyed by `label_locale` |
+| `label_locale` | `varchar(16)` | `'en-US'` | NOT NULL | IETF BCP-47 |
+| `category` | `varchar(64)` | — | NOT NULL | `maintenance` / `safety` / `clinical` / `compliance` / `financial` / `regulatory` |
+| `pack_id` | `text` | — | NULL | NULL = platform-default; else the pack that seeded it |
+| `applicable_signature_meanings` | `varchar(64)[]` | `'{}'::varchar[]` | NOT NULL | Subset of `{review, approval, responsibility, verification, closure}` — validator-enforced |
+| `description` | `text` | — | NULL | Free-form auditor-facing explanation |
+| `is_active` | `boolean` | `true` | NOT NULL | Deactivation does NOT cascade — historical signatures keep the reference |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; UNIQUE `(code)`; `ix_reason_pack ON (pack_id, is_active)`; `ix_reason_category ON (category)`.
+
+**`compliance.electronic_signatures`** — one row per signed action (whether single or part of a batch).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | NULL in single-tenant mode (canon §5); NOT NULL in pooled mode (RLS enforces) |
+| `collection_id` | `uuid` | — | NOT NULL | FK → `metadata.collection_definitions(id)` |
+| `record_id` | `uuid` | — | NOT NULL | The signed record |
+| `signer_user_id` | `uuid` | — | NOT NULL | FK → `identity.users(id)` |
+| `signer_display_name_at_sign_time` | `text` | — | NOT NULL | Snapshot — see §3.6 leaf-tuple rationale; replay must not depend on current `users.display_name` |
+| `signer_login_at_sign_time` | `text` | — | NOT NULL | Snapshot |
+| `signed_at_utc` | `timestamptz` | `now()` | NOT NULL | Server clock; client clock is informational only |
+| `action_code` | `text` | — | NOT NULL | Pack-defined action vocabulary (e.g., `clinical-pm-completed`, `loto-step-2-verified`) |
+| `signature_meaning` | `varchar(64)` | — | NOT NULL | CHECK ∈ `{review, approval, responsibility, verification, closure}` |
+| `reason_code_id` | `uuid` | — | NOT NULL | FK → `reason_codes(id)`; must be active at sign-time AND its `applicable_signature_meanings` must include `signature_meaning` |
+| `reauth_method` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{session, totp, webauthn}` |
+| `reauth_evidence_ref` | `uuid` | — | NULL | FK → `identity.mfa_methods(id)` or `identity.webauthn_credentials(id)` disambiguated by `reauth_method`; NULL only when `reauth_method = 'session'` |
+| `payload_hash` | `bytea` | — | NOT NULL | 32 bytes — SHA-256 of canonical action payload (record snapshot being signed) |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `identity.audit_logs(id)`; binds e-signature to canon §10 audit chain |
+| `chain_entry_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `signature_chains(id)`; corresponding row in compliance chain |
+| `merkle_root_chain_entry_id` | `uuid` | — | NULL | When part of a Merkle batch, references the `signature_chains` row whose `entry_kind = 'merkle_root'`; for single-action signatures equals `chain_entry_id` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_es_record ON (collection_id, record_id, signed_at_utc DESC)`; `ix_es_signer ON (signer_user_id, signed_at_utc DESC)`; UNIQUE `(audit_log_id)`; UNIQUE `(chain_entry_id)`; `ix_es_merkle_root ON (merkle_root_chain_entry_id) WHERE merkle_root_chain_entry_id IS NOT NULL`.
+
+CHECK constraint: `(reauth_method = 'session') = (reauth_evidence_ref IS NULL)`.
+
+**`compliance.signature_chains`** — append-only hash-linked ledger; parallel to `identity.audit_logs` chain; linked via `electronic_signatures.audit_log_id`.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture as `electronic_signatures.instance_id` |
+| `entry_kind` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{signature, merkle_root}` |
+| `previous_hash` | `bytea` | — | NULL | 32 bytes; NULL only for the genesis row per instance |
+| `hash` | `bytea` | — | NOT NULL | 32 bytes; SHA-256 of `previous_hash \|\| canonical_payload_bytes` |
+| `payload` | `jsonb` | — | NOT NULL | For `signature`: canonical leaf tuple as JSON. For `merkle_root`: `{ algorithm: 'merkle-sha256', leaf_count, root_hash_hex, tree_depth, leaves: [{electronic_signature_id, leaf_hash_hex}] }` |
+| `signature_id` | `uuid` | — | NULL | FK → `electronic_signatures(id)` when `entry_kind = 'signature'`; NULL when `merkle_root` |
+| `merkle_root_hash` | `bytea` | — | NULL | 32 bytes when `entry_kind = 'merkle_root'` |
+| `merkle_leaf_count` | `smallint` | — | NULL | 1..256 when `entry_kind = 'merkle_root'`; CHECK `merkle_leaf_count BETWEEN 1 AND 256` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_sc_created ON (created_at)`; UNIQUE `(signature_id) WHERE signature_id IS NOT NULL`; `ix_sc_kind_created ON (entry_kind, created_at)`.
+
+CHECK constraints:
+- `(entry_kind = 'signature') = (signature_id IS NOT NULL)`
+- `(entry_kind = 'merkle_root') = (merkle_root_hash IS NOT NULL AND merkle_leaf_count IS NOT NULL)`
+
+Subscriber: `SignatureChainSubscriber` (modeled on `AuditLogSubscriber`) acquires `pg_advisory_xact_lock(hashtext('compliance.signature_chains'))` per insert; reads the latest row in the same transaction; computes `previous_hash` and `hash`; rejects array saves at the entity level — `withAudit(...)` flushes signature_chains rows individually per Plan Fix 41.
+
+**`compliance.evidence_artifacts`** — immutable evidence (photos, signature images, PDFs, sensor captures, voice notes).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `collection_id` | `uuid` | — | NOT NULL | FK |
+| `record_id` | `uuid` | — | NOT NULL | The record this artifact evidences |
+| `artifact_kind` | `varchar(64)` | — | NOT NULL | `photo` / `signature_image` / `pdf_export` / `sensor_capture` / `voice_note` / `nameplate_ocr` / `barcode_scan` |
+| `storage_uri` | `text` | — | NOT NULL | `s3://bucket/instance/{instance_id}/evidence/{yyyy/mm/dd}/{object-id}` |
+| `s3_object_version_id` | `text` | — | NOT NULL | Object Lock version anchor (immutable per version) |
+| `s3_retention_mode` | `varchar(16)` | `'COMPLIANCE'` | NOT NULL | CHECK ∈ `{COMPLIANCE, GOVERNANCE}`; COMPLIANCE is the platform default per founder decision 2026-05-17 |
+| `sha256` | `bytea` | — | NOT NULL | 32 bytes; content hash for tamper detection |
+| `content_type` | `varchar(128)` | — | NOT NULL | RFC 6838 |
+| `size_bytes` | `bigint` | — | NOT NULL | — |
+| `captured_at` | `timestamptz` | — | NOT NULL | Device clock at capture (may precede `created_at` for offline-then-sync) |
+| `captured_by` | `uuid` | — | NOT NULL | FK → `identity.users(id)` |
+| `device_meta` | `jsonb` | `'{}'::jsonb` | NOT NULL | `{ make, model, os, app_version, location: {lat,lng,accuracy_m}, timezone, time_anchor }` |
+| `retention_class` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{part_11_clinical, sox, osha, iso_55000, joint_commission, default_7y}` |
+| `retention_until` | `timestamptz` | — | NOT NULL | Computed from `captured_at + retention_class.duration`; never < `captured_at + 7 years` |
+| `legal_hold` | `boolean` | `false` | NOT NULL | When true, retention sweep MUST NOT delete regardless of `retention_until` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `identity.audit_logs(id)` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_ev_record ON (collection_id, record_id, captured_at DESC)`; `ix_ev_retention ON (retention_until) WHERE legal_hold = false`; UNIQUE `(audit_log_id)`; `ix_ev_legal_hold ON (id) WHERE legal_hold = true` (partial — small cardinality); GIN `ix_ev_device_meta ON (device_meta jsonb_path_ops)`.
+
+**`compliance.attestation_jobs`** — async export tracking for Part 11 attestation bundles.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `requested_by` | `uuid` | — | NOT NULL | FK → `identity.users(id)` |
+| `target_kind` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{record, collection_slice, date_range}` |
+| `target_collection_id` | `uuid` | — | NULL | NOT NULL when `target_kind ∈ {record, collection_slice}` (CHECK) |
+| `target_record_id` | `uuid` | — | NULL | NOT NULL when `target_kind = record` (CHECK) |
+| `target_filter` | `jsonb` | — | NULL | For `collection_slice` / `date_range` — canonical filter expression |
+| `status` | `varchar(16)` | `'queued'` | NOT NULL | CHECK ∈ `{queued, running, completed, failed, expired}` |
+| `requested_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `started_at` | `timestamptz` | — | NULL | Set when worker picks up |
+| `completed_at` | `timestamptz` | — | NULL | — |
+| `expires_at` | `timestamptz` | — | NOT NULL | `requested_at + 7 days` — signed URLs expire then; bundle objects deleted on expiry |
+| `pdf_storage_uri` | `text` | — | NULL | Set when status transitions to `completed` |
+| `json_storage_uri` | `text` | — | NULL | — |
+| `manifest_storage_uri` | `text` | — | NULL | S3 manifest enumerating every referenced evidence artifact + signed-URL TTL |
+| `error_message` | `text` | — | NULL | Populated on `failed` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; `ix_attest_requested_by ON (requested_by, requested_at DESC)`; `ix_attest_status ON (status, expires_at)`; UNIQUE `(audit_log_id)`.
+
+#### 13.7.2 Partitioning strategy
+
+- `compliance.signature_chains` — RANGE partition by `created_at`, yearly, native partitioning. `signature_chains_active_YYYY` is the current write target; once `now() - INTERVAL '13 months'`, partition flips to `signature_chains_archive_YYYY` (READ ONLY via revocation of INSERT/UPDATE/DELETE from runtime roles). Never DROP.
+- `compliance.electronic_signatures` — RANGE partition by `signed_at_utc`, yearly, same policy.
+- `compliance.evidence_artifacts` — RANGE partition by `captured_at`, yearly, same policy. Evidence whose `retention_until > partition_max_date` AND `legal_hold = false` does NOT prevent partition flip-to-archive (archive is read-only, NOT delete). Object Lock on S3 enforces the binding storage-side guarantee.
+- `compliance.reason_codes` — single table; small cardinality.
+- `compliance.attestation_jobs` — single table; rows pruned by `expires_at + 30 days` retention sweep (the job rows themselves expire; bundles they generated have their own retention via `evidence_artifacts` linkage).
+
+pg_partman is NOT used here — yearly partitions are infrequent enough that explicit per-year migration files are tractable and auditable (pg_partman config drift is a known auditor objection in regulated industries).
+
+#### 13.7.3 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1932000000000-create-compliance-schema.ts` | `CREATE SCHEMA compliance; CREATE EXTENSION IF NOT EXISTS pgcrypto;` |
+| 2 | `1932000000001-create-reason-codes.ts` | Table + indexes; trigger for `updated_at` |
+| 3 | `1932000000002-create-electronic-signatures.ts` | Table + partition skeleton (`PARTITION BY RANGE (signed_at_utc)`) + indexes via `createIndexConcurrent` |
+| 4 | `1932000000003-create-signature-chains.ts` | Table + partition skeleton + indexes; `SignatureChainSubscriber` registration follows in entity wiring |
+| 5 | `1932000000004-create-evidence-artifacts.ts` | Table + partition skeleton + indexes |
+| 6 | `1932000000005-create-attestation-jobs.ts` | Table + indexes |
+| 7 | `1932000000006-partition-compliance-tables-current-year.ts` | Create concrete partitions for current + next year for `signature_chains`, `electronic_signatures`, `evidence_artifacts` |
+| 8 | `1932000000007-seed-platform-reason-codes.ts` | Seed ~12 platform-default reason codes (`platform__close_corrective`, `platform__break_glass_phi_access`, `platform__contractor_signoff`, etc.) |
+
+All migrations: `static transaction = false` where `CREATE INDEX CONCURRENTLY` is used (per W6.A `createIndexConcurrent`); `migrationsTransactionMode='each'` honored.
+
+#### 13.7.4 TypeORM entities
+
+`libs/instance-db/src/lib/entities/compliance.ts` (new file under the W6.A entity area split):
+
+```typescript
+@Entity({ schema: 'compliance', name: 'reason_codes' })
+export class ReasonCode {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ length: 120, unique: true }) code!: string;
+  @Column({ type: 'text' }) label!: string;
+  @Column({ length: 16, default: 'en-US' }) labelLocale!: string;
+  @Column({ length: 64 }) category!: string;
+  @Column({ type: 'text', nullable: true }) packId!: string | null;
+  @Column({ type: 'varchar', length: 64, array: true, default: () => "'{}'" })
+  applicableSignatureMeanings!: SignatureMeaning[];
+  @Column({ type: 'text', nullable: true }) description!: string | null;
+  @Column({ default: true }) isActive!: boolean;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ type: 'timestamptz' }) updatedAt!: Date;
+}
+
+@Entity({ schema: 'compliance', name: 'electronic_signatures' })
+export class ElectronicSignature {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid', nullable: true }) instanceId!: string | null;
+  @Column({ type: 'uuid' }) collectionId!: string;
+  @Column({ type: 'uuid' }) recordId!: string;
+  @Column({ type: 'uuid' }) signerUserId!: string;
+  @Column({ type: 'text' }) signerDisplayNameAtSignTime!: string;
+  @Column({ type: 'text' }) signerLoginAtSignTime!: string;
+  @Column({ type: 'timestamptz' }) signedAtUtc!: Date;
+  @Column({ type: 'text' }) actionCode!: string;
+  @Column({ type: 'varchar', length: 64 }) signatureMeaning!: SignatureMeaning;
+  @Column({ type: 'uuid' }) reasonCodeId!: string;
+  @Column({ type: 'varchar', length: 16 }) reauthMethod!: 'session' | 'totp' | 'webauthn';
+  @Column({ type: 'uuid', nullable: true }) reauthEvidenceRef!: string | null;
+  @Column({ type: 'bytea' }) payloadHash!: Buffer;
+  @Column({ type: 'uuid' }) auditLogId!: string;
+  @Column({ type: 'uuid' }) chainEntryId!: string;
+  @Column({ type: 'uuid', nullable: true }) merkleRootChainEntryId!: string | null;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
+}
+
+@Entity({ schema: 'compliance', name: 'signature_chains' })
+export class SignatureChainEntry {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid', nullable: true }) instanceId!: string | null;
+  @Column({ type: 'varchar', length: 16 }) entryKind!: 'signature' | 'merkle_root';
+  @Column({ type: 'bytea', nullable: true }) previousHash!: Buffer | null;
+  @Column({ type: 'bytea' }) hash!: Buffer;
+  @Column({ type: 'jsonb' }) payload!: Record<string, unknown>;
+  @Column({ type: 'uuid', nullable: true }) signatureId!: string | null;
+  @Column({ type: 'bytea', nullable: true }) merkleRootHash!: Buffer | null;
+  @Column({ type: 'smallint', nullable: true }) merkleLeafCount!: number | null;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
+}
+
+@Entity({ schema: 'compliance', name: 'evidence_artifacts' })
+export class EvidenceArtifact { /* parallel structure; columns per §13.7.1 */ }
+
+@Entity({ schema: 'compliance', name: 'attestation_jobs' })
+export class AttestationJob { /* parallel structure; columns per §13.7.1 */ }
+
+export type SignatureMeaning = 'review' | 'approval' | 'responsibility' | 'verification' | 'closure';
+```
+
+The `compliance` area file is added to `libs/instance-db/src/lib/entities/index.ts` per the W6.A area-split barrel pattern (Plan Fix 24 PR-A).
+
+#### 13.7.5 Services
+
+`apps/api/src/app/compliance/` (new module).
+
+**`SignatureService`** — `apps/api/src/app/compliance/signature/signature.service.ts`:
+
+```typescript
+sign(input: SignRequest, requestContext: UserRequestContext): Promise<SignatureResult>;
+listForRecord(collectionId: string, recordId: string, ctx: UserRequestContext): Promise<ElectronicSignature[]>;
+verifyChainExtension(signatureId: string, ctx: UserRequestContext): Promise<ChainVerificationResult>;
+```
+
+Contract for `sign(...)`:
+1. Resolve authority via `AuthorizationService.canPerformAction(actionCode, collectionId, recordId, ctx)` — must return `allow`. 403 with canon §28 minimal shape on deny; `AccessAuditPort.logAccessDenied` row written.
+2. Resolve re-auth requirement via `signatureMeaningPolicy(signatureMeaning)` (founder-locked matrix, §13.7.5.1).
+3. Validate presented re-auth proof matches requirement:
+   - `session`: ensure session idle < 5 minutes (compare `session.last_activity_at` to `now()`).
+   - `totp`: validate the presented code via `TotpService.verify(userId, code)` — code from the last 30s window.
+   - `webauthn`: validate the presented assertion via `WebAuthnService.verifyAssertion(userId, assertion)` — assertion timestamp within 60s.
+4. Validate `reason_code_id` is active AND `signatureMeaning ∈ reasonCode.applicableSignatureMeanings`. 400 with structured error on violation.
+5. Compute canonical payload bytes from the action payload (record snapshot at sign-time) and SHA-256 it → `payload_hash`.
+6. Inside `withAudit(dataSource, async () => { ... })`:
+   - Insert `electronic_signatures` row (pre-generate `chainEntryId` UUID).
+   - Insert `signature_chains` row with `entry_kind = 'signature'`, `signature_id = electronic_signature.id`. `SignatureChainSubscriber` populates `previous_hash` + `hash` under advisory lock.
+   - Audit log entry written by `withAudit`.
+7. Return `{ signatureId, chainEntryId, hash, signedAt, auditLogId }`.
+
+**`MerkleBatchService`** — `apps/api/src/app/compliance/signature/merkle-batch.service.ts`:
+
+```typescript
+batchSign(input: BatchSignRequest, requestContext: UserRequestContext): Promise<BatchSignResult>;
+```
+
+Contract for `batchSign(...)`:
+1. Validate `input.actions.length ≤ 256` — 400 with structured error `MERKLE_BATCH_CAP_EXCEEDED` if violated. The 256-leaf cap is founder-locked (2026-05-17) to bound tree depth (log2 = 8) and keep auditor verification predictable.
+2. Validate every action's `signatureMeaning` resolves to the SAME re-auth tier (e.g., all `closure` or all `review`); mixed-tier batches rejected with `MERKLE_BATCH_MIXED_MEANING`. Re-auth happens ONCE for the batch; meaning establishes the re-auth bar.
+3. Resolve authority + reason-code validation per-action (§13.7.5 step 1+4 applied N times). Any per-action failure rejects the whole batch — partial commits forbidden.
+4. Build canonical leaf bytes per action: concatenation `signer_user_id || signer_display_name_at_sign_time || signer_login_at_sign_time || signed_at_utc || action_code || target_collection_id || target_record_id || reason_code_id || signature_meaning || payload_hash`. All UTF-8 NFC-normalized; separators are the 0x1F (US) ASCII byte; `signed_at_utc` serialized as RFC 3339 with `Z` suffix.
+5. SHA-256 over each leaf → `leaf_hash`.
+6. Build Merkle tree (binary, balanced; pad odd levels by duplicating the last node). `root_hash` = root of tree.
+7. Inside `withAudit(...)`:
+   - For each action: insert `electronic_signatures` row carrying `merkle_root_chain_entry_id` pointing to the merkle_root row (created next).
+   - Emit ONE `signature_chains` row with `entry_kind = 'merkle_root'` and `payload.leaves[]` carrying per-leaf hashes. ALL N actions' `chain_entry_id` AND `merkle_root_chain_entry_id` point to this single merkle_root row — the merkle_root IS the chain extension for the batch. Root hash binds every leaf cryptographically; per-leaf chain rows are intentionally elided.
+   - The merkle_root insert is preceded by the comment marker `// @AuditMerkleBatchInsert` so `audit-bypass-check.ts` recognizes the batched-leaves payload as allowed (§13.7.8).
+   - Audit log entry per the entire batch (one row).
+8. Return `{ signatures: [{id, leafHashHex}], rootChainEntryId, rootHashHex, signedAt, auditLogId }`.
+
+**`ReasonCodeService`** — standard CRUD with validator hooks; pack installer calls `seedPackReasonCodes(packId, definitions)` during pack install.
+
+**`EvidenceArtifactService`** — `apps/api/src/app/compliance/evidence/evidence-artifact.service.ts`:
+
+```typescript
+attach(input: AttachEvidenceRequest, ctx: UserRequestContext): Promise<EvidenceArtifact>;
+fetchSignedDownloadUrl(artifactId: string, ttlSeconds: number, ctx: UserRequestContext): Promise<string>;
+applyLegalHold(artifactId: string, reasonText: string, ctx: UserRequestContext): Promise<void>;
+releaseLegalHold(artifactId: string, reasonText: string, ctx: UserRequestContext): Promise<void>;
+```
+
+`attach(...)` flow: multipart upload → S3 `PutObject` with `ObjectLockMode='COMPLIANCE'`, `ObjectLockRetainUntilDate=retention_until`, `ChecksumSHA256` set; verify returned `VersionId`; compute server-side SHA-256 of the response body and compare to the request SHA-256 (defense-in-depth against in-flight tamper); insert `evidence_artifacts` row via `withAudit(...)`.
+
+`applyLegalHold(...)` / `releaseLegalHold(...)` use S3 `PutObjectLegalHold` in addition to the `legal_hold` column flip; the operation order — S3 first, then DB row commit — means S3 leads truth on failure (DB rollback after S3 success is a known divergence; reconciliation sweep runs nightly). `releaseLegalHold` writes a high-severity audit row via `AccessAuditPort.logSecurityEvent({ severity: 'high', kind: 'legal_hold_released', ... })`.
+
+**`Part11AttestationService`** — `apps/api/src/app/compliance/attestation/attestation.service.ts` (API side; export work runs in `apps/worker`):
+
+```typescript
+enqueueExport(input: AttestationExportRequest, ctx: UserRequestContext): Promise<{ jobId: string }>;
+status(jobId: string, ctx: UserRequestContext): Promise<AttestationJobStatus>;
+```
+
+Worker side (`apps/worker/src/compliance/attestation-export.processor.ts`): on BullMQ job pickup, walks the target's signature chain + evidence artifacts; renders a PDF via pdfkit (auditor-readable layout); writes a JSON canonical export including chain proof (every `signature_chains.hash` replayable from `payload + previous_hash`); writes an S3 manifest enumerating evidence artifact storage URIs with 7-day signed URLs. All three artifacts written to S3 with `COMPLIANCE` retention. Job row transitions `queued → running → completed`. The bundle itself is registered as a recursive `evidence_artifact` so its own integrity is auditable.
+
+##### 13.7.5.1 Signature meaning re-auth policy (founder-locked 2026-05-17)
+
+| `signature_meaning` | Required re-auth method | Freshness window |
+|---|---|---|
+| `review` | `session` (idle < 5 min) | session token still valid |
+| `approval` | `totp` OR `webauthn` | code/assertion < 60s old |
+| `responsibility` | `webauthn` | assertion < 60s old |
+| `verification` | `webauthn` | assertion < 60s old |
+| `closure` | `webauthn` | assertion < 60s old |
+
+Hard-coded in `SignatureService.signatureMeaningPolicy` constant; NOT runtime-configurable per pack. Founder-locked because the matrix maps to FDA inspection expectations — a customer-tunable matrix is a compliance-defense liability. Reflected in §13.7.9 test #2.
+
+#### 13.7.6 API endpoints
+
+All endpoints under `apps/api/src/app/compliance/`. Every handler carries exactly one primary boundary decorator per W2 Stream 3 (`@RequirePermission` OR `@RequireCollectionAccess` OR `@AuthenticatedOnly`). All permission codes added to `libs/permission-registry`.
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/compliance/signatures` | `@RequirePermission('compliance:signature:sign')` | `{ collectionId, recordId, actionCode, signatureMeaning, reasonCodeId, reauthMethod, reauthProof, payloadSnapshot }` |
+| `POST` | `/api/compliance/signatures/batch` | `@RequirePermission('compliance:signature:sign')` | `{ actions: [...same as single...] }` (length ≤ 256) |
+| `GET` | `/api/compliance/signatures/:id` | `@RequirePermission('compliance:signature:read')` | — |
+| `GET` | `/api/compliance/records/:collectionId/:recordId/signatures` | `@RequireCollectionAccess('read')` | — |
+| `POST` | `/api/compliance/signatures/:id/verify` | `@RequirePermission('compliance:signature:read')` | — returns chain replay result |
+| `GET` | `/api/compliance/reason-codes` | `@AuthenticatedOnly()` | query: `meaning`, `packId`, `category` |
+| `POST` | `/api/compliance/reason-codes` | `@RequirePermission('compliance:reason_code:manage')` | admin / pack-installer path |
+| `POST` | `/api/compliance/evidence` | `@RequirePermission('compliance:evidence:attach')` | multipart with `record`, `metadata` JSON part |
+| `GET` | `/api/compliance/evidence/:id` | `@RequireCollectionAccess('read')` (resolved via artifact's record) | — returns metadata + 60s signed URL |
+| `POST` | `/api/compliance/evidence/:id/legal-hold` | `@RequirePermission('compliance:legal_hold:apply')` | `{ reasonText }` |
+| `DELETE` | `/api/compliance/evidence/:id/legal-hold` | `@RequirePermission('compliance:legal_hold:release')` | `{ reasonText }` |
+| `POST` | `/api/compliance/attestations` | `@RequirePermission('compliance:attestation:export')` | `{ targetKind, targetCollectionId?, targetRecordId?, targetFilter? }` returns 202 `{ jobId }` |
+| `GET` | `/api/compliance/attestations/:id` | `@RequirePermission('compliance:attestation:export')` | — |
+
+Permission codes added to `PERMISSION_REGISTRY` (W2 Stream 2 PR3 vocabulary):
+- `compliance:signature:sign`, `compliance:signature:read`
+- `compliance:reason_code:manage`
+- `compliance:evidence:attach`
+- `compliance:legal_hold:apply` (dangerous: false)
+- `compliance:legal_hold:release` (dangerous: true)
+- `compliance:attestation:export`
+
+#### 13.7.7 Validator extensions
+
+Pack validator (`libs/pack-validator`) gains 5 publish gates:
+
+1. **G7.1** — Any collection with `taskable.requires_signature = true` MUST have at least one reason_code seeded by the pack whose `applicable_signature_meanings` includes the collection's declared `closure_signature_meaning`. Error: `MISSING_REASON_CODE_FOR_CLOSURE_SIGNATURE`.
+2. **G7.2** — Every pack-owned `reason_codes.code` MUST match regex `^${packId}__[a-z0-9_]+$`. Error: `REASON_CODE_NAMESPACE_VIOLATION`.
+3. **G7.3** — Every `applicable_signature_meanings[]` value MUST be in the canonical enum `{review, approval, responsibility, verification, closure}`. Error: `INVALID_SIGNATURE_MEANING`.
+4. **G7.4** — Pack workflows referencing a `reason_code_id` MUST reference one seeded by THAT pack OR by `platform__*`. Cross-pack reason-code references rejected. Error: `CROSS_PACK_REASON_CODE_REFERENCE`.
+5. **G7.5** — `evidence_artifacts.retention_class` referenced by pack collections MUST be in the canonical enum. Error: `INVALID_RETENTION_CLASS`.
+
+#### 13.7.8 Service-boundary scanner rules
+
+`tools/service-boundary-check.ts` `KNOWN_WRITES` table gains:
+
+| Entity | Allowed writers |
+|---|---|
+| `ElectronicSignature` | `SignatureService.sign`, `MerkleBatchService.batchSign` |
+| `SignatureChainEntry` | `SignatureService.sign`, `MerkleBatchService.batchSign` |
+| `ReasonCode` | `ReasonCodeService.*`, `PackInstaller.seedPackReasonCodes` |
+| `EvidenceArtifact` | `EvidenceArtifactService.*`, `RetentionSweepService.markExpired` |
+| `AttestationJob` | `Part11AttestationService.enqueueExport`, `AttestationExportProcessor.process` |
+
+`tools/audit-bypass-check.ts` `AUDIT_LOG_BULK_INSERT_ALLOWLIST` gains ONE entry:
+
+```typescript
+{
+  file: 'apps/api/src/app/compliance/signature/merkle-batch.service.ts',
+  pattern: '@AuditMerkleBatchInsert',
+  rationale: 'Merkle batch root emits ONE signature_chains row with entry_kind=merkle_root; leaf rows go in electronic_signatures (single-row inserts via withAudit, individually linearized). The merkle_root row IS the chain extension for the batch; root hash binds every leaf. Per canon §3.6 Merkle-batch ruling and Plan Fix 41 linearization carve-out.',
+  reference: 'docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md §13.7'
+}
+```
+
+Without the `@AuditMerkleBatchInsert` marker, any batched insert on `signature_chains` or `electronic_signatures` continues to fail the scanner.
+
+`tools/permission-registry-sync-check.ts` enforces the 7 new permission codes each have ≥ 1 call site.
+
+#### 13.7.9 Tests (self-test ≥ 15 assertions)
+
+Integration tests at `apps/api/test/integration/compliance-*.spec.ts`:
+
+1. **`compliance-signature-happy-path.spec.ts`** — single signature: writes one `electronic_signatures` row + one `signature_chains` row with `entry_kind='signature'`; chain `previous_hash` extends from prior row's `hash`; `audit_log_id` resolves to a row in `identity.audit_logs`.
+2. **`compliance-signature-reauth-matrix.spec.ts`** — 10 test cases across 5 meanings × 3 methods × pass/fail. Confirms `review` accepts session and rejects expired session; `approval` accepts totp + webauthn and rejects session; `responsibility/verification/closure` accept only webauthn.
+3. **`compliance-signature-leaf-replay.spec.ts`** — after sign, recompute leaf canonical bytes from row columns alone → SHA-256 → matches `signature_chains.hash` after stripping the `previous_hash` prefix.
+4. **`compliance-merkle-batch-100.spec.ts`** — 100-leaf batch: writes 100 `electronic_signatures` rows + 1 `signature_chains` row (`entry_kind=merkle_root`); root hash equals tree built from leaves; `merkle_leaf_count=100`.
+5. **`compliance-merkle-batch-cap-exceeded.spec.ts`** — 257-action batch rejected with structured error `MERKLE_BATCH_CAP_EXCEEDED`; zero rows written (transactional rollback).
+6. **`compliance-merkle-batch-mixed-meaning.spec.ts`** — batch with mixed `signature_meaning` rejected with `MERKLE_BATCH_MIXED_MEANING`.
+7. **`compliance-merkle-batch-concurrency.spec.ts`** — 5 concurrent 50-leaf batches; each contributes exactly one `merkle_root` chain row; chain remains linear (assert N+1 chain rows with no fork on `previous_hash`); reuses Plan Fix 41 reproducer shape.
+8. **`compliance-signer-snapshot.spec.ts`** — sign as `user-A`; later update `user-A.displayName`; replay leaf bytes from `signer_display_name_at_sign_time` (NOT current `users.display_name`); SHA-256 still matches `signature_chains.hash`.
+9. **`compliance-authority-check.spec.ts`** — user lacking `compliance:signature:sign` gets canon §28 minimal 403 shape; `AccessAuditPort.logAccessDenied` row written.
+10. **`compliance-reason-code-validator.spec.ts`** — pack with `requires_signature=true` collection and zero seeded reason codes is rejected by validator with `MISSING_REASON_CODE_FOR_CLOSURE_SIGNATURE`.
+11. **`compliance-evidence-attach-roundtrip.spec.ts`** — upload photo to LocalStack S3 with COMPLIANCE retention; read back via signed URL; SHA-256 matches; `retention_until = captured_at + 7 years`; `s3_retention_mode = 'COMPLIANCE'`.
+12. **`compliance-evidence-legal-hold.spec.ts`** — apply hold; advance `retention_until` to the past; RetentionSweepService runs; artifact NOT deleted. Release hold; sweep runs; artifact deleted from index (S3 object enforces COMPLIANCE separately).
+13. **`compliance-evidence-tamper-detect.spec.ts`** — mutate S3 object out-of-band; `fetchSignedDownloadUrl` returns; client computes SHA-256 of downloaded bytes → does NOT match `evidence_artifacts.sha256`; reporting hook fires.
+14. **`compliance-attestation-export-roundtrip.spec.ts`** — enqueue export for a record with 3 signatures + 1 Merkle batch of 50 actions + 5 evidence artifacts; worker completes; PDF generated; JSON contains chain proof; manifest enumerates all 5 artifact URIs; bundle itself becomes an `evidence_artifact` (recursive proof). Total chain-replay walk: 3 + 1 + 5 = 9 chain rows verified.
+15. **`compliance-scanner-coverage.spec.ts`** — service-boundary scanner: writing to `electronic_signatures` from a file NOT in the allowed-writers list fails. audit-bypass scanner: batched insert on `signature_chains` WITHOUT `@AuditMerkleBatchInsert` marker fails.
+
+Self-test count: 15 integration tests × ≥ 1 primary assertion each, plus ≥ 5 assertions in the `audit-bypass-check.ts` self-test for the new allowlist entry. Total ≥ 20 new assertions in the §3.6 acceptance lattice.
+
+#### 13.7.10 PR breakdown for §3.6
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + reason_codes + entity + ReasonCodeService + validator G7.2/G7.3 + scanner writer rule | Migrations 1+2+8 (schema, reason_codes, seed); `compliance.ts` entity area (partial); `apps/api/src/app/compliance/reason-codes/**`; validator extensions | Migrations run cleanly; ReasonCode CRUD passes; validator rejects bad naming; service-boundary scanner pins writers |
+| 2 | electronic_signatures + signature_chains + `SignatureService.sign()` single-action path | Migrations 3+4; entities (added to area file); `apps/api/src/app/compliance/signature/signature.service.ts`; `SignatureChainSubscriber`; re-auth matrix policy constant; tests 1, 2, 3, 9, 14 | Single-signature happy-path test passes against real Postgres; re-auth matrix enforced; chain extends linearly; scanner pins writers; audit-bypass scanner passes (single-row writes); §28 deny path returns minimal shape + AccessAuditPort row |
+| 3 | `MerkleBatchService.batchSign()` + 256-cap + `@AuditMerkleBatchInsert` allowlist + tests 4, 5, 6, 7, 8 | `merkle-batch.service.ts`; canonical-bytes helper (shared); `audit-bypass-check.ts` allowlist entry + self-test extension; integration tests | 100-leaf batch round-trips; 257 rejected; mixed-meaning rejected; concurrent batches don't fork; signer snapshot survives display-name changes |
+| 4 | evidence_artifacts table + `EvidenceArtifactService` + S3 COMPLIANCE upload + retention_until computation + tests 11, 13 | Migration 5; entity; `apps/api/src/app/compliance/evidence/**`; LocalStack S3 fixture | Upload writes S3 with `ObjectLockMode='COMPLIANCE'`; SHA-256 round-trips; retention_until pinned to `captured_at + class.duration`; tamper-detection test exercises mismatch |
+| 5 | Legal-hold lifecycle + `RetentionSweepService` + high-severity audit + test 12 | `apps/api/src/app/compliance/evidence/legal-hold.controller.ts`; `retention-sweep.service.ts` (scheduled via SchedulingModule); audit hook | Apply/release flip both DB flag and S3 PutObjectLegalHold; release writes `AccessAuditPort.logSecurityEvent` severity=high; sweep respects legal_hold |
+| 6 | attestation_jobs + `Part11AttestationService` + `AttestationExportProcessor` (worker) + PDF/JSON/manifest generation + test 15 + test 10 + canon §32 amendment | Migration 6; `apps/api/src/app/compliance/attestation/**`; `apps/worker/src/compliance/attestation-export.processor.ts`; pdfkit dependency; CLAUDE.md amendment | Export job queues + completes; bundle contains chain proof + manifest; bundle itself stored as recursive `evidence_artifact`; canon merged |
+
+**Total: 6 PRs for §3.6. Estimated effort: ~10-12 working days.**
+
+---
+
+### 13.8 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.7 cover §3.1 — §3.6; the remaining 12 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (12 remaining sections — §3.1-§3.6 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
 - ✅ §3.4 list-scale primitives — §13.5 (4 PRs)
 - ✅ §3.5 time-series observations — §13.6 (7 PRs)
-- §3.4 list-scale primitives (4 PRs)
-- §3.5 observations + pg_partman + rollup jobs (6 PRs)
-- §3.6 regulated-action + Merkle batch (6 PRs)
+- ✅ §3.6 regulated-action + Merkle batch + Part 11 envelope — §13.7 (6 PRs)
 - §3.7 mobile parity + UI primitives (8 PRs)
 - §3.8 AVA UI synthesis (3 PRs)
 - §3.9 public intake hardened (5 PRs)
@@ -2161,7 +2561,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.8 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.9 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -2182,7 +2582,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.9 What's left to do BEFORE code starts
+### 13.10 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
