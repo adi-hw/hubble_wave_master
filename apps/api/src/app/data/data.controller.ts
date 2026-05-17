@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
+  AuthenticatedOnly,
   JwtAuthGuard,
   InstanceRequest,
   assertUserContext,
@@ -7,8 +8,16 @@ import {
 import { CreateRecordDto, UpdateRecordDto, ListRecordsDto, BulkUpdateDto, BulkDeleteDto } from '@hubblewave/shared-types';
 import { DataService } from './data.service';
 
+/**
+ * Canon §28 / W2 Stream 3 — generic data CRUD surface. Each handler
+ * builds a `UserRequestContext` and delegates to `DataService`, which
+ * runs the §28 evaluator (collection + record + field rules) per
+ * request. Route-level boundary is `@AuthenticatedOnly` — the actual
+ * authz decision is data-driven inside the service.
+ */
 @Controller('data')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class DataController {
   constructor(private readonly dataService: DataService) {}
 

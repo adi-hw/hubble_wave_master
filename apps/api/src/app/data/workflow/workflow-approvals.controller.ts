@@ -1,9 +1,19 @@
 import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
 import { WorkflowApprovalsService } from './workflow-approvals.service';
 
+/**
+ * Canon §28 / W2 Stream 3 — workflow approvals surface. Each handler
+ * runs as the calling user and applies ownership scoping inline
+ * (approver / delegate / responder, with admin override). The
+ * approve / reject / delegate writes are recorded against `user.id`
+ * by the service. Route-level boundary is `@AuthenticatedOnly` — the
+ * authz decision is per-row inside the handler, not a static
+ * capability code.
+ */
 @Controller('workflows/approvals')
 @UseGuards(JwtAuthGuard)
+@AuthenticatedOnly()
 export class WorkflowApprovalsController {
   constructor(private readonly approvals: WorkflowApprovalsService) {}
 
