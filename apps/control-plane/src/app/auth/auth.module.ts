@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
+import { PermissionsGuard } from './permissions.guard';
 import { JwksController } from './jwks.controller';
 import { ControlPlaneKeySigningModule } from './key-signing/control-plane-key-signing.module';
 
@@ -34,6 +35,10 @@ import { ControlPlaneKeySigningModule } from './key-signing/control-plane-key-si
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
   ],
   exports: [AuthService],

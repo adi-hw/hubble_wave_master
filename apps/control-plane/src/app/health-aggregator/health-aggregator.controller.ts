@@ -3,15 +3,12 @@ import {
   Get,
   Post,
   Param,
-  UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, CurrentUserData } from '../auth/current-user.decorator';
+import { RequirePermission } from '../auth/require-permission.decorator';
 import {
   HealthAggregatorService,
   HealthAggregationSummary,
@@ -19,6 +16,14 @@ import {
 } from './health-aggregator.service';
 import { Public } from '../auth/public.decorator';
 
+/**
+ * Canon §28 / W2 Stream 3 — control-plane health aggregator. The
+ * unauthenticated `/health` ping is `@Public` for load balancers /
+ * Kubernetes liveness probes. Per-instance + aggregated health reads
+ * are gated by `control_plane:health:read`; triggering an immediate
+ * aggregation and toggling the periodic polling job are gated by
+ * `control_plane:health:manage`.
+ */
 @ApiTags('Health')
 @Controller('health')
 export class HealthAggregatorController {
@@ -39,12 +44,8 @@ export class HealthAggregatorController {
     };
   }
 
-  /**
-   * Get aggregated health status for all instances
-   */
   @Get('instances')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'operator')
+  @RequirePermission('control_plane:health:read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get aggregated health for all instances' })
   @ApiResponse({
@@ -63,12 +64,8 @@ export class HealthAggregatorController {
     return lastAggregation;
   }
 
-  /**
-   * Trigger immediate health check for all instances
-   */
   @Post('instances/check')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'operator')
+  @RequirePermission('control_plane:health:manage')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Trigger immediate health check for all instances' })
@@ -80,12 +77,8 @@ export class HealthAggregatorController {
     return this.healthService.aggregateAllHealth();
   }
 
-  /**
-   * Get health status for a specific instance
-   */
   @Get('instances/:instanceId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'operator')
+  @RequirePermission('control_plane:health:read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get health status for specific instance' })
   @ApiResponse({
@@ -102,12 +95,8 @@ export class HealthAggregatorController {
     });
   }
 
-  /**
-   * Get health polling status
-   */
   @Get('polling/status')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @RequirePermission('control_plane:health:read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get health polling status' })
   getPollingStatus() {
@@ -117,12 +106,8 @@ export class HealthAggregatorController {
     };
   }
 
-  /**
-   * Enable health polling
-   */
   @Post('polling/enable')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @RequirePermission('control_plane:health:manage')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enable health polling' })
@@ -131,12 +116,8 @@ export class HealthAggregatorController {
     return { message: 'Health polling enabled', enabled: true };
   }
 
-  /**
-   * Disable health polling
-   */
   @Post('polling/disable')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @RequirePermission('control_plane:health:manage')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable health polling' })
@@ -145,12 +126,8 @@ export class HealthAggregatorController {
     return { message: 'Health polling disabled', enabled: false };
   }
 
-  /**
-   * Get health summary statistics
-   */
   @Get('summary')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'operator')
+  @RequirePermission('control_plane:health:read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get health summary statistics' })
   async getHealthSummary() {
