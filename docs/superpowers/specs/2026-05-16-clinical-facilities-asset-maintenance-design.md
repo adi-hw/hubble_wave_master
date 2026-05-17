@@ -2949,11 +2949,180 @@ Integration tests at `apps/api/test/integration/ava-synthesis-*.spec.ts`:
 
 ---
 
-### 13.10 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.10 Worked example: §3.9 Public Intake Primitive (full artifact-level spec — signed-token QR intake + AVA triage + hardening)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.9 cover §3.1 — §3.8; the remaining 10 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.10.1 Tables
 
-**Substrate (10 remaining sections — §3.1-§3.8 ✅):**
+All tables in `schema: 'intake'` (NEW schema).
+
+**`intake.public_intake_tokens`** — issued tokens; each bound to a specific record so a leaked QR cannot be used against other assets.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | NULL in single-tenant; NOT NULL in pooled |
+| `code` | `varchar(64)` | — | NOT NULL | UNIQUE — public-facing token string (high-entropy random) |
+| `purpose` | `varchar(64)` | — | NOT NULL | Pack-declared; e.g. `facility_asset_qr`, `walkby_nurse_intake`, `incident_report` |
+| `scope_collection_id` | `uuid` | — | NOT NULL | The collection the token routes submissions into |
+| `scope_record_id` | `uuid` | — | NULL | When present, the specific record this token is bound to (e.g., one asset) — REQUIRED by validator G10.4 for purposes declaring `record_bound=true` |
+| `issued_by_user_id` | `uuid` | — | NOT NULL | FK → `identity.users(id)` |
+| `signing_kid` | `varchar(64)` | — | NOT NULL | Per canon §29.2; the kid used to sign embedded JWT envelopes (token also includes raw `code` for visual scanning) |
+| `expires_at` | `timestamptz` | — | NOT NULL | When the token stops accepting submissions |
+| `max_uses` | `int` | — | NULL | NULL = unlimited within expiry; >0 caps total submissions |
+| `uses` | `int` | `0` | NOT NULL | Incremented atomically on each submission |
+| `rotation_policy` | `varchar(32)` | `'lifetime'` | NOT NULL | CHECK ∈ `{lifetime, quarterly_rotate}` per §3.9 prose |
+| `next_rotation_at` | `timestamptz` | — | NULL | When `rotation_policy='quarterly_rotate'`, the next scheduled rotation |
+| `revoked_at` | `timestamptz` | — | NULL | One-tap revoke by Maintenance Manager / Compliance Officer |
+| `revoked_reason` | `varchar(64)` | — | NULL | `manual_revoke` / `abuse_detected` / `asset_quarantined` / `rotation` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(code)`; `ix_pit_purpose ON (purpose, expires_at) WHERE revoked_at IS NULL`; `ix_pit_scope ON (scope_collection_id, scope_record_id) WHERE revoked_at IS NULL`; `ix_pit_rotation ON (next_rotation_at) WHERE rotation_policy = 'quarterly_rotate' AND revoked_at IS NULL`.
+
+**`intake.public_intake_submissions`** — every public submission.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `token_id` | `uuid` | — | NOT NULL | FK → `public_intake_tokens(id)` |
+| `client_idempotency_uuid` | `uuid` | — | NOT NULL | Client-generated; UNIQUE per `(token_id, client_idempotency_uuid)` — duplicate submissions return the same submission code |
+| `submission_code` | `varchar(32)` | — | NOT NULL | UNIQUE; public-facing confirmation code returned to caller |
+| `raw_payload` | `jsonb` | — | NOT NULL | Original JSON body (max 50KB enforced at HTTP layer) |
+| `structured_payload` | `jsonb` | — | NULL | AVA-normalized form; set when worker completes |
+| `ava_proposal_id` | `uuid` | — | NULL | FK → `ava.ava_proposals(id)` |
+| `resolved_collection_id` | `uuid` | — | NULL | The collection a record was created in (e.g., `work_orders`) |
+| `resolved_record_id` | `uuid` | — | NULL | The created record |
+| `ip_hash` | `bytea` | — | NOT NULL | SHA-256 of source IP — plaintext IP NEVER stored on the operational table per §29.5 pattern |
+| `user_agent_hash` | `bytea` | — | NOT NULL | SHA-256 of UA |
+| `geo_country_code` | `varchar(2)` | — | NULL | Best-effort ISO 3166-1 alpha-2 from GeoIP |
+| `outcome` | `varchar(32)` | `'pending_processing'` | NOT NULL | CHECK ∈ `{pending_processing, processed, refused_rate_limit, refused_scan_failed, refused_malformed, refused_token_revoked, refused_token_expired, refused_token_exhausted}` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `processed_at` | `timestamptz` | — | NULL | Set when worker finishes |
+
+Indexes: PK; UNIQUE `(token_id, client_idempotency_uuid)`; UNIQUE `(submission_code)`; `ix_pis_token ON (token_id, created_at DESC)`; `ix_pis_outcome ON (outcome, created_at) WHERE outcome != 'processed'`.
+
+**`intake.public_intake_attachments`** — per-submission attachment metadata; binary payload in S3.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK; this UUID is the attachment ID the JSON payload references |
+| `submission_id` | `uuid` | — | NOT NULL | FK → `public_intake_submissions(id)` |
+| `storage_uri` | `text` | — | NOT NULL | `s3://intake-bucket/instance/{instance_id}/{submission_id}/{id}` |
+| `content_type` | `varchar(128)` | — | NOT NULL | RFC 6838 |
+| `size_bytes` | `bigint` | — | NOT NULL | CHECK `size_bytes <= 25 * 1024 * 1024` (25 MB cap per §3.9 prose) |
+| `sha256` | `bytea` | — | NOT NULL | 32 bytes; computed by ingest worker post-upload |
+| `scan_status` | `varchar(16)` | `'pending'` | NOT NULL | CHECK ∈ `{pending, scanning, clean, quarantined}` |
+| `scan_results` | `jsonb` | — | NULL | `{ av: {verdict, scanner_version}, secrets: {verdict, hits}, pii: {verdict, categories} }` |
+| `quarantine_reason` | `varchar(120)` | — | NULL | Filled when `scan_status='quarantined'` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `scanned_at` | `timestamptz` | — | NULL | — |
+
+Indexes: PK; `ix_pia_submission ON (submission_id)`; `ix_pia_scan_pending ON (scan_status) WHERE scan_status IN ('pending', 'scanning')`.
+
+#### 13.10.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1935000000000-create-intake-schema.ts` | `CREATE SCHEMA intake;` |
+| 2 | `1935000000001-create-public-intake-tokens.ts` | Table + indexes |
+| 3 | `1935000000002-create-public-intake-submissions.ts` | Table + indexes |
+| 4 | `1935000000003-create-public-intake-attachments.ts` | Table + indexes |
+
+#### 13.10.3 Services
+
+`apps/api/src/app/intake/` (new module) + `apps/worker/src/intake/` (new module).
+
+**`PublicIntakeTokenService`** — API side; issues + revokes tokens.
+- `issue(input: IssueTokenRequest, ctx: UserRequestContext): Promise<PublicIntakeToken>` — issuance requires `intake:token:issue` permission; writes via `withAudit`.
+- `revoke(tokenId: string, reason: string, ctx: UserRequestContext): Promise<void>` — one-tap revoke; writes high-severity audit if `reason='abuse_detected'`.
+- `quarantineAsset(collectionId: string, recordId: string, ctx: UserRequestContext): Promise<void>` — revokes ALL tokens scoped to that record AND blocks future issuance via `intake_asset_quarantine` flag (new column on `collection_records` — out of scope to add for §13.10; tracked as PR-3 acceptance dependency).
+
+**`PublicIntakeSubmissionController`** — `apps/api/src/app/intake/public-intake.controller.ts`. Public endpoints (`@Public` decorator, but per-route rate-limited):
+- `POST /api/public/intake/:tokenCode/submit` — single-step JSON submission. Validates token (not revoked, not expired, uses < max_uses); validates payload against the pack-declared schema for `token.purpose`; computes ip_hash + ua_hash + geo_country_code; emits `RuntimeAnomaly` row if (a) rate-limit breached, (b) geo-anomaly detected (token issued in country X but submission from country Y for `quarterly_rotate` tokens). Returns `{ submissionCode }` and NEVER any operational data.
+- `POST /api/public/intake/:tokenCode/attachment-url` — pre-signed S3 upload URL. Per-attachment scope. Returns `{ attachmentId, presignedUrl, expiresAt }`.
+
+**`PublicIntakeProcessor`** — worker side; `apps/worker/src/intake/public-intake.processor.ts`. On BullMQ job pickup:
+1. Wait for ALL attachments referenced by the submission to reach `scan_status='clean'`; if any hits `quarantined`, mark the submission `outcome='refused_scan_failed'`, emit `RuntimeAnomaly`, stop.
+2. Run AVA structured extraction via the pack-declared handler for `token.purpose`; output goes to `structured_payload` + creates an `AVAProposal` row.
+3. Dispatch to the pack action handler under a system principal scoped to `intake:dispatch:<purpose>` (system principal is the canon §29.7 service-principal mechanism); the pack creates the target record (e.g., a Work Order from a walk-by nurse intake) and writes `resolved_collection_id` + `resolved_record_id` back onto the submission.
+4. Stamp `outcome='processed'` + `processed_at`.
+
+**`AttachmentScanProcessor`** — worker side; runs AV + secret-scan + PII-scan + content-hash pipeline on each attachment upload. Reuses §3.12 Storage runtime infrastructure (PR-5 acceptance documents the dependency).
+
+#### 13.10.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/intake/tokens` | `@RequirePermission('intake:token:issue')` | `{ purpose, scopeCollectionId, scopeRecordId?, expiresAt, maxUses?, rotationPolicy? }` |
+| `DELETE` | `/api/intake/tokens/:id` | `@RequirePermission('intake:token:revoke')` | `{ reason }` |
+| `POST` | `/api/intake/assets/:collectionId/:recordId/quarantine` | `@RequirePermission('intake:asset:quarantine')` | `{ reason }` |
+| `GET` | `/api/intake/submissions` | `@RequirePermission('intake:submission:read')` | query: `tokenId?`, `outcome?` |
+| `POST` | `/api/public/intake/:tokenCode/submit` | `@Public()` (per-token + per-IP rate-limited) | `{ clientIdempotencyUuid, payload, attachments?: [{attachmentId}] }` returns `{ submissionCode }` |
+| `POST` | `/api/public/intake/:tokenCode/attachment-url` | `@Public()` (per-token rate-limited) | `{ filename, contentType, sizeBytes }` returns `{ attachmentId, presignedUrl, expiresAt }` |
+
+New permission codes: `intake:token:issue`, `intake:token:revoke`, `intake:asset:quarantine`, `intake:submission:read`. `intake:asset:quarantine` is `dangerous: true`.
+
+#### 13.10.5 Validator extensions
+
+Pack validator gains 5 publish gates:
+
+1. **G10.1** — Pack `public_intake.schemas[]` MUST declare a JSON Schema for each purpose's payload. Error: `MISSING_INTAKE_SCHEMA`.
+2. **G10.2** — Pack `public_intake.purposes[].dispatch_handler` MUST resolve to an exported function. Error: `MISSING_INTAKE_DISPATCH_HANDLER`.
+3. **G10.3** — Pack `public_intake.purposes[].rotation_policy` MUST be in `{lifetime, quarterly_rotate}`. Error: `INVALID_ROTATION_POLICY`.
+4. **G10.4** — When `public_intake.purposes[].record_bound = true`, token issuance MUST require `scope_record_id`. Error: `RECORD_BOUND_PURPOSE_MISSING_RECORD`.
+5. **G10.5** — Pack `public_intake.purposes[].max_payload_kb` MUST be ≤ 50 (platform cap). Error: `PAYLOAD_CAP_EXCEEDED`.
+
+#### 13.10.6 Service-boundary scanner rules
+
+`tools/service-boundary-check.ts` `KNOWN_WRITES`:
+
+| Entity | Allowed writers |
+|---|---|
+| `PublicIntakeToken` | `PublicIntakeTokenService.*` |
+| `PublicIntakeSubmission` | `PublicIntakeSubmissionController.submit`, `PublicIntakeProcessor.process` |
+| `PublicIntakeAttachment` | `PublicIntakeSubmissionController.requestAttachmentUrl`, `AttachmentScanProcessor.recordScanResult` |
+
+Additionally added to `tools/security-bypass-check.ts` `PUBLIC_ALLOWLIST` (the two public endpoints under `/api/public/intake/`).
+
+#### 13.10.7 Tests (self-test ≥ 15 assertions)
+
+1. **`intake-token-issue-and-submit.spec.ts`** — issue token; submit valid payload; submission processed; pack dispatch creates target record; `resolved_record_id` populated.
+2. **`intake-idempotency.spec.ts`** — submit twice with same `clientIdempotencyUuid`; second response returns identical `submissionCode`; only ONE submission row created.
+3. **`intake-token-expired.spec.ts`** — token with `expires_at = past`; submit returns 410 generic message; submission row created with `outcome='refused_token_expired'`.
+4. **`intake-token-revoked.spec.ts`** — issue + revoke; submit returns 410 generic; row with `outcome='refused_token_revoked'`.
+5. **`intake-token-exhausted.spec.ts`** — `max_uses=1`; first submit OK; second returns 410; row with `outcome='refused_token_exhausted'`.
+6. **`intake-rate-limit.spec.ts`** — 101 submissions/min from same IP hash; 100th OK, 101st returns 429; `RuntimeAnomaly` row written.
+7. **`intake-attachment-clean-flow.spec.ts`** — request attachment URL; upload binary to LocalStack S3; scan transitions `pending → scanning → clean`; submission references attachment by `attachmentId`; processor proceeds.
+8. **`intake-attachment-quarantined.spec.ts`** — AV scanner flags upload; `scan_status='quarantined'`; submission processor refuses + `outcome='refused_scan_failed'`; `RuntimeAnomaly` written.
+9. **`intake-attachment-size-cap.spec.ts`** — upload 26MB attachment rejected with structured error; CHECK constraint trips.
+10. **`intake-payload-size-cap.spec.ts`** — 51KB JSON payload rejected; G10.5-equivalent runtime check.
+11. **`intake-no-data-leakage.spec.ts`** — submit; inspect response body and headers — contains ONLY `submissionCode`; no record IDs, no field values, no token metadata.
+12. **`intake-geo-anomaly.spec.ts`** — token issued from US IP; submission from offshore IP; `RuntimeAnomaly` emitted with kind `intake_geo_anomaly`; submission still accepted (alert-only).
+13. **`intake-asset-quarantine.spec.ts`** — quarantine asset; all asset-scoped tokens marked revoked; new token issuance for that scope refused with structured error.
+14. **`intake-rotation-quarterly.spec.ts`** — token with `rotation_policy='quarterly_rotate'` advances `next_rotation_at`; cron job (apps/worker scheduled task) rotates code on the boundary; old code returns 410 thereafter; new code is delivered to the customer's rotation webhook.
+15. **`intake-system-principal-dispatch.spec.ts`** — pack dispatch handler runs as system principal scoped to `intake:dispatch:<purpose>`; cannot escalate to write outside its declared collection scope; canon §29.7 audience binding enforced.
+
+#### 13.10.8 PR breakdown for §3.9
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + tokens table + `PublicIntakeTokenService` + issuance/revocation endpoints + tests 3, 4, 5, 13 | Migrations 1+2; entity area patch; `apps/api/src/app/intake/token/**`; validator G10.3, G10.4 | Token lifecycle stable; revoke cascades to scope; G10.4 enforced |
+| 2 | submissions + attachments tables + public submission endpoint + idempotency + rate-limit + tests 1, 2, 6, 10, 11 | Migrations 3+4; `apps/api/src/app/intake/public/**`; per-token + per-IP rate-limiter middleware; security-bypass PUBLIC_ALLOWLIST entry | No data leakage in response; idempotency works; rate-limit emits RuntimeAnomaly |
+| 3 | Attachment pre-signed URL + AttachmentScanProcessor + AV/secret/PII pipeline + tests 7, 8, 9 | `apps/worker/src/intake/attachment-scan.processor.ts`; LocalStack S3 fixture; integration with §3.12 Storage runtime | Clean attachments propagate; quarantined block submission; size cap enforced |
+| 4 | `PublicIntakeProcessor` + AVA structured extraction + pack dispatch handler + system principal + tests 1 (full path), 15 | `apps/worker/src/intake/public-intake.processor.ts`; pack-installer hooks; canon §29.7 system principal seeding | Submission → AVA → record creation works; system principal cannot escalate scope |
+| 5 | Asset quarantine + rotation cron + geo-anomaly detection + canon §36 amendment + tests 12, 13, 14 | `apps/worker/src/intake/rotation-cron.processor.ts`; GeoIP wiring; canon §36 amendment to CLAUDE.md | Rotation rolls token code on schedule; geo-anomaly emits alert; canon merged |
+
+**Total: 5 PRs for §3.9. Estimated effort: ~10-12 working days.**
+
+---
+
+### 13.11 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.10 cover §3.1 — §3.9; the remaining 9 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (9 remaining sections — §3.1-§3.9 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -2962,7 +3131,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.6 regulated-action + Merkle batch + Part 11 envelope — §13.7 (6 PRs)
 - ✅ §3.7 mobile parity + UI primitives — §13.8 (8 PRs)
 - ✅ §3.8 AVA UI synthesis — §13.9 (3 PRs)
-- §3.9 public intake hardened (5 PRs)
+- ✅ §3.9 public intake hardened — §13.10 (5 PRs)
 - §3.10 break-glass override (4 PRs)
 - §3.11 external-collaborator sessions (5 PRs)
 - §3.12 Storage / Evidence Attachment runtime (6 PRs)
@@ -2987,7 +3156,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.11 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.12 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3008,7 +3177,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.12 What's left to do BEFORE code starts
+### 13.13 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
