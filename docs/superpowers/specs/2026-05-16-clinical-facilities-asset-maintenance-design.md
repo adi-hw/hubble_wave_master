@@ -1822,7 +1822,75 @@ Integration tests in `apps/worker/test/integration/generation-dispatcher.spec.ts
 
 ---
 
-### 13.5 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.5 Worked example: §3.4 List-Scale Primitives (full artifact-level spec)
+
+#### 13.5.1 Tables
+
+**`data.list_snapshots`** — materialized list-view snapshots for huge canned views (e.g., "All Open WOs in Building 5") that get re-served from snapshot for short TTLs.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `view_id` | `uuid` | — | NOT NULL | FK → `metadata.view_definitions(id)` |
+| `scope_principal` | `varchar(255)` | — | NOT NULL | Hash of `(user_id, role_set, group_set)` — snapshots are principal-scoped so masking is precomputed for the scoping principal |
+| `query_hash` | `bytea(32)` | — | NOT NULL | SHA-256 of canonical query (view_id + filters + sort) — enables cache hits for identical queries |
+| `total_rows` | `int` | — | NOT NULL | Pre-computed row count (avoids re-counting on each pagination request) |
+| `generated_at` | `timestamptz` | `now()` | NOT NULL | When snapshot was built |
+| `ttl_at` | `timestamptz` | — | NOT NULL | Snapshot becomes invalid after `ttl_at`; default `generated_at + 5 min` per view-config override |
+| `builder_event_id` | `uuid` | — | NULL | Event that triggered build (for traceability) |
+
+**Indexes:**
+- PK on `(id)`
+- `ux_list_snapshot_query` UNIQUE ON `(view_id, scope_principal, query_hash)` WHERE `ttl_at > now()` — at most one active snapshot per (view, principal, query) tuple
+- `ix_list_snapshot_ttl` ON `(ttl_at)` WHERE `ttl_at < now()` — for GC sweep
+
+**`data.list_snapshot_rows`** — actual row payloads, partitioned by `snapshot_id`.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `snapshot_id` | `uuid` | — | NOT NULL | LIST partition key (so all rows for one snapshot live in one partition; dropping a snapshot = drop partition) |
+| `position` | `int` | — | NOT NULL | 0-indexed position within snapshot for stable pagination |
+| `source_record_id` | `uuid` | — | NOT NULL | Reference back to source row |
+| `payload_jsonb` | `jsonb` | — | NOT NULL | Denormalized projection-safe + masked-per-principal payload |
+
+**Partitioning:** `PARTITION BY LIST (snapshot_id)`. Each new snapshot gets a new sub-partition; `ttl_at` expiry → drop the partition (instant, no row-by-row delete).
+
+**Indexes** (per sub-partition):
+- PK on `(snapshot_id, position)`
+
+#### 13.5.2 Active/archive partitioning policy (codified per `taskable_capability`)
+
+This is NOT a new table — it's a per-capability configuration in `metadata.taskable_capabilities`:
+
+Adds a new column to `metadata.taskable_capabilities`:
+- `archive_age_months` `int` `NOT NULL` `DEFAULT 24` — closed records older than this age move from active to archive partition tree. Editable per pack.
+
+The worker job `apps/worker/src/archive/partition-steward.job.ts` (already declared §9) reads each capability's `archive_age_months` and detaches `*_old_*` partitions from the active parent, attaches them to the archive parent. **Archive partitions are NEVER deleted** — only detached and re-attached to the archive tree. Compliance §10 (7-year retention) requires this.
+
+#### 13.5.3 Mobile list payload + Archive query facade
+
+**Mobile list payload service:** `apps/api/src/app/mobile/mobile-list-payload.service.ts` (NEW)
+
+Endpoint: `GET /mobile/tasks/sync?since=<timestamp>&kind=<task_kind>&assigned_to=<user_id>`. Returns a hyper-dense JSON for WatermelonDB: one row per task with denormalized `{wo, asset, location, due_at, parts_ready, last_checklist_state}` chips pulled from `task_projection.attrs_jsonb` (per §3.2 projection_safe gate). Selective sync per `mobile_sync_policies` (§3.7).
+
+**Archive query facade:** `apps/api/src/app/archive/archive-query-facade.service.ts` (NEW)
+
+Endpoint: `GET /archive/tasks?from=<iso>&to=<iso>&filters=...`. Opens cold partitions explicitly via Postgres `ALTER TABLE ... ATTACH PARTITION` (or equivalent partition-aware query). Slow (minutes); audited via `audit_logs` with `purpose = regulator_archive_query`; Compliance Officer + Auditor Kiosk session principals authorized.
+
+#### 13.5.4 PR breakdown for §3.4
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Tables + migrations | 2 migration files (`list_snapshots`, `list_snapshot_rows` partitioned root) + 1 alter on `taskable_capabilities` (add `archive_age_months`) | Migrations + scanner pass |
+| 2 | Snapshot builder worker | `apps/worker/src/projections/list-snapshot-builder.service.ts` | Self-test: build snapshot from a 100k-row view; subsequent identical query returns from snapshot in <50ms |
+| 3 | Mobile list payload endpoint | `apps/api/src/app/mobile/mobile-list-payload.service.ts` + controller | Self-test: `GET /mobile/tasks/sync` returns <1MB for one technician's day |
+| 4 | Archive query facade + partition steward extensions | `apps/api/src/app/archive/`; `apps/worker/src/archive/partition-steward.job.ts` extensions | Self-test: detach a closed-WO partition older than 24 months → archive query still returns its rows; active list view does not |
+
+**Total: 4 PRs for §3.4. Estimated effort: ~4 working days.**
+
+---
+
+### 13.6 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. The §13.2 / §13.3 worked examples cover §3.1 + §3.2; the remaining 16 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
 
@@ -1830,6 +1898,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
+- ✅ §3.4 list-scale primitives — §13.5 (4 PRs)
 - §3.4 list-scale primitives (4 PRs)
 - §3.5 observations + pg_partman + rollup jobs (6 PRs)
 - §3.6 regulated-action + Merkle batch (6 PRs)
@@ -1860,7 +1929,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.6 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.7 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -1881,7 +1950,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.7 What's left to do BEFORE code starts
+### 13.8 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
