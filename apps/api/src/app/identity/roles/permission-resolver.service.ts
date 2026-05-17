@@ -12,9 +12,7 @@ import {
 import {
   EventBusService,
   EventTopic,
-  GroupMembershipChangedPayload,
-  RolePermissionChangedPayload,
-  UserRoleChangedPayload,
+  PermissionInvalidatePayload,
 } from '@hubblewave/event-bus';
 
 /**
@@ -85,32 +83,32 @@ export class PermissionResolverService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.subscribe<UserRoleChangedPayload>(
-      EventTopic.IdentityUserRoleChanged,
-      (payload) => {
-        for (const userId of payload.userIds ?? []) {
-          this.invalidateUserCache(userId);
-        }
-      },
-    );
-
-    this.eventBus.subscribe<RolePermissionChangedPayload>(
-      EventTopic.IdentityRolePermissionChanged,
+    // W2 Stream 1 PR2 / F025 — single unified channel; route by scope.
+    // - `identity`    → user-keyed eviction (`invalidateUserCache`).
+    // - `permissions` → role-keyed fan-out (`invalidateRoleCache` finds the
+    //                   affected users via user_roles + group_roles and
+    //                   evicts each).
+    // - `acl`         → not the in-process permission cache's concern;
+    //                   `AuthorizationService` listens for that scope
+    //                   independently. Ignore here.
+    this.eventBus.subscribe<PermissionInvalidatePayload>(
+      EventTopic.PermissionInvalidate,
       async (payload) => {
-        await Promise.all(
-          (payload.roleIds ?? []).map((roleId) =>
-            this.invalidateRoleCache(roleId),
-          ),
-        );
-      },
-    );
-
-    this.eventBus.subscribe<GroupMembershipChangedPayload>(
-      EventTopic.IdentityGroupMembershipChanged,
-      (payload) => {
-        for (const userId of payload.userIds ?? []) {
-          this.invalidateUserCache(userId);
+        if (payload.scope === 'identity') {
+          for (const userId of payload.userIds ?? []) {
+            this.invalidateUserCache(userId);
+          }
+          return;
         }
+        if (payload.scope === 'permissions') {
+          await Promise.all(
+            (payload.roleIds ?? []).map((roleId) =>
+              this.invalidateRoleCache(roleId),
+            ),
+          );
+          return;
+        }
+        // payload.scope === 'acl' — out of scope for the permission cache.
       },
     );
   }

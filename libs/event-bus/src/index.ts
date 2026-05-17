@@ -2,10 +2,13 @@
 // Event Bus - Cross-Service Domain Events on Redis Pub/Sub
 // ============================================================
 //
-// Publishes typed domain events (identity.user-role.changed,
-// identity.role-permission.changed, identity.group-membership.changed)
-// across services so caches that key on those entities can invalidate
-// the moment the source of truth changes.
+// Publishes the typed `permission.invalidate` event so every consumer
+// cache (IdentityResolverAdapter Redis cache, PermissionResolverService
+// in-process cache, AuthorizationService ACL-rule cache) can drop the
+// affected entries the moment the source of truth changes (W2 Stream 1
+// PR2 / F025). The pre-W2 per-entity topics (user-role / role-permission /
+// group-membership) were unified into one channel with a `scope`
+// discriminator.
 // ============================================================
 
 export { EventBusModule } from './lib/event-bus.module';
@@ -20,7 +23,6 @@ export {
   EventTopic,
   EventTopicValue,
   EventPayloadFor,
-  UserRoleChangedPayload,
-  RolePermissionChangedPayload,
-  GroupMembershipChangedPayload,
+  PermissionInvalidatePayload,
+  PermissionInvalidateScope,
 } from './lib/event-types';

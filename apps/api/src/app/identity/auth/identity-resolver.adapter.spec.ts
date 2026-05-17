@@ -1,8 +1,9 @@
 import { Repository } from 'typeorm';
-import { User } from '@hubblewave/instance-db';
+import { User, UserRole } from '@hubblewave/instance-db';
 import { IdentityResolverAdapter } from './identity-resolver.adapter';
 import { PermissionResolverService } from '../roles/permission-resolver.service';
 import { RedisService } from '@hubblewave/redis';
+import { EventBusService } from '@hubblewave/event-bus';
 
 /**
  * Coverage for the F013 IdentityResolverPort implementation. Verifies:
@@ -33,6 +34,19 @@ function buildUserRepoMock(user: Partial<User> | null) {
   } as unknown as Repository<User>;
 }
 
+function buildUserRoleRepoMock(): Repository<UserRole> {
+  return {
+    find: jest.fn(async () => []),
+  } as unknown as Repository<UserRole>;
+}
+
+function buildEventBusMock(): EventBusService {
+  return {
+    subscribe: jest.fn(),
+    publish: jest.fn(),
+  } as unknown as EventBusService;
+}
+
 function buildPermResolverMock(
   roleCodes: string[],
   permissions: string[],
@@ -59,7 +73,7 @@ describe('IdentityResolverAdapter', () => {
     const redis = buildRedisMock();
     const repo = buildUserRepoMock(null);
     const perms = buildPermResolverMock([], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     await expect(adapter.resolveIdentity('')).resolves.toBeNull();
     expect((repo as unknown as { findOne: jest.Mock }).findOne).not.toHaveBeenCalled();
@@ -79,7 +93,7 @@ describe('IdentityResolverAdapter', () => {
     const redis = buildRedisMock(cached);
     const repo = buildUserRepoMock(null);
     const perms = buildPermResolverMock([], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result).toEqual(cached);
@@ -96,7 +110,7 @@ describe('IdentityResolverAdapter', () => {
       securityStamp: 'stamp-from-db-9',
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], ['records.read'], ['grp-1', 'grp-2']);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result).toEqual({
@@ -129,7 +143,7 @@ describe('IdentityResolverAdapter', () => {
       securityStamp: 'stamp-1',
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], [], ['group-a', 'group-b', 'group-c']);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result?.groupIds).toEqual(['group-a', 'group-b', 'group-c']);
@@ -144,7 +158,7 @@ describe('IdentityResolverAdapter', () => {
       securityStamp: 'stamp-2',
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], [], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result?.groupIds).toEqual([]);
@@ -159,7 +173,7 @@ describe('IdentityResolverAdapter', () => {
       securityStamp: 'stamp-fresh-100',
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result?.securityStamp).toBe('stamp-fresh-100');
@@ -173,7 +187,7 @@ describe('IdentityResolverAdapter', () => {
       isAdmin: false,
     } as Partial<User>);
     const perms = buildPermResolverMock(['admin'], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result?.isAdmin).toBe(true);
@@ -187,7 +201,7 @@ describe('IdentityResolverAdapter', () => {
       isAdmin: true,
     } as Partial<User>);
     const perms = buildPermResolverMock(['user'], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     const result = await adapter.resolveIdentity('u-1');
     expect(result?.isAdmin).toBe(true);
@@ -197,7 +211,7 @@ describe('IdentityResolverAdapter', () => {
     const redis = buildRedisMock();
     const repo = buildUserRepoMock(null);
     const perms = buildPermResolverMock([], []);
-    const adapter = new IdentityResolverAdapter(repo, perms, redis);
+    const adapter = new IdentityResolverAdapter(repo, buildUserRoleRepoMock(), perms, redis, buildEventBusMock());
 
     await expect(adapter.resolveIdentity('ghost')).resolves.toBeNull();
   });
@@ -206,8 +220,10 @@ describe('IdentityResolverAdapter', () => {
     const redis = buildRedisMock();
     const adapter = new IdentityResolverAdapter(
       buildUserRepoMock(null),
+      buildUserRoleRepoMock(),
       buildPermResolverMock([], []),
       redis,
+      buildEventBusMock(),
     );
 
     await adapter.invalidate('u-1');

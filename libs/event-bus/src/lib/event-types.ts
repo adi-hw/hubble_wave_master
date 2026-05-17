@@ -1,52 +1,68 @@
 /**
  * Cross-service domain event topics carried over Redis pub/sub.
  *
- * Topics are namespaced by domain (`identity.*`, `metadata.*`, ...). Payloads
- * carry only the IDs of the affected entities; subscribers fan out to whatever
- * cached state they own.
+ * W2 Stream 1 PR2 (F025) collapsed the pre-W2 per-entity topics
+ * (`identity.user-role.changed`, `identity.role-permission.changed`,
+ * `identity.group-membership.changed`) into a single unified invalidation
+ * channel — every consumer cache (IdentityResolverAdapter Redis cache,
+ * PermissionResolverService in-process cache, AuthorizationService ACL-rule
+ * cache) listens on the same channel and routes by the `scope`
+ * discriminator. One channel, one payload shape, exactly one obvious way to
+ * trigger an invalidation per canon §2.
  *
- * Conventions:
- * - Past tense ("changed", "removed") — events describe what already happened.
- * - Payloads are minimal: a list of affected IDs is enough for subscribers to
- *   recompute or invalidate. Avoid embedding full entity snapshots.
+ * Payloads carry only the IDs of the affected entities; consumers expand
+ * those IDs into whatever cached state they own.
  */
 export const EventTopic = {
-  /** A user gained or lost a role assignment. */
-  IdentityUserRoleChanged: 'identity.user-role.changed',
-  /** A role's permission set changed (affects every user holding the role). */
-  IdentityRolePermissionChanged: 'identity.role-permission.changed',
-  /** A user joined or left a group (affects roles inherited via the group). */
-  IdentityGroupMembershipChanged: 'identity.group-membership.changed',
+  /**
+   * Permission/identity/ACL state changed somewhere. Consumers route on
+   * `payload.scope` ('identity' / 'permissions' / 'acl') and the per-scope
+   * ID arrays to decide which cache entries to evict.
+   *
+   * Wire name: `permission.invalidate`. The channel is consumed by:
+   *   - `IdentityResolverAdapter` — evicts the Redis identity cache.
+   *   - `PermissionResolverService` — evicts the in-process permission cache.
+   *   - `AuthorizationService` — evicts the ACL-rule cache on `scope=acl`.
+   */
+  PermissionInvalidate: 'permission.invalidate',
 } as const;
 
 export type EventTopicValue = (typeof EventTopic)[keyof typeof EventTopic];
 
 /**
- * Payload published when a user's direct role assignment changes.
+ * The unified invalidation scope discriminator. Routes consumers to the
+ * cache layer(s) they own.
  *
- * `roleIds` is optional context (which role(s) changed) — subscribers that
- * key by user only need `userIds`.
+ *  - `identity`    — user → role / user → group mapping changed
+ *                    (UserRole, GroupMember mutations).
+ *  - `permissions` — role → permission mapping or the role itself changed
+ *                    (Role, RolePermission, GroupRole mutations).
+ *  - `acl`         — record-level / field-level rule changed
+ *                    (CollectionAccessRule, PropertyAccessRule mutations).
  */
-export interface UserRoleChangedPayload {
-  userIds: string[];
+export type PermissionInvalidateScope = 'identity' | 'permissions' | 'acl';
+
+/**
+ * Payload published on the unified `permission.invalidate` channel. Every
+ * field except `scope` is optional; consumers narrow by `scope` first and
+ * then read the relevant ID array.
+ *
+ * Singular-entity changes still publish arrays of length 1 — keeps the
+ * wire format flat for batch operations that group N mutations into one
+ * event.
+ */
+export interface PermissionInvalidatePayload {
+  scope: PermissionInvalidateScope;
+  /** identity scope — users whose role/group membership changed. */
+  userIds?: string[];
+  /** identity / permissions scope — roles whose membership or perms changed. */
   roleIds?: string[];
-}
-
-/**
- * Payload published when permissions on a role change. Subscribers must fan
- * out to every user who holds the affected role(s).
- */
-export interface RolePermissionChangedPayload {
-  roleIds: string[];
-}
-
-/**
- * Payload published when a user joined or left a group. The group's roles
- * (and therefore the user's effective permissions) may have changed.
- */
-export interface GroupMembershipChangedPayload {
-  userIds: string[];
+  /** identity scope — groups whose membership changed. */
   groupIds?: string[];
+  /** acl scope — collections whose access rules changed. */
+  collectionIds?: string[];
+  /** acl scope — properties whose access rules changed. */
+  propertyIds?: string[];
 }
 
 /**
@@ -55,10 +71,6 @@ export interface GroupMembershipChangedPayload {
  * inference on payload shape.
  */
 export type EventPayloadFor<T extends EventTopicValue> =
-  T extends typeof EventTopic.IdentityUserRoleChanged
-    ? UserRoleChangedPayload
-    : T extends typeof EventTopic.IdentityRolePermissionChanged
-    ? RolePermissionChangedPayload
-    : T extends typeof EventTopic.IdentityGroupMembershipChanged
-    ? GroupMembershipChangedPayload
+  T extends typeof EventTopic.PermissionInvalidate
+    ? PermissionInvalidatePayload
     : never;
