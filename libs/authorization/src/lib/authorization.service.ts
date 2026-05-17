@@ -9,11 +9,13 @@ import {
 } from '@hubblewave/event-bus';
 import {
   AuthorizedPropertyMeta,
+  FieldPermissions,
   PropertyMeta,
   CollectionOperation,
   MaskingStrategy,
   CollectionAccessRuleData,
   PropertyAccessRuleData,
+  ResponsePermissions,
   UserAccessContext,
   AccessConditionData,
   SPECIAL_VALUES,
@@ -1131,6 +1133,65 @@ export class AuthorizationService
   ): Promise<AuthorizedPropertyMeta[]> {
     const authorized = await this.getAuthorizedFieldsForCollection(ctx, collectionId, fields);
     return authorized.filter((f) => f.canWrite);
+  }
+
+  /**
+   * Canon §28 + W2 Stream 4b Task 36 — compute the
+   * `ResponsePermissions` payload attached to every UI-facing data
+   * response. Combines:
+   *
+   *   - Collection-level decisions for `create` / `update` / `delete`
+   *     (via `canAccessCollection`) — gate the client's render of
+   *     create / edit / delete affordances. Backend remains
+   *     authoritative; mutations still pass through
+   *     `@RequireCollectionAccess`.
+   *   - Per-field decisions (via `getAuthorizedFieldsForCollection`)
+   *     — uniform across the response (per-field permissions don't
+   *     change per row).
+   *
+   * Service tokens have no §28 field-level concept and would receive
+   * a payload that doesn't apply to their authority model; callers
+   * should NOT invoke this method for service-token contexts. The
+   * method asserts `ctx.kind === 'user'` defensively — a service
+   * context flows through with `canCreate/canUpdate/canDelete = false`
+   * and empty `fields`, which is the safest fallback.
+   */
+  async evaluateResponsePermissions(
+    ctx: UserRequestContext,
+    collectionId: string,
+    fields: PropertyMeta[],
+  ): Promise<ResponsePermissions> {
+    // Collection-level decisions for the mutating verbs. Read is
+    // implicit — the caller has already passed
+    // `ensureCollectionAccess(ctx, collectionId, 'read')` to reach
+    // this code path, so we don't re-check it.
+    const [canCreate, canUpdate, canDelete] = await Promise.all([
+      this.canAccessCollection(ctx, collectionId, 'create'),
+      this.canAccessCollection(ctx, collectionId, 'update'),
+      this.canAccessCollection(ctx, collectionId, 'delete'),
+    ]);
+
+    const authorizedFields = await this.getAuthorizedFieldsForCollection(
+      ctx,
+      collectionId,
+      fields,
+    );
+
+    const fieldMap: Record<string, FieldPermissions> = {};
+    for (const f of authorizedFields) {
+      fieldMap[f.code] = {
+        canRead: f.canRead,
+        canWrite: f.canWrite,
+        maskStrategy: f.maskingStrategy,
+      };
+    }
+
+    return {
+      canCreate,
+      canUpdate,
+      canDelete,
+      fields: fieldMap,
+    };
   }
 
   /**

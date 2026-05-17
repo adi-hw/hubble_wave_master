@@ -14,7 +14,10 @@ import {
   ViewDefinitionRevision,
   withAudit,
 } from '@hubblewave/instance-db';
-import { AuthorizationService } from '@hubblewave/authorization';
+import {
+  AuthorizationService,
+  type ResponsePermissions,
+} from '@hubblewave/authorization';
 import { UserRequestContext } from '@hubblewave/auth-guard';
 import { SelectQueryBuilder, ObjectLiteral, DataSource, EntityManager } from 'typeorm';
 import { ValidationService } from './validation/validation.service';
@@ -103,6 +106,15 @@ export interface QueryResult<T = Record<string, unknown>> {
   };
   fields: PropertyDefinition[];
   view?: ViewDefinition;
+  /**
+   * Canon §28 + W2 Stream 4b Task 36 — response-level permissions
+   * payload. The client renders create / update / delete affordances
+   * + per-field controls per these flags; the backend remains
+   * authoritative (every mutation re-checks via the guard chain).
+   * Optional because internal call sites (background jobs, scripts)
+   * don't need the payload.
+   */
+  permissions?: ResponsePermissions;
 }
 
 // ============================================================================
@@ -1127,6 +1139,21 @@ export class CollectionDataService {
 
     const totalPages = Math.ceil(total / pageSize);
 
+    // Canon §28 + W2 Stream 4b Task 36 — attach the response-level
+    // permissions payload so the UI can render create/update/delete
+    // affordances + per-field controls without re-deriving §28. The
+    // payload is uniform across rows in this response (per-field
+    // perms don't change per row).
+    const permissions = await this.authz.evaluateResponsePermissions(
+      context,
+      collection.id,
+      allProperties.map((p) => ({
+        code: p.code,
+        storagePath: `column:${this.getStorageColumn(p)}`,
+        label: this.getLabel(p),
+      })),
+    );
+
     return {
       data,
       meta: {
@@ -1139,11 +1166,20 @@ export class CollectionDataService {
       },
       fields: properties,
       view,
+      permissions,
     };
   }
 
   // Get single record
-  async getOne(ctx: UserRequestContext, collectionCode: string, id: string): Promise<{ record: Record<string, unknown>; fields: PropertyDefinition[] }> {
+  async getOne(
+    ctx: UserRequestContext,
+    collectionCode: string,
+    id: string,
+  ): Promise<{
+    record: Record<string, unknown>;
+    fields: PropertyDefinition[];
+    permissions?: ResponsePermissions;
+  }> {
     const context = this.withContext(ctx);
     const collection = await this.getCollection(collectionCode);
     await this.authz.ensureCollectionAccess(context, collection.id, 'read');
@@ -1202,7 +1238,21 @@ export class CollectionDataService {
       throw new NotFoundException(`Record '${id}' not found in collection '${collectionCode}'`);
     }
 
-    return { record, fields: properties };
+    // Canon §28 + W2 Stream 4b Task 36 — attach response-level
+    // permissions. Same shape as the list endpoint so the UI's
+    // FieldRegistry / FormLayout consumes both response kinds via
+    // one branch.
+    const permissions = await this.authz.evaluateResponsePermissions(
+      context,
+      collection.id,
+      allProperties.map((p) => ({
+        code: p.code,
+        storagePath: `column:${this.getStorageColumn(p)}`,
+        label: this.getLabel(p),
+      })),
+    );
+
+    return { record, fields: properties, permissions };
   }
 
   // Create record

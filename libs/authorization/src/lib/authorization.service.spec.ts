@@ -199,6 +199,98 @@ describe('AuthorizationService — collection-id API', () => {
   });
 });
 
+describe('AuthorizationService — evaluateResponsePermissions (W2 Stream 4b Task 36)', () => {
+  // The plan exercises the response-permissions payload via collection +
+  // field decisions composed into a single ResponsePermissions object.
+  // Here we mock the repo so each test can pick a per-verb collection
+  // outcome and a per-field outcome.
+
+  it('returns canCreate / canUpdate / canDelete from the §28 collection evaluator', async () => {
+    const { service } = buildService({
+      collectionRules: [
+        buildReadRule({
+          id: 'r-all',
+          canRead: true,
+          canCreate: true,
+          canUpdate: true,
+          canDelete: true,
+        }),
+      ],
+    });
+
+    const permissions = await service.evaluateResponsePermissions(
+      buildContext(),
+      COLLECTION_ID,
+      [],
+    );
+
+    expect(permissions.canCreate).toBe(true);
+    expect(permissions.canUpdate).toBe(true);
+    expect(permissions.canDelete).toBe(true);
+    expect(permissions.fields).toEqual({});
+  });
+
+  it('returns canCreate=false / canUpdate=false / canDelete=false when no rule grants the verb', async () => {
+    const { service } = buildService({
+      // Read-only rule — no create/update/delete grant.
+      collectionRules: [buildReadRule()],
+    });
+
+    const permissions = await service.evaluateResponsePermissions(
+      buildContext(),
+      COLLECTION_ID,
+      [],
+    );
+
+    expect(permissions.canCreate).toBe(false);
+    expect(permissions.canUpdate).toBe(false);
+    expect(permissions.canDelete).toBe(false);
+  });
+
+  it('attaches per-field permissions from getAuthorizedFieldsForCollection', async () => {
+    const { service } = buildService({
+      collectionRules: [buildReadRule()],
+      // No property rules → legacy default-allow path returns
+      // canRead=true, canWrite=!isSystem, mask='NONE' for every field.
+      propertyRules: [],
+    });
+
+    const permissions = await service.evaluateResponsePermissions(
+      buildContext(),
+      COLLECTION_ID,
+      [
+        { code: 'name', label: 'Name' },
+        { code: 'created_at', label: 'Created', isSystem: true },
+      ],
+    );
+
+    expect(permissions.fields['name']).toEqual({
+      canRead: true,
+      canWrite: true,
+      maskStrategy: 'NONE',
+    });
+    expect(permissions.fields['created_at']).toEqual({
+      canRead: true,
+      canWrite: false, // isSystem
+      maskStrategy: 'NONE',
+    });
+  });
+
+  it('returns an empty fields map when no fields are supplied', async () => {
+    const { service } = buildService({
+      collectionRules: [buildReadRule()],
+    });
+
+    const permissions = await service.evaluateResponsePermissions(
+      buildContext(),
+      COLLECTION_ID,
+      [],
+    );
+
+    expect(permissions.fields).toEqual({});
+  });
+});
+
 describe('AuthorizationService — table-name wrappers (deprecated)', () => {
   it('canAccessTable resolves tableName -> collectionId and reuses canAccessCollection', async () => {
     const { service, collectionDefinitionRepo, collectionAclRepo } = buildService({
