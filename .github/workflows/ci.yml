@@ -573,7 +573,12 @@ jobs:
         run: echo "ADMIN_PASSWORD=ci-admin-password-1234" > .env
 
       - name: Prelude validate
-        run: npm run prelude:validate -- --skip-rebuild
+        # `--keep-api` leaves the spawned apps/api process alive so the
+        # downstream `w2:validate` step (which runs with
+        # `--skip-api-boot`) has a live API to talk to. Without it the
+        # harness kills the API on exit and every w2 HTTP assertion
+        # silently gets curl 000.
+        run: npm run prelude:validate -- --skip-rebuild --keep-api
         env:
           DB_HOST: localhost
           DB_PORT: 5432

@@ -6,7 +6,7 @@
 >
 > **Phase 3 governance baseline:** `docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md` governs Phase 3 work; Prelude implementation plan at `docs/superpowers/plans/2026-05-14-phase3-prelude-implementation.md`. Read those before starting any W2+ task.
 >
-> **Last updated:** 2026-05-15 (after `phase3-prelude-complete` — Phase 3 Prelude complete; schema split finalized, compatibility shims removed, obsolete surfaces deleted via founder-approved ledger, validation harness wired)
+> **Last updated:** 2026-05-17 (after `phase3-w2-complete` — Phase 3 W2 Platform Integrity COMPLETE; boundary consistency across authz / identity / audit / search; canon §24 carries the wave-level summary; three frontend tasks + a handful of backend fix-ups deferred to W3, listed in the canon)
 
 ## Working directory
 

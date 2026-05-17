@@ -1135,7 +1135,23 @@ export class CollectionDataService {
     const orderByClause = `ORDER BY ${orderByParts.join(', ')}`;
     const finalQuery = `${convertedQuery} ${orderByClause} LIMIT ${pageSize} OFFSET ${offset}`;
 
-    const data = await ds.query(finalQuery, paramValues);
+    const rawData = await ds.query(finalQuery, paramValues);
+
+    // Canon §28 + W2 Task 36 (follow-up) — apply field masking to
+    // every row before serialization. The W2 close PR's claim that
+    // "the server returns the masked value" only held for the
+    // `maskCollectionRecord` unit test, not the list path; this
+    // call wires the mask into the actual response so PARTIAL /
+    // FULL strategies cannot leak the raw value through list APIs.
+    // `canRead: false` columns are already stripped from the SELECT
+    // (via `readableCodes` at line 942-943); the mask call here
+    // additionally enforces stripping defensively + applies masking
+    // for `canRead: true, maskingStrategy != 'NONE'` fields.
+    const data = await Promise.all(
+      (rawData as Record<string, unknown>[]).map((row) =>
+        this.authz.maskCollectionRecord(context, row, authorizedFields),
+      ),
+    );
 
     const totalPages = Math.ceil(total / pageSize);
 
@@ -1232,11 +1248,23 @@ export class CollectionDataService {
       });
     }
 
-    const record = await qb.getRawOne();
+    const rawRecord = await qb.getRawOne();
 
-    if (!record) {
+    if (!rawRecord) {
       throw new NotFoundException(`Record '${id}' not found in collection '${collectionCode}'`);
     }
+
+    // Canon §28 + W2 Task 36 (follow-up) — apply field masking to
+    // the record before serialization. Same wiring as the list path
+    // — `canRead: false` is enforced by the SELECT filter at line
+    // 1197-1198 AND by `maskCollectionRecord` defensively; PARTIAL /
+    // FULL strategies are applied here so the masked value reaches
+    // the wire instead of the raw column value.
+    const record = await this.authz.maskCollectionRecord(
+      context,
+      rawRecord as Record<string, unknown>,
+      authorizedFields,
+    );
 
     // Canon §28 + W2 Stream 4b Task 36 — attach response-level
     // permissions. Same shape as the list endpoint so the UI's

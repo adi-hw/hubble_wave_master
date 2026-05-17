@@ -23,6 +23,22 @@ export class SeedServicePrincipals1000000000004 implements MigrationInterface {
   name = 'SeedServicePrincipals1000000000004';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Scope vocabulary: canon §29.7 binds service-token scopes to
+    // capability codes from `PERMISSION_REGISTRY`. The pre-W2-followup
+    // shape (`work_order:read` / `work_order:write` / `audit:write`)
+    // is retired because (a) `work_order` is a customer-namespaced
+    // collection code, not a platform capability, and (b) `audit:write`
+    // doesn't exist in the registry (audit writes are a side-effect
+    // of operations, not a separately-gateable verb).
+    //
+    // The svc-worker's actual call surface today is empty — canon §29.7
+    // explicitly notes "the worker doesn't currently make HTTP
+    // callbacks to apps/api" — so the scope list is aspirational
+    // wiring for the canon §29.7 contract. The codes below are valid
+    // PERMISSION_REGISTRY entries that cover the worker's expected
+    // future call sites (automation execution, audit reads,
+    // notification dispatch); adjust the array when a real cross-
+    // process surface emerges and tighten or widen accordingly.
     await queryRunner.query(`
       INSERT INTO public.service_principals
         (service_id, display_name, allowed_audiences, allowed_scopes,
@@ -31,7 +47,7 @@ export class SeedServicePrincipals1000000000004 implements MigrationInterface {
         ('svc-worker',
          'BullMQ background worker',
          ARRAY['svc-api'],
-         ARRAY['work_order:read', 'work_order:write', 'audit:write'],
+         ARRAY['metadata:flow:manage', 'audit:read', 'notifications:send:invoke'],
          'system:serviceaccount:hubblewave-system:svc-worker-sa',
          true)
       ON CONFLICT (service_id) DO NOTHING;

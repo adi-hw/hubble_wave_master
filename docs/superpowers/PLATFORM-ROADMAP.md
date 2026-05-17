@@ -4,7 +4,7 @@
 >
 > **Read this file at the start of any session** to understand state, priorities, and what to do next. Update when a new tag lands or a major decision changes.
 >
-> **Last updated:** 2026-05-15 (after `phase3-prelude-complete` — Phase 3 Prelude COMPLETE)
+> **Last updated:** 2026-05-17 (after `phase3-w2-complete` — Phase 3 W2 Platform Integrity COMPLETE; tag points at master HEAD)
 
 ---
 
@@ -12,7 +12,18 @@
 
 The Phase 3 roadmap is governed by **`docs/superpowers/specs/2026-05-14-phase3-roadmap-and-prelude-design.md`**. That document supersedes any "Phase 3" framing in this legacy roadmap below. Update sequencing decisions, exit criteria, and scope changes there — not here.
 
-Phase 3 Prelude landed on master via PR #60 (merge commit `0cde604`) on 2026-05-15. The Prelude restored a deterministic runtime baseline before W2 starts: schema split finalized, every entity declares its domain schema, runtime `search_path` bridge removed, compatibility shims deleted, obsolete product surfaces removed via founder-approved deletion ledger, end-to-end validation harness + CI gates wired. See the merge commit + the ledger at `docs/superpowers/plans/2026-05-14-phase3-prelude-stream3-deletion-ledger.md` for what was approved/deferred. W2 (Platform Integrity) is next; brainstorm + spec + plan that wave in its own cycle.
+Phase 3 Prelude landed on master via PR #60 (merge commit `0cde604`) on 2026-05-15. The Prelude restored a deterministic runtime baseline before W2 starts: schema split finalized, every entity declares its domain schema, runtime `search_path` bridge removed, compatibility shims deleted, obsolete product surfaces removed via founder-approved deletion ledger, end-to-end validation harness + CI gates wired. See the merge commit + the ledger at `docs/superpowers/plans/2026-05-14-phase3-prelude-stream3-deletion-ledger.md` for what was approved/deferred.
+
+**Phase 3 W2 — Platform Integrity COMPLETE** (2026-05-17, tag `phase3-w2-complete`). Boundary consistency across authz / identity / audit / search / scanner enforcement. Streams 0-3 + Stream 4a + the scoped Stream 4b subset (Tasks 35 / 36 / 40) landed across 16 PRs. The full canon §24 wave summary is in `CLAUDE.md`; the cliffsnotes:
+
+- Identity contract on ES256 cross-plane; `RequestContext` discriminated union; permission registry as source of truth (47 codes, 381 call sites in sync).
+- Canon §28 evaluator uniformly applied (admin short-circuit retired everywhere).
+- Four primary boundary decorators at 100% across 881 handlers / 28 controllers; `route-boundary:check` hard gate.
+- `PermissionsGuard` fails closed (warn-and-allow retired); audit provenance on 403.
+- Integration specs for F042 hash chain, F052 AVA chat tx, F146 dashboard widget, search authz corpus/facet/pagination, `permissions.fields` payload contract.
+- `w2-validate.ts` boundary-consistency harness wired as a CI step in the prelude-validate job.
+
+Deferred to W3 (explicit follow-ups, see `CLAUDE.md` §24): frontend field-permission wiring + 401/403 UX + SSE invalidation channels (Tasks 37/38/39); service-token scope/ACL in the validate harness; admin role retirement 1s-budget assertion; the `AuthorizationService.getPropertyRules` query path bug.
 
 **Tag `phase3-prelude-complete` points at HEAD `13b55a9`** (advanced from the merge commit through 6 audit-driven cleanups, see below). The tag annotation enumerates scope LIMITS explicitly: this milestone certifies the FOUNDATION only, not Platform Integrity (W2) or full default-deny (W3+).
 
@@ -310,7 +321,7 @@ Estimated calendar to all checkboxes done: **12–15 months solo** (per RESUME-C
 
 Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`. master is at `7b47d49` with all of Effort A and the W0+W1 portion of Effort B consolidated.
 
-**Recommended next move**: Phase 1 — extend scanners to apps/api, then continue W1 architectural migration with svc-automation.
+**Recommended next move (2026-05-17)**: pick from the W3 deferral list in `CLAUDE.md` §24. The biggest chunk is the frontend trio (37/38/39 — field-permission wiring, 401/403 UX, SSE invalidation channels) and needs browser verification per the CLAUDE.md frontend rule. The smallest backend fix is the `AuthorizationService.getPropertyRules` query path bug (the Task 36 integration spec documents it with an inline shim — fixing the underlying query unblocks tightening that shim away).
 
 Specifically:
 
