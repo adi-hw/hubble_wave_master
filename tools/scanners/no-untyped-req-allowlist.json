@@ -1,0 +1,89 @@
+{
+  "$schema": "./allowlist-schema.json",
+  "entries": [
+    {
+      "target": "apps/api/src/app/ava/ava.controller.ts",
+      "rationale": "Pre-W2 handlers typed `req: Request` (express raw). Stream 1 PR6 ships the scanner to halt new drift; this file is on the W4 cleanup list. Body usage of req.user / req.headers must be migrated to AuthenticatedRequest narrowing as part of that cleanup.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/data/integration/oauth2.controller.ts",
+      "rationale": "OAuth2 discovery + token-exchange handlers use raw express Request to access request URL + headers. Migration to typed shape requires confirming no caller depends on bare Request semantics. Tracked W4.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/auth/api-key/api-key.controller.ts",
+      "rationale": "Pre-W2 api-key endpoints typed req: any to access req.user.userId before the typed RequestContext landed. W4 cleanup migrates each handler to UserRequestContext after assertUserContext narrowing.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/auth/service-token.controller.ts",
+      "rationale": "Service-token mint endpoint uses raw Request to inspect bootstrap headers (X-Service-Id, X-Bootstrap-Secret, Authorization). Migration deferred — these are pre-JWT-validation reads, the typed RequestContext is not populated yet. W4.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/auth/session.controller.ts",
+      "rationale": "Pre-W2 session handlers typed req: any. W4 cleanup migrates to AuthenticatedRequest.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/auth/sso/sso.controller.ts",
+      "rationale": "SSO callbacks use raw Request for session-cookie + redirect URL access. Migration deferred — these are pre-JWT-validation paths. W4.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/iam/iam.controller.ts",
+      "rationale": "Pre-W2 iam handlers typed req: any to read req.user.userId. W4 cleanup migrates to UserRequestContext.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/identity/ui/ui.controller.ts",
+      "rationale": "Pre-W2 UI handlers typed req: any. W4 cleanup migrates to AuthenticatedRequest.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/metadata/collection/collection.controller.ts",
+      "rationale": "Pre-W2 collection handlers typed req: any. W4 cleanup migrates to AuthenticatedRequest.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/metadata/packs/packs.controller.ts",
+      "rationale": "Pack install endpoints use raw Request to read X-Install-Token header + pack-control-plane delivery metadata. Migration depends on PackInstallGuard typing work. W4.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/api/src/app/metadata/property/property.controller.ts",
+      "rationale": "Pre-W2 property handlers typed req: any. W4 cleanup migrates to AuthenticatedRequest.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    },
+    {
+      "target": "apps/control-plane/src/app/auth/auth.controller.ts",
+      "rationale": "Control-plane auth handlers typed req: any for login/refresh/logout endpoints. Stream 1 PR3 + PR4 left these unchanged; W4 cleanup migrates the control-plane to its own ControlPlaneRequestContext shape.",
+      "addedBy": "adi-hw",
+      "addedAt": "2026-05-17",
+      "followUp": "W4 cleanup"
+    }
+  ]
+}

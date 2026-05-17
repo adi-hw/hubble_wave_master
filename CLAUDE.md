@@ -612,6 +612,19 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (W2 Stream 1 PR6): §29.6 clarification — role-grant changes
+  do NOT bump `security_stamp`. The exclusive 8-event bump list stays
+  exclusive; role grants / revocations / role-permission edits / group
+  membership changes propagate via the F025 `permission.invalidate`
+  cache-invalidation chain (scope-keyed). New CI scanner
+  `no-untyped-req-check` (canon §29.3 + §29.6) flags `@Req() req: any`
+  and `@Req() req: Request` in controllers — both bypass the
+  discriminated-union `RequestContext` narrowing that JwtAuthGuard
+  populates. Scanner ships with a 12-entry allowlist tagged
+  `followUp: W4 cleanup` covering the pre-W2 untyped sites; the
+  scanner halts new drift while the cleanup wave migrates the existing
+  surface. Self-test: 16/16 assertions. Wired as a required CI gate.
+
 - 2026-05-17 (W2 Stream 1 PR4): §29.7 service-token contract update +
   HS256 retirement. §29.7 scope vocabulary now binds to platform
   capability codes from `PERMISSION_REGISTRY` (Stream 2 PR3 materializes
@@ -1453,6 +1466,8 @@ Every user carries a `security_stamp` column (`uuid` regenerated on security eve
 8. **Account status change to a non-active state** — `'suspended'`, `'inactive'`, `'deleted'`, `'compromised'`. Wherever the platform mutates `user.status` away from `'active'`, the same write must bump `securityStamp`.
 
 Per-device logout (`POST /auth/logout`) does NOT bump `security_stamp`. Bumping the stamp invalidates every access token across every device — that's the global kill-switch, not the ordinary sign-out.
+
+**Role-grant changes do NOT bump `security_stamp` either** (W2 Stream 1 PR6 clarification). Granting a role to a user, revoking a role, adding or removing a role-permission row, or editing role membership of a group all change AUTHORITY, not IDENTITY. The platform propagates those changes via the canon §28 + §F025 cache-invalidation chain (`permission.invalidate` event with the appropriate scope: `'identity'` for user-role / group-member changes, `'permissions'` for role-permission / group-role changes, `'acl'` for `CollectionAccessRule` / `PropertyAccessRule` changes). The W6.D batched group cache + the per-request identity resolver pick up the new state on the next request; in-flight access tokens remain valid until natural expiry, and the next protected call resolves the updated roles + permissions. The 8-event bump list above is **exclusive** — only those events qualify. Reasoning: bumping the stamp on every role grant would force re-login across every device on every admin permission edit, which is hostile UX without a security benefit (the §F013 stale-authority test in Stream 1 PR5 proves the cache-invalidation path is fast enough to make stamp bumps unnecessary).
 
 Every JWT carries the user's `security_stamp` value at issuance time in the `token_version` claim. Verifiers (`JwtAuthGuard`, `JwtStrategy`) compare to the current DB value; mismatch → reject with `Token version stale`. Closes the "old session still works after password change" gap.
 
