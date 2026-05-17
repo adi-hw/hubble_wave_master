@@ -1890,7 +1890,238 @@ Endpoint: `GET /archive/tasks?from=<iso>&to=<iso>&filters=...`. Opens cold parti
 
 ---
 
-### 13.6 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.6 Worked example: §3.5 Time-Series Observations (full artifact-level spec — second-largest substrate section)
+
+#### 13.6.1 Tables
+
+All tables live in `schema: 'observations'` (NEW dedicated schema). Subject binding is generic — `subject_collection_id` + `subject_record_id` + `stream_kind` — no asset/meter coupling at the platform layer.
+
+**`observations.observation_streams`** — one row per addressable time-series stream.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE per instance |
+| `subject_collection_id` | `uuid` | — | NOT NULL | FK → `metadata.collection_definitions(id)`. Generic: maintenance pack binds asset; the platform doesn't know what an asset is |
+| `subject_record_id` | `uuid` | — | NOT NULL | The specific subject (e.g., a specific asset record) |
+| `stream_kind` | `varchar(64)` | — | NOT NULL | Pack-defined vocabulary; e.g., `meter`, `setpoint`, `sensor`, `gps_lat`, `engine_rpm` |
+| `unit_code` | `varchar(32)` | — | NOT NULL | FK → `observation_units(code)` |
+| `data_type` | `varchar(32)` | — | NOT NULL | `numeric` / `boolean` / `enum` |
+| `source_adapter` | `varchar(64)` | — | NOT NULL | `bacnet` / `modbus` / `hl7` / `manual` / `mqtt` / `webhook` / `obd2-telematics-feed` / `wifi-beacon-occupancy` |
+| `expected_interval_seconds` | `int` | — | NULL | Expected cadence; gap-detection alarms reference this |
+| `quality_floor` | `varchar(20)` | `'good'` | NOT NULL | Minimum acceptable quality tag; readings below this are dropped |
+| `retention_days` | `int` | `365` | NOT NULL | Per-stream retention; partition-steward respects |
+| `rollup_policy_id` | `uuid` | — | NULL | FK → `observation_rollup_policies(id)`; controls which rollup tables are maintained |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; UNIQUE `(code)`; `ix_streams_subject ON (subject_collection_id, subject_record_id)`; `ix_streams_active ON (is_active) WHERE is_active = true`; `ix_streams_source_adapter ON (source_adapter)`.
+
+**`observations.observations`** — the hot append-only readings table. RANGE-partitioned monthly via pg_partman.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `bigserial` | — | NOT NULL | Part of PK with `(stream_id, recorded_at)`; bigserial because volumes are huge |
+| `stream_id` | `uuid` | — | NOT NULL | FK → `observation_streams(id)` |
+| `recorded_at` | `timestamptz` | — | NOT NULL | RANGE partition key |
+| `value_numeric` | `double precision` | — | NULL | Used when stream.data_type = 'numeric' |
+| `value_text` | `text` | — | NULL | Used for 'enum' or free-form |
+| `value_bool` | `boolean` | — | NULL | Used for 'boolean' |
+| `quality` | `varchar(20)` | `'good'` | NOT NULL | Tag — sensor health |
+| `source_adapter` | `varchar(64)` | — | NOT NULL | Denormalized for audit / forensic |
+| `ingested_at` | `timestamptz` | `now()` | NOT NULL | When the worker landed the row (vs `recorded_at` which is the sensor's clock) |
+
+**Partitioning:**
+```sql
+CREATE TABLE observations.observations (...) PARTITION BY RANGE (recorded_at);
+SELECT partman.create_parent(
+  'observations.observations',
+  'recorded_at', 'native', 'monthly',
+  p_premake := 3
+);
+```
+
+**Indexes** (per monthly partition):
+- PK on `(stream_id, recorded_at, id)` — composite required by RANGE partitioning
+- BRIN on `(recorded_at)` — block-range index efficient for monotonically-increasing timestamps
+- `ix_observations_stream_recorded` on `(stream_id, recorded_at DESC)` — for "latest N readings on stream X" queries
+
+**`observations.observation_units`** — unit dictionary (seeded).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `code` | `varchar(32)` | — | NOT NULL | PK — `°C`, `°F`, `kPa`, `psi`, `runtime_hours`, `mph`, `kg`, `lux`, etc. |
+| `name` | `varchar(120)` | — | NOT NULL | — |
+| `dimension` | `varchar(64)` | — | NOT NULL | `temperature` / `pressure` / `length` / `time` / `mass` / `illuminance` |
+| `si_conversion_factor` | `double precision` | `1.0` | NOT NULL | Multiplier to convert to SI base unit |
+| `si_conversion_offset` | `double precision` | `0.0` | NOT NULL | Offset (needed for temperature) |
+
+Indexes: PK on `(code)`.
+
+**`observations.observation_rollup_policies`** — declares which rollup tables to populate per stream.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE — e.g., `default_thermometer`, `vibration_high_cadence` |
+| `hourly_enabled` | `boolean` | `true` | NOT NULL | — |
+| `daily_enabled` | `boolean` | `true` | NOT NULL | — |
+| `weekly_enabled` | `boolean` | `true` | NOT NULL | — |
+| `aggregations` | `varchar(64)[]` | `'{min,max,avg,p50,p95}'` | NOT NULL | Which aggregations to compute |
+
+**`observations.observation_rollups_hourly` / `_daily` / `_weekly`** — explicit rollup tables (NOT pg_ivm — see §3.5 decision and canon §31).
+
+Same column set per granularity:
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `stream_id` | `uuid` | — | NOT NULL | PK with bucket_start |
+| `bucket_start` | `timestamptz` | — | NOT NULL | Bucket start time (hour / day / week boundary) |
+| `min_value` | `double precision` | — | NULL | — |
+| `max_value` | `double precision` | — | NULL | — |
+| `avg_value` | `double precision` | — | NULL | — |
+| `p50_value` | `double precision` | — | NULL | Approximated via Postgres `percentile_disc` |
+| `p95_value` | `double precision` | — | NULL | — |
+| `sample_count` | `int` | — | NOT NULL | Number of source observations in bucket |
+| `last_refreshed_at` | `timestamptz` | `now()` | NOT NULL | When the rollup row was last upserted |
+
+Partition by RANGE on `bucket_start` (yearly for hourly, multi-year for daily/weekly).
+
+Indexes: PK `(stream_id, bucket_start)`; `ix_rollup_bucket_desc ON (bucket_start DESC)` for "show me last N buckets".
+
+**`observations.observation_alerts`** — optional threshold-based alerts (rules emit reactive WO via automation).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE |
+| `stream_id` | `uuid` | — | NOT NULL | FK → `observation_streams(id)`; subject reference lives on the stream |
+| `kind` | `varchar(32)` | — | NOT NULL | `threshold_above` / `threshold_below` / `out_of_band` / `gap_detected` / `z_score_outlier` |
+| `threshold_value` | `double precision` | — | NULL | For threshold_above/below |
+| `condition_jsonb` | `jsonb` | — | NULL | For more complex conditions (e.g., z-score window) |
+| `action_id` | `uuid` | — | NOT NULL | FK → `automation_rules(id)` — what to do when the alert fires |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `cooldown_seconds` | `int` | `300` | NOT NULL | Min seconds between fires to prevent storm |
+
+#### 13.6.2 Migrations
+
+1. `1937300000000-add-observations-schema.ts` — creates `observations` schema.
+2. `1937300000001-add-observation-units.ts` — creates `observation_units` + seeds the standard dictionary (~50 entries: °C, °F, kPa, psi, runtime_hours, mph, kg, lux, etc.).
+3. `1937300000002-add-observation-streams.ts` — creates `observation_streams`.
+4. `1937300000003-add-observation-rollup-policies.ts` — creates `observation_rollup_policies` + seeds defaults.
+5. `1937300000004-add-observations-partitioned.ts` — creates partitioned `observations` parent + pg_partman setup.
+6. `1937300000005-add-observation-rollups.ts` — creates 3 rollup tables + per-table partitioning.
+7. `1937300000006-add-observation-alerts.ts` — creates `observation_alerts`.
+
+Each migration discrete + reversible. Migration 5 is special — must run `partman.create_parent` after table creation.
+
+#### 13.6.3 TypeORM entities
+
+**New file:** `libs/instance-db/src/lib/entities/observations.entity.ts` — 7 entities (`ObservationStream`, `Observation`, `ObservationUnit`, `ObservationRollupPolicy`, `ObservationRollupHourly`, `ObservationRollupDaily`, `ObservationRollupWeekly`, `ObservationAlert`). Standard TypeORM decoration; `ObservationUnit` uses `code` as PK.
+
+#### 13.6.4 Services
+
+**Worker ingest pipeline:** `apps/worker/src/observations/ingest.service.ts` (NEW)
+
+```typescript
+@Injectable()
+export class ObservationIngestService {
+  /** Per-adapter buffer for 5s coalescing; on flush, batched COPY-style insert. */
+  async ingest(events: IngestEvent[]): Promise<void> {
+    // Group by stream_id; for each stream, look up retention_days + quality_floor;
+    // drop events below quality_floor; convert source-adapter values via unit dictionary;
+    // INSERT INTO observations.observations(...) VALUES ... (batched 1000+/insert).
+    // Idempotency via (stream_id, recorded_at, source_adapter_event_id) uniqueness if event_id present.
+  }
+}
+```
+
+**Adapter contracts:** `apps/worker/src/observations/adapters/{bacnet,modbus,mqtt,hl7,obd2,wifi-beacon,manual,webhook}.adapter.ts` — each implements `IngestionAdapter` interface from §3.13 connector runtime.
+
+**Rollup service:** `apps/worker/src/observations/rollup.service.ts` (referenced in §9 critical files)
+
+```typescript
+@Injectable()
+export class ObservationRollupService {
+  /** Scheduled per granularity: hourly every 5 min, daily every hour, weekly every day. */
+  async refreshHourly(): Promise<void> {
+    // INSERT INTO observation_rollups_hourly (stream_id, bucket_start, min, max, avg, p50, p95, sample_count)
+    // SELECT stream_id, date_trunc('hour', recorded_at), min(...), max(...), avg(...), percentile_disc(0.5), percentile_disc(0.95), count(*)
+    // FROM observations.observations
+    // WHERE recorded_at >= last_refreshed_at AND recorded_at < now() - INTERVAL '1 hour'  -- avoid open bucket
+    // GROUP BY stream_id, date_trunc('hour', recorded_at)
+    // ON CONFLICT (stream_id, bucket_start) DO UPDATE SET ...;
+    // -- aggregation runs in Postgres; the worker only issues the statement + observes lag
+  }
+  // similar for refreshDaily / refreshWeekly
+}
+```
+
+Rollup-refresh lag visible in `task_projection_lag`-equivalent operational table (or extend that one).
+
+**API service:** `apps/api/src/app/observations/observations.service.ts` — read APIs for raw + rollup data.
+
+#### 13.6.5 API endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/observations/streams` | `@Roles` | List streams (filterable by subject_collection_id + subject_record_id) |
+| `POST` | `/observations/streams` | `@Roles('observations_admin')` | Create stream (rare — usually pack-installed) |
+| `GET` | `/observations/streams/:id/readings?from=&to=&limit=` | `@Roles` per subject collection | Raw readings paginated |
+| `GET` | `/observations/streams/:id/rollups/:granularity?from=&to=` | `@Roles` per subject | Rollup data for charts (hourly / daily / weekly) |
+| `POST` | `/observations/ingest` | `@AllowServiceToken @RequireServiceScope('observations:ingest')` | Webhook ingest endpoint for non-adapter sources |
+
+#### 13.6.6 Validator extensions
+
+1. **Stream unit consistency**: when a pack declares an `observation_streams` row, the `unit_code` must exist in `observation_units` AND the `data_type` (numeric/bool/enum) must be compatible with the unit's `dimension`.
+2. **Rollup policy resolution**: if `rollup_policy_id` is set, it must reference an existing policy and the policy's `aggregations` array must be non-empty.
+3. **Adapter declaration**: `source_adapter` must reference a registered `integration_adapter_registry` row (§3.13).
+
+#### 13.6.7 Service-boundary scanner rules
+
+```typescript
+'observations.observation_streams': { writers: ['apps/api/src/app/observations/**', 'apps/worker/src/observations/adapters/**'], readers: ['apps/api/src/app/observations/**', 'apps/api/src/app/views/**', 'apps/api/src/app/ai/**'] },
+'observations.observations': { writers: ['apps/worker/src/observations/ingest.service.ts', 'apps/worker/src/observations/adapters/**'], readers: ['apps/api/src/app/observations/**'] },
+'observations.observation_units': { writers: ['apps/api/src/app/observations/admin/**'], readers: ['apps/api/src/app/observations/**', 'apps/worker/src/observations/**'] },
+'observations.observation_rollups_*': { writers: ['apps/worker/src/observations/rollup.service.ts'], readers: ['apps/api/src/app/observations/**', 'apps/api/src/app/views/**'] },
+'observations.observation_alerts': { writers: ['apps/api/src/app/observations/admin/**'], readers: ['apps/worker/src/observations/alert-evaluator.service.ts'] },
+```
+
+#### 13.6.8 Tests (self-test ≥ 15 assertions)
+
+1. Stream creation: minimal valid stream → succeeds; missing unit → fails validator.
+2. Ingest 100k readings → all land in correct monthly partition.
+3. pg_partman creates next month's partition automatically (advance the clock to month-end, verify partition exists).
+4. Quality floor: readings below `quality_floor` dropped at ingest; not stored.
+5. Unit conversion at ingest: a Fahrenheit BACnet reading → stored as-is + tagged with unit; rollup queries can convert via `observation_units.si_conversion_factor`.
+6. Hourly rollup refresh: 60 readings within an hour → one rollup row with correct min/max/avg/p50/p95.
+7. Rollup refresh doesn't re-process closed buckets: idempotent for old hours; only the newest hour gets recomputed if it's been refreshed before.
+8. Daily rollup builds from hourly rollups (cascading aggregation) where appropriate.
+9. Alert: a threshold-above alert + a reading exceeding threshold → automation rule fires + cooldown_seconds honored on subsequent readings within window.
+10. Gap detection: stream's `expected_interval_seconds = 60` + no readings for 5 min → gap_detected alert fires once.
+11. Retention: stream's `retention_days = 30` + monthly partition older than 30 days → partition-steward marks for archive (but does NOT delete; compliance §10).
+12. Worker idempotency: duplicate ingest event_id (where the source adapter provides one) → second ingest no-ops via `processed_events`.
+13. Z-score outlier alert: a reading 4σ from the rolling-24h mean → outlier alert fires.
+14. Adapter health: BACnet adapter loses connection → `observation_streams.is_active` for streams from that adapter NOT auto-deactivated (alert only); manual or policy decision.
+15. Read API authz: §28 evaluator filters readings by subject record visibility (a tech who can't see the asset can't see its readings).
+
+#### 13.6.9 PR breakdown for §3.5
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Tables + migrations (1-3) | 3 migration files (schema, units, streams) + units dictionary seed | Migrations + scanner pass |
+| 2 | Partitioned observations table + pg_partman | Migration 4-5 + entity registration | partman creates next monthly partition; ingest a row into latest partition |
+| 3 | Rollup tables + rollup service (worker) | Migration 6 + `rollup.service.ts` | Self-test cases 6, 7, 8 pass |
+| 4 | Ingest pipeline + adapter SDK reference impl | `apps/worker/src/observations/ingest.service.ts` + `manual.adapter.ts` + `webhook.adapter.ts` | Self-test cases 2, 4, 5, 12 pass |
+| 5 | Alerts engine | Migration 7 + `alert-evaluator.service.ts` | Self-test cases 9, 10, 13 pass |
+| 6 | API endpoints + authz | `apps/api/src/app/observations/**` | Self-test case 15 + integration tests for all 5 endpoints |
+| 7 | Canon §31 amendment + ops runbook | `CLAUDE.md`; `docs/operations/observations-runbook.md` | Canon merged; runbook covers pg_partman maintenance + rollup-lag escalation |
+
+**Total: 7 PRs for §3.5. Estimated effort: ~7-9 working days.**
+
+---
+
+### 13.7 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. The §13.2 / §13.3 worked examples cover §3.1 + §3.2; the remaining 16 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
 
@@ -1899,6 +2130,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
 - ✅ §3.4 list-scale primitives — §13.5 (4 PRs)
+- ✅ §3.5 time-series observations — §13.6 (7 PRs)
 - §3.4 list-scale primitives (4 PRs)
 - §3.5 observations + pg_partman + rollup jobs (6 PRs)
 - §3.6 regulated-action + Merkle batch (6 PRs)
@@ -1929,7 +2161,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.7 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.8 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -1950,7 +2182,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.8 What's left to do BEFORE code starts
+### 13.9 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
