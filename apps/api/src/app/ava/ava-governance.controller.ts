@@ -83,7 +83,7 @@ interface AuditQueryDto {
 @ApiBearerAuth()
 @Controller('ava/admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePermission('ava.admin')
+@RequirePermission('ava:admin')
 export class AVAGovernanceController {
   constructor(
     private governanceService: AVAGovernanceService,

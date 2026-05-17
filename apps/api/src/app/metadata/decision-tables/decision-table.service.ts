@@ -296,7 +296,7 @@ export class DecisionTableService {
    * Authors need this to test draft tables (every row/metadata edit
    * flips a published table back to draft, so without this the
    * normal author-test loop is broken). The controller route is
-   * gated by `metadata.flows.edit`, so this is *not* available to
+   * gated by `metadata:flow:manage`, so this is *not* available to
    * runtime callers — the runtime path stays `evaluate` which
    * still enforces published.
    */

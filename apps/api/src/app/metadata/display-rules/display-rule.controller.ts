@@ -25,8 +25,8 @@ import { DisplayRuleDto, DisplayRuleService } from './display-rule.service';
 
 /**
  * Plan §7.3 endpoints. All write operations require the
- * `metadata.policies.edit` slug per ADR-12. Read is gated by
- * `collection.read` so end-user form runtimes can fetch the active
+ * `metadata:policy:manage` slug per ADR-12. Read is gated by
+ * `metadata:collection:read` so end-user form runtimes can fetch the active
  * rule set when rendering — Display Rules are visible to anyone who
  * can read the collection.
  *
@@ -47,7 +47,7 @@ export class DisplayRuleController {
    * publish lifecycle holds.
    */
   @Get()
-  @RequirePermission(['collection.read', 'metadata.policies.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:policy:manage'], 'any')
   async list(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @CurrentUser() user: RequestUser,
@@ -60,10 +60,10 @@ export class DisplayRuleController {
       const userRoles: string[] = Array.isArray(user?.roleCodes) ? user.roleCodes : [];
       const allowed =
         userRoles.includes('admin') ||
-        userPerms.includes('metadata.policies.edit');
+        userPerms.includes('metadata:policy:manage');
       if (!allowed) {
         throw new ForbiddenException(
-          "Permission 'metadata.policies.edit' required to read draft Display Rules",
+          "Permission 'metadata:policy:manage' required to read draft Display Rules",
         );
       }
     }
@@ -76,7 +76,7 @@ export class DisplayRuleController {
   }
 
   @Get(':id')
-  @RequirePermission('collection.read')
+  @RequirePermission('metadata:collection:read')
   async get(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -87,7 +87,7 @@ export class DisplayRuleController {
   }
 
   @Post()
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   async create(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Body() dto: DisplayRuleDto,
@@ -98,7 +98,7 @@ export class DisplayRuleController {
   }
 
   @Put(':id')
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   async update(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -112,7 +112,7 @@ export class DisplayRuleController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   @HttpCode(HttpStatus.OK)
   async publish(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,
@@ -126,7 +126,7 @@ export class DisplayRuleController {
   }
 
   @Delete(':id')
-  @RequirePermission('metadata.policies.edit')
+  @RequirePermission('metadata:policy:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @Param('collectionId', ParseUUIDPipe) collectionId: string,

@@ -58,7 +58,7 @@ export class UsersController {
    */
   @Get()
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   async listUsers(
     @Query('q') q?: string,
     @Query('status') status?: UserStatus,
@@ -84,7 +84,7 @@ export class UsersController {
    */
   @Get('search')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   async searchUsers(@Query('q') query: string) {
     return this.usersService.searchUsers(query || '');
   }
@@ -98,7 +98,7 @@ export class UsersController {
    */
   @Get(':id')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   async getUser(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.getUserById(id);
     return { data: user };
@@ -109,7 +109,7 @@ export class UsersController {
    */
   @Get(':id/roles')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   async getUserRoles(@Param('id', ParseUUIDPipe) id: string) {
     // Verify user exists
     await this.usersService.getUserById(id);
@@ -133,7 +133,7 @@ export class UsersController {
    */
   @Get(':id/groups')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   async getUserGroups(@Param('id', ParseUUIDPipe) id: string) {
     // Verify user exists
     await this.usersService.getUserById(id);
@@ -155,7 +155,7 @@ export class UsersController {
    */
   @Get(':id/audit')
   @UseGuards(PermissionGuard)
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   async getUserAuditLog(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
@@ -192,7 +192,7 @@ export class UsersController {
    */
   @Post('invite')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.create')
+  @RequirePermission('identity:user:manage')
   async inviteUser(@Body() dto: InviteUserDto, @CurrentUser() user: UserContext) {
     const result = await this.usersService.inviteUser(dto, user.userId);
     return { data: result, message: 'User invited successfully' };
@@ -203,7 +203,7 @@ export class UsersController {
    */
   @Put(':id')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async updateUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
@@ -217,7 +217,7 @@ export class UsersController {
    */
   @Delete(':id')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.delete')
+  @RequirePermission('identity:user:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteUser(
     @Param('id', ParseUUIDPipe) id: string,
@@ -235,7 +235,7 @@ export class UsersController {
    */
   @Post(':id/deactivate')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async deactivateUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body('reason') reason: string,
@@ -250,7 +250,7 @@ export class UsersController {
    */
   @Post(':id/reactivate')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async reactivateUser(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.usersService.reactivateUser(id);
     return { data: result, message: 'User reactivated successfully' };
@@ -261,7 +261,7 @@ export class UsersController {
    */
   @Post(':id/suspend')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async suspendUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body('reason') reason: string,
@@ -278,7 +278,7 @@ export class UsersController {
    */
   @Post(':id/unsuspend')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async unsuspendUser(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.usersService.unsuspendUser(id);
     return { data: result, message: 'User unsuspended successfully' };
@@ -289,7 +289,7 @@ export class UsersController {
    */
   @Post(':id/unlock')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async unlockUser(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.usersService.unlockUser(id);
     return { data: result, message: 'User unlocked successfully' };
@@ -300,7 +300,7 @@ export class UsersController {
    */
   @Post(':id/resend-invitation')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async resendInvitation(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.usersService.resendInvitation(id);
     return { data: result, message: 'Invitation resent successfully' };
@@ -311,7 +311,7 @@ export class UsersController {
    */
   @Post(':id/restore')
   @UseGuards(PermissionGuard)
-  @RequirePermission('users.update')
+  @RequirePermission('identity:user:manage')
   async restoreUser(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.usersService.restoreUser(id);
     return { data: result, message: 'User restored successfully' };

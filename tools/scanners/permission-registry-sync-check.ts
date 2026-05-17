@@ -22,12 +22,14 @@
  *      `apps/web-client/`, or `apps/web-control-plane/`. The entry is
  *      dead weight and either needs to be wired or deleted.
  *
- * Modes:
- *   - **Reporting-only** (default, Stream 2 PR1): outputs both lists
- *     but exits 0. The CI job is non-blocking; the data informs the
- *     Stream 3 sweep + Stream 2 PR3 registry expansion.
- *   - **Hard gate** (--strict, Stream 2 PR3): exits non-zero on any
- *     mismatch in either direction. Wired as a required CI gate then.
+ * Modes (W2 Stream 2 PR3 — hard-gate default):
+ *   - **Hard gate** (default): exits non-zero on any mismatch in either
+ *     direction. Wired as a required CI gate via
+ *     `npm run permission-registry:check`.
+ *   - **Reporting** (`--reporting`): outputs both lists but exits 0.
+ *     Useful when inventorying a backlog of unregistered codes during
+ *     a future sweep; not used by CI today. The legacy `--strict`
+ *     flag is preserved as a no-op alias.
  *
  * Scope: walks `apps/api/**`, `apps/control-plane/**`,
  * `apps/web-client/**`, `apps/web-control-plane/**`. Skips
@@ -40,9 +42,9 @@
  * for an in-flight PR but not yet referenced).
  *
  * Usage:
- *   npx tsx tools/scanners/permission-registry-sync-check.ts           (human, reporting)
- *   npx tsx tools/scanners/permission-registry-sync-check.ts --ci      (JSON, reporting)
- *   npx tsx tools/scanners/permission-registry-sync-check.ts --strict  (hard gate)
+ *   npx tsx tools/scanners/permission-registry-sync-check.ts              (human, hard-gate)
+ *   npx tsx tools/scanners/permission-registry-sync-check.ts --ci         (JSON, hard-gate)
+ *   npx tsx tools/scanners/permission-registry-sync-check.ts --reporting  (exit 0 regardless)
  *   npx tsx tools/scanners/permission-registry-sync-check.ts --root=path
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
@@ -86,11 +88,21 @@ const IGNORE_DIRS = new Set([
   '.nx',
 ]);
 
-// `@RequirePermission('audit:read')` / `@RequireServiceScope('audit:read')`
-// Both single- and double-quoted. Comments are skipped at the line level
-// before the regex runs.
-const DECORATOR_RE =
-  /@Require(?:Permission|ServiceScope)\(\s*['"]([^'"]+)['"]/g;
+// Matches an entire `@RequirePermission(...)` or
+// `@RequireServiceScope(...)` call, including multi-line array
+// literals. The body group is non-greedy so nested decorators on the
+// next handler do not bleed in. Paired with `QUOTED_TOKEN_RE` below
+// to pull every code reference out of the body — covers both the
+// single-string and array-literal call shapes:
+//
+//   @RequirePermission('audit:read')
+//   @RequirePermission(['audit:read', 'system:configure'], 'any')
+//
+// Comments are stripped (preserving offsets) before the regex runs.
+const ANY_DECORATOR_RE =
+  /@Require(?:Permission|ServiceScope)\(([\s\S]*?)\)/g;
+
+const QUOTED_TOKEN_RE = /['"]([^'"]+)['"]/g;
 
 // `<RequirePermission permission="audit:read" />` style for web clients.
 // Tolerates whitespace between the prop name and the value.
@@ -100,17 +112,21 @@ const JSX_RE =
 function parseArgs(argv: string[]): {
   root: string;
   ci: boolean;
-  strict: boolean;
+  reporting: boolean;
 } {
   let root = '.';
   let ci = false;
-  let strict = false;
+  let reporting = false;
   for (const arg of argv) {
     if (arg.startsWith('--root=')) root = arg.slice('--root='.length);
     else if (arg === '--ci') ci = true;
-    else if (arg === '--strict') strict = true;
+    else if (arg === '--reporting') reporting = true;
+    // `--strict` is the legacy hard-gate opt-in. Hard-gate is now the
+    // default; the flag is preserved as a no-op so existing callers and
+    // CI invocations continue to work.
+    else if (arg === '--strict') reporting = false;
   }
-  return { root, ci, strict };
+  return { root, ci, reporting };
 }
 
 function findSourceFiles(root: string): string[] {
@@ -170,26 +186,138 @@ function loadRegistry(root: string): RegistryEntry[] {
   return entries;
 }
 
+/**
+ * Strip comments (single-line `// ...` and multi-line `/* ... *​/`)
+ * from `src` so the decorator regex below cannot capture commented-out
+ * code or example lines in JSDoc blocks. Replaces comment characters
+ * with spaces (preserving offsets) so the line-number map computed
+ * from the input still aligns with regex match positions.
+ */
+function stripCommentsPreserveOffsets(src: string): string {
+  const out = src.split('');
+  let i = 0;
+  while (i < out.length) {
+    const ch = out[i];
+    const next = out[i + 1];
+    if (ch === '/' && next === '/') {
+      // line comment to EOL
+      while (i < out.length && out[i] !== '\n') {
+        out[i] = out[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      // block comment
+      out[i] = ' ';
+      out[i + 1] = ' ';
+      i += 2;
+      while (i < out.length) {
+        if (out[i] === '*' && out[i + 1] === '/') {
+          out[i] = ' ';
+          out[i + 1] = ' ';
+          i += 2;
+          break;
+        }
+        if (out[i] !== '\n') out[i] = ' ';
+        i++;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      // skip over string literal so a `//` inside a string does not
+      // count as a comment start
+      const quote = ch;
+      i++;
+      while (i < out.length && out[i] !== quote) {
+        if (out[i] === '\\') i += 2;
+        else i++;
+      }
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+function lineFromOffset(src: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < src.length; i++) {
+    if (src[i] === '\n') line++;
+  }
+  return line;
+}
+
 export function scanFile(
   file: string,
   src: string,
 ): SiteRef[] {
   const refs: SiteRef[] = [];
-  const lines = src.split('\n');
+  const stripped = stripCommentsPreserveOffsets(src);
+
+  // Walk every `@RequirePermission(...)` / `@RequireServiceScope(...)`
+  // call. The decorator regex captures the entire body of the call,
+  // so the inner `QUOTED_TOKEN_RE` sweep over the body picks up every
+  // referenced code regardless of single-string vs array form. The
+  // line number is computed from the absolute offset of the quoted
+  // token within the stripped source.
+  ANY_DECORATOR_RE.lastIndex = 0;
+  let dec: RegExpExecArray | null;
+  while ((dec = ANY_DECORATOR_RE.exec(stripped)) !== null) {
+    // Offset of body capture group `(...)` within `stripped`. The
+    // RegExp engine doesn't expose the capture-group start directly,
+    // but `dec.index` points at `@`, the prefix `@RequirePermission(`
+    // or `@RequireServiceScope(` is the only thing between `@` and the
+    // body — find the `(` to anchor.
+    const matchText = dec[0];
+    const bodyOffsetInMatch = matchText.indexOf('(') + 1;
+    const bodyAbsoluteStart = dec.index + bodyOffsetInMatch;
+    const body = dec[1];
+
+    // The second positional arg of `@RequirePermission(codes, mode)` is
+    // the literal `'any'` or `'all'` mode marker — exclude it so the
+    // mode marker is not misread as a permission code. The marker is
+    // always positioned after a `]` (array form) or after the comma
+    // following the single string. Conservative rule: drop everything
+    // after the last `]` in the body for the array form; for the
+    // single-string form the body contains no `]`, so trim everything
+    // after the first `,` instead (the mode is the only thing past it).
+    let codeRegionEnd = body.length;
+    const lastBracket = body.lastIndexOf(']');
+    if (lastBracket >= 0) {
+      codeRegionEnd = lastBracket + 1;
+    } else {
+      const firstComma = body.indexOf(',');
+      if (firstComma >= 0) codeRegionEnd = firstComma;
+    }
+    const codeRegion = body.slice(0, codeRegionEnd);
+
+    QUOTED_TOKEN_RE.lastIndex = 0;
+    let q: RegExpExecArray | null;
+    while ((q = QUOTED_TOKEN_RE.exec(codeRegion)) !== null) {
+      const absoluteOffset = bodyAbsoluteStart + q.index;
+      refs.push({
+        code: q[1],
+        file,
+        line: lineFromOffset(stripped, absoluteOffset),
+        source: 'decorator',
+      });
+    }
+  }
+
+  // JSX `<RequirePermission permission="..." />` — line-by-line is fine
+  // because JSX props don't span multiple source lines in practice.
+  const lines = stripped.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const stripped = line.trim();
-    if (stripped.startsWith('//') || stripped.startsWith('*')) continue;
-    let m: RegExpExecArray | null;
-    DECORATOR_RE.lastIndex = 0;
-    while ((m = DECORATOR_RE.exec(line)) !== null) {
-      refs.push({ code: m[1], file, line: i + 1, source: 'decorator' });
-    }
     JSX_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
     while ((m = JSX_RE.exec(line)) !== null) {
       refs.push({ code: m[1], file, line: i + 1, source: 'jsx' });
     }
   }
+
   return refs;
 }
 
@@ -198,7 +326,7 @@ function toRepoRelative(absPath: string, root: string): string {
 }
 
 function main() {
-  const { root, ci, strict } = parseArgs(process.argv.slice(2));
+  const { root, ci, reporting } = parseArgs(process.argv.slice(2));
 
   const allowlistPath = join(
     root,
@@ -292,14 +420,14 @@ function main() {
     }
     if (total === 0) {
       console.log('  in sync');
-    } else if (!strict) {
+    } else if (reporting) {
       console.log(
-        `\nMode: reporting-only — exiting 0. Stream 2 PR3 flips to --strict.`,
+        `\nMode: --reporting — exiting 0. Drop the flag to enforce as a hard gate.`,
       );
     }
   }
 
-  if (strict && total > 0) {
+  if (!reporting && total > 0) {
     process.exit(1);
   }
   process.exit(0);

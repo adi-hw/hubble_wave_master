@@ -17,7 +17,7 @@ import { NotificationService, SendNotificationRequest } from './notification.ser
  * automations, AVA actions) do NOT call this controller; they invoke
  * NotificationService.send() directly through DI and bypass this gate.
  *
- * Authorization: notifications.send.direct OR system.admin OR the admin
+ * Authorization: notifications:send:invoke OR system.admin OR the admin
  * role. The throttle remains as defense in depth — even with the right
  * permission, no single principal should burst more than 30 sends/min.
  */
@@ -27,7 +27,7 @@ export class NotificationsController {
   constructor(private readonly notifications: NotificationService) {}
 
   @Post('send')
-  @RequirePermission('notifications.send.direct')
+  @RequirePermission('notifications:send:invoke')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async send(
     @Body() body: SendNotificationRequest,

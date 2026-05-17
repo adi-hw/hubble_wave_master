@@ -38,7 +38,7 @@ export class AuditLogsController {
    * Get paginated audit logs with filtering
    */
   @Get()
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @UseGuards(PermissionGuard)
   async getAuditLogs(@Query() query: AuditLogsQuery) {
     const page = query.page ? parseInt(query.page, 10) : 1;
@@ -110,7 +110,7 @@ export class AuditLogsController {
    * Export audit logs as CSV
    */
   @Get('export')
-  @RequirePermission('admin.audit')
+  @RequirePermission('audit:read')
   @UseGuards(PermissionGuard)
   async exportAuditLogs(@Query() query: AuditLogsQuery) {
     // Get all logs matching the filter (no pagination for export)

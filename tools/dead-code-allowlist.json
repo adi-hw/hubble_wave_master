@@ -1,13 +1,5 @@
 [
   {
-    "type": "orphan-lib",
-    "path": "libs/permission-registry",
-    "reason": "PERMISSION_REGISTRY library is published in W2 Stream 2 PR1 but not wired into any consumer yet. Stream 2 PR3 adds the materialization script + binds the registry in JwtAuthGuard + the @RequirePermission resolution path; Stream 3 expands the registry to cover the existing ~213 call sites. Until PR3 lands the library has no importers — by design.",
-    "addedBy": "W2 Stream 2 PR1",
-    "addedAt": "2026-05-17",
-    "owedTo": "W2 Stream 2 PR3"
-  },
-  {
     "type": "phantom-dep",
     "path": "bcrypt",
     "reason": "Phantom dependency. argon2 is canonical for password hashing (W5.C dep registry). bcrypt remains in package.json as a legacy carve-out per tools/approved-deps.json but no source file imports it.",

@@ -157,7 +157,7 @@ export function CollectionRecordPage() {
   // codes through the URL so the form-builder picker can deep-link
   // into a record page rendered against a different role's variant
   // resolution. The view-engine controller gates the override
-  // server-side by `metadata.forms.edit` or admin role.
+  // server-side by `metadata:form:manage` or admin role.
   const previewAsRole = (searchParams.get('previewAsRole') ?? '')
     .split(',')
     .map((r) => r.trim())
@@ -747,7 +747,7 @@ export function CollectionRecordPage() {
             </>
           ) : (
             <>
-              <PermissionGate permissions="metadata.forms.edit">
+              <PermissionGate permissions="metadata:form:manage">
                 {collection && canConfigureForm && (
                   <button
                     type="button"
@@ -759,7 +759,7 @@ export function CollectionRecordPage() {
                       )
                     }
                     className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors border border-border bg-card text-foreground hover:bg-muted"
-                    title="Edit the form layout for this Collection (metadata.forms.edit)"
+                    title="Edit the form layout for this Collection (metadata:form:manage)"
                   >
                     <Settings className="w-4 h-4" />
                     Configure Form

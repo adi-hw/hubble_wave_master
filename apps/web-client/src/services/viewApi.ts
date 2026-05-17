@@ -155,7 +155,7 @@ export const viewApi = {
      * Plan §7.2 — Form Builder "Preview as role X" override. CSV of
      * role codes; the view-engine resolves variant matching against
      * these roles instead of the caller's. Server-side gate
-     * (`metadata.forms.edit` or admin) prevents privilege simulation
+     * (`metadata:form:manage` or admin) prevents privilege simulation
      * by non-admins.
      */
     previewAsRole?: string[];

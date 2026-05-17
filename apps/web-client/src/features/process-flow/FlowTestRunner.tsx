@@ -34,7 +34,7 @@ export interface FlowTestRunnerProps {
  * Test mode (dry-run) is the default — record-mutating actions
  * never reach the SQL layer; the trace shows what each node WOULD
  * do. The wet-run toggle delegates to the engine for true execution
- * (gated by the same `metadata.flows.edit` permission as the editor
+ * (gated by the same `metadata:flow:manage` permission as the editor
  * itself; you can't escalate via the test runner).
  */
 export const FlowTestRunner: React.FC<FlowTestRunnerProps> = ({

@@ -12,7 +12,7 @@ export class ViewController {
    * Plan §7.2 — `previewAsRole` enables Form Builder's "Preview as
    * role X" mode. When supplied, variant resolution runs against the
    * named role list (CSV) instead of the caller's actual roles. Only
-   * admins or callers holding `metadata.forms.edit` can override —
+   * admins or callers holding `metadata:form:manage` can override —
    * for everyone else the parameter is ignored and the response uses
    * the caller's real role context.
    */
@@ -30,10 +30,10 @@ export class ViewController {
     if (previewAsRole) {
       const canPreview =
         authContext.roleCodes?.includes('admin') ||
-        authContext.permissionCodes?.includes('metadata.forms.edit');
+        authContext.permissionCodes?.includes('metadata:form:manage');
       if (!canPreview) {
         throw new ForbiddenException(
-          'previewAsRole requires `metadata.forms.edit` or admin role',
+          'previewAsRole requires `metadata:form:manage` or admin role',
         );
       }
       effectiveRoles = previewAsRole.split(',').map((r) => r.trim()).filter(Boolean);

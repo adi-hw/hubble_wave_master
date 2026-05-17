@@ -125,7 +125,7 @@ export class WorkflowDefinitionService {
    *    instance ID is returned alongside the trace so the canvas-side
    *    log can correlate with the engine's `processFlow.step_completed`
    *    events. Wet-run honors the flow's runAs setting AND the
-   *    caller's `metadata.flows.edit` gate (controller-level), so a
+   *    caller's `metadata:flow:manage` gate (controller-level), so a
    *    delegated flow editor cannot escalate by test-running a
    *    `runAs:'system'` flow they wouldn't otherwise be permitted to
    *    invoke. The actor's id is recorded as the workflow starter.

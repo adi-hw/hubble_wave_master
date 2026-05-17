@@ -20,7 +20,7 @@ export interface FormPreviewRolePickerProps {
  * Renders a dropdown of platform roles. When a role is selected,
  * downstream `viewApi.resolve` calls send `?previewAsRole=<code>`.
  * The view-engine controller honors the override only for callers
- * with `metadata.forms.edit` or admin (gated server-side), so a
+ * with `metadata:form:manage` or admin (gated server-side), so a
  * delegated form editor can verify their layout under a different
  * role's variant resolution without privilege escalation.
  *

@@ -82,7 +82,7 @@ export class WorkspaceService {
   /**
    * `editorScope=true` exposes draft / inactive rows for the
    * Workspace Builder. Default `false` filters to published+active,
-   * so a runtime read user (collection.read only) cannot enumerate
+   * so a runtime read user (metadata:collection:read only) cannot enumerate
    * unfinished or deactivated workspaces.
    */
   async list(

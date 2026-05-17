@@ -24,28 +24,28 @@ export const TAB_REGISTRY: TabDefinition[] = [
     label: 'Data',
     description: 'Properties, relationships, and inheritance for this Collection.',
     icon: Database,
-    permission: 'metadata.collections.edit',
+    permission: 'metadata:collection:manage',
   },
   {
     slug: 'forms',
     label: 'Forms',
     description: 'Record Form layout - sections, Property order, conditional visibility.',
     icon: FileText,
-    permission: 'metadata.forms.edit',
+    permission: 'metadata:form:manage',
   },
   {
     slug: 'policies',
     label: 'Policies and Rules',
     description: 'Access rules, Display Rules, and Automation Rules scoped to this Collection.',
     icon: Shield,
-    permission: 'metadata.policies.edit',
+    permission: 'metadata:policy:manage',
   },
   {
     slug: 'flows',
     label: 'Flows',
     description: 'Process Flows and Automation Rules triggered by records in this Collection.',
     icon: GitBranch,
-    permission: 'metadata.flows.edit',
+    permission: 'metadata:flow:manage',
   },
 ];
 

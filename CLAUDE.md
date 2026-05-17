@@ -637,6 +637,46 @@ Past amendments (most recent first):
   `decision = 'DENY'`. Fire-and-forget semantics preserved — a down
   audit table cannot regress runtime correctness.
 
+- 2026-05-17 (W2 Stream 2 PR3): registry sweep + scanner hard gate.
+  186 `@RequirePermission(...)` call sites migrated from the pre-W2
+  dot-style codebase (`users.view`, `admin.audit`, `metadata.flows.edit`,
+  …) to the colon-style `PERMISSION_REGISTRY` codes (`identity:user:read`,
+  `audit:read`, `metadata:flow:manage`, …). The registry itself was
+  coarsened: per-verb codes (`users.view`/`users.create`/`users.update`/
+  `users.delete`) collapsed into one read + one manage code per resource,
+  with the high-blast-radius operations (impersonation, system
+  configuration) kept as their own codes. Final registry size 24 entries
+  across 6 domains (audit / identity / authorization / metadata / ava /
+  notifications / system); top families by call-site count are
+  `metadata:flow:manage` (51), `audit:read` (14), `identity:group:read`
+  (14), `system:configure` (14), `identity:user:manage` (13). Three
+  orphan entries from the W2 Stream 2 PR1 seed (`audit:export`,
+  `metadata:schema:manage`, `automation:invoke`, `system:admin`,
+  `authorization:explain:read`, `data:record:read`, `data:record:manage`,
+  `dashboard:read`) were removed per canon §14 — they had zero call
+  sites and add register-time tax without authorization granularity.
+  `permission-registry-sync-check` flipped from `--strict`-opt-in to
+  hard-gate default; the legacy `--strict` flag is preserved as a no-op
+  alias for back-compat, and a new `--reporting` flag opts back into
+  exit-0 reporting for future inventory work. The scanner regex was
+  also extended to capture the array form
+  `@RequirePermission(['a:read', 'b:manage'], 'any')` so both call
+  shapes count against the registry. Self-test grew from 22 to 31
+  assertions (adds: hard-gate exit code, --reporting opt-in,
+  array-form detection, multi-line array, comment-stripping with
+  offset preservation). The frontend (`apps/web-client`) was migrated
+  alongside: every `<ProtectedRoute anyPermission={[...]}>`, tab
+  registry entry, and runtime `hasPermission(...)` check uses the
+  colon-style codes; a thin re-export at
+  `apps/web-client/src/lib/permissions.ts` advertises
+  `PERMISSION_REGISTRY` as the canonical import surface. Permission
+  materialization into `identity.platform_permissions` via
+  `scripts/seed-permission-registry-sync.ts` remains owed to a future
+  PR; until it lands, role-permission seeds in the migrations chain
+  (e.g. admin-role grants) are the authoritative source.
+  `libs/permission-registry` removed from
+  `tools/dead-code-allowlist.json` (now has live consumers).
+
 - 2026-05-17 (W2 Stream 2 PR5): §28.6 amendment — search admin
   short-circuit retired. `apps/api/src/app/ava/search/
   search-query.service.ts:buildAuthzAst` no longer carries the

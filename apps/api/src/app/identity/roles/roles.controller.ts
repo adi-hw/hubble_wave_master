@@ -48,7 +48,7 @@ export class RolesController {
    * List all roles with optional filters
    */
   @Get()
-  @RequirePermission(['roles.view', 'metadata.forms.edit'], 'any')
+  @RequirePermission(['identity:role:read', 'metadata:form:manage'], 'any')
   @UseGuards(PermissionGuard)
   async listRoles(
     @Query('search') search?: string,
@@ -73,7 +73,7 @@ export class RolesController {
    * Get role hierarchy as tree
    */
   @Get('hierarchy')
-  @RequirePermission('roles.view')
+  @RequirePermission('identity:role:read')
   @UseGuards(PermissionGuard)
   async getRoleHierarchy() {
     const hierarchy = await this.roleService.getRoleHierarchy();
@@ -84,7 +84,7 @@ export class RolesController {
    * Get role by ID
    */
   @Get(':id')
-  @RequirePermission('roles.view')
+  @RequirePermission('identity:role:read')
   @UseGuards(PermissionGuard)
   async getRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -97,7 +97,7 @@ export class RolesController {
    * Create a new role
    */
   @Post()
-  @RequirePermission('roles.create')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async createRole(
     @CurrentUser() user: UserContext,
@@ -111,7 +111,7 @@ export class RolesController {
    * Update role
    */
   @Put(':id')
-  @RequirePermission('roles.update')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async updateRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -127,7 +127,7 @@ export class RolesController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('roles.delete')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async deleteRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -139,7 +139,7 @@ export class RolesController {
    * Get effective permissions for role (direct + inherited)
    */
   @Get(':id/permissions')
-  @RequirePermission('roles.view')
+  @RequirePermission('identity:role:read')
   @UseGuards(PermissionGuard)
   async getRolePermissions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -159,7 +159,7 @@ export class RolesController {
    * Set permissions for role (replace all)
    */
   @Put(':id/permissions')
-  @RequirePermission('roles.update')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async setRolePermissions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -174,7 +174,7 @@ export class RolesController {
    * Add permissions to role
    */
   @Post(':id/permissions')
-  @RequirePermission('roles.update')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async addRolePermissions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -189,7 +189,7 @@ export class RolesController {
    * Remove permissions from role
    */
   @Delete(':id/permissions')
-  @RequirePermission('roles.update')
+  @RequirePermission('identity:role:manage')
   @UseGuards(PermissionGuard)
   async removeRolePermissions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -204,7 +204,7 @@ export class RolesController {
    * Get users assigned to a role
    */
   @Get(':id/users')
-  @RequirePermission('roles.view')
+  @RequirePermission('identity:role:read')
   @UseGuards(PermissionGuard)
   async getRoleUsers(
     @Param('id', ParseUUIDPipe) id: string,
@@ -226,7 +226,7 @@ export class RolesController {
    */
   @Delete(':id/users/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('users.assign-roles')
+  @RequirePermission('identity:user:manage')
   @UseGuards(PermissionGuard)
   async removeRoleFromUser(
     @Param('id', ParseUUIDPipe) roleId: string,
@@ -239,7 +239,7 @@ export class RolesController {
    * Get roles for a specific user
    */
   @Get('user/:userId')
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   @UseGuards(PermissionGuard)
   async getUserRoles(
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -260,7 +260,7 @@ export class RolesController {
    * Get effective permissions for a user
    */
   @Get('user/:userId/permissions')
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   @UseGuards(PermissionGuard)
   async getUserPermissions(
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -285,7 +285,7 @@ export class RolesController {
    * Test if a user has a specific permission
    */
   @Post('user/:userId/check-permission')
-  @RequirePermission('users.view')
+  @RequirePermission('identity:user:read')
   @UseGuards(PermissionGuard)
   async checkUserPermission(
     @Param('userId', ParseUUIDPipe) userId: string,

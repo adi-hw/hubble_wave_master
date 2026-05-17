@@ -78,7 +78,7 @@ export const displayRulesApi = {
    * `includeDrafts=true` so authors see their in-progress rules; the
    * backend default returns only published rules so runtime callers
    * (resolveView) never see drafts. Backend gates the drafts flag
-   * behind `metadata.policies.edit`.
+   * behind `metadata:policy:manage`.
    */
   list: async (
     collectionId: string,

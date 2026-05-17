@@ -73,17 +73,17 @@ export class ImpersonationService {
     }
 
     // Defense in depth: the controller already gates with
-    // @RequirePermission('users.impersonate'), but impersonation has high blast
+    // @RequirePermission('identity:impersonation:invoke'), but impersonation has high blast
     // radius so we verify the permission again at the service layer. Any future
     // caller (scheduled job, internal RPC, AVA execution path) that reaches
     // this method must hold the same permission.
     const impersonatorPerms = await this.permissionResolver.getUserPermissions(impersonatorId);
-    if (!impersonatorPerms.permissions.has('users.impersonate')) {
-      this.logger.warn('Impersonation rejected: missing users.impersonate permission', {
+    if (!impersonatorPerms.permissions.has('identity:impersonation:invoke')) {
+      this.logger.warn('Impersonation rejected: missing identity:impersonation:invoke permission', {
         impersonatorId,
         targetUserId,
       });
-      throw new ForbiddenException('Missing required permission: users.impersonate');
+      throw new ForbiddenException('Missing required permission: identity:impersonation:invoke');
     }
 
     // Get target user

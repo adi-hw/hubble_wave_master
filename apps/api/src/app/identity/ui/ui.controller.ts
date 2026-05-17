@@ -28,26 +28,26 @@ export class UiController {
   }
 
   @Get('admin/ui/theme')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   getAdminTheme() {
     return this.uiService.getTheme();
   }
 
   @Put('admin/ui/theme')
-  @RequirePermission('admin.settings')
+  @RequirePermission('system:configure')
   updateAdminTheme(@Req() req: Request, @Body() body: any) {
     const userId = (req as any).user?.userId;
     return this.uiService.updateTheme(body ?? {}, userId);
   }
 
   @Get('admin/ui/nav-profile')
-  @RequirePermission('navigation.manage')
+  @RequirePermission('metadata:navigation:manage')
   getAdminNavProfile() {
     return this.uiService.getNavigation();
   }
 
   @Put('admin/ui/nav-profile')
-  @RequirePermission('navigation.manage')
+  @RequirePermission('metadata:navigation:manage')
   updateAdminNavProfile(@Body() body: any) {
     return this.uiService.updateNavigation(body ?? {});
   }

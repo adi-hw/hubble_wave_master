@@ -28,13 +28,13 @@ import {
 import type { PanelLayout, WorkspaceVariantScope } from '@hubblewave/instance-db';
 
 /**
- * Workspace API. ADR-12 permission slug `metadata.workspaces.edit`
- * gates write operations. Reads accept `collection.read` OR the edit
+ * Workspace API. ADR-12 permission slug `metadata:workspace:manage`
+ * gates write operations. Reads accept `metadata:collection:read` OR the edit
  * slug so non-admin viewers can browse workspaces; admin bypass via
  * PermissionsGuard's internal logic stays intact.
  */
 /**
- * A caller is in editor scope when they hold metadata.workspaces.edit
+ * A caller is in editor scope when they hold metadata:workspace:manage
  * directly OR are a platform admin (PermissionsGuard's admin bypass
  * flips request.user.permissions to a wildcard, but admin role is
  * also reflected on user.roles). Editor scope is what unlocks
@@ -45,7 +45,7 @@ const hasEditorScope = (user?: RequestUser): boolean => {
   if ((user.roleCodes ?? []).includes('admin') || (user.roleCodes ?? []).includes('super_admin')) {
     return true;
   }
-  return (user.permissionCodes ?? []).includes('metadata.workspaces.edit');
+  return (user.permissionCodes ?? []).includes('metadata:workspace:manage');
 };
 
 @Controller('workspaces')
@@ -54,7 +54,7 @@ export class WorkspaceController {
   constructor(private readonly service: WorkspaceService) {}
 
   @Get()
-  @RequirePermission(['collection.read', 'metadata.workspaces.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:workspace:manage'], 'any')
   async list(
     @Query('applicationId') applicationId?: string,
     @Query('includeInactive') includeInactive?: string,
@@ -70,19 +70,19 @@ export class WorkspaceController {
   }
 
   @Get(':id')
-  @RequirePermission(['collection.read', 'metadata.workspaces.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:workspace:manage'], 'any')
   async get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: RequestUser) {
     return this.service.get(id, hasEditorScope(user));
   }
 
   @Post()
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async create(@Body() dto: CreateWorkspaceDto, @CurrentUser() user?: RequestUser) {
     return this.service.create(dto, user?.id);
   }
 
   @Put(':id')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkspaceDto,
@@ -92,25 +92,25 @@ export class WorkspaceController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: RequestUser) {
     return this.service.publish(id, user?.id);
   }
 
   @Post(':id/deprecate')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async deprecate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: RequestUser) {
     return this.service.deprecate(id, user?.id);
   }
 
   @Post(':id/toggle')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async toggleActive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: RequestUser) {
     return this.service.toggleActive(id, user?.id);
   }
 
   @Delete(':id')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id', ParseUUIDPipe) id: string) {
     await this.service.delete(id);
@@ -121,7 +121,7 @@ export class WorkspaceController {
   // ─────────────────────────────────────────────────────────────────
 
   @Post(':id/pages')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async createPage(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpsertPageDto,
@@ -131,7 +131,7 @@ export class WorkspaceController {
   }
 
   @Put(':id/pages/:pageId')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async updatePage(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('pageId', ParseUUIDPipe) pageId: string,
@@ -142,7 +142,7 @@ export class WorkspaceController {
   }
 
   @Delete(':id/pages/:pageId')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deletePage(
     @Param('id', ParseUUIDPipe) id: string,
@@ -157,7 +157,7 @@ export class WorkspaceController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get(':id/variants')
-  @RequirePermission(['collection.read', 'metadata.workspaces.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:workspace:manage'], 'any')
   async listVariants(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user?: RequestUser,
@@ -166,7 +166,7 @@ export class WorkspaceController {
   }
 
   @Put(':id/pages/:pageId/variants')
-  @RequirePermission('metadata.workspaces.edit')
+  @RequirePermission('metadata:workspace:manage')
   async upsertVariant(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('pageId', ParseUUIDPipe) pageId: string,
@@ -182,7 +182,7 @@ export class WorkspaceController {
   }
 
   @Get(':id/pages/:pageId/resolved-layout')
-  @RequirePermission(['collection.read', 'metadata.workspaces.edit'], 'any')
+  @RequirePermission(['metadata:collection:read', 'metadata:workspace:manage'], 'any')
   async resolveLayout(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('pageId', ParseUUIDPipe) pageId: string,
