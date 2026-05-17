@@ -17,7 +17,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { WebhookService } from './webhook.service';
 import { WebhookEvent, WebhookDeliveryStatus } from '@hubblewave/instance-db';
 
@@ -47,8 +53,14 @@ interface UpdateWebhookDto {
 
 @ApiTags('Webhooks')
 @ApiBearerAuth()
+/**
+ * Canon §28 / W2 Stream 3 Task 23 — webhook configuration is
+ * platform integration plumbing. Gated by
+ * `@RequirePermission('system:configure')`.
+ */
 @Controller('webhooks')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
