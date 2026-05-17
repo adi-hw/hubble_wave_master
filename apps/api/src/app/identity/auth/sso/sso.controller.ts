@@ -10,10 +10,11 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { Response, Request } from 'express';
+import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SsoProvider } from '@hubblewave/instance-db';
+import { InstanceRequest } from '@hubblewave/auth-guard';
 import { Public } from '../decorators/public.decorator';
 import { OidcService } from './oidc.service';
 import { SamlService } from './saml.service';
@@ -245,7 +246,7 @@ export class SsoController {
     @Query('state') state: string,
     @Query('error') error: string,
     @Query('error_description') errorDescription: string,
-    @Req() req: Request,
+    @Req() req: InstanceRequest,
     @Res() res: Response,
   ) {
     const baseUrl = this.configService.get<string>('BASE_URL') || 'http://localhost:3001';
@@ -320,7 +321,7 @@ export class SsoController {
   @Post('saml/acs')
   async handleSamlCallback(
     @Body() body: SamlCallbackDto,
-    @Req() req: Request,
+    @Req() req: InstanceRequest,
     @Res() res: Response,
   ) {
     const baseUrl = this.configService.get<string>('BASE_URL') || 'http://localhost:3001';
@@ -406,7 +407,7 @@ export class SsoController {
   async handleCallback(
     @Param('provider') providerSlug: string,
     @Body() body: OidcCallbackDto | SamlCallbackDto,
-    @Req() req: Request,
+    @Req() req: InstanceRequest,
     @Res() res: Response,
   ) {
     const baseUrl = this.configService.get<string>('BASE_URL') || 'http://localhost:3001';

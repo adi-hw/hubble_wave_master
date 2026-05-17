@@ -8,9 +8,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
 import { IsString, MinLength } from 'class-validator';
-import { Public } from '@hubblewave/auth-guard';
+import { InstanceRequest, Public } from '@hubblewave/auth-guard';
 import { ServiceBootstrapService } from './service-bootstrap.service';
 import { TokenIssuerService } from './token-issuer.service';
 
@@ -47,7 +46,7 @@ export class ServiceTokenController {
   @HttpCode(HttpStatus.OK)
   async mintServiceToken(
     @Body() dto: MintServiceTokenDto,
-    @Req() req: Request,
+    @Req() req: InstanceRequest,
   ): Promise<{ token: string; expiresIn: number; tokenType: 'Bearer' }> {
     const principal = await this.serviceBootstrap.authenticate(req);
     if (!principal) {

@@ -17,8 +17,7 @@ import {
 } from '@nestjs/common';
 import { SsoProvider } from '@hubblewave/instance-db';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
@@ -70,9 +69,15 @@ interface TestResult {
   details?: Record<string, unknown>;
 }
 
+/**
+ * Canon §28 / W2 Stream 3 — SSO provider administration. Every handler
+ * mutates the platform's identity federation boundary; gated by
+ * `system:configure`. The pre-W2 bare `@Roles('admin')` is retired in
+ * favor of the canon §28 capability code.
+ */
 @Controller('admin/auth/sso')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class SsoAdminController {
   private readonly logger = new Logger(SsoAdminController.name);
 

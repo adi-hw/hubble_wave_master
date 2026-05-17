@@ -27,7 +27,13 @@ import {
   Res,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
-import { Public, JwtAuthGuard, AuthenticatedRequest, PublicRequest } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  AuthenticatedRequest,
+  JwtAuthGuard,
+  Public,
+  PublicRequest,
+} from '@hubblewave/auth-guard';
 import { Response, Request } from 'express';
 import { AuthService } from '../../../identity/auth/auth.service';
 import { LoginDto } from '../../../identity/auth/dto/login.dto';
@@ -142,6 +148,7 @@ export class IdentityAuthAliasController {
   }
 
   @Post('logout')
+  @AuthenticatedOnly()
   @UseGuards(JwtAuthGuard)
   async logout(
     @Req() req: AuthenticatedRequest,
@@ -173,6 +180,7 @@ export class IdentityAuthAliasController {
   }
 
   @Get('me')
+  @AuthenticatedOnly()
   @UseGuards(JwtAuthGuard)
   @SkipThrottle()
   async getProfile(@Req() req: AuthenticatedRequest): Promise<UserProfileDto & { isAdmin: boolean }> {

@@ -1,5 +1,5 @@
 import { Controller, Get, NotFoundException, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, UserRequestContext } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, InstanceRequest, assertUserContext } from '@hubblewave/auth-guard';
 import { User } from '@hubblewave/instance-db';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,11 +19,8 @@ export class IamController {
   ) {}
 
   @Get('me')
-  async me(@Req() req: any) {
-    const ctx: UserRequestContext = req.context || req.user;
-    if (!ctx?.userId) {
-      throw new NotFoundException('User context missing');
-    }
+  async me(@Req() req: InstanceRequest) {
+    const ctx = assertUserContext(req.context);
 
     const user = await this.userRepo.findOne({ where: { id: ctx.userId } });
 
@@ -48,11 +45,8 @@ export class IamController {
   }
 
   @Get('profile')
-  async profile(@Req() req: any) {
-    const ctx: UserRequestContext = req.context || req.user;
-    if (!ctx?.userId) {
-      throw new NotFoundException('User context missing');
-    }
+  async profile(@Req() req: InstanceRequest) {
+    const ctx = assertUserContext(req.context);
 
     const user = await this.userRepo.findOne({
       where: { id: ctx.userId },
