@@ -1,14 +1,24 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import {
   CreateNavigationRequest,
   NavigationService,
   PublishNavigationRequest,
 } from './navigation.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 21 — platform navigation authoring is
+ * gated by `@RequirePermission('metadata:navigation:manage')`.
+ */
 @Controller('navigation')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('metadata:navigation:manage')
 export class NavigationController {
   constructor(private readonly navigationService: NavigationService) {}
 
