@@ -638,6 +638,121 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (Phase 3 W2 — Platform Integrity, close PR): the
+  boundary-consistency wave is complete. Streams 0-3 + Stream 4a +
+  the explicitly-scoped Stream 4b subset all landed; the three
+  frontend-heavy Stream 4b tasks (field-permission wiring on both
+  web clients, 401/403 UX, SSE invalidation channels) carry forward
+  to W3 because they require browser verification that this wave
+  did not commit to.
+
+  Delivered:
+  - **Identity contract** (Stream 1): `RequestContext` is a
+    discriminated union (`UserRequestContext | ServiceRequestContext`);
+    JWT claims carry no roles / permissions / groups — the
+    `IdentityResolverPort` reads them per-request from
+    `identity.platform_permissions` + role grants. Cache invalidation
+    via `permission.invalidate` event bus (canon §F025).
+    `security_stamp` / `token_version` honored on every verify; the
+    8-event bump list is exclusive (canon §29.6). Refresh-token
+    family rotation with reuse-detection (canon §29.5).
+  - **Cross-plane ES256** (Stream 1 + canon §29.9): the control plane
+    is on the same `KeySigningService` interface (`AwsKmsEs256` in
+    production, `LocalEs256` in dev) as the instance plane. HS256 is
+    forbidden everywhere; `no-hs256:check` enforces.
+  - **Permission registry as source of truth** (Stream 2): every
+    `@RequirePermission(code)` and `@RequireServiceScope(code)` cites
+    a code from `libs/permission-registry`. 47 codes total (25
+    instance plane + 22 control-plane plane, added 2026-05-17 by
+    the control-plane sweep); 381 call sites in sync.
+    `permission-registry-sync-check` is a hard CI gate.
+  - **Canon §28 evaluator uniformly applied** (Stream 2 PR5 + Plan
+    Fix 33): the admin short-circuit retired across collection,
+    field, AND search surfaces. Admin authority comes from seeded
+    `CollectionAccessRule` rows for the admin role (broad-allow on
+    system collections, migration `1931100000000-seed-admin-policies`).
+  - **Four primary boundary decorators at 100%** (Stream 3):
+    `@RequirePermission` / `@RequireCollectionAccess` /
+    `@AuthenticatedOnly` / `@Public`. 881 handlers across 28
+    controllers in `apps/api/src` + `apps/control-plane/src`.
+    `route-boundary:check` is a hard CI gate (default mode strict;
+    `--reporting` is a local-dev opt-out only). `@Roles` is now
+    auxiliary defense, never a primary; pre-W2 bare `@Roles('admin')`
+    is retired.
+  - **PermissionsGuard fails closed** (Stream 3 PR-final-2): the
+    warn-and-allow branch for unannotated handlers is gone. Runtime
+    defense — 403 with the canon §28 minimal body shape +
+    `handler_missing_boundary` `AccessAuditPort` event. In dev/test
+    `HW_LOUD_AUTH_MISCONFIG=true` returns 500 so misconfiguration
+    short-circuits a rollout. 8 spec tests cover the path.
+  - **Audit provenance on 403** (Stream 2 PR6): `PermissionsGuard` +
+    `CollectionAccessGuard` write the §28.7 provenance shape via
+    `AccessAuditPort.logAccessDenied`. The port relocated from
+    `libs/authorization` to `libs/auth-guard` to break a dependency
+    cycle; the authorization library re-exports the symbols. The
+    wire body stays bland; the forensic detail goes to the audit
+    log only.
+  - **Stream 4a integration specs**: F042 audit hash-chain
+    concurrency (50 tx × 10 inserts, chain length 500, no gaps),
+    F052 AVA chat transactionality (rollback at every step-failure
+    injection point), F146 dashboard widget authz (filtered layout
+    + single audit row with `droppedWidgetCount`).
+  - **Stream 4b — search authz integration spec** (Task 35): three
+    spec files verifying corpus / facet / pagination accuracy
+    end-to-end on both engines (real pgvector SQL against seeded
+    `search_embeddings`; deterministic in-memory Typesense filter_by
+    interpreter cross-checked against the same AST).
+  - **Stream 4b — `permissions.fields` payload contract** (Task 36):
+    `evaluateResponsePermissions` produces the `ResponsePermissions`
+    shape; `collection-data.service.ts` attaches it to list + detail
+    responses; `maskCollectionRecord` strips denied fields and
+    applies PARTIAL/FULL masking server-side. Integration spec
+    verifies the full path against real Postgres.
+  - **Stream 4b — w2-validate harness** (Task 40): boundary-
+    consistency end-to-end harness with 7 assertions (admin ES256
+    login, /authorization/explain provenance shapes, 401 bland
+    body, HS256 rejection, scanner-injection negative cases).
+    Wired as a required CI step in the prelude-validate job
+    (reuses the booted API via `--skip-api-boot`).
+
+  Deferred to W3 (explicit follow-ups):
+  - **Frontend field-permission wiring** (was Task 37): web-client +
+    web-control-plane render hidden/masked/read-only/denied fields
+    per the `permissions.fields` payload. Needs browser verification
+    that this wave did not commit to.
+  - **Frontend 401/403 UX** (was Task 38, F102): unified empty-state
+    + retry UX across both clients.
+  - **SSE invalidation channels** (was Task 39): per-plane SSE
+    endpoints + frontend subscribers for sub-1s permission-change
+    propagation.
+  - **Service-token scope + ACL layered tests in w2-validate**: the
+    harness scaffolding is in place; adding the seeded service
+    principal + bootstrap exchange is its own follow-up.
+  - **Admin role retirement + cache invalidation 1s budget**:
+    requires live DB mutation + bus observation; integration spec
+    or harness extension.
+  - **AuthorizationService.getPropertyRules query path bug**: the
+    method issues `where: { collectionId }` against a column that
+    doesn't exist on `PropertyAccessRule`; production binds a
+    custom repository whose query joins `property_definitions`, but
+    the raw TypeORM repository path (used by some tests) cannot
+    honour that shape. Documented in the Task 36 integration spec's
+    inline shim; worth a follow-up to either teach
+    `getPropertyRules` to call the repository's collection-aware
+    method or normalize the underlying query.
+
+  CI gates (13 required scanners + the harness): `authz`, `audit`,
+  `security`, `service-boundary`, `deps`, `dead-code`, `compliance`,
+  `permission-registry`, `route-boundary`, `no-hs256`,
+  `service-token`, `no-untyped-req`, plus `prelude:validate` +
+  `w2:validate`. Each scanner ships a self-test (verified per CI
+  run).
+
+  Per-stream amendments above carry the technical detail for the
+  individual changes; this entry is the wave-level summary the
+  founder + future agents can read to understand what W2 actually
+  bound to and what stays open.
+
 - 2026-05-17 (W2 Stream 3 PR-final): route-boundary coverage scanner
   flipped to hard-gate default + control-plane plane added to
   `PERMISSION_REGISTRY`. Stream 3 sweep complete — every HTTP handler
