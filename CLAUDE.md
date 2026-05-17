@@ -612,6 +612,27 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (W2 Stream 1 PR4): §29.7 service-token contract update +
+  HS256 retirement. §29.7 scope vocabulary now binds to platform
+  capability codes from `PERMISSION_REGISTRY` (Stream 2 PR3 materializes
+  the codes); the pre-W2 `<collection>:<action>` shape is retired
+  because collection IDs are customer-namespaced and don't survive
+  metadata changes. New `@RequireServiceScope(code)` decorator in
+  `@hubblewave/auth-guard`; `JwtAuthGuard` rejects with 500 when
+  `@AllowServiceToken()` is set but `@RequireServiceScope` is missing
+  (programmer error), and 403 with the canon §28 minimal shape when
+  the token's `scope[]` does not include the required code. Two new
+  CI scanners — `service-token:check` (verifies decorator pairing at
+  build time) and `no-hs256:check` (greps for `jsonwebtoken` imports,
+  `algorithm: 'HS256'`, `JwtModule.register`, `secretOrKey:` outside
+  an explicit allowlist). Both wired as required CI gates; self-tests
+  total 13 + 18 assertions. The two remaining `JwtModule.registerAsync`
+  blocks in `libs/auth-guard/src/lib/auth-guard.module.ts` and
+  `apps/api/src/app/identity/auth/auth.module.ts` were deleted along
+  with the unused `JWT_SECRET` env var (canon §14 — they only existed
+  to emit a warn-on-set message; no code path was consuming
+  `JwtService`). `no-hs256-allowlist.json` ships empty.
+
 - 2026-05-16 (Plan Fix 41 / F042): audit hash-chain batch-fork fix.
   W2 Stream 4a stress test (50 concurrent tx × 10 audit rows × 5 sessions)
   surfaced 10/500 rows sharing `previousHash = NULL` instead of the
@@ -1468,7 +1489,7 @@ service_principals (
   service_id              text PRIMARY KEY,            -- e.g. 'svc-worker'
   display_name            text NOT NULL,
   allowed_audiences       text[] NOT NULL,             -- e.g. ['svc-api'] — services this principal may call
-  allowed_scopes          text[] NOT NULL,             -- e.g. ['work_order:read', 'audit:write'] — <collection>:<action>
+  allowed_scopes          text[] NOT NULL,             -- platform capability codes from PERMISSION_REGISTRY
   k8s_service_account     text NULL,                   -- e.g. 'system:serviceaccount:hubblewave-system:svc-worker-sa'
   active                  boolean NOT NULL DEFAULT true,
   created_at              timestamptz NOT NULL,
@@ -1480,7 +1501,7 @@ service_principals (
 
 | service_id    | display_name                | allowed_audiences | allowed_scopes                                        | k8s_service_account                                       |
 |---------------|-----------------------------|-------------------|-------------------------------------------------------|-----------------------------------------------------------|
-| `svc-worker`  | BullMQ background worker    | `['svc-api']`     | `['work_order:read', 'work_order:write', 'audit:write']` | `system:serviceaccount:hubblewave-system:svc-worker-sa` |
+| `svc-worker`  | BullMQ background worker    | `['svc-api']`     | platform capability codes (filled in by Stream 2 PR3)    | `system:serviceaccount:hubblewave-system:svc-worker-sa` |
 
 Adding a principal is an architectural decision, not a runtime operation — it requires a migration, a canon §24 maintenance log entry, and a clear answer to "what real cross-process call uses this." Speculative seeding ("we might call svc-ava someday") is rejected.
 
@@ -1510,7 +1531,12 @@ Adding a principal is an architectural decision, not a runtime operation — it 
 
 #### Scope vocabulary
 
-`<collection>:<action>`. Examples: `work_order:read`, `work_order:write`, `dashboard:read`, `search:query`, `attachment:read`, `audit:write`.
+Service-token scopes are drawn from the **platform capability codes** materialized by `PERMISSION_REGISTRY` (the TypeScript constant in `libs/permission-registry`, synced to `identity.platform_permissions` by `scripts/seed-permission-registry-sync.ts` per W2 Stream 2 PR3). The pre-W2 `<collection>:<action>` shape (e.g. `work_order:read`) is retired — it tied scopes to collection IDs, which are customer-namespaced and don't survive metadata changes; capability codes are platform-stable identifiers.
+
+Capability codes are flat identifiers that follow the registry's own naming discipline (e.g. `analytics.events.ingest`, `audit.log.write`). The token's `scope` claim is an array of codes; an endpoint declares the one it needs via `@RequireServiceScope(code)` (W2 Stream 1 PR4 lands the decorator). The `JwtAuthGuard` enforces both:
+
+  1. **`@AllowServiceToken()` + `@RequireServiceScope(code)`** must BOTH be present on an endpoint that accepts service tokens. Missing `@RequireServiceScope` is a programmer error surfaced as 500 at runtime; the `service-token:check` CI scanner catches it at PR time.
+  2. The presented token's `scope[]` must include the required code. Mismatch returns 403 with the canon §28 minimal shape `{ statusCode: 403, message: 'Permission denied', code: 'PERMISSION_DENIED' }` — never reveal which scope was missing.
 
 Service identity is in `sub` (the caller) and `aud` (the target). Scopes describe permission, not caller identity. Do NOT add service-prefixed scopes (e.g., `svc-ava:work_order:read`) — `sub` already carries that.
 

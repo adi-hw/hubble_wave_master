@@ -606,6 +606,11 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
         allowServiceToken?: boolean;
         identity?: IdentityResolverPort;
         revocation?: JwtRevocationPort;
+        // Canon §29.7 — every opted-in endpoint MUST declare its required
+        // scope. Helper defaults to a known-good value so existing tests
+        // exercise the green path; tests that target the missing-decorator
+        // or scope-mismatch branches set this explicitly.
+        requireServiceScope?: string | undefined;
       } = {},
     ) {
       const { token, publicJwk } = await issueTestToken(KID, {
@@ -619,6 +624,11 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const jwks: Record<string, PublicJwk> = { [KID]: publicJwk };
       const keySigning = buildKeySigning(jwks);
 
+      const requireScope =
+        'requireServiceScope' in options
+          ? options.requireServiceScope
+          : 'work_order:read';
+
       const reflector = new Reflector();
       jest
         .spyOn(reflector, 'getAllAndOverride')
@@ -626,6 +636,7 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
           if (key === IS_PUBLIC_KEY) return false;
           if (key === 'ALLOW_SERVICE_TOKEN')
             return options.allowServiceToken === true;
+          if (key === 'REQUIRE_SERVICE_SCOPE') return requireScope;
           return undefined;
         });
 
@@ -730,6 +741,57 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       expect(revocation.isRevoked).not.toHaveBeenCalled();
     });
 
+    it('rejects with 500 when @AllowServiceToken is set but @RequireServiceScope is missing', async () => {
+      // Canon §29.7 — programmer error surfaced as InternalServerError so
+      // the misconfiguration is loud in dev/test before it ships.
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read'],
+        },
+        { allowServiceToken: true, requireServiceScope: undefined },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        /@AllowServiceToken\(\) requires a matching @RequireServiceScope/,
+      );
+    });
+
+    it('rejects with 403 PERMISSION_DENIED when the required scope is not in the token', async () => {
+      const { guard, ctx } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          // Token presents a different scope than the endpoint requires.
+          scope: ['audit:write'],
+        },
+        { allowServiceToken: true, requireServiceScope: 'work_order:read' },
+      );
+      await expect(guard.canActivate(ctx)).rejects.toMatchObject({
+        status: 403,
+        response: {
+          statusCode: 403,
+          message: 'Permission denied',
+          code: 'PERMISSION_DENIED',
+        },
+      });
+    });
+
+    it('admits a service token whose scope[] contains the required scope', async () => {
+      const { guard, ctx, request } = await buildGuardForServiceClaims(
+        {
+          sub: 'service:svc-worker',
+          scope: ['work_order:read', 'audit:write'],
+        },
+        { allowServiceToken: true, requireServiceScope: 'work_order:read' },
+      );
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const serviceCtx = request['context'] as {
+        kind: string;
+        scopes: string[];
+      };
+      expect(serviceCtx.kind).toBe('service');
+      expect(serviceCtx.scopes).toContain('work_order:read');
+    });
+
     it('a USER token at an @AllowServiceToken endpoint still goes through the user path', async () => {
       const identity = {
         resolveIdentity: jest.fn().mockResolvedValue({
@@ -759,6 +821,7 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
         .mockImplementation((key: unknown) => {
           if (key === IS_PUBLIC_KEY) return false;
           if (key === 'ALLOW_SERVICE_TOKEN') return true;
+          if (key === 'REQUIRE_SERVICE_SCOPE') return 'work_order:read';
           return undefined;
         });
       const guard = new JwtAuthGuard(

@@ -1,8 +1,10 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   Optional,
   UnauthorizedException,
@@ -21,6 +23,7 @@ import {
 } from './request-context.interface';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { ALLOW_SERVICE_TOKEN } from './allow-service-token.decorator';
+import { REQUIRE_SERVICE_SCOPE_KEY } from './require-service-scope.decorator';
 import {
   IDENTITY_RESOLVER_PORT,
   IdentityResolverPort,
@@ -244,6 +247,32 @@ export class JwtAuthGuard implements CanActivate {
       const scopes: string[] = Array.isArray(rawScope)
         ? (rawScope as string[])
         : [];
+
+      // Canon §29.7 — `@AllowServiceToken()` ALONE is insufficient. An
+      // opted-in endpoint MUST also declare which scope a caller must
+      // present via `@RequireServiceScope(code)`. Missing declaration
+      // is a programmer error surfaced as 500 (so the developer sees it
+      // in dev/test before it ships); the `service-token:check` CI
+      // scanner catches the same mistake at PR time.
+      const requiredScope = this.reflector.getAllAndOverride<string>(
+        REQUIRE_SERVICE_SCOPE_KEY,
+        [ctx.getHandler(), ctx.getClass()],
+      );
+      if (typeof requiredScope !== 'string' || requiredScope.length === 0) {
+        throw new InternalServerErrorException(
+          '@AllowServiceToken() requires a matching @RequireServiceScope(code) ' +
+            'at the same handler or class (canon §29.7)',
+        );
+      }
+      if (!scopes.includes(requiredScope)) {
+        // 403 with the canon §28 minimal shape — never reveal which
+        // scope was missing to the caller.
+        throw new ForbiddenException({
+          statusCode: 403,
+          message: 'Permission denied',
+          code: 'PERMISSION_DENIED',
+        });
+      }
 
       const instanceId =
         (payload as Record<string, unknown>)['instance_id'];
