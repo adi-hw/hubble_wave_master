@@ -33,8 +33,20 @@ export class Role {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  /** Unique role code (e.g., 'admin', 'technician', 'manager') */
-  @Column({ type: 'varchar', length: 100, unique: true })
+  /**
+   * Unique role code (e.g., 'admin', 'technician', 'manager').
+   *
+   * Immutable post-creation per canon §28.6 — seed migrations
+   * (`1000000000001-seed-system-roles.ts`, `1000000000003-seed-admin-
+   * policies.ts`) treat the code as a stable join key, and every
+   * `@Roles('...')` decorator across the codebase keys against it. The
+   * `update: false` flag is the entity-level soft block; the
+   * authoritative DB-level guarantee is the `tg_role_code_immutable`
+   * trigger landed by migration `1000000000020-role-code-immutable-
+   * trigger.ts` — it catches raw-SQL and tooling code paths the entity
+   * decorator cannot see.
+   */
+  @Column({ type: 'varchar', length: 100, unique: true, update: false })
   code!: string;
 
   /** Display name */
