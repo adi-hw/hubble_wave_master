@@ -54,6 +54,9 @@
       "@hubblewave/integrations": [
         "libs/integrations/src/index.ts"
       ],
+      "@hubblewave/permission-registry": [
+        "libs/permission-registry/src/index.ts"
+      ],
       "@hubblewave/analytics": [
         "libs/analytics/src/index.ts"
       ],
