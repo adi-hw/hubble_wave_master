@@ -612,6 +612,21 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (W2 Stream 2 PR5): §28.6 amendment — search admin
+  short-circuit retired. `apps/api/src/app/ava/search/
+  search-query.service.ts:buildAuthzAst` no longer carries the
+  `if (context.isAdmin) return allow_all` branch. Admin search
+  authority now flows through `compileSearchAuthz` uniformly — the
+  seeded admin policies from migration
+  `1931100000000-seed-admin-policies.ts` produce `in_collection`
+  clauses per matched collection. Aligns search authz with the
+  Plan Fix 33 retirement in `AuthorizationService.canAccessCollection`
+  — §28 is now the single source of truth across collection, field,
+  AND search surfaces. Unit test "skips authz pre-filter for admin
+  users" rewritten to assert the §28-uniform behavior; new
+  "admin sees deny_all when no seeded policy matches" test
+  protects against the misseeded-environment failure mode.
+
 - 2026-05-17 (W2 Stream 1 PR6): §29.6 clarification — role-grant changes
   do NOT bump `security_stamp`. The exclusive 8-event bump list stays
   exclusive; role grants / revocations / role-permission edits / group
@@ -1322,6 +1337,8 @@ These three are first-class outcomes, not bolted-on layers.
 Admin-role users go through the same evaluator. They are not short-circuited to `return true`. Instead, the platform ships an `admin` policy at install time that grants broad allow rules across system collections. Customers who tighten admin access do so by editing those policies, not by changing the evaluator.
 
 **Implementation:** Bypass retired in Plan Fix 33. Admin-role users now flow through the §28 evaluator like any other role; broad allow policies are installed at instance provisioning via seed migration `migrations/instance/1931100000000-seed-admin-policies.ts`. F021 special-case `auditAdminBypass` helper and its DI injection were removed from `AuthorizationService` (no callers remain). The `AccessAuditPort.logAdminBypass` interface method is retained for future callers.
+
+**Search-surface retirement (W2 Stream 2 PR5, 2026-05-17):** The same retirement applies to `SearchQueryService.buildAuthzAst` — the `if (context.isAdmin) return allow_all` short-circuit at the search-query layer was deleted. Admin search authority now flows through `compileSearchAuthz` uniformly: the seeded admin policies (broad-allow `CollectionAccessRule` rows for the admin role) produce `in_collection` clauses per matched collection, OR-combined across the active search sources. Behaviorally equivalent to the prior bypass for any search source covered by the seeded policies; canon §28-aligned for collection, field, AND search authz across the platform. A misseeded environment now surfaces as `__no_access__` rather than as silent admin allow-all — that's the desired posture per §28.6's "no silent bypass" commitment.
 
 ### 28.7 Explainability is mandatory
 

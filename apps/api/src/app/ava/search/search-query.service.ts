@@ -176,10 +176,18 @@ export class SearchQueryService {
    * Both emitters (Typesense + pgvector) consume the same AST compiled here.
    * The AST is produced once per request — not once per engine.
    *
-   * Admin users bypass the pre-filter (matching the §28.6 posture — admins
-   * are not short-circuited silently, but the seeded admin policy grants broad
-   * allow, which the compiler would produce as allow_all → no filter anyway).
-   * We short-circuit here for performance.
+   * Canon §28.6 (W2 Stream 2 PR5): admin users flow through the §28 evaluator
+   * uniformly with every other role. Admin authority comes from the
+   * `1931100000000-seed-admin-policies.ts` migration (broad-allow
+   * `CollectionAccessRule` rows for the admin role on every system collection).
+   * The compiler converts each unconditional allow into `in_collection` and
+   * OR-combines them, producing an effective allow-all over the configured
+   * search sources without any special-case branch.
+   *
+   * The pre-Stream-2-PR5 `if (ctx.isAdmin) return allow_all` short-circuit was
+   * retired to keep the §28 evaluator the single source of truth across
+   * collection, field, and search surfaces (matches the Plan Fix 33 retirement
+   * in AuthorizationService.canAccessCollection).
    */
   private async buildAuthzAst(
     context: UserRequestContext,
@@ -190,12 +198,12 @@ export class SearchQueryService {
     userAttrs: Record<string, string | number | boolean | null>;
   }> {
     const allowAll: FilterAst = { kind: 'allow_all' };
-    if (context.isAdmin) {
-      return { ast: allowAll, filterBy: '', userAttrs: this.buildAttributeContext(context) };
-    }
-
     const collectionIds = this.resolveCollectionIds(sources);
     if (!collectionIds.length) {
+      // No collection-keyed sources → no §28 collection-rule lookup
+      // possible. The non-collection-keyed search surfaces (knowledge
+      // base, AVA suggestions, etc.) carry their own authz; the
+      // collection-id pre-filter does not apply.
       return { ast: allowAll, filterBy: '', userAttrs: this.buildAttributeContext(context) };
     }
 
