@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   Optional,
   UnauthorizedException,
@@ -109,24 +110,66 @@ export class PermissionsGuard implements CanActivate {
     ]);
     const hasRoles = Array.isArray(roles) && roles.length > 0;
 
-    // Soft-fail (warn-and-allow): an endpoint with no @RequirePermission /
-    // @Roles / @Public / @AuthenticatedOnly is mis-configured, but blanket-
-    // denying it has the same effect as taking the platform offline because
-    // a large set of controllers were never annotated as part of the W1.2
-    // rollout. Log a warning so the missing annotations show up in operator
-    // logs (use these to drive a finishing pass) and pass the request
-    // through. Endpoints that DO have a @RequirePermission still get
-    // strict-checked below; only unannotated endpoints get the soft path.
+    // W2 Stream 3 PR-final (2026-05-17): the warn-and-allow branch
+    // for unannotated handlers is retired. The AST-aware
+    // `route-boundary-coverage-check` scanner is now a hard CI gate
+    // and no handler can ship without a primary boundary decorator.
+    //
+    // Runtime defense (in-depth): if an unannotated handler somehow
+    // reaches the guard at runtime (e.g. a controller added without
+    // running CI, or a dynamic module registration that the scanner
+    // doesn't see at PR time), the guard fails closed.
+    //
+    // Behavior:
+    //   - In production: throw 403 with the canon §28 minimal shape +
+    //     emit a `handler_missing_boundary` AccessAuditPort event so
+    //     operators can query the SIEM stream for the misconfiguration.
+    //   - In local dev / test (env `HW_LOUD_AUTH_MISCONFIG=true`):
+    //     throw 500. The loud failure short-circuits any "it works on
+    //     my machine" rollout where the developer never ran the scanner.
     if (!requiredPermissions || requiredPermissions.length === 0) {
       if (hasRoles) {
         return true;
       }
       const handler = context.getHandler();
       const cls = context.getClass();
-      this.logger.warn(
-        `PermissionsGuard: unannotated endpoint passed through (add @RequirePermission, @Roles, @AuthenticatedOnly, or @Public on ${cls.name}.${handler.name})`,
+      const target = `${cls.name}.${handler.name}`;
+      this.logger.error(
+        `PermissionsGuard: handler ${target} reached the guard with no @RequirePermission / @RequireCollectionAccess / @AuthenticatedOnly / @Public. The route-boundary scanner should have caught this at PR time. Failing closed.`,
       );
-      return true;
+
+      if (this.accessAudit) {
+        try {
+          const request = context.switchToHttp().getRequest();
+          const userId =
+            (request?.user?.userId as string | undefined) ||
+            (request?.context?.kind === 'user'
+              ? (request.context.userId as string | undefined)
+              : undefined) ||
+            'unknown';
+          this.accessAudit.logSecurityEvent({
+            userId,
+            kind: 'handler_missing_boundary',
+            severity: 'high',
+            context: {
+              handler: target,
+              route: request?.route?.path ?? request?.url ?? null,
+              method: request?.method ?? null,
+            },
+          });
+        } catch (err) {
+          this.logger.error(
+            `PermissionsGuard: failed to emit handler_missing_boundary audit event: ${(err as Error)?.message ?? err}`,
+          );
+        }
+      }
+
+      if (process.env['HW_LOUD_AUTH_MISCONFIG'] === 'true') {
+        throw new InternalServerErrorException(
+          `Handler missing boundary decision: ${target}`,
+        );
+      }
+      throw new ForbiddenException(PERMISSION_DENIED_RESPONSE);
     }
 
     // Get permission mode (default to 'any')

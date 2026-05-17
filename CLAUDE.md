@@ -504,7 +504,7 @@ self-test that proves it catches its claimed patterns (44 assertions
 across 5 suites + 21 ESLint rule assertions = 65 verifications on
 every CI run).
 
-Static-analysis scanners (8 total; all required CI jobs):
+Static-analysis scanners (13 total; all required CI jobs):
 - `npm run authz:check` (W1.2; W0 task 4 extended scope to all 11
   instance services; svc-control-plane intentionally excluded per
   canon §18). 1 entry tracked in KNOWN_BYPASSES → W2/F146.
@@ -525,6 +525,32 @@ Static-analysis scanners (8 total; all required CI jobs):
   trigger + no `if: always()` bypass outside the notify job).
 - `npm run dead-code:check` (W0 task 10; trash-pattern + phantom-dep
   + orphan-lib detection; 12-entry allowlist all owedTo: W4).
+- `npm run silent-skip:check` (W5.G; canon §10 silent-skip clause;
+  `logger.warn|error + continue` patterns must record a
+  `runtime_anomaly` row).
+- `npm run service-token:check` (W2 Stream 1 PR4 + canon §29.7;
+  verifies `@AllowServiceToken` is paired with `@RequireServiceScope`
+  at build time so a service-token-accepting endpoint cannot ship
+  without an explicit scope assertion).
+- `npm run no-hs256:check` (W2 Stream 1 PR4 + canon §29.9;
+  forbids HS256 signing imports and `algorithm: 'HS256'` everywhere;
+  `no-hs256-allowlist.json` ships empty).
+- `npm run no-untyped-req:check` (W2 Stream 1 PR6 + canon §29.3/§29.6;
+  flags `@Req() req: any` and bare `@Req() req: Request` in
+  controllers — both bypass the discriminated-union `RequestContext`
+  narrowing JwtAuthGuard populates).
+- `npm run permission-registry:check` (W2 Stream 2 PR3 + canon §28/§29.7;
+  hard gate by default; every `@RequirePermission` /
+  `@RequireServiceScope` / JSX `<RequirePermission permission="..."/>`
+  reference must cite a code in `libs/permission-registry`; every
+  registry entry must have at least one call site).
+- `npm run route-boundary:check` (W2 Stream 3 PR-final + canon §28;
+  hard gate by default as of 2026-05-17; every HTTP handler under
+  `apps/api/src` and `apps/control-plane/src` declares exactly one
+  primary boundary decorator — `@RequirePermission` /
+  `@RequireCollectionAccess` / `@AuthenticatedOnly` / `@Public` —
+  and may not co-occur with the mutually-exclusive pairs listed in
+  the scanner header).
 
 ESLint enforcement (W0 task 6):
 - `no-warning-comments: error` (TODO/FIXME/XXX/HACK at comment start).
