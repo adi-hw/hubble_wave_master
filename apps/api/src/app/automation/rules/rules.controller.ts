@@ -18,12 +18,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  JwtAuthGuard,
+  AuthenticatedOnly,
   CurrentUser,
-  RequestUser,
-  Roles,
-  RolesGuard,
+  JwtAuthGuard,
   PermissionsGuard,
+  RequestUser,
   RequirePermission,
 } from '@hubblewave/auth-guard';
 import {
@@ -39,8 +38,17 @@ import {
 import { ExecutionLogService, ExecutionStatus } from '../runtime/execution-log.service';
 import { AvaAutomationService, AvaAutomationRequest } from '../ava/ava-automation.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 24 — automation rules + scheduled
+ * jobs administration. Every handler is gated by
+ * `@RequirePermission('metadata:flow:manage')` (or the array form
+ * `[metadata:collection:read, metadata:flow:manage] any` for
+ * read-tier views into a single collection's automations). The
+ * two AVA-automation assistant routes carry the user-facing
+ * `@AuthenticatedOnly()` instead — AI feature surface per canon §11.
+ */
 @Controller()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RulesController {
   constructor(
     private readonly automationService: AutomationService,
@@ -54,7 +62,7 @@ export class RulesController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get('automations')
-  @Roles('admin')
+  @RequirePermission('metadata:flow:manage')
   async listAllAutomations(
     @Query('includeInactive') includeInactive?: string,
   ) {
@@ -174,7 +182,7 @@ export class RulesController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get('scheduled-jobs')
-  @Roles('admin')
+  @RequirePermission('metadata:flow:manage')
   async listScheduledJobs(@Query('includeInactive') includeInactive?: string) {
     return this.scheduledJobService.getAllJobs(includeInactive === 'true');
   }
@@ -243,6 +251,7 @@ export class RulesController {
   // ─────────────────────────────────────────────────────────────────
 
   @Get('automations/:id/logs')
+  @RequirePermission('metadata:flow:manage')
   async getAutomationLogs(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
@@ -258,6 +267,7 @@ export class RulesController {
   }
 
   @Get('automations/:id/stats')
+  @RequirePermission('metadata:flow:manage')
   async getAutomationStats(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('days') days?: string,
@@ -269,6 +279,7 @@ export class RulesController {
   }
 
   @Get('scheduled-jobs/:id/logs')
+  @RequirePermission('metadata:flow:manage')
   async getScheduledJobLogs(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
@@ -282,6 +293,7 @@ export class RulesController {
   }
 
   @Get('execution-logs/:id')
+  @RequirePermission('metadata:flow:manage')
   async getExecutionLog(@Param('id', ParseUUIDPipe) id: string) {
     return this.executionLogService.getLogById(id);
   }
@@ -291,6 +303,7 @@ export class RulesController {
   // ─────────────────────────────────────────────────────────────────
 
   @Post('ava/automation')
+  @AuthenticatedOnly()
   async processAvaRequest(
     @CurrentUser() _user: RequestUser,
     @Body() request: AvaAutomationRequest,
@@ -304,6 +317,7 @@ export class RulesController {
   }
 
   @Post('ava/automation/parse-intent')
+  @AuthenticatedOnly()
   async parseAvaIntent(@Body() body: { message: string }) {
     return {
       intent: this.avaAutomationService.parseIntent(body.message),

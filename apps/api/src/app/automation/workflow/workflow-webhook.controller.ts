@@ -14,6 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { timingSafeEqual } from 'crypto';
 import { ProcessFlowDefinition } from '@hubblewave/instance-db';
+import { Public } from '@hubblewave/auth-guard';
 import { WorkflowInstanceService } from './workflow-instance.service';
 
 const WEBHOOK_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
@@ -47,6 +48,13 @@ export class WorkflowWebhookController {
     private readonly instances: WorkflowInstanceService,
   ) {}
 
+  // Canon §28 / W2 Stream 3 Task 24 — webhook-secret-authenticated
+  // entry point. `@Public()` opts the route out of the global
+  // JwtAuthGuard chain; webhook-secret verification (timing-safe
+  // compare on the `X-Webhook-Secret` header) is the authoritative
+  // authentication boundary. Allowlisted in security-bypass-check
+  // category 4 (external-system callbacks).
+  @Public()
   @Post(':flowCode/trigger')
   @HttpCode(HttpStatus.ACCEPTED)
   async trigger(

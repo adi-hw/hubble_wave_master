@@ -80,6 +80,13 @@ const PUBLIC_ALLOWLIST = new Set([
   // Category 4: OAuth / OIDC integration callbacks (IdP-initiated).
   // -------------------------------------------------------------------
   'apps/api/src/app/data/integration/oauth2.controller.ts',
+  // Inbound webhook trigger for process flows (canon §28 / W2 Stream 3
+  // Task 24). Authentication is X-Webhook-Secret header (timing-safe
+  // compare against the flow definition's stored secret). External
+  // systems call this — not platform users — so @Public() is the
+  // right route-level decorator; the webhook-secret check inside the
+  // handler is the authoritative authentication boundary.
+  'apps/api/src/app/automation/workflow/workflow-webhook.controller.ts',
   // -------------------------------------------------------------------
   // Category 6: JWKS publication (canon §29.2).
   // RFC 7517 JWKS endpoint — relying parties fetch our public signing

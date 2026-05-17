@@ -1,7 +1,21 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import { WorkflowApprovalService } from './workflow-approval.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 24 — workflow approvals are user-facing
+ * task operations: each user lists pending approvals assigned to them
+ * and acts on their own tasks. Admin-override semantics (admin
+ * approving/rejecting any approval) is handled inside the service via
+ * the `user.roleCodes?.includes('admin')` check — separate from the
+ * route-level authentication gate.
+ */
+@AuthenticatedOnly()
 @Controller('workflows/approvals')
 @UseGuards(JwtAuthGuard)
 export class WorkflowApprovalsController {

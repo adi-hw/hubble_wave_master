@@ -1,9 +1,23 @@
 import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import { WorkflowInstanceService } from './workflow-instance.service';
 import { StartWorkflowRequest } from './workflow.types';
 import { WorkflowApprovalService } from './workflow-approval.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 24 — workflow instance + task
+ * operations. Users start their own workflows, list/inspect instances
+ * they started, and act on tasks assigned to them. The service-layer
+ * `user.roleCodes?.includes('admin')` admin-override branches preserve
+ * the prior admin-can-see-everything semantics distinct from the
+ * route-level authentication gate.
+ */
+@AuthenticatedOnly()
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
 export class WorkflowInstancesController {
