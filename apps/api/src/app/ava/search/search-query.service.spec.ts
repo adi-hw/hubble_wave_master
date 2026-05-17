@@ -180,19 +180,52 @@ describe('SearchQueryService — F136 PR-2 pre-filter', () => {
   });
 
   // ==========================================================================
-  // 3. Admin bypasses the authz pre-filter (empty filter_by from authz layer)
+  // 3. Admin flows through the §28 evaluator like every other role (Stream 2 PR5).
+  //    Canon §28.6 — no silent admin bypass. The pre-W2 `if (ctx.isAdmin) return
+  //    allow_all` short-circuit was retired. Admin authority now comes from the
+  //    seeded admin policies (broad-allow CollectionAccessRule rows on system
+  //    collections); the compiler turns each into an `in_collection` clause that
+  //    matches the active search source. Behaviorally equivalent to the prior
+  //    bypass for any search source covered by the seeded policies.
   // ==========================================================================
 
-  it('skips authz pre-filter for admin users', async () => {
+  it('admin flows through the §28 evaluator uniformly (no special-case branch)', async () => {
+    // Simulate the seeded admin policy: an unconditional allow on the active
+    // search source's collection, keyed on the admin's role. The compiler
+    // produces `in_collection` for the collection → Typesense filter that
+    // pre-filters to that collection's documents.
+    collectionAccessRuleRepo.find.mockResolvedValue([
+      makeRule({ roleId: 'role-alpha', conditions: null }),
+    ]);
     stubLexicalResponse(10);
 
     await service.query({ q: 'pump', context: ctx(true) });
 
-    expect(collectionAccessRuleRepo.find).not.toHaveBeenCalled();
+    // §28 evaluator IS consulted (no short-circuit). The pre-W2 assertion
+    // `not.toHaveBeenCalled()` is inverted.
+    expect(collectionAccessRuleRepo.find).toHaveBeenCalled();
     const callArgs = typesenseService.searchDocuments.mock.calls[0][0] as Record<string, unknown>;
-    // filter_by may contain the source_type filter but NOT a collection-id authz filter.
     const filterBy = String(callArgs['filter_by'] || '');
-    expect(filterBy).not.toContain('_collection_id');
+    // Admin gets a real authz filter — `_collection_id:=` for the allowed
+    // source — NOT the empty filter the short-circuit produced.
+    expect(filterBy).toContain('_collection_id');
+    expect(filterBy).toContain('col-uuid-aaa');
+  });
+
+  it('admin sees deny_all when no seeded policy matches (no implicit allow)', async () => {
+    // Admin without any matching seeded policy gets the §28.3 level-3 default
+    // deny like every other role — there is no implicit privilege. A misseeded
+    // production environment would surface this as `__no_access__` rather than
+    // as silent allow-all.
+    collectionAccessRuleRepo.find.mockResolvedValue([]);
+    stubLexicalResponse(0);
+
+    await service.query({ q: 'pump', context: ctx(true) });
+
+    expect(collectionAccessRuleRepo.find).toHaveBeenCalled();
+    const callArgs = typesenseService.searchDocuments.mock.calls[0][0] as Record<string, unknown>;
+    const filterBy = String(callArgs['filter_by'] || '');
+    expect(filterBy).toContain('__no_access__');
   });
 
   // ==========================================================================
