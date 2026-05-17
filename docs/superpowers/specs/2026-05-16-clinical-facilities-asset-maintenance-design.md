@@ -3283,11 +3283,212 @@ Property column updates to `break_glass_eligible` / `confidentiality_class` go t
 
 ---
 
-### 13.12 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.12 Worked example: §3.11 External-Collaborator Session Tokens (full artifact-level spec — kiosk + magic-link via canon §29.7 extensions)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.11 cover §3.1 — §3.10; the remaining 8 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.12.1 Tables
 
-**Substrate (8 remaining sections — §3.1-§3.10 ✅):**
+Two new tables in `schema: 'identity'` (adjacent to canon §29.5 refresh_tokens + canon §29.7 service_principals).
+
+**`identity.kiosk_sessions`** — time-bound read-only device-bound sessions for auditors / regulators.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `code` | `varchar(64)` | — | NOT NULL | UNIQUE; public-facing kiosk code (high-entropy) |
+| `purpose` | `varchar(64)` | — | NOT NULL | Pack-declared; e.g. `joint_commission_audit`, `fda_inspection`, `regulatory_observation` |
+| `workspace_id` | `uuid` | — | NOT NULL | FK → `metadata.workspaces(id)`; the bound workspace is the ONLY surface the kiosk can read |
+| `bound_device_fingerprint` | `bytea` | — | NOT NULL | 32 bytes; SHA-256 of `(user_agent || screen_dims || tz_offset || nonce)` captured at first bind; subsequent requests must present a matching fingerprint or the session is treated as compromised |
+| `display_label` | `text` | — | NULL | UI-friendly label, e.g. "iPad - 5N Wing Audit 2026-05-17"; auditor-facing |
+| `granted_by_user_id` | `uuid` | — | NOT NULL | FK → `identity.users(id)`; who handed the auditor the device |
+| `granted_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `bound_at` | `timestamptz` | — | NULL | When the auditor's device first redeemed the code; NULL = code not yet bound |
+| `expires_at` | `timestamptz` | — | NOT NULL | Hard expiry; default `granted_at + 24h`; pack policy may extend up to 7 days |
+| `revoked_at` | `timestamptz` | — | NULL | One-tap revoke |
+| `revoked_reason` | `varchar(64)` | — | NULL | `auditor_departed` / `compromise_response` / `auto_expired` / `granted_by_revoke` |
+| `signing_kid` | `varchar(64)` | — | NOT NULL | Per canon §29.2; per-purpose kid namespace (`kiosk:<purpose>`) |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; UNIQUE `(code)`; `ix_ks_active ON (workspace_id) WHERE revoked_at IS NULL AND expires_at > now()`; `ix_ks_expiring ON (expires_at) WHERE revoked_at IS NULL`.
+
+**`identity.collaborator_invitations`** — single-use magic-link invitations for external contractors.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `code` | `varchar(64)` | — | NOT NULL | UNIQUE; the magic-link path component |
+| `email` | `text` | — | NULL | Required when `delivery_method='email'` |
+| `phone` | `varchar(32)` | — | NULL | Required when `delivery_method='sms'` |
+| `delivery_method` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{email, sms}` |
+| `scope_collection_id` | `uuid` | — | NOT NULL | The collection containing the scoped record |
+| `scope_record_id` | `uuid` | — | NOT NULL | The single record the collaborator can interact with |
+| `permitted_actions` | `varchar(64)[]` | `'{}'::varchar[]` | NOT NULL | Subset of `{view, attach_photo, attach_document, add_note, sign_closeout}` |
+| `granted_by_user_id` | `uuid` | — | NOT NULL | FK |
+| `granted_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `expires_at` | `timestamptz` | — | NOT NULL | Default `granted_at + 14 days` |
+| `consumed_at` | `timestamptz` | — | NULL | Set on first redemption; subsequent attempts return 410 |
+| `consumed_session_token_hash` | `bytea` | — | NULL | 32 bytes; SHA-256 of the resulting session JWT for forensic linking |
+| `revoked_at` | `timestamptz` | — | NULL | One-tap revoke |
+| `revoked_reason` | `varchar(64)` | — | NULL | — |
+| `signing_kid` | `varchar(64)` | — | NOT NULL | Per canon §29.2; per-purpose kid namespace (`collaborator:<purpose>`) |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; UNIQUE `(code)`; `ix_ci_consumable ON (code) WHERE consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()`; `ix_ci_scope ON (scope_collection_id, scope_record_id)`.
+
+#### 13.12.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1937000000000-create-kiosk-sessions.ts` | Table + indexes |
+| 2 | `1937000000001-create-collaborator-invitations.ts` | Table + indexes |
+| 3 | `1937000000002-seed-kiosk-collaborator-kids.ts` | Bootstrap KMS aliases `kiosk:joint_commission_audit`, `kiosk:fda_inspection`, `collaborator:contractor_signoff` in `identity.key_metadata` (canon §29.2) — one row per supported purpose namespace |
+
+#### 13.12.3 Services
+
+`apps/api/src/app/identity/external/` (new submodule under existing identity module).
+
+**`KioskSessionService`** — `apps/api/src/app/identity/external/kiosk-session.service.ts`:
+
+```typescript
+issue(input: IssueKioskRequest, ctx: UserRequestContext): Promise<KioskCode>;
+bind(code: string, deviceFingerprint: Buffer): Promise<KioskJwt>;
+revoke(id: string, reason: string, ctx: UserRequestContext): Promise<void>;
+list(filter: KioskFilter, ctx: UserRequestContext): Promise<KioskSession[]>;
+```
+
+`issue(...)`:
+1. Authority check: `identity:kiosk:issue` permission.
+2. Validate `workspace_id` exists and is readable by the issuer.
+3. Compute `expires_at = min(requested_duration, 7 days, pack_policy.max_kiosk_duration)`.
+4. Insert `kiosk_sessions` row via `withAudit`; return the generated `code` (high-entropy 32-byte random, base32 of length 64).
+
+`bind(...)`:
+- Public endpoint (`@Public()`). Called by the auditor's device on first scan.
+- Validates row not expired, not revoked, not yet bound. Single-bind enforced via row-update `WHERE bound_at IS NULL` predicate; concurrent bind attempts → 410 for all but the winner.
+- Computes `bound_device_fingerprint` from the request's user-agent + screen dims + tz-offset + a server-generated nonce returned to the client.
+- Stamps `bound_at`; mints a KMS-signed JWT (ES256, per canon §29.1) with claims:
+  - `aud='kiosk'`
+  - `sub='kiosk:<sessionId>'`
+  - `instance_id`, `session_id=row.id`, `kid` from `signing_kid`
+  - `permitted_actions=['read']`
+  - `workspace_id`, `device_fp_hash` (truncated 12-hex-char prefix of fingerprint for in-token verification)
+  - `exp = row.expires_at`, fresh `iat`
+- Returns `{ jwt, expiresAt }` to the device. The JWT never carries `userId`.
+
+`revoke(...)`:
+- Sets `revoked_at + revoked_reason`. The `JwtAuthGuard` rejects subsequent calls because the kiosk session lookup (added below) fails the `revoked_at IS NULL AND expires_at > now()` predicate.
+
+**`JwtAuthGuard`** — gains a `kind: 'kiosk'` branch alongside the existing `user` / `service` branches (canon §29.7 discriminated union):
+
+```typescript
+if (decoded.aud === 'kiosk') {
+  const session = await kioskSessionRepo.findActive(decoded.session_id);
+  if (!session) throw 401;
+  // Device fingerprint binding check
+  const presentedFp = computeFingerprint(req);
+  if (presentedFp.toString('hex').slice(0, 12) !== decoded.device_fp_hash) throw 401;
+  req.context = { kind: 'kiosk', sessionId, workspaceId, ... };
+}
+```
+
+A new helper `assertKioskContext(ctx)` narrows for consumers. The §28 evaluator hard-rejects any write op when `ctx.kind === 'kiosk'` regardless of role — kiosks are read-only by construction, not by policy.
+
+**`CollaboratorInvitationService`** — `apps/api/src/app/identity/external/collaborator-invitation.service.ts`:
+
+```typescript
+issue(input: IssueCollaboratorRequest, ctx: UserRequestContext): Promise<CollaboratorCode>;
+redeem(code: string, deviceFingerprint?: Buffer): Promise<CollaboratorJwt>;
+revoke(id: string, reason: string, ctx: UserRequestContext): Promise<void>;
+```
+
+`issue(...)`: similar to kiosk but for a specific record. Triggers delivery via `NotificationService.deliver({ method, recipient, template: 'collaborator_invitation', payload: { link, expiresAt }})`. Delivery webhook URL is the customer's outbound notifications channel.
+
+`redeem(...)`: single-use; flips `consumed_at` atomically (UPDATE...WHERE consumed_at IS NULL); on win, mints a JWT with `aud='collaborator'`, `permitted_actions=row.permitted_actions`, `scope.collectionId / recordId`, `exp = min(invitation.expires_at, now() + 4h)` (collaborator sessions don't last as long as the invitation window — once redeemed, the working session is bounded to 4 hours).
+
+`JwtAuthGuard` gains a `kind: 'collaborator'` branch:
+
+```typescript
+if (decoded.aud === 'collaborator') {
+  const inv = await invRepo.findById(decoded.invitation_id);
+  if (!inv || inv.revoked_at) throw 401;
+  req.context = { kind: 'collaborator', invitationId, scopeCollectionId, scopeRecordId, permittedActions, ... };
+}
+```
+
+The §28 evaluator: a collaborator context can READ + UPDATE only the bound record AND only fields whose property has `collaborator_writable=true` (proposed new boolean column on `property_definitions` — flagged as founder-correctable below); attempts outside scope → 403 minimal shape.
+
+#### 13.12.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/identity/kiosk-sessions` | `@RequirePermission('identity:kiosk:issue')` | `{ purpose, workspaceId, displayLabel?, requestedDurationSeconds? }` |
+| `POST` | `/api/public/kiosk/:code/bind` | `@Public()` | `{ userAgent, screenDims, tzOffset }` returns `{ jwt, expiresAt }` |
+| `DELETE` | `/api/identity/kiosk-sessions/:id` | `@RequirePermission('identity:kiosk:revoke')` | `{ reason }` |
+| `GET` | `/api/identity/kiosk-sessions` | `@RequirePermission('identity:kiosk:audit_read')` | query: `workspaceId?`, `active?`, `from?`, `to?` |
+| `POST` | `/api/identity/collaborator-invitations` | `@RequirePermission('identity:collaborator:issue')` | `{ scopeCollectionId, scopeRecordId, permittedActions, deliveryMethod, recipientEmail?, recipientPhone? }` |
+| `POST` | `/api/public/collaborator/:code/redeem` | `@Public()` | `{}` returns `{ jwt, expiresAt }` |
+| `DELETE` | `/api/identity/collaborator-invitations/:id` | `@RequirePermission('identity:collaborator:revoke')` | `{ reason }` |
+
+New permission codes (registered in `PERMISSION_REGISTRY`):
+- `identity:kiosk:issue`, `identity:kiosk:revoke`, `identity:kiosk:audit_read`
+- `identity:collaborator:issue`, `identity:collaborator:revoke`
+
+PUBLIC_ALLOWLIST entries added for the two `/api/public/` bind/redeem endpoints.
+
+#### 13.12.5 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G12.1** — Pack `kiosk_sessions.purposes[]` MUST declare a `purpose` value AND a `signing_kid_namespace` matching the `kiosk:<purpose>` pattern. Error: `INVALID_KIOSK_PURPOSE_DECLARATION`.
+2. **G12.2** — Pack `collaborator_invitations.permitted_actions[]` MUST be a subset of `{view, attach_photo, attach_document, add_note, sign_closeout}`. Error: `INVALID_COLLABORATOR_ACTION`.
+3. **G12.3** — When `collaborator_invitations.permitted_actions` includes `sign_closeout`, the bound collection MUST have at least one reason_code seeded by THIS pack with `applicable_signature_meanings ∋ 'closure'`. Error: `COLLABORATOR_CLOSEOUT_MISSING_REASON_CODE`.
+
+#### 13.12.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `KioskSession` | `KioskSessionService.*` |
+| `CollaboratorInvitation` | `CollaboratorInvitationService.*` |
+
+Adds branches to `JwtAuthGuard` for `kiosk` + `collaborator` audiences; the no-untyped-req scanner (canon §29.6) requires new helpers `assertKioskContext` / `assertCollaboratorContext`.
+
+#### 13.12.7 Tests (self-test ≥ 14 assertions)
+
+1. **`kiosk-issue-and-bind.spec.ts`** — issue code; bind from device A; JWT minted with correct claims; second-device bind on same code → 410.
+2. **`kiosk-fingerprint-tampering.spec.ts`** — bind device A; replay JWT with mismatched user-agent → 401.
+3. **`kiosk-expired-bind.spec.ts`** — issue code with `expires_at = past`; bind → 410.
+4. **`kiosk-readonly-enforced.spec.ts`** — kiosk JWT attempting POST to any data endpoint → §28 evaluator rejects with canon §28 minimal 403; AccessAuditPort.logAccessDenied row written.
+5. **`kiosk-workspace-bound.spec.ts`** — kiosk bound to workspace W1; attempts to read from workspace W2 → 403.
+6. **`kiosk-revoke.spec.ts`** — issue + bind + revoke; subsequent JWT presentation → 401.
+7. **`kiosk-auto-expire.spec.ts`** — bound kiosk past `expires_at`; JWT verification fails on `exp` check; AND the JwtAuthGuard's session lookup also fails (defense-in-depth — even if `exp` was tampered, the DB row's expiry is checked).
+8. **`collaborator-issue-deliver.spec.ts`** — issue invitation with `delivery_method='email'`; `NotificationService.deliver` called with the magic-link URL.
+9. **`collaborator-redeem-once.spec.ts`** — redeem succeeds + mints JWT; second redeem → 410.
+10. **`collaborator-scope-bound.spec.ts`** — JWT scoped to record R1; attempts to read R2 in same collection → 403.
+11. **`collaborator-action-bound.spec.ts`** — invitation with `permitted_actions=['view', 'attach_photo']`; attempt `add_note` → 403; attempt `view` + `attach_photo` → succeeds.
+12. **`collaborator-sign-closeout.spec.ts`** — invitation with `sign_closeout`; collaborator signs; `electronic_signatures` row written with `signer_user_id` resolved to a system-generated collaborator-principal user (canon §29.7 service-principal-style binding); chain extended.
+13. **`collaborator-validator-closeout-without-reason.spec.ts`** — pack declares `permitted_actions ∋ sign_closeout` but no reason_code; publish refused with G12.3.
+14. **`external-session-context-narrowing.spec.ts`** — controller uses `req.context` directly without `assertKioskContext` or `assertCollaboratorContext` → no-untyped-req scanner fails CI.
+
+#### 13.12.8 PR breakdown for §3.11
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Migrations + entities + `KioskSessionService.issue/bind/revoke` + JwtAuthGuard `kiosk` branch + tests 1, 2, 3, 6, 7 | Migrations 1+3; entity area patches; `apps/api/src/app/identity/external/kiosk-*`; `libs/auth-guard` extension; `assertKioskContext` helper | Issue + bind + revoke + auto-expire + fingerprint tamper detection all work |
+| 2 | Kiosk read-only enforcement at §28 evaluator + workspace binding + tests 4, 5, 14 | `libs/authorization/src/lib/authorization.service.ts` patch; no-untyped-req scanner extension | Kiosk writes ALWAYS rejected; workspace boundary enforced; helper narrowing required |
+| 3 | `CollaboratorInvitationService.issue/redeem/revoke` + JwtAuthGuard `collaborator` branch + NotificationService wire + tests 8, 9, 10, 11 | Migration 2; `apps/api/src/app/identity/external/collaborator-*`; `assertCollaboratorContext` helper; canon §29 amendment to CLAUDE.md | Single-use redemption; scope binding; action subsetting; delivery hooks fire |
+| 4 | Collaborator sign-closeout integration with §13.7 SignatureService + G12.1-G12.3 validator + tests 12, 13 + canon §29 amendment | Pack-validator extension; SignatureService special path for collaborator principals; CLAUDE.md amendment | Closeout signatures land with proper signer identity; validator gates publish; canon merged |
+| 5 | Audit forensic endpoint for kiosk/collaborator history + Compliance Officer view + monitoring | `apps/api/src/app/identity/external/audit.controller.ts`; alerting on rapid-fire issuance patterns | CSV export from forensic endpoint; rapid-issuance pattern emits RuntimeAnomaly |
+
+**Total: 5 PRs for §3.11. Estimated effort: ~10-12 working days.**
+
+---
+
+### 13.13 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.12 cover §3.1 — §3.11; the remaining 7 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (7 remaining sections — §3.1-§3.11 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -3298,7 +3499,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.8 AVA UI synthesis — §13.9 (3 PRs)
 - ✅ §3.9 public intake hardened — §13.10 (5 PRs)
 - ✅ §3.10 break-glass override — §13.11 (4 PRs)
-- §3.11 external-collaborator sessions (5 PRs)
+- ✅ §3.11 external-collaborator sessions — §13.12 (5 PRs)
 - §3.12 Storage / Evidence Attachment runtime (6 PRs)
 - §3.13 Connector runtime + simulators (5 PRs)
 - §3.14 Semantic Search / Vector Match (4 PRs)
@@ -3321,7 +3522,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.13 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.14 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -3342,7 +3543,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.14 What's left to do BEFORE code starts
+### 13.15 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
