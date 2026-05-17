@@ -9,7 +9,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { LivingDocsService } from '@hubblewave/ai';
-import { JwtAuthGuard, CurrentUser, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { DocArtifactType } from '@hubblewave/instance-db';
 
 interface GenerateDocsDto {
@@ -19,10 +26,16 @@ interface GenerateDocsDto {
   context?: Record<string, unknown>;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — living documentation
+ * system. Reads are user-facing; admin paths (document generation,
+ * archival) carry method-level `@RequirePermission('ava:admin')`.
+ */
+@AuthenticatedOnly()
 @ApiTags('Phase 7 - Living Documentation System')
 @ApiBearerAuth()
 @Controller('phase7/docs')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LivingDocsController {
   constructor(
     private readonly docsService: LivingDocsService,
@@ -58,7 +71,7 @@ export class LivingDocsController {
   }
 
   @Post('regenerate-all')
-  @Roles('admin')
+  @RequirePermission('ava:admin')
   @ApiOperation({ summary: 'Regenerate all documentation' })
   @ApiResponse({ status: 200, description: 'Regeneration started' })
   async regenerateAll(
