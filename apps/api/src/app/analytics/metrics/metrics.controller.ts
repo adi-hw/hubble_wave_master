@@ -1,7 +1,18 @@
 import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, extractContext, InstanceRequest } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  InstanceRequest,
+  JwtAuthGuard,
+  extractContext,
+} from '@hubblewave/auth-guard';
 import { MetricsService } from './metrics.service';
 
+/**
+ * Canon §28 / W2 Stream 3 — metrics viewing is user-facing.
+ * Per-metric authorization (which metrics the user can see) applies
+ * in the service via the passed context.
+ */
+@AuthenticatedOnly()
 @Controller('insights/metrics')
 @UseGuards(JwtAuthGuard)
 export class MetricsController {

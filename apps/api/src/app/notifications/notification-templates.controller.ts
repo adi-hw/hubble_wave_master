@@ -1,10 +1,21 @@
 import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { NotificationService, NotificationTemplateInput } from './notification.service';
 
+/**
+ * Canon §28 / W2 Stream 3 — notification template administration is
+ * platform-admin configuration. Gated by
+ * `@RequirePermission('system:configure')`.
+ */
 @Controller('notifications/templates')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class NotificationTemplatesController {
   constructor(private readonly notifications: NotificationService) {}
 

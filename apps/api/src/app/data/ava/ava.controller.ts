@@ -18,7 +18,7 @@ import {
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '@hubblewave/auth-guard';
+import { AuthenticatedOnly, JwtAuthGuard } from '@hubblewave/auth-guard';
 import { AVACoreService } from './ava-core.service';
 import { ConversationStatus, FeedbackType } from '@hubblewave/instance-db';
 
@@ -83,6 +83,13 @@ interface SuggestionResponseDto {
   feedback?: string;
 }
 
+/**
+ * Canon §28 + §11 / W2 Stream 3 — AVA data-side interactions (chat,
+ * conversations, suggestions, feedback). User-facing AI feature
+ * surface; every handler operates on the caller's own conversation
+ * + suggestion data.
+ */
+@AuthenticatedOnly()
 @Controller('ava')
 @UseGuards(JwtAuthGuard)
 export class AVAController {

@@ -1,8 +1,19 @@
 import { Controller, ForbiddenException, Get, Query, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard, InstanceRequest, extractContext } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  InstanceRequest,
+  JwtAuthGuard,
+  extractContext,
+} from '@hubblewave/auth-guard';
 import { ViewService } from './view.service';
 import type { ResolvedView, ViewResolveInput } from './view.types';
 
+/**
+ * Canon §28 / W2 Stream 3 — view resolution (Form Builder variants).
+ * The Preview-as-role override is gated inside the service against
+ * `metadata:form:manage`.
+ */
+@AuthenticatedOnly()
 @Controller('views')
 @UseGuards(JwtAuthGuard)
 export class ViewController {
