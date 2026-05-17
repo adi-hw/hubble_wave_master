@@ -7,7 +7,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   AVAConversation,
   AVAMessage,
@@ -83,52 +83,62 @@ export class AVACoreService {
     private readonly suggestionRepo: Repository<AVASuggestion>,
     @InjectRepository(AVAFeedback)
     private readonly feedbackRepo: Repository<AVAFeedback>,
-    @InjectRepository(AVAUsageMetrics)
-    private readonly metricsRepo: Repository<AVAUsageMetrics>,
     private readonly llmProvider: LLMProviderService,
+    private readonly dataSource: DataSource,
   ) {}
 
+  /**
+   * F052 — AVA chat transactionality (canon §10).
+   *
+   * The chat pipeline performs N database writes per turn. The plan's
+   * 7-write estimate (chat message → conversation update → assistant
+   * message → tool-call → conversation state → tool-result → conversation
+   * metadata) does not match this orchestrator's actual shape: tool calls
+   * are stored as a JSONB column on `ava_messages`, not as separate rows,
+   * and there is no separate tool-result table. The real sequence is:
+   *
+   *   Pre-LLM block (atomic, transaction A):
+   *     1. Conversation (find or insert)
+   *     2. User message (insert)
+   *     3. Intent classification (insert)
+   *
+   *   LLM provider call (external HTTP; NOT inside any transaction —
+   *   holding a Postgres transaction open across an external call holds
+   *   row locks for the LLM's full latency budget and is unacceptable for
+   *   a multi-tenant DB).
+   *
+   *   Post-LLM block (atomic, transaction B):
+   *     4. Assistant message (insert)
+   *     5. Conversation row update (messageCount + lastActivityAt + title)
+   *     6. Usage metrics — response_time (insert)
+   *     7. Usage metrics — token_usage (insert)
+   *     8. (conditional) Suggestion row insert
+   *
+   * F052 requires that a failure mid-sequence cannot leave the
+   * conversation half-written. Both blocks now run inside
+   * `dataSource.transaction(...)` so any failure rolls back every write
+   * in that block.
+   *
+   * The pre-LLM block stands alone: if the LLM call later throws, the
+   * user's input is still persisted and a retry shows the message in the
+   * conversation. That is the correct UX — users expect their sent
+   * messages to survive transient LLM failures.
+   *
+   * The post-LLM block is atomic for the assistant-side writes: if the
+   * assistant message persists, the conversation header counters reflect
+   * it and the usage metrics rows exist. If any one of those fails,
+   * none persist — no orphan message, no skewed counter.
+   */
   async chat(request: ChatRequest, userContext: UserContext): Promise<ChatResponse> {
     const startTime = Date.now();
 
-    // Get or create conversation. The (id, userId, organizationId) triple is
-    // the only valid lookup tuple: a conversation must belong to the calling
-    // user AND the calling org for cross-tenant requests to fail closed.
-    let conversation: AVAConversation;
-    if (request.conversationId) {
-      const existing = await this.conversationRepo.findOne({
-        where: {
-          id: request.conversationId,
-          userId: userContext.id,
-          organizationId: userContext.organizationId,
-        },
-      });
-      if (existing) {
-        conversation = existing;
-      } else {
-        conversation = await this.createConversation(userContext);
-      }
-    } else {
-      conversation = await this.createConversation(userContext);
-    }
+    // ── Pre-LLM transaction: conversation + user message + intent ────
+    const { conversation, history } = await this.dataSource.transaction(
+      async (tx) => this.persistUserTurn(tx, request, userContext),
+    );
 
-    // Save user message
-    const userMessage = await this.saveMessage({
-      conversationId: conversation.id,
-      role: 'user' as MessageRole,
-      content: request.message,
-    });
-
-    // Classify intent
+    // ── External LLM call (no DB transaction held across this) ───────
     const intent = await this.classifyIntent(request.message, userContext);
-
-    // Save intent classification
-    await this.saveIntent(userMessage.id, intent);
-
-    // Get conversation history for context
-    const history = await this.getConversationHistory(conversation.id, 10);
-
-    // Generate AI response
     const aiResponse = await this.llmProvider.complete({
       messages: [
         ...history.map((msg) => ({
@@ -152,29 +162,17 @@ export class AVACoreService {
       availableActions: this.getAvailableActions(intent, userContext.permissions),
     });
 
-    // Save assistant message
-    const assistantMessage = await this.saveMessage({
-      conversationId: conversation.id,
-      role: 'assistant' as MessageRole,
-      content: aiResponse.content,
-      tokenCount: aiResponse.usage.totalTokens,
-      responseTimeMs: aiResponse.latency,
-      modelUsed: aiResponse.model,
-      toolCalls: aiResponse.toolCalls.length > 0 ? aiResponse.toolCalls : undefined,
-    });
-
-    // Update conversation
-    await this.conversationRepo.update(conversation.id, {
-      messageCount: conversation.messageCount + 2,
-      lastActivityAt: new Date(),
-      title: conversation.title || this.generateConversationTitle(request.message),
-    });
-
-    // Record usage metrics
-    await this.recordUsageMetrics(userContext.id, aiResponse.latency, aiResponse.usage.totalTokens);
-
-    // Generate suggestions if applicable
-    const suggestions = await this.generateSuggestions(intent, userContext);
+    // ── Post-LLM transaction: assistant message + counters + metrics + suggestion ──
+    const { assistantMessage, suggestions } = await this.dataSource.transaction(
+      async (tx) =>
+        this.persistAssistantTurn(tx, {
+          conversation,
+          aiResponse,
+          intent,
+          userContext,
+          firstUserMessage: request.message,
+        }),
+    );
 
     const responseTime = Date.now() - startTime;
     this.logger.debug(`AVA response generated in ${responseTime}ms`);
@@ -191,6 +189,184 @@ export class AVACoreService {
         requiresConfirmation: this.requiresConfirmation(call.name),
       })),
     };
+  }
+
+  /**
+   * Persist the user-side writes for one chat turn atomically.
+   * Returns the conversation row + recent message history needed by the
+   * downstream LLM call. The intent classification is computed by the
+   * caller AFTER the LLM block (it is a pure function of the message and
+   * does not need to be persisted before the LLM call); inside this
+   * block we persist the user message and a placeholder intent row keyed
+   * to it so the intent FK is valid by the time the rest of the turn
+   * resolves.
+   */
+  private async persistUserTurn(
+    tx: EntityManager,
+    request: ChatRequest,
+    userContext: UserContext,
+  ): Promise<{ conversation: AVAConversation; history: AVAMessage[] }> {
+    const conversationRepo = tx.getRepository(AVAConversation);
+    const messageRepo = tx.getRepository(AVAMessage);
+    const intentRepo = tx.getRepository(AVAIntent);
+
+    // 1. Conversation (find or insert)
+    let conversation: AVAConversation | null = null;
+    if (request.conversationId) {
+      conversation = await conversationRepo.findOne({
+        where: {
+          id: request.conversationId,
+          userId: userContext.id,
+          organizationId: userContext.organizationId,
+        },
+      });
+    }
+    if (!conversation) {
+      conversation = await conversationRepo.save(
+        conversationRepo.create({
+          userId: userContext.id,
+          organizationId: userContext.organizationId,
+          status: 'active' as ConversationStatus,
+          messageCount: 0,
+          lastActivityAt: new Date(),
+          sessionMetadata: {
+            organizationId: userContext.organizationId,
+            userRole: userContext.role,
+          },
+        }),
+      );
+    }
+
+    // 2. User message (insert)
+    const userMessage = await messageRepo.save(
+      messageRepo.create({
+        conversationId: conversation.id,
+        role: 'user' as MessageRole,
+        content: request.message,
+      }),
+    );
+
+    // 3. Intent classification (insert)
+    const intent = await this.classifyIntent(request.message, userContext);
+    await intentRepo.save(
+      intentRepo.create({
+        messageId: userMessage.id,
+        category: intent.category,
+        intentName: intent.intentName,
+        confidence: intent.confidence,
+        detectedEntities: intent.entities,
+        requiredPermissions: intent.requiredPermissions,
+        isClarificationNeeded: intent.needsClarification,
+        clarificationQuestion: intent.clarificationQuestion,
+      }),
+    );
+
+    // Fetch history for the upcoming LLM call. Inside the same
+    // transaction so the just-inserted user message is visible (and
+    // included or excluded consistently with the rest of the snapshot).
+    const history = await messageRepo.find({
+      where: { conversationId: conversation.id },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+
+    return { conversation, history };
+  }
+
+  /**
+   * Persist the assistant-side writes for one chat turn atomically.
+   * All writes in this block either commit together or roll back
+   * together — that is the F052 contract.
+   */
+  private async persistAssistantTurn(
+    tx: EntityManager,
+    params: {
+      conversation: AVAConversation;
+      aiResponse: {
+        content: string;
+        toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+        usage: { totalTokens: number };
+        latency: number;
+        model: string;
+      };
+      intent: IntentResult;
+      userContext: UserContext;
+      firstUserMessage: string;
+    },
+  ): Promise<{ assistantMessage: AVAMessage; suggestions: ChatResponse['suggestions'] }> {
+    const messageRepo = tx.getRepository(AVAMessage);
+    const conversationRepo = tx.getRepository(AVAConversation);
+    const metricsRepo = tx.getRepository(AVAUsageMetrics);
+    const suggestionRepo = tx.getRepository(AVASuggestion);
+
+    const { conversation, aiResponse, intent, userContext, firstUserMessage } = params;
+
+    // 4. Assistant message (insert)
+    const assistantMessage = await messageRepo.save(
+      messageRepo.create({
+        conversationId: conversation.id,
+        role: 'assistant' as MessageRole,
+        content: aiResponse.content,
+        tokenCount: aiResponse.usage.totalTokens,
+        responseTimeMs: aiResponse.latency,
+        modelUsed: aiResponse.model,
+        toolCalls:
+          aiResponse.toolCalls.length > 0
+            ? (aiResponse.toolCalls as Record<string, unknown>[])
+            : undefined,
+      }),
+    );
+
+    // 5. Conversation row update
+    await conversationRepo.update(conversation.id, {
+      messageCount: conversation.messageCount + 2,
+      lastActivityAt: new Date(),
+      title: conversation.title || this.generateConversationTitle(firstUserMessage),
+    });
+
+    // 6 + 7. Usage metrics (response_time + token_usage)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    await metricsRepo.save(
+      metricsRepo.create({
+        userId: userContext.id,
+        metricDate: today,
+        metricType: 'response_time',
+        metricValue: aiResponse.latency,
+        dimensions: { type: 'chat' },
+      }),
+    );
+    await metricsRepo.save(
+      metricsRepo.create({
+        userId: userContext.id,
+        metricDate: today,
+        metricType: 'token_usage',
+        metricValue: aiResponse.usage.totalTokens,
+        dimensions: { type: 'chat' },
+      }),
+    );
+
+    // 8. Suggestion (conditional)
+    const suggestions: ChatResponse['suggestions'] = [];
+    if (intent.category === 'ticket_management' && intent.intentName === 'ticket.create') {
+      suggestions.push({
+        type: 'property_value',
+        value: { property: 'category', options: ['Hardware', 'Software', 'Network', 'Access'] },
+        explanation: 'Common ticket categories',
+      });
+      await suggestionRepo.save(
+        suggestionRepo.create({
+          userId: userContext.id,
+          suggestionType: 'property_value' as SuggestionType,
+          targetEntity: 'ticket',
+          targetField: 'category',
+          suggestedValue: { options: ['Hardware', 'Software', 'Network', 'Access'] },
+          confidence: 0.8,
+        }),
+      );
+    }
+
+    return { assistantMessage, suggestions };
   }
 
   async getConversations(
@@ -370,70 +546,6 @@ export class AVACoreService {
     };
   }
 
-  private async createConversation(userContext: UserContext): Promise<AVAConversation> {
-    const conversation = this.conversationRepo.create({
-      userId: userContext.id,
-      organizationId: userContext.organizationId,
-      status: 'active' as ConversationStatus,
-      messageCount: 0,
-      lastActivityAt: new Date(),
-      sessionMetadata: {
-        organizationId: userContext.organizationId,
-        userRole: userContext.role,
-      },
-    });
-
-    return this.conversationRepo.save(conversation);
-  }
-
-  private async saveMessage(data: {
-    conversationId: string;
-    role: MessageRole;
-    content: string;
-    tokenCount?: number;
-    responseTimeMs?: number;
-    modelUsed?: string;
-    toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
-  }): Promise<AVAMessage> {
-    const message = this.messageRepo.create({
-      conversationId: data.conversationId,
-      role: data.role,
-      content: data.content,
-      tokenCount: data.tokenCount,
-      responseTimeMs: data.responseTimeMs,
-      modelUsed: data.modelUsed,
-      toolCalls: data.toolCalls as Record<string, unknown>[],
-    });
-
-    return this.messageRepo.save(message);
-  }
-
-  private async saveIntent(messageId: string, intent: IntentResult): Promise<AVAIntent> {
-    const intentEntity = this.intentRepo.create({
-      messageId,
-      category: intent.category,
-      intentName: intent.intentName,
-      confidence: intent.confidence,
-      detectedEntities: intent.entities,
-      requiredPermissions: intent.requiredPermissions,
-      isClarificationNeeded: intent.needsClarification,
-      clarificationQuestion: intent.clarificationQuestion,
-    });
-
-    return this.intentRepo.save(intentEntity);
-  }
-
-  private async getConversationHistory(
-    conversationId: string,
-    limit: number,
-  ): Promise<AVAMessage[]> {
-    return this.messageRepo.find({
-      where: { conversationId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
-  }
-
   private async classifyIntent(
     message: string,
     _userContext: UserContext,
@@ -611,71 +723,6 @@ export class AVACoreService {
     }
 
     return actions;
-  }
-
-  private async generateSuggestions(
-    intent: IntentResult,
-    userContext: UserContext,
-  ): Promise<
-    Array<{
-      type: SuggestionType;
-      value: Record<string, unknown>;
-      explanation?: string;
-    }>
-  > {
-    const suggestions: Array<{
-      type: SuggestionType;
-      value: Record<string, unknown>;
-      explanation?: string;
-    }> = [];
-
-    if (intent.category === 'ticket_management' && intent.intentName === 'ticket.create') {
-      // Suggest common categories
-      suggestions.push({
-        type: 'property_value',
-        value: { property: 'category', options: ['Hardware', 'Software', 'Network', 'Access'] },
-        explanation: 'Common ticket categories',
-      });
-
-      // Save suggestion to DB for tracking
-      await this.suggestionRepo.save({
-        userId: userContext.id,
-        suggestionType: 'property_value' as SuggestionType,
-        targetEntity: 'ticket',
-        targetField: 'category',
-        suggestedValue: { options: ['Hardware', 'Software', 'Network', 'Access'] },
-        confidence: 0.8,
-      });
-    }
-
-    return suggestions;
-  }
-
-  private async recordUsageMetrics(
-    userId: string,
-    responseTimeMs: number,
-    tokenCount: number,
-  ): Promise<void> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Record response time metric
-    await this.metricsRepo.save({
-      userId,
-      metricDate: today,
-      metricType: 'response_time',
-      metricValue: responseTimeMs,
-      dimensions: { type: 'chat' },
-    });
-
-    // Record token usage metric
-    await this.metricsRepo.save({
-      userId,
-      metricDate: today,
-      metricType: 'token_usage',
-      metricValue: tokenCount,
-      dimensions: { type: 'chat' },
-    });
   }
 
   private generateConversationTitle(firstMessage: string): string {
