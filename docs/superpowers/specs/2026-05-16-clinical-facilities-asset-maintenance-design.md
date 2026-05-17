@@ -2523,18 +2523,346 @@ Self-test count: 15 integration tests × ≥ 1 primary assertion each, plus ≥ 
 
 ---
 
-### 13.8 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.8 Worked example: §3.7 Mobile Runtime Parity + UI Primitives (full artifact-level spec — Elevator Mode + offline e-signature queue + per-collection WatermelonDB versioning)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.7 cover §3.1 — §3.6; the remaining 12 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.8.1 Tables
 
-**Substrate (12 remaining sections — §3.1-§3.6 ✅):**
+Three new tables in `schema: 'metadata'`, plus one new column on the existing `metadata.collection_definitions` table.
+
+**`metadata.collection_definitions`** — gains one column:
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `sync_to_mobile` | `boolean` | `false` | NOT NULL | When `true`, this collection participates in mobile sync; pack validator (§13.8.7 G8.1) requires a matching `mobile_sync_policies` row |
+
+**`metadata.mobile_sync_policies`** — one row per sync-eligible collection.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `collection_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `metadata.collection_definitions(id) ON DELETE RESTRICT` (canon §14 — refuse delete if a policy exists) |
+| `pull_scope` | `varchar(32)` | `'assigned_only'` | NOT NULL | CHECK ∈ `{full, assigned_only, recent_only}`. `full`: every readable record. `assigned_only`: where assignee = current_user. `recent_only`: last 30 days of `updated_at` |
+| `pull_recent_window_days` | `int` | `30` | NOT NULL | Only relevant when `pull_scope = 'recent_only'`; CHECK `pull_recent_window_days BETWEEN 1 AND 365` |
+| `conflict_strategy_header` | `varchar(32)` | `'server_wins'` | NOT NULL | CHECK ∈ `{server_wins, client_wins, last_write_wins, operator_review}` |
+| `conflict_strategy_completion` | `varchar(32)` | `'last_write_wins'` | NOT NULL | Same enum; default `last_write_wins` per §3.7 founder ruling |
+| `header_field_codes` | `varchar(120)[]` | `'{}'::varchar[]` | NOT NULL | Property codes treated as header for conflict-strategy purposes; remaining properties are completion fields |
+| `field_permission_masking` | `boolean` | `true` | NOT NULL | When `true`, masked fields are absent from mobile payload entirely (canon §28 most-restrictive); when `false`, mobile receives the masked string |
+| `is_active` | `boolean` | `true` | NOT NULL | Deactivation halts new pull deltas; existing local DBs unaffected |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; UNIQUE `(collection_id)`; `ix_msp_active ON (is_active) WHERE is_active = true`.
+
+**`metadata.mobile_sync_conflicts`** — operator review queue. One row per detected conflict.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `collection_id` | `uuid` | — | NOT NULL | FK |
+| `record_id` | `uuid` | — | NOT NULL | The collided record |
+| `field_code` | `varchar(120)` | — | NULL | NULL = whole-record conflict (record was deleted server-side and edited client-side); non-NULL = specific property |
+| `detected_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `client_user_id` | `uuid` | — | NOT NULL | FK → `identity.users(id)`; who made the offending client write |
+| `client_value` | `jsonb` | — | NOT NULL | Client's submitted value (or `null` JSON for delete-vs-edit conflicts) |
+| `server_value` | `jsonb` | — | NOT NULL | Server's value at conflict-detection time |
+| `client_value_at_timestamp` | `timestamptz` | — | NOT NULL | When the client believed it was writing (offline-capture clock) |
+| `server_value_at_timestamp` | `timestamptz` | — | NOT NULL | When the server's value was last written |
+| `strategy_applied` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{server_wins, client_wins, last_write_wins, operator_review}`; what the policy selected |
+| `auto_resolved` | `boolean` | `false` | NOT NULL | `true` if `strategy_applied ≠ 'operator_review'`; row is informational |
+| `resolved_at` | `timestamptz` | — | NULL | Set when operator review closes; for auto-resolved rows equals `detected_at` |
+| `resolved_by` | `uuid` | — | NULL | FK → `identity.users(id)` for `operator_review` |
+| `resolution_choice` | `varchar(16)` | — | NULL | CHECK ∈ `{client, server, manual}`; `manual` means operator entered a third value, captured in `manual_value` |
+| `manual_value` | `jsonb` | — | NULL | Only when `resolution_choice = 'manual'` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; `ix_msc_record ON (collection_id, record_id, detected_at DESC)`; `ix_msc_open ON (strategy_applied) WHERE strategy_applied = 'operator_review' AND resolved_at IS NULL`; `ix_msc_client ON (client_user_id, detected_at DESC)`.
+
+**`metadata.mobile_collection_schemas`** — per-collection WatermelonDB schema versioning (founder-locked per-collection-hash strategy 2026-05-17).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `collection_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `metadata.collection_definitions(id)` |
+| `schema_hash` | `bytea` | — | NOT NULL | 32 bytes; SHA-256 over canonical property-set bytes (sorted by property `code`, NFC-normalized) |
+| `watermelon_schema_json` | `jsonb` | — | NOT NULL | Generated WatermelonDB schema document — full column descriptors + decorators |
+| `generated_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `properties_snapshot` | `jsonb` | — | NOT NULL | Snapshot of property metadata at generation time — replay-able for forensic schema diff |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+Indexes: PK; UNIQUE `(collection_id)`; UNIQUE `(schema_hash)` — duplicate-hash detection across collections (same hash = identical schemas, useful for deduplication); `ix_mcs_generated ON (generated_at DESC)`.
+
+#### 13.8.2 Partitioning strategy
+
+None. `mobile_sync_conflicts` grows linearly but at the pilot scale (low thousands per month per instance) does not warrant partitioning. If hospital pilots produce > 50k conflict rows/year, a `mobile_sync_conflicts_archive_YYYY` annual partition follows the §13.7.2 pattern in a future plan-fix; flagged in §13.8.10 PR-6 acceptance.
+
+`mobile_collection_schemas` carries one row per collection per instance — bounded by collection count (~70 in a fully-loaded customer with all 4 packs installed).
+
+#### 13.8.3 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1933000000000-add-sync-to-mobile-column.ts` | `ALTER TABLE metadata.collection_definitions ADD COLUMN sync_to_mobile boolean NOT NULL DEFAULT false;` |
+| 2 | `1933000000001-create-mobile-sync-policies.ts` | Table + indexes; FK `ON DELETE RESTRICT` to enforce canon §14 reference-checking on collection delete |
+| 3 | `1933000000002-create-mobile-sync-conflicts.ts` | Table + indexes |
+| 4 | `1933000000003-create-mobile-collection-schemas.ts` | Table + indexes; `updated_at` trigger |
+
+All migrations: `static transaction = false` where `CREATE INDEX CONCURRENTLY` is used (per W6.A `createIndexConcurrent`).
+
+#### 13.8.4 TypeORM entities
+
+Added to `libs/instance-db/src/lib/entities/metadata.ts` (existing area file per W6.A area-split pattern):
+
+```typescript
+@Entity({ schema: 'metadata', name: 'mobile_sync_policies' })
+export class MobileSyncPolicy {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid' }) collectionId!: string;
+  @Column({ type: 'varchar', length: 32, default: 'assigned_only' })
+  pullScope!: 'full' | 'assigned_only' | 'recent_only';
+  @Column({ type: 'int', default: 30 }) pullRecentWindowDays!: number;
+  @Column({ type: 'varchar', length: 32, default: 'server_wins' })
+  conflictStrategyHeader!: ConflictStrategy;
+  @Column({ type: 'varchar', length: 32, default: 'last_write_wins' })
+  conflictStrategyCompletion!: ConflictStrategy;
+  @Column({ type: 'varchar', length: 120, array: true, default: () => "'{}'" })
+  headerFieldCodes!: string[];
+  @Column({ default: true }) fieldPermissionMasking!: boolean;
+  @Column({ default: true }) isActive!: boolean;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ type: 'timestamptz' }) updatedAt!: Date;
+}
+
+@Entity({ schema: 'metadata', name: 'mobile_sync_conflicts' })
+export class MobileSyncConflict {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid' }) collectionId!: string;
+  @Column({ type: 'uuid' }) recordId!: string;
+  @Column({ type: 'varchar', length: 120, nullable: true }) fieldCode!: string | null;
+  @Column({ type: 'timestamptz' }) detectedAt!: Date;
+  @Column({ type: 'uuid' }) clientUserId!: string;
+  @Column({ type: 'jsonb' }) clientValue!: unknown;
+  @Column({ type: 'jsonb' }) serverValue!: unknown;
+  @Column({ type: 'timestamptz' }) clientValueAtTimestamp!: Date;
+  @Column({ type: 'timestamptz' }) serverValueAtTimestamp!: Date;
+  @Column({ type: 'varchar', length: 32 }) strategyApplied!: ConflictStrategy;
+  @Column({ default: false }) autoResolved!: boolean;
+  @Column({ type: 'timestamptz', nullable: true }) resolvedAt!: Date | null;
+  @Column({ type: 'uuid', nullable: true }) resolvedBy!: string | null;
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  resolutionChoice!: 'client' | 'server' | 'manual' | null;
+  @Column({ type: 'jsonb', nullable: true }) manualValue!: unknown | null;
+  @Column({ type: 'uuid' }) auditLogId!: string;
+}
+
+@Entity({ schema: 'metadata', name: 'mobile_collection_schemas' })
+export class MobileCollectionSchema {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid' }) collectionId!: string;
+  @Column({ type: 'bytea' }) schemaHash!: Buffer;
+  @Column({ type: 'jsonb' }) watermelonSchemaJson!: Record<string, unknown>;
+  @CreateDateColumn({ type: 'timestamptz' }) generatedAt!: Date;
+  @Column({ type: 'jsonb' }) propertiesSnapshot!: unknown[];
+  @Column({ type: 'uuid' }) auditLogId!: string;
+}
+
+export type ConflictStrategy = 'server_wins' | 'client_wins' | 'last_write_wins' | 'operator_review';
+```
+
+#### 13.8.5 Packages + UI primitive vocabulary
+
+Three new npm packages under `libs/`:
+
+- **`@hubblewave/ui-primitives`** (`libs/ui-primitives/`) — TypeScript types + primitive declarations. No runtime; pure vocabulary. Every primitive is a `PrimitiveDescriptor` carrying `{ name, props: TypeBox schema, supportedSurfaces: ['web', 'mobile'], ... }`. The package exports the constant `PRIMITIVE_REGISTRY: Record<string, PrimitiveDescriptor>` enumerating every supported primitive.
+- **`@hubblewave/ui-primitives-web`** (`libs/ui-primitives-web/`) — React + MUI + Tailwind adapter. Exports one React component per primitive with the same name (`Stack`, `Field`, `Card`, `SwipeProgressCard`, ...). Web variants of field-tool primitives degrade gracefully (e.g., `SwipeProgressCard` on web uses pointer-drag instead of touch-swipe).
+- **`@hubblewave/ui-primitives-mobile`** (`libs/ui-primitives-mobile/`) — React Native + Reanimated 3 adapter. Same export names, RN-native gestures.
+
+Foundation primitives: `Stack`, `Field`, `Card`, `List`, `ActionBar`, `Chart`, `Signature`.
+Capture primitives: `MediaCapture`, `BarcodeScanner`, `NameplateCamera` (LLM-OCR-backed nameplate identification).
+Field-tool primitives: `SwipeProgressCard`, `ThumbToggle`, `LargeActionButton` (minimum 64dp tap target enforced via Reanimated layout measure on mobile, MUI `sx={{ minHeight: 64 }}` on web).
+
+The `PRIMITIVE_REGISTRY` is the single source of truth for the `ui-primitive-parity-check` scanner (§13.8.9).
+
+#### 13.8.6 Services
+
+`apps/api/src/app/mobile/` (new module).
+
+**`MobileCollectionSchemaService`** — `apps/api/src/app/mobile/schema/mobile-collection-schema.service.ts`:
+
+```typescript
+computeSchemaHash(collectionId: string, ctx: UserRequestContext): Promise<{ hash: Buffer; schema: WatermelonSchema }>;
+publishSchema(collectionId: string, ctx: UserRequestContext): Promise<MobileCollectionSchema>;
+listManifest(ctx: UserRequestContext): Promise<Array<{ collectionId: string; hashHex: string; generatedAt: string }>>;
+```
+
+`computeSchemaHash(...)` walks the collection's properties (filtered to non-masked-for-requestor per canon §28); canonicalizes (sort by property `code`, NFC-normalize property labels, RFC 3339 timestamps); computes SHA-256. `publishSchema(...)` writes the row inside `withAudit(...)` so the schema-publish event is auditable.
+
+Schema regeneration runs on:
+- Pack install (every sync-eligible collection)
+- `collection_definitions.sync_to_mobile` flip from `false → true`
+- Property add/update/delete on a sync-eligible collection (via `MetadataEventBus.on('property.modified')`)
+
+**`MobileSyncService`** — `apps/api/src/app/mobile/sync/mobile-sync.service.ts`:
+
+```typescript
+pull(input: PullRequest, ctx: UserRequestContext): Promise<PullResponse>;
+push(input: PushRequest, ctx: UserRequestContext): Promise<PushResponse>;
+```
+
+`pull(...)` flow:
+1. Validate `lastPullCursor` per collection; cursor is `(updated_at, id)` pair.
+2. For each collection in scope, apply `pull_scope` filter (full / assigned_only / recent_only); intersect with canon §28 record visibility (`AuthorizationService.filterReadable`).
+3. For each readable record, apply canon §28 field-level decision; emit fields per `field_permission_masking` policy (omit on `true`, mask on `false`).
+4. Return `{ deltas: { [collectionId]: { upserts: [], deletes: [], nextCursor } } }`.
+
+`push(...)` flow per submitted write:
+1. Authorization check via `AuthorizationService.canPerformAction`; deny → 403 minimal shape + AccessAuditPort.logAccessDenied. Whole-push fails on first deny (no partial commits).
+2. Read server row at version `clientBaseVersionAtTimestamp`.
+3. Conflict detection per field: if `serverRow.updated_at > clientBaseVersionAtTimestamp` AND fields overlap → resolve per `mobile_sync_policies.conflict_strategy_*`. The same strategy is applied online and offline (founder-locked 2026-05-17).
+4. Auto-resolved conflicts: emit `mobile_sync_conflicts` row with `auto_resolved=true, strategy_applied=<resolved-strategy>`. Operator-review conflicts emit row with `auto_resolved=false`; the client write is REJECTED with 409 + the conflict ID.
+5. Apply non-conflicting + resolved-in-client-favor writes inside `withAudit(...)`.
+6. Return `{ accepted: [recordId], conflicts: [{recordId, conflictId, strategyApplied}] }`.
+
+**`MobileSyncConflictService`** — `apps/api/src/app/mobile/sync/mobile-sync-conflict.service.ts`:
+
+```typescript
+listOpenConflicts(filter: ConflictFilter, ctx: UserRequestContext): Promise<MobileSyncConflict[]>;
+resolveConflict(conflictId: string, choice: 'client' | 'server' | 'manual', manualValue?: unknown, ctx: UserRequestContext): Promise<void>;
+```
+
+`resolveConflict(...)` applies the chosen value via `DataRecordService.update` inside `withAudit(...)` (the record update is audit-logged as a separate row from the conflict resolution); marks the conflict row resolved.
+
+**`OfflineSignatureQueueService`** — `apps/api/src/app/mobile/signature/offline-signature-queue.service.ts`:
+
+```typescript
+ingestQueuedSignatures(input: QueuedSignatureBatch, ctx: UserRequestContext): Promise<QueueIngestResult>;
+confirmQueuedBatch(input: { batchId: string; webauthnAssertion: WebAuthnAssertion }, ctx: UserRequestContext): Promise<BatchConfirmResult>;
+```
+
+Contract (closes the §3.6 ↔ §3.7 tension, founder-locked 2026-05-17):
+
+`ingestQueuedSignatures(...)`:
+1. Receives N queued signatures from the client (each with `local_signature_id`, full canonical payload, `signed_at_utc` from the device clock, `signature_meaning`).
+2. Validates authority + reason-code per signature (per §13.7.5).
+3. Writes intermediate rows to a new transient queue table `compliance.offline_signature_queue` (out of scope for §13.8.1 detail; covered in PR-7 acceptance) with status `pending_reauth`. No `electronic_signatures` rows written yet.
+4. Returns `{ batchId, queuedCount }`. Client UI shows the batched "Awaiting confirm" badge.
+
+`confirmQueuedBatch(...)`:
+1. Validates the presented WebAuthn assertion (fresh, < 60s) via `WebAuthnService.verifyAssertion`.
+2. If valid, invokes `MerkleBatchService.batchSign(...)` with the queue's actions as one batch — Merkle root binds every queued signature cryptographically. Existing 256-leaf cap applies; queues over 256 split into ceiling(N/256) batches confirmed sequentially under the same WebAuthn assertion.
+3. Deletes the `compliance.offline_signature_queue` rows on successful Merkle batch commit.
+4. Returns `{ confirmedSignatures: [...], merkleRootChainEntryId }`.
+
+The deferred-reauth path is auditor-safe because: (a) signatures don't enter `electronic_signatures` until the WebAuthn challenge confirms them, so a "signature" in the audit trail still carries fresh re-auth evidence; (b) the offline_signature_queue rows carry the device clock `signed_at_utc` plus the server clock `enqueued_at_utc` so post-hoc reconstruction shows the timeline accurately; (c) the queue is bounded — if a technician never reconnects, queued signatures eventually expire and the client surfaces "Pending signatures could not be confirmed" with the full action list for manual replay.
+
+#### 13.8.7 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `GET` | `/api/mobile/sync/manifest` | `@AuthenticatedOnly()` | — returns array of `{ collectionId, schemaHashHex, pullScope, fieldPermissionMasking }` |
+| `GET` | `/api/mobile/schemas/:collectionId` | `@RequireCollectionAccess('read')` | — returns full `watermelonSchemaJson` |
+| `POST` | `/api/mobile/sync/pull` | `@AuthenticatedOnly()` | `{ collections: [{ collectionId, lastPullCursor }] }` returns delta payload |
+| `POST` | `/api/mobile/sync/push` | `@AuthenticatedOnly()` | `{ writes: [{ collectionId, recordId, clientBaseVersionAt, fields }] }` returns `{ accepted, conflicts }` |
+| `GET` | `/api/mobile/sync/conflicts` | `@RequirePermission('mobile:sync:conflict:read')` | query: `collectionId?`, `status?`, `assignee?` |
+| `POST` | `/api/mobile/sync/conflicts/:id/resolve` | `@RequirePermission('mobile:sync:conflict:resolve')` | `{ choice: 'client'\|'server'\|'manual', manualValue? }` |
+| `POST` | `/api/mobile/sync/queued-signatures` | `@RequirePermission('compliance:signature:sign')` | `{ signatures: [...queued] }` returns `{ batchId, queuedCount }` |
+| `POST` | `/api/mobile/sync/queued-signatures/:batchId/confirm` | `@RequirePermission('compliance:signature:sign')` | `{ webauthnAssertion }` returns `{ confirmedSignatures, merkleRootChainEntryId }` |
+| `POST` | `/api/mobile/sync/queued-signatures/:batchId/abandon` | `@RequirePermission('compliance:signature:sign')` | — drops the queued batch; emits high-severity audit |
+
+Permission codes added to `PERMISSION_REGISTRY`:
+- `mobile:sync:conflict:read`, `mobile:sync:conflict:resolve`
+
+(`compliance:signature:sign` already exists from §13.7 — reused here.)
+
+`/api/mobile/sync/pull` and `/api/mobile/sync/push` are `@AuthenticatedOnly()` rather than `@RequirePermission` because per-record + per-field §28 authorization happens INSIDE the service, not at the boundary; the boundary just confirms a valid user session.
+
+#### 13.8.8 Validator extensions
+
+Pack validator gains 4 new publish gates:
+
+1. **G8.1** — Any `collection_definitions.sync_to_mobile = true` MUST have a corresponding `mobile_sync_policies` row. Error: `MISSING_MOBILE_SYNC_POLICY`.
+2. **G8.2** — Every `mobile_sync_policies.header_field_codes[]` value MUST resolve to an existing property `code` on the same collection. Error: `INVALID_HEADER_FIELD_CODE`.
+3. **G8.3** — `mobile_sync_policies.conflict_strategy_*` MUST be in the canonical enum. Error: `INVALID_CONFLICT_STRATEGY`.
+4. **G8.4** — Any `FormDefinition` published on a `sync_to_mobile=true` collection MUST use only primitives whose `PRIMITIVE_REGISTRY[name].supportedSurfaces` includes `'mobile'`. Error: `MOBILE_INELIGIBLE_PRIMITIVE` (lists the offending primitive + form path).
+
+Frontend lint rule additions (`tools/eslint-rules/`):
+- `hw/no-direct-mui-import-in-mobile-form` — files in `apps/mobile/src/forms/` MUST NOT import from `@mui/material` directly; must use `@hubblewave/ui-primitives-mobile`. Error level.
+
+#### 13.8.9 Service-boundary scanner rules + new parity scanner
+
+`tools/service-boundary-check.ts` `KNOWN_WRITES` table gains:
+
+| Entity | Allowed writers |
+|---|---|
+| `MobileSyncPolicy` | `MobileSyncPolicyService.*`, `PackInstaller.installMobileSyncPolicies` |
+| `MobileSyncConflict` | `MobileSyncService.push`, `MobileSyncConflictService.resolveConflict` |
+| `MobileCollectionSchema` | `MobileCollectionSchemaService.publishSchema` |
+
+`tools/ui-primitive-parity-check.ts` (NEW scanner, founder-locked 2026-05-17):
+- Reads `PRIMITIVE_REGISTRY` from `@hubblewave/ui-primitives`.
+- Globs the public export surface of `@hubblewave/ui-primitives-web/src/index.ts` and `@hubblewave/ui-primitives-mobile/src/index.ts`.
+- For each entry in the registry: BOTH adapters MUST export a symbol matching the primitive name. Asymmetric exports fail CI with `PRIMITIVE_PARITY_VIOLATION: <name> exported from -web only` or vice versa.
+- Self-test: 8 assertions covering (a) registered + both exported → pass; (b) registered + web-only → fail; (c) registered + mobile-only → fail; (d) unregistered + both exported → flagged as orphan; (e) registered + neither exported → fail; (f) primitive renamed on one side → fail; (g) export-default vs named-export distinction handled; (h) self-test stable across Windows + Linux paths.
+
+`tools/elevator-mode-check.ts` (NEW scanner, founder-locked 2026-05-17):
+- Greps `apps/mobile/src/` for action handlers (functions matching `on[A-Z]\w+` exported from `actions.ts` files).
+- Flags any handler whose body starts with `await fetch(` / `await api.` BEFORE a WatermelonDB write (regex check on the first non-comment statement).
+- Codifies the Elevator Mode invariant: local optimistic write MUST happen before any network call.
+- Allowlist entry per legitimate exception (read-only refresh actions, etc.); allowlist tagged with `followUp` notes for review.
+
+#### 13.8.10 Tests (self-test ≥ 18 assertions)
+
+Integration + e2e tests at `apps/api/test/integration/mobile-*.spec.ts` and `apps/mobile/test/e2e/elevator-mode-*.spec.ts`:
+
+1. **`mobile-semantic-equivalence.spec.ts`** — same `FormDefinition` JSON rendered via `@hubblewave/ui-primitives-web` and via `@hubblewave/ui-primitives-mobile`; assert (a) field set identical, (b) visibility rules emit identical computed booleans for the same record, (c) permission gates emit identical hidden-field sets.
+2. **`mobile-collection-schema-hash-stable.spec.ts`** — same collection content → same `schema_hash` across two `computeSchemaHash` calls.
+3. **`mobile-collection-schema-hash-detects-change.spec.ts`** — add a property → hash changes; remove the property → hash returns to original value (deterministic).
+4. **`mobile-sync-pull-scope-assigned-only.spec.ts`** — user A pulls; receives only records where `assignee_id = A`; user B pulls same collection; receives B's records.
+5. **`mobile-sync-pull-field-permission-masking.spec.ts`** — user with masked-field policy on `salary` pulls; record arrives WITHOUT the `salary` field key (masked-as-omission per `field_permission_masking=true`).
+6. **`mobile-sync-push-server-wins-header.spec.ts`** — client offline edits header field; server modified header in parallel; push reconciles to server value; `mobile_sync_conflicts` row written with `auto_resolved=true, strategy_applied='server_wins'`.
+7. **`mobile-sync-push-lww-completion.spec.ts`** — client offline edits a completion field with `signed_at_utc` AFTER server's last update → client wins; conflicts row records the resolution.
+8. **`mobile-sync-push-operator-review.spec.ts`** — collection configured with `conflict_strategy_header='operator_review'`; client push collides; 409 returned with conflict ID; row appears in `MobileSyncConflictService.listOpenConflicts`.
+9. **`mobile-sync-push-authorization-deny.spec.ts`** — user pushes a write to a record they lack `update` permission on; entire push rejected with canon §28 minimal 403 shape; no rows committed; `AccessAuditPort.logAccessDenied` row written.
+10. **`mobile-sync-pull-cursor-resume.spec.ts`** — pull twice; first call returns 50 rows + cursor; second call resumes from cursor and returns next 50 + null cursor.
+11. **`mobile-offline-signature-queue.spec.ts`** — client queues 3 closure signatures offline; calls `/queued-signatures` (stored in `offline_signature_queue` as `pending_reauth`); presents WebAuthn assertion via `/confirm`; `MerkleBatchService.batchSign` produces ONE `signature_chains` merkle_root row + 3 `electronic_signatures` rows; queue rows deleted; total chain extension = 1 row.
+12. **`mobile-offline-signature-queue-abandon.spec.ts`** — queue 2 signatures; abandon batch; rows deleted; high-severity audit row written; zero `electronic_signatures` created.
+13. **`mobile-offline-signature-256-split.spec.ts`** — queue 300 signatures; single WebAuthn confirm splits into 2 Merkle batches (256 + 44 leaves); each is a separate `signature_chains` merkle_root row; chain remains linear.
+14. **`mobile-primitive-parity-scanner.spec.ts`** — temporarily remove a primitive from `-mobile`; scanner CI exits non-zero with `PRIMITIVE_PARITY_VIOLATION`; restore; scanner passes.
+15. **`mobile-elevator-mode-scanner.spec.ts`** — temporarily add `await api.x()` before WatermelonDB write in a mobile action handler; scanner CI exits non-zero; revert; passes.
+16. **`mobile-elevator-mode-acceptance.spec.ts`** — full e2e in iOS simulator with network disabled: open WO list → swipe through states → complete checklist → capture photo → e-sign (queued) → close. Re-enable network; sync flushes; all writes commit + queued signature confirmed via WebAuthn modal.
+17. **`mobile-sync-conflict-policy-online.spec.ts`** — two browser sessions edit the same record concurrently while both online; second write triggers conflict per same policy as offline path (founder-locked 2026-05-17); conflict row written.
+18. **`mobile-collection-delete-blocks-on-policy.spec.ts`** — attempt to delete a collection that has a `mobile_sync_policies` row → blocked by canon §14 reference-checking; structured "in-use" error lists the policy.
+
+Self-test count: 18 integration tests × ≥ 1 primary assertion + 8 assertions on the parity scanner self-test + 6 on the elevator-mode scanner self-test = ≥ 32 new assertions in the §3.7 acceptance lattice.
+
+#### 13.8.11 PR breakdown for §3.7
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | `@hubblewave/ui-primitives` package + `PRIMITIVE_REGISTRY` + `ui-primitive-parity-check.ts` scanner + scanner self-test | `libs/ui-primitives/**`; `tools/ui-primitive-parity-check.ts`; `tools/ui-primitive-parity-check.spec.ts`; CI workflow job | Package builds; 8 scanner self-test assertions pass; CI gate added as required |
+| 2 | `@hubblewave/ui-primitives-web` adapter (MUI + Tailwind) | `libs/ui-primitives-web/**`; storybook stories per primitive | Every `PRIMITIVE_REGISTRY` entry has a `-web` export; storybook renders; parity scanner passes |
+| 3 | `@hubblewave/ui-primitives-mobile` adapter (RN + Reanimated) including field-tool primitives | `libs/ui-primitives-mobile/**`; Expo build target verifies | Every registry entry has a `-mobile` export; `LargeActionButton` measures ≥ 64dp on iOS + Android; `SwipeProgressCard` gesture binding stable |
+| 4 | Migrations + entities + `sync_to_mobile` column + service-boundary writer rules | Migrations 1-4; entities in `metadata.ts` area file; `service-boundary-check.ts` rules; validator G8.1-G8.3 | Migrations run cleanly; entity barrel preserved; validator rejects bad config |
+| 5 | `MobileCollectionSchemaService` + manifest + schema-publish hooks + tests 2, 3 | `apps/api/src/app/mobile/schema/**`; `MetadataEventBus` wire | Hash stable; hash detects change; publish writes via `withAudit` |
+| 6 | `MobileSyncService.pull + push` + `MobileSyncConflictService` + canon §28 plumbing + tests 4-10, 17, 18 | `apps/api/src/app/mobile/sync/**`; `mobile_sync_conflicts` operator workspace stub | Conflict policy honored online + offline; field-masking emits omission; cursor pagination resumes; collection delete blocked by §14 |
+| 7 | `OfflineSignatureQueueService` + `offline_signature_queue` table + queued/confirm/abandon endpoints + Merkle batch handoff + tests 11, 12, 13 | `apps/api/src/app/mobile/signature/**`; new migration for `offline_signature_queue`; integration with §13.7 `MerkleBatchService` | 256-split works; abandon emits high-severity audit; WebAuthn assertion gates the commit; bundle hash binds queued leaves cryptographically |
+| 8 | `elevator-mode-check.ts` scanner + mobile e2e acceptance + canon §33 amendment + `hw/no-direct-mui-import-in-mobile-form` ESLint rule | `tools/elevator-mode-check.ts` + self-test; `apps/mobile/test/e2e/elevator-mode-*.spec.ts`; `tools/eslint-rules/no-direct-mui-import-in-mobile-form.cjs`; CLAUDE.md amendment | Scanner CI gate added; e2e completes a full WO offline → sync; canon merged |
+
+**Total: 8 PRs for §3.7. Estimated effort: ~14-18 working days.**
+
+---
+
+### 13.9 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.8 cover §3.1 — §3.7; the remaining 11 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (11 remaining sections — §3.1-§3.7 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
 - ✅ §3.4 list-scale primitives — §13.5 (4 PRs)
 - ✅ §3.5 time-series observations — §13.6 (7 PRs)
 - ✅ §3.6 regulated-action + Merkle batch + Part 11 envelope — §13.7 (6 PRs)
-- §3.7 mobile parity + UI primitives (8 PRs)
+- ✅ §3.7 mobile parity + UI primitives — §13.8 (8 PRs)
 - §3.8 AVA UI synthesis (3 PRs)
 - §3.9 public intake hardened (5 PRs)
 - §3.10 break-glass override (4 PRs)
@@ -2561,7 +2889,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.9 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.10 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -2582,7 +2910,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.10 What's left to do BEFORE code starts
+### 13.11 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
