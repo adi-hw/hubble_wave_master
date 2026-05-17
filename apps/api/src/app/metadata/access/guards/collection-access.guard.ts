@@ -50,13 +50,22 @@ export class CollectionAccessGuard implements CanActivate {
     const operation = this.determineOperation(request.method);
     const acceptablePermissions = this.permissionsForOperation(operation, request);
 
-    // Admin role grants full schema access.
+    // Admin role grants full schema access. W2 Stream 1 PR1: read role
+    // codes from `roleCodes` (`AuthenticatedUser` / `UserRequestContext`
+    // post-Stream-1 vocabulary). The fallbacks on `isAdmin` / `is_admin`
+    // / legacy `roles` cover transient test fixtures that still build the
+    // pre-Stream-1 shape inline.
     const isAdminRole =
       rawUser.isAdmin ||
       rawUser.is_admin ||
+      (Array.isArray(rawUser.roleCodes) && rawUser.roleCodes.includes('admin')) ||
       (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin'));
 
-    const permissions: string[] = Array.isArray(rawUser.permissions) ? rawUser.permissions : [];
+    const permissions: string[] = Array.isArray(rawUser.permissionCodes)
+      ? rawUser.permissionCodes
+      : Array.isArray(rawUser.permissions)
+        ? rawUser.permissions
+        : [];
 
     // Only system.admin (platform superuser) and the admin role bypass
     // the per-collection access-rule check below. collection.admin is

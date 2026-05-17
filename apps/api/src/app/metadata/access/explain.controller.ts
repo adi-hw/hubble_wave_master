@@ -103,14 +103,17 @@ export class ExplainController {
     return {
       kind: 'user',
       userId: identity.userId,
-      roles: identity.roles,
-      permissions: identity.permissions,
+      roleIds: identity.roleIds,
+      roleCodes: identity.roleCodes,
+      permissionCodes: identity.permissionCodes,
+      groupIds: identity.groupIds,
       isAdmin: identity.isAdmin,
+      securityStamp: identity.securityStamp,
       // `attributes.roleIds` is the canonical source the evaluator reads
-      // for principal matching. Mirror the resolved roles into both fields
-      // so a target user with role memberships matches role-keyed rules
-      // the same way they would on a live request.
-      attributes: { roleIds: identity.roles },
+      // for principal matching. Mirror the resolved role UUIDs into the
+      // attributes bag so a target user with role memberships matches
+      // role-keyed rules the same way they would on a live request.
+      attributes: { roleIds: identity.roleIds },
     };
   }
 }

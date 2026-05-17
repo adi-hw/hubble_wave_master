@@ -1188,9 +1188,12 @@ export class ConnectorService {
     return {
       kind: 'user',
       userId: this.systemUserId,
-      roles: [],
-      permissions: [],
+      roleIds: [],
+      roleCodes: [],
+      permissionCodes: [],
+      groupIds: [],
       isAdmin: true,
+      securityStamp: '',
     };
   }
 

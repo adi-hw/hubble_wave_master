@@ -21,18 +21,19 @@ const IDENTITY_CACHE_TTL_SECONDS = 60;
 const IDENTITY_CACHE_KEY_PREFIX = 'authz:identity:';
 
 /**
- * Wire-format for cached identity. Keep this minimal — only the fields
- * the port contract requires.
+ * Wire-format for cached identity. Mirrors `ResolvedIdentity` exactly —
+ * all six fields the port contract requires, including the W2 Stream 1
+ * `roleIds` + `roleCodes` + `permissionCodes` split.
  */
 interface CachedIdentity {
   userId: string;
-  roles: string[];
-  permissions: string[];
+  roleIds: string[];
+  roleCodes: string[];
+  permissionCodes: string[];
+  groupIds: string[];
   isAdmin: boolean;
   status: string;
   securityStamp: string;
-  /** W6.D / F047 — direct group IDs; included in cache to avoid extra DB queries. */
-  groupIds?: string[];
 }
 
 /**
@@ -78,6 +79,7 @@ export class IdentityResolverAdapter implements IdentityResolverPort {
     // user can do right now.
     const { roles, permissions, groupIds: resolvedGroupIds } =
       await this.permissionResolver.getUserPermissions(userId);
+    const roleIds = roles.map((r) => r.id);
     const roleCodes = roles.map((r) => r.code);
     const permissionCodes = Array.from(permissions);
     const isAdmin =
@@ -88,15 +90,16 @@ export class IdentityResolverAdapter implements IdentityResolverPort {
 
     const resolved: ResolvedIdentity = {
       userId: user.id,
-      roles: roleCodes,
-      permissions: permissionCodes,
+      roleIds,
+      roleCodes,
+      permissionCodes,
+      // W6.D / F047 — direct group IDs; surfaced here so JwtAuthGuard can
+      // seed UserRequestContext.groupCache without an additional DB query.
+      groupIds: resolvedGroupIds ?? [],
       isAdmin,
       status: user.status,
       // canon §29.6 — the kill-switch the guard compares to `token_version`.
       securityStamp: user.securityStamp,
-      // W6.D / F047 — direct group IDs; surfaced here so JwtAuthGuard can
-      // seed UserRequestContext.groupCache without an additional DB query.
-      groupIds: resolvedGroupIds ?? [],
     };
 
     // setJson swallows errors internally — a Redis outage degrades to a

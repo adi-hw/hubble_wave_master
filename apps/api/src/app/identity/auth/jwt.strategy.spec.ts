@@ -26,8 +26,11 @@ function buildPermResolver(roleCodes: string[], permissions: string[]) {
       userId: 'u-1',
       permissions: new Set(permissions),
       permissionDetails: new Map(),
-      roleIds: [],
-      roles: roleCodes.map((code) => ({ code }) as { code: string }),
+      roleIds: roleCodes.map((code) => `role-id-${code}`),
+      roles: roleCodes.map(
+        (code) => ({ id: `role-id-${code}`, code }) as { id: string; code: string },
+      ),
+      groupIds: [],
       computedAt: new Date(),
       expiresAt: new Date(),
     })),
@@ -220,8 +223,8 @@ describe('JwtStrategy (canon §29 PR-B)', () => {
       } as JwtPayload & { token_version: string };
       const result = await strategy.validate(payload);
       expect(result.userId).toBe('u-1');
-      expect(result.roles).toEqual(['user']);
-      expect(result.permissions).toEqual(['records.read']);
+      expect(result.roleCodes).toEqual(['user']);
+      expect(result.permissionCodes).toEqual(['records.read']);
     });
 
     it('accepts when token_version is absent (fixtures that pre-date PR-B)', async () => {

@@ -278,51 +278,43 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token');
     }
 
-    // F013: prefer fresh DB-backed identity over JWT-embedded claims.
-    // Pre-PR-B the fallback path read roles/permissions out of the JWT
-    // payload directly. Post-PR-B that fallback remains for tests that
-    // do not wire the resolver, but now production also enforces the
-    // canon §29.6 token-version check, which requires the resolver.
-    const rawRoles = (payload as Record<string, unknown>)['roles'];
-    let resolvedRoles: string[] = Array.isArray(rawRoles)
-      ? (rawRoles as string[])
-      : [];
-    const rawPerms = (payload as Record<string, unknown>)['permissions'];
-    let resolvedPermissions: string[] = Array.isArray(rawPerms)
-      ? (rawPerms as string[])
-      : [];
-    let resolvedIsAdmin =
-      resolvedRoles.includes('admin') ||
-      (payload as Record<string, unknown>)['is_admin'] === true;
-    let resolvedSecurityStamp: string | undefined;
-    // W6.D / F047: hoisted so the groupIds field is accessible after the
-    // block for seeding groupCache (see below).
-    let resolvedIdentity: ResolvedIdentity | null = null;
-
-    if (this.identityResolver) {
-      resolvedIdentity = await this.identityResolver.resolveIdentity(userId);
-      if (!resolvedIdentity) {
-        throw new UnauthorizedException('User not found');
-      }
-      if (resolvedIdentity.status !== 'active') {
-        throw new UnauthorizedException('User is inactive');
-      }
-      // Canon §29.6 — kill-switch check. The JWT carries the user's
-      // stamp at issuance; the resolver returns the current value.
-      // Mismatch means a stamp-bump event (password change, MFA
-      // disable, admin force-logout, suspend) invalidated this token.
-      const tokenVersion = (payload as Record<string, unknown>)['token_version'];
-      if (
-        typeof tokenVersion === 'string' &&
-        tokenVersion !== resolvedIdentity.securityStamp
-      ) {
-        throw new UnauthorizedException('Token version stale');
-      }
-      resolvedRoles = resolvedIdentity.roles;
-      resolvedPermissions = resolvedIdentity.permissions;
-      resolvedIsAdmin = resolvedIdentity.isAdmin;
-      resolvedSecurityStamp = resolvedIdentity.securityStamp;
+    // F013 / W2 Stream 1 PR1: `IdentityResolverPort` is the only source
+    // of truth for the user's roles + permissions. The pre-Stream-1 fallback
+    // that read `roles` / `permissions` out of the JWT payload is retired —
+    // JWTs no longer carry those claims (canon §29.4 + spec §1.1). When the
+    // resolver is unbound the guard fails closed; production services bind
+    // it, and tests that need to construct a context inline bypass the guard
+    // entirely or stub the resolver.
+    if (!this.identityResolver) {
+      throw new UnauthorizedException(
+        'JwtAuthGuard requires IDENTITY_RESOLVER_PORT to be bound (W2 Stream 1 PR1)',
+      );
     }
+    const resolvedIdentity: ResolvedIdentity | null =
+      await this.identityResolver.resolveIdentity(userId);
+    if (!resolvedIdentity) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (resolvedIdentity.status !== 'active') {
+      throw new UnauthorizedException('User is inactive');
+    }
+    // Canon §29.6 — kill-switch check. The JWT carries the user's stamp
+    // at issuance; the resolver returns the current value. Mismatch
+    // means a stamp-bump event (password change, MFA disable, admin
+    // force-logout, suspend) invalidated this token.
+    const tokenVersion = (payload as Record<string, unknown>)['token_version'];
+    if (
+      typeof tokenVersion === 'string' &&
+      tokenVersion !== resolvedIdentity.securityStamp
+    ) {
+      throw new UnauthorizedException('Token version stale');
+    }
+    const resolvedRoleIds: string[] = resolvedIdentity.roleIds;
+    const resolvedRoleCodes: string[] = resolvedIdentity.roleCodes;
+    const resolvedPermissionCodes: string[] = resolvedIdentity.permissionCodes;
+    const resolvedGroupIds: string[] = resolvedIdentity.groupIds;
+    const resolvedIsAdmin = resolvedIdentity.isAdmin;
+    const resolvedSecurityStamp = resolvedIdentity.securityStamp;
 
     const sessionIdRaw =
       (payload as Record<string, unknown>)['session_id'] ??
@@ -355,26 +347,16 @@ export class JwtAuthGuard implements CanActivate {
     // `userId`; for the common single-user path the map has one entry.
     // Service tokens never reach this branch; the service path returns early
     // above, so `groupCache` is never set on `ServiceRequestContext`.
-    // W6.D / F047 — seed the request-scoped group cache from the resolved
-    // identity so the §28 authz evaluator can match group-based ACL rules
-    // without additional per-request DB queries. The cache is keyed on
-    // `userId`; for the common single-user path the map has one entry.
-    // Service tokens never reach this branch; the service path returns early
-    // above, so `groupCache` is never set on `ServiceRequestContext`.
     const groupCache = new Map<string, string[]>();
-    if (resolvedIdentity) {
-      // Re-use the groupIds field from the already-resolved identity rather
-      // than making a second DB round-trip. When the field is absent (adapters
-      // pre-dating W6.D), we write an empty list so behaviour is consistent
-      // with the pre-W6.D state (no groups matched, no group-based rules fire).
-      groupCache.set(userId, resolvedIdentity.groupIds ?? []);
-    }
+    groupCache.set(userId, resolvedGroupIds);
 
     const requestContext: UserRequestContext = {
       kind: 'user',
       userId,
-      roles: resolvedRoles,
-      permissions: resolvedPermissions,
+      roleIds: resolvedRoleIds,
+      roleCodes: resolvedRoleCodes,
+      permissionCodes: resolvedPermissionCodes,
+      groupIds: resolvedGroupIds,
       isAdmin: resolvedIsAdmin,
       securityStamp: resolvedSecurityStamp,
       sessionId,

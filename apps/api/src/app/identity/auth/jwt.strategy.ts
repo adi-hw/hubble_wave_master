@@ -154,15 +154,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     // Resolve permissions using the resolver service. The cache key is
     // the user id, so repeated requests within the TTL window incur a
-    // single DB round trip.
-    const { permissions, roles } = await this.permissionResolver.getUserPermissions(userId);
+    // single DB round trip. W2 Stream 1 PR1 — the AuthenticatedUser shape
+    // carries the explicit roleIds/roleCodes/permissionCodes split.
+    const { permissions, roles, groupIds } =
+      await this.permissionResolver.getUserPermissions(userId);
 
     return {
       userId: user.id,
       email: user.email,
       username: user.username,
-      roles: roles.map(r => r.code), // Use code (slug)
-      permissions: Array.from(permissions),
+      roleIds: roles.map((r) => r.id),
+      roleCodes: roles.map((r) => r.code),
+      permissionCodes: Array.from(permissions),
+      groupIds: groupIds ?? [],
+      securityStamp: user.securityStamp,
       sessionId: payload.session_id,
     };
   }

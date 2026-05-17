@@ -12,7 +12,7 @@ export class SearchExperienceService {
   ) {}
 
   async listForContext(context: UserRequestContext): Promise<SearchExperience[]> {
-    const roles = Array.isArray(context.roles) ? context.roles.filter(Boolean) : [];
+    const roles = context.roleCodes.filter(Boolean);
     const groups = this.resolveGroups(context);
     const userId = context.userId;
 

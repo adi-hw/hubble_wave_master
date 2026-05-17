@@ -178,7 +178,7 @@ export class AIReportsController {
   ) {
     // Ownership check: only the template creator (or admin) may update.
     const existing = await this.reportsService.getTemplate(templateId);
-    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+    if (existing.createdBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     const template = await this.reportsService.updateTemplate(templateId, dto);
@@ -194,7 +194,7 @@ export class AIReportsController {
   ) {
     // Ownership check: only the template creator (or admin) may delete.
     const existing = await this.reportsService.getTemplate(templateId);
-    if (existing.createdBy !== user.id && !user.roles?.includes('admin')) {
+    if (existing.createdBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     await this.reportsService.deleteTemplate(templateId);
@@ -237,7 +237,7 @@ export class AIReportsController {
   ) {
     // Ownership check: only the user who generated the report (or admin) may delete it.
     const report = await this.reportsService.getReport(reportId);
-    if (report.generatedBy !== user.id && !user.roles?.includes('admin')) {
+    if (report.generatedBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     await this.reportsService.deleteReport(reportId);
@@ -261,7 +261,7 @@ export class AIReportsController {
 
     // Ownership check on export — reports may contain sensitive data.
     const report = await this.reportsService.getReport(reportId);
-    if (report.generatedBy !== user.id && !user.roles?.includes('admin')) {
+    if (report.generatedBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
 

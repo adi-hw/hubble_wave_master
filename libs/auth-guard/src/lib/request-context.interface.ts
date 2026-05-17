@@ -7,46 +7,84 @@ import { ForbiddenException } from '@nestjs/common';
  * do. The discriminator `kind` is the contract:
  *
  *   - `kind: 'user'`    — interactive human / API-key / SSO caller.
- *                          Carries `userId`, `roles`, `permissions`,
+ *                          Carries `userId`, `roleIds`, `roleCodes`,
+ *                          `permissionCodes`, `groupIds`,
  *                          `securityStamp` per canon §29.6.
  *   - `kind: 'service'` — service-to-service caller per canon §29.7.
  *                          Carries `serviceId`, `scopes`, `audience`.
- *                          NO `userId`, NO `roles`, NO
+ *                          NO `userId`, NO `roleIds`, NO
  *                          `securityStamp`.
  *
  * Founder direction: do not fake service callers as users. Every
- * consumer that reads `.userId`, `.roles`, `.permissions`,
- * `.isAdmin`, or `.securityStamp` MUST first narrow via
- * `assertUserContext(ctx)` or by checking `ctx.kind === 'user'`.
- * Direct field access on the union without narrowing fails type
- * checking — that is the point.
+ * consumer that reads `.userId`, `.roleIds`, `.roleCodes`,
+ * `.permissionCodes`, `.isAdmin`, or `.securityStamp` MUST first
+ * narrow via `assertUserContext(ctx)` or by checking
+ * `ctx.kind === 'user'`. Direct field access on the union without
+ * narrowing fails type checking — that is the point.
  *
  * Service tokens NEVER reach endpoints not explicitly opted in via
  * `@AllowServiceToken()` (canon §29.7). The default JWT guard
  * rejects service tokens at user endpoints with a clear 401 so the
  * `as any` workaround surface is closed by construction.
+ *
+ * W2 Stream 1 PR1 — JWT carries no `roles` / `permissions` claims.
+ * `IdentityResolverPort` resolves the user's full authority from the
+ * DB on every authenticated request and populates the fields below.
+ * `roleIds` (UUIDs) is the ACL-match key against `CollectionAccessRule.roleId`
+ * / `PropertyAccessRule.roleId`. `roleCodes` (stable codes) is the
+ * display / audit / `@Roles()` / ABAC-string-match key. The two are
+ * not interchangeable and consumers must pick the right one for the
+ * call site's intent.
  */
 export type RequestContext = UserRequestContext | ServiceRequestContext;
 
 /**
- * Authenticated human / API-key / SSO caller. The shape mirrors the
- * pre-canon-§29-PR-D contract — every existing field is preserved,
- * the `kind` discriminator is the only addition. Consumers that
- * have narrowed (or that only run on user endpoints) keep
- * compiling unchanged.
+ * Authenticated human / API-key / SSO caller. The roles / permissions
+ * surface is the W2 Stream 1 contract — JWTs no longer carry these
+ * claims, `IdentityResolverPort` populates them per request.
  */
 export interface UserRequestContext {
   readonly kind: 'user';
   userId: string;
-  roles: string[];
-  permissions: string[];
+  /**
+   * Role UUIDs from `identity.roles.id`. The key for ACL-rule matches
+   * (`CollectionAccessRule.roleId`, `PropertyAccessRule.roleId`,
+   * `GroupRole.roleId`). Always populated; empty array for users
+   * with no role assignments.
+   */
+  roleIds: string[];
+  /**
+   * Role codes from `identity.roles.code` (e.g. `'admin'`,
+   * `'platform_user'`). The key for `@Roles(...)` decorator matches,
+   * audit trails, ABAC string predicates, and any UI display. Stable
+   * across role-row replacements; safe to log. Always populated.
+   */
+  roleCodes: string[];
+  /**
+   * Platform-capability codes resolved from
+   * `identity.role_permissions.permission_code` (colon-segment codes
+   * per W2 spec §2.1 — `<domain>:<action>` or
+   * `<domain>:<resource>:<action>`). The key for `@RequirePermission`
+   * checks. Pre-W2 → Stream 2 PR3 window: this array is empty for
+   * every user because path (ii) leaves `platform_permissions`
+   * unpopulated until the registry sync ships.
+   */
+  permissionCodes: string[];
+  /**
+   * Direct group membership IDs from `identity.group_members.group_id`.
+   * Seeded onto the context by `JwtAuthGuard` so the §28 evaluator
+   * can match `CollectionAccessRule.groupId` / `PropertyAccessRule.groupId`
+   * without an extra DB round-trip per request. Always populated;
+   * empty array for users in no groups.
+   */
+  groupIds: string[];
   isAdmin: boolean;
   /**
    * Cross-cutting token kill-switch per canon §29.6. Carried in the
    * JWT's `token_version` claim; verifiers compare to the live
-   * `users.security_stamp` value.
+   * `users.security_stamp` value. Always populated post-Stream 1.
    */
-  securityStamp?: string;
+  securityStamp: string;
   attributes?: Record<string, unknown>;
   sessionId?: string;
   username?: string;
@@ -164,13 +202,20 @@ export function isServiceContext(
 }
 
 /**
- * User object attached by JWT strategy after authentication
+ * User object attached by JWT strategy after authentication. Mirrors
+ * `UserRequestContext` minus the discriminator and the request-scope
+ * caches — `JwtAuthGuard` reads from `IdentityResolverPort` and
+ * populates this shape onto `request.user` for compatibility with the
+ * passport contract. Fields match the W2 Stream 1 vocabulary.
  */
 export interface AuthenticatedUser {
   userId: string;
   username: string;
-  roles: string[];
-  permissions: string[];
+  roleIds: string[];
+  roleCodes: string[];
+  permissionCodes: string[];
+  groupIds: string[];
+  securityStamp: string;
   sessionId?: string;
 }
 
@@ -237,9 +282,12 @@ export function extractContext(
       kind: 'user',
       userId: user.userId,
       username: user.username,
-      roles: user.roles || [],
-      permissions: user.permissions || [],
-      isAdmin: user.roles?.includes('admin') ?? false,
+      roleIds: user.roleIds ?? [],
+      roleCodes: user.roleCodes ?? [],
+      permissionCodes: user.permissionCodes ?? [],
+      groupIds: user.groupIds ?? [],
+      securityStamp: user.securityStamp ?? '',
+      isAdmin: user.roleCodes?.includes('admin') ?? false,
       sessionId: user.sessionId,
     };
   }
@@ -251,8 +299,10 @@ export function extractContext(
 
 /**
  * Type guard to check if an object is a valid RequestContext.
- * Accepts both the canon §29.7 discriminated shape and the legacy
- * untagged shape for tests that construct contexts inline.
+ * Canon §29.7 discriminated shape only — the pre-W2-Stream-1
+ * untagged shape (legacy `roles` field) is no longer accepted; the
+ * W2 contract requires the new `roleIds` + `roleCodes` split per
+ * Stream 1 PR1.
  */
 function isValidContext(obj: unknown): obj is RequestContext {
   if (!obj || typeof obj !== 'object') return false;
@@ -260,8 +310,7 @@ function isValidContext(obj: unknown): obj is RequestContext {
   if (ctx['kind'] === 'service') {
     return typeof ctx['serviceId'] === 'string' && Array.isArray(ctx['scopes']);
   }
-  // 'user' kind OR legacy untagged shape (treated as user).
-  return typeof ctx['userId'] === 'string' && Array.isArray(ctx['roles']);
+  return typeof ctx['userId'] === 'string' && Array.isArray(ctx['roleIds']);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import { RuntimeAnomalyService } from '@hubblewave/instance-db';
 import { ScriptSandboxService } from './script-sandbox.service';
 import { ExecutionContext } from './automation-runtime.types';
 
@@ -59,7 +60,13 @@ describe('ScriptSandboxService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ScriptSandboxService],
+      providers: [
+        ScriptSandboxService,
+        {
+          provide: RuntimeAnomalyService,
+          useValue: { record: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
     }).compile();
 
     service = module.get<ScriptSandboxService>(ScriptSandboxService);
@@ -331,7 +338,10 @@ describe('ScriptSandboxService — record fields shadowing SAFE_FUNCTIONS (W3.A)
   let service: ScriptSandboxService;
 
   beforeEach(() => {
-    service = new ScriptSandboxService();
+    const runtimeAnomalyService = {
+      record: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new ScriptSandboxService(runtimeAnomalyService as never);
   });
 
   describe('evaluateCondition', () => {

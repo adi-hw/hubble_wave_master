@@ -1,14 +1,22 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 /**
- * Request user interface for the current authenticated user
+ * Request user interface for the current authenticated user.
+ * Mirrors `UserRequestContext` / `AuthenticatedUser` for the
+ * `@CurrentUser()` decorator surface. W2 Stream 1 PR1 vocabulary:
+ * `roleIds` + `roleCodes` + `permissionCodes` + `groupIds` +
+ * `securityStamp` replace the pre-Stream-1 `roles` / `permissions`
+ * conflation.
  */
 export interface RequestUser {
   id: string;
   userId: string;
   username: string;
-  roles: string[];
-  permissions: string[];
+  roleIds: string[];
+  roleCodes: string[];
+  permissionCodes: string[];
+  groupIds: string[];
+  securityStamp: string;
   sessionId?: string;
 }
 
@@ -38,8 +46,11 @@ export const CurrentUser = createParamDecorator(
       id: uid,
       userId: uid,
       username: user.username,
-      roles: user.roles || [],
-      permissions: user.permissions || [],
+      roleIds: user.roleIds ?? [],
+      roleCodes: user.roleCodes ?? [],
+      permissionCodes: user.permissionCodes ?? [],
+      groupIds: user.groupIds ?? [],
+      securityStamp: user.securityStamp ?? '',
       sessionId: user.sessionId,
     };
 

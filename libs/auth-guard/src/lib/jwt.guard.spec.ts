@@ -209,11 +209,25 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
 
   describe('canon §29.3 — ES256 signature verification', () => {
     it('accepts a token signed with an active key', async () => {
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-1',
+          roleIds: [],
+          roleCodes: [],
+          permissionCodes: [],
+          groupIds: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-1',
+        }),
+      };
       const { guard, ctx, request } = await buildGuardForClaims(
         {
           sub: 'user:u-1',
           session_id: 'sess-1',
+          token_version: 'stamp-1',
         },
+        { identity: resolver },
       );
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
       const userCtx = request['user'] as { userId: string };
@@ -297,8 +311,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
-          permissions: [],
+          roleIds: ['role-1'],
+          roleCodes: ['user'],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-aaa',
@@ -318,8 +334,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
-          permissions: [],
+          roleIds: ['role-1'],
+          roleCodes: ['user'],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-NEW',
@@ -339,35 +357,41 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
   });
 
   describe('F013 — fresh identity via IdentityResolverPort', () => {
-    it('uses resolver-port output (not JWT claims) for roles/permissions/isAdmin', async () => {
+    it('uses resolver-port output (not JWT claims) for roleCodes/permissionCodes/isAdmin', async () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
-          permissions: ['records.read'],
+          roleIds: ['role-1'],
+          roleCodes: ['user'],
+          permissionCodes: ['records.read'],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-aaa',
         }),
       };
+      // W2 Stream 1 PR1 — the JWT no longer carries roles/permissions/is_admin,
+      // so the "JWT lies" scenario the pre-Stream-1 test covered is moot at
+      // the contract level. We keep the spirit of the assertion (resolver
+      // output reaches request.user / request.context) without injecting
+      // claims the guard now ignores.
       const { guard, ctx, request } = await buildGuardForClaims(
         {
           sub: 'user:u-1',
-          roles: ['manager'], // JWT lies — resolver wins
-          permissions: ['records.delete'],
-          is_admin: true,
           token_version: 'stamp-aaa',
         },
         { identity: resolver },
       );
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
       const userCtx = request['user'] as {
-        roles: string[];
-        permissions: string[];
+        roleIds: string[];
+        roleCodes: string[];
+        permissionCodes: string[];
         isAdmin: boolean;
       };
-      expect(userCtx.roles).toEqual(['user']);
-      expect(userCtx.permissions).toEqual(['records.read']);
+      expect(userCtx.roleIds).toEqual(['role-1']);
+      expect(userCtx.roleCodes).toEqual(['user']);
+      expect(userCtx.permissionCodes).toEqual(['records.read']);
       expect(userCtx.isAdmin).toBe(false);
     });
 
@@ -388,8 +412,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: [],
-          permissions: [],
+          roleIds: [],
+          roleCodes: [],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'suspended',
           securityStamp: 'stamp',
@@ -410,8 +436,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: [],
-          permissions: [],
+          roleIds: [],
+          roleCodes: [],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp',
@@ -440,8 +468,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: [],
-          permissions: [],
+          roleIds: [],
+          roleCodes: [],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp',
@@ -474,9 +504,22 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
     });
 
     it('handles a bare sub (no "user:" prefix) for backward compat', async () => {
-      const { guard, ctx, request } = await buildGuardForClaims({
-        sub: 'u-bare',
-      });
+      const resolver: IdentityResolverPort = {
+        resolveIdentity: jest.fn().mockResolvedValue({
+          userId: 'u-bare',
+          roleIds: [],
+          roleCodes: [],
+          permissionCodes: [],
+          groupIds: [],
+          isAdmin: false,
+          status: 'active',
+          securityStamp: 'stamp-bare',
+        }),
+      };
+      const { guard, ctx, request } = await buildGuardForClaims(
+        { sub: 'u-bare', token_version: 'stamp-bare' },
+        { identity: resolver },
+      );
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
       const userCtx = request['user'] as { userId: string };
       expect(userCtx.userId).toBe('u-bare');
@@ -488,12 +531,13 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['user'],
-          permissions: [],
+          roleIds: ['role-1'],
+          roleCodes: ['user'],
+          permissionCodes: [],
+          groupIds: ['grp-x', 'grp-y'],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-gc',
-          groupIds: ['grp-x', 'grp-y'],
         }),
       };
       const { guard, ctx, request } = await buildGuardForClaims(
@@ -509,16 +553,17 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       expect(userCtx.groupCache!.get('u-1')).toEqual(['grp-x', 'grp-y']);
     });
 
-    it('seeds an empty groupCache entry when resolver returns no groupIds', async () => {
+    it('seeds an empty groupCache entry when resolver returns an empty groupIds array', async () => {
       const resolver: IdentityResolverPort = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-2',
-          roles: ['user'],
-          permissions: [],
+          roleIds: ['role-1'],
+          roleCodes: ['user'],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-empty',
-          // groupIds intentionally absent — pre-W6.D adapter shape
         }),
       };
       const { guard, ctx, request } = await buildGuardForClaims(
@@ -533,16 +578,17 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       expect(userCtx.groupCache!.get('u-2')).toEqual([]);
     });
 
-    it('groupCache is initialized (empty Map) even when no IdentityResolverPort is wired', async () => {
-      const { guard, ctx, request } = await buildGuardForClaims({
+    // W2 Stream 1 PR1: the pre-Stream-1 fallback that built an empty
+    // UserRequestContext when no `IdentityResolverPort` was wired is
+    // retired. The guard now fails closed on missing resolver, so the
+    // "no resolver → 401" path is asserted as its own test below.
+    it('fails closed with 401 when no IdentityResolverPort is wired', async () => {
+      const { guard, ctx } = await buildGuardForClaims({
         sub: 'user:u-no-resolver',
       });
-      await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      const userCtx = request['context'] as {
-        groupCache?: Map<string, string[]>;
-      };
-      expect(userCtx.groupCache).toBeDefined();
-      expect(userCtx.groupCache!.size).toBe(0);
+      await expect(guard.canActivate(ctx)).rejects.toMatchObject({
+        message: expect.stringMatching(/IDENTITY_RESOLVER_PORT/),
+      });
     });
   });
 
@@ -688,8 +734,10 @@ describe('JwtAuthGuard (canon §29 PR-B)', () => {
       const identity = {
         resolveIdentity: jest.fn().mockResolvedValue({
           userId: 'u-1',
-          roles: ['member'],
-          permissions: [],
+          roleIds: ['role-1'],
+          roleCodes: ['member'],
+          permissionCodes: [],
+          groupIds: [],
           isAdmin: false,
           status: 'active',
           securityStamp: 'stamp-1',

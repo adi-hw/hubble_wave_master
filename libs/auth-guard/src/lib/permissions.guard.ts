@@ -98,8 +98,8 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required');
     }
 
-    // Get user permissions - support multiple property names
-    const userPermissions: string[] = user.permissions || user.perms || [];
+    // Get user permissions - W2 Stream 1 vocabulary.
+    const userPermissions: string[] = user.permissionCodes || [];
 
     // Canon §28.6 (Plan Fix 33): admin role no longer bypasses permission
     // checks here. Admin users hold explicit permission grants via the seeded

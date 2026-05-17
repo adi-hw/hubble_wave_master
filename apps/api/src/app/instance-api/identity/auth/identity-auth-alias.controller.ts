@@ -192,7 +192,12 @@ export class IdentityAuthAliasController {
       permissions: profile.permissions,
       // Preserve the isAdmin field that the web client relies on for admin
       // UI visibility. The canonical AuthService.getProfile() doesn't return
-      // it directly, so we derive it from the resolved role list.
+      // it directly, so we derive it from the resolved role list. The
+      // alias controller's `profile` shape comes from `AuthService.getProfile()`
+      // which is the user-facing /auth/me DTO — it keeps the `roles` /
+      // `permissions` field names for backward-compat with the web client;
+      // the W2 Stream 1 rename only applies to the platform-internal
+      // UserRequestContext + AuthenticatedUser shape.
       isAdmin: profile.roles.includes('admin') || profile.roles.includes('super_admin'),
     };
   }

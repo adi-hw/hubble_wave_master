@@ -217,14 +217,15 @@ export class TokenIssuerService implements OnModuleInit {
       // this to the live DB value; mismatch → reject with 'Token version
       // stale'.
       token_version: identity.securityStamp,
-      // Convenience claims that survive the migration unchanged. The
-      // guard reads roles/permissions via IdentityResolverPort (F013) so
-      // these are NOT authoritative; they exist so debugging tools that
-      // decode the JWT still show the role context, and so test fixtures
-      // that skip the resolver port stay functionally correct.
-      roles: identity.roles,
-      permissions: identity.permissions,
-      is_admin: identity.isAdmin,
+      // W2 Stream 1 PR1 (spec §1.1): the JWT carries no `roles`,
+      // `roleIds`, `roleCodes`, `permissions`, `permissionCodes`, or
+      // `is_admin` claim. `IdentityResolverPort` is the only source of
+      // truth — the guard resolves authority fresh on every request, so
+      // a role grant change takes effect within one cache TTL (60s) of
+      // the change committing, with no need to wait out the access TTL.
+      // The pre-Stream-1 "convenience" claims were authority-shaped data
+      // outside the resolver path, which let stale-token scenarios slip
+      // through verification entirely.
       username: identity.userId, // overridden by callers that have a real display name
     };
 

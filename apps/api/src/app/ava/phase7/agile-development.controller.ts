@@ -86,7 +86,7 @@ export class AgileDevelopmentController {
   async getSprints(
     @CurrentUser() user: RequestUser,
   ) {
-    const isAdmin = !!user.roles?.includes('admin');
+    const isAdmin = !!user.roleCodes?.includes('admin');
     const where = isAdmin ? {} : { recordedBy: user.id };
     const recordings = await this.recordingRepo.find({
       where,
@@ -192,7 +192,7 @@ export class AgileDevelopmentController {
     }
     if (existing.recordingId) {
       await this.assertSprintMutable(user, existing.recordingId);
-    } else if (!user.roles?.includes('admin')) {
+    } else if (!user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     if (dto.title !== undefined) existing.title = dto.title;
@@ -298,7 +298,7 @@ export class AgileDevelopmentController {
     const result = await this.agileService.listRecordings({
       limit: limit ? parseInt(limit, 10) : 20,
     });
-    const isAdmin = !!user.roles?.includes('admin');
+    const isAdmin = !!user.roleCodes?.includes('admin');
     const data = isAdmin
       ? result.data
       : result.data.filter((r) => r.recordedBy === user.id);
@@ -332,7 +332,7 @@ export class AgileDevelopmentController {
       recordingId,
       status: status as never,
     });
-    if (!recordingId && !user.roles?.includes('admin')) {
+    if (!recordingId && !user.roleCodes?.includes('admin')) {
       const ownedIds = new Set(
         (await this.recordingRepo.find({
           where: { recordedBy: user.id },
@@ -356,7 +356,7 @@ export class AgileDevelopmentController {
     if (!existing) throw new NotFoundException('Story not found');
     if (existing.recordingId) {
       await this.assertSprintMutable(user, existing.recordingId);
-    } else if (!user.roles?.includes('admin')) {
+    } else if (!user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     const story = await this.agileService.approveStory(storyId, user.id);
@@ -374,7 +374,7 @@ export class AgileDevelopmentController {
     if (!existing) throw new NotFoundException('Story not found');
     if (existing.recordingId) {
       await this.assertSprintMutable(user, existing.recordingId);
-    } else if (!user.roles?.includes('admin')) {
+    } else if (!user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     const story = await this.agileService.updateStoryStatus(storyId, 'rejected' as never);
@@ -409,7 +409,7 @@ export class AgileDevelopmentController {
     if (!existing) throw new NotFoundException('Story not found');
     if (existing.recordingId) {
       await this.assertSprintMutable(user, existing.recordingId);
-    } else if (!user.roles?.includes('admin')) {
+    } else if (!user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     const implementation = await this.agileService.trackImplementation({
@@ -426,7 +426,7 @@ export class AgileDevelopmentController {
   // ─────────────────────────────────────────────────────────────────
 
   private async assertSprintReadable(user: RequestUser, sprintId: string): Promise<void> {
-    if (user.roles?.includes('admin')) return;
+    if (user.roleCodes?.includes('admin')) return;
     const recording = await this.recordingRepo.findOne({ where: { id: sprintId } });
     if (!recording) throw new NotFoundException('Sprint not found');
     if (recording.recordedBy && recording.recordedBy !== user.id) {
@@ -435,7 +435,7 @@ export class AgileDevelopmentController {
   }
 
   private async assertSprintMutable(user: RequestUser, sprintId: string): Promise<void> {
-    if (user.roles?.includes('admin')) return;
+    if (user.roleCodes?.includes('admin')) return;
     const recording = await this.recordingRepo.findOne({ where: { id: sprintId } });
     if (!recording) throw new NotFoundException('Sprint not found');
     if (recording.recordedBy !== user.id) {

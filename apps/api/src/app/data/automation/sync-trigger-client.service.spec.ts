@@ -26,8 +26,11 @@ describe('SyncTriggerClientService', () => {
   const ctx = (overrides: Partial<UserRequestContext> = {}): UserRequestContext => ({
     kind: 'user',
     userId: 'user-1',
-    roles: ['admin'],
-    permissions: [],
+    roleIds: ['role-1'],
+    roleCodes: ['admin'],
+    permissionCodes: [],
+    groupIds: [],
+    securityStamp: 'stamp-test',
     isAdmin: true,
     bearerToken: 'eyJtest.bearer.token',
     ...overrides,

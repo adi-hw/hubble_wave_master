@@ -53,8 +53,10 @@ function buildResolverStub(
 function buildActiveIdentity(overrides: Partial<ResolvedIdentity> = {}): ResolvedIdentity {
   return {
     userId: TARGET_USER,
-    roles: [ROLE_UUID],
-    permissions: [],
+    roleIds: [ROLE_UUID],
+    roleCodes: ['viewer'],
+    permissionCodes: [],
+    groupIds: [],
     isAdmin: false,
     status: 'active',
     // canon §29.6 — fixture default for the cross-cutting kill-switch.
@@ -95,7 +97,7 @@ describe('ExplainController (§28.7)', () => {
     expect(authz.explainCollectionAccess).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: TARGET_USER,
-        roles: [ROLE_UUID],
+        roleIds: [ROLE_UUID],
         isAdmin: false,
         attributes: { roleIds: [ROLE_UUID] },
       }),
@@ -145,7 +147,7 @@ describe('ExplainController (§28.7)', () => {
     const guard = new RolesGuard(reflector);
 
     const nonAdminRequest = {
-      user: { userId: 'u1', roles: ['viewer'] },
+      user: { userId: 'u1', roleCodes: ['viewer'] },
     };
     const exec = {
       getHandler: () => ExplainController.prototype.explainCollection,
@@ -161,7 +163,7 @@ describe('ExplainController (§28.7)', () => {
     const guard = new RolesGuard(reflector);
 
     const adminRequest = {
-      user: { userId: 'admin', roles: ['admin'] },
+      user: { userId: 'admin', roleCodes: ['admin'] },
     };
     const exec = {
       getHandler: () => ExplainController.prototype.explainCollection,
@@ -182,7 +184,7 @@ describe('ExplainController (§28.7)', () => {
       fallbackChain: ['level-1: no match', 'level-2: no match', 'level-3: default deny'],
     });
     const resolver = buildResolverStub(
-      buildActiveIdentity({ roles: ['custom-role-a', 'custom-role-b'] }),
+      buildActiveIdentity({ roleIds: ['custom-role-a', 'custom-role-b'] }),
     );
 
     const controller = new ExplainController(
@@ -196,11 +198,11 @@ describe('ExplainController (§28.7)', () => {
       operation: 'read',
     });
 
-    // Both .roles and attributes.roleIds carry the resolved roles so
+    // Both .roleIds and attributes.roleIds carry the resolved roles so
     // principal matching honours role-keyed rules.
     expect(authz.explainCollectionAccess).toHaveBeenCalledWith(
       expect.objectContaining({
-        roles: ['custom-role-a', 'custom-role-b'],
+        roleIds: ['custom-role-a', 'custom-role-b'],
         attributes: { roleIds: ['custom-role-a', 'custom-role-b'] },
       }),
       COLLECTION,

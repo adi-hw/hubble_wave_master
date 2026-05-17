@@ -88,9 +88,12 @@ export class WorkService {
     return {
       kind: 'user',
       userId: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
-      isAdmin: user.roles.includes('admin'),
+      roleIds: user.roleIds,
+      roleCodes: user.roleCodes,
+      permissionCodes: user.permissionCodes,
+      groupIds: user.groupIds,
+      securityStamp: user.securityStamp,
+      isAdmin: user.roleCodes.includes('admin'),
     };
   }
 }

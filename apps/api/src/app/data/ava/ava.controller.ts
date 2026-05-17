@@ -26,8 +26,8 @@ interface AuthenticatedRequest {
   user: {
     sub: string;
     username: string;
-    roles: string[];
-    permissions: string[];
+    roleCodes: string[];
+    permissionCodes: string[];
     instanceSlug?: string;
     organizationId?: string;
     organizationName?: string;
@@ -94,8 +94,8 @@ export class AVAController {
       id: req.user.sub,
       name: req.user.username,
       email: `${req.user.username}@hubblewave.com`,
-      role: req.user.roles[0] || 'user',
-      permissions: req.user.permissions,
+      role: req.user.roleCodes[0] || 'user',
+      permissions: req.user.permissionCodes,
       organizationId: instance.organizationId,
       organizationName: instance.organizationName,
     };
@@ -207,7 +207,7 @@ export class AVAController {
         : undefined;
 
     // Check if admin to get global stats
-    const isAdmin = req.user.roles.includes('admin');
+    const isAdmin = req.user.roleCodes.includes('admin');
     const userId = isAdmin ? undefined : req.user.sub;
 
     return this.avaService.getUsageStats(userId, dateRange);

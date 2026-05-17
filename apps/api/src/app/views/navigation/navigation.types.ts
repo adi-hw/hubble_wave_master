@@ -6,7 +6,7 @@ export type NavigationResolveInput = {
 
 export type NavigationContext = {
   userId: string;
-  roles: string[];
+  roleCodes: string[];
   groups: string[];
 };
 

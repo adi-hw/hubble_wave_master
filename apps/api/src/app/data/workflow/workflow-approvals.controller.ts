@@ -23,7 +23,7 @@ export class WorkflowApprovalsController {
     const approvals = await this.approvals.findByInstance(processFlowInstanceId);
     // Ownership check: only show approvals where the caller is approver, delegate,
     // or responder. Admins see all.
-    if (user.roles?.includes('admin')) {
+    if (user.roleCodes?.includes('admin')) {
       return approvals;
     }
     return approvals.filter(
@@ -42,7 +42,7 @@ export class WorkflowApprovalsController {
       approval.approverId === user.id ||
       approval.delegatedTo === user.id ||
       approval.respondedBy === user.id;
-    if (!isOwner && !user.roles?.includes('admin')) {
+    if (!isOwner && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     return approval;

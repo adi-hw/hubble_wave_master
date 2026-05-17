@@ -196,7 +196,7 @@ export class CollectionDataService {
     priorRecord?: Record<string, unknown> | null,
   ): Promise<Record<string, unknown>> {
     const merged = await this.computedDispatcher.applyOnSave({
-      ctx: { userId: ctx.userId ?? 'system', username: ctx.username, permissions: ctx.permissions, roles: ctx.roles },
+      ctx: { userId: ctx.userId ?? 'system', username: ctx.username, permissions: ctx.permissionCodes, roles: ctx.roleCodes },
       collectionCode: collection.code,
       tableName: collection.tableName,
       properties,
@@ -262,7 +262,7 @@ export class CollectionDataService {
       operation,
       record,
       previousRecord,
-      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roleCodes },
       parentContext: parentAutomationContext,
     });
     if (result.aborted) {
@@ -429,7 +429,7 @@ export class CollectionDataService {
       timing: 'before',
       operation: 'query',
       record: options,
-      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+      userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roleCodes },
     });
     if (result.aborted) {
       throw new BadRequestException({
@@ -495,7 +495,7 @@ export class CollectionDataService {
         operation,
         record,
         previousRecord,
-        userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roles ?? [] },
+        userContext: { id: ctx.userId ?? '', email: ctx.username, roles: ctx.roleCodes },
       });
       if (result.errors.length > 0 || result.warnings.length > 0) {
         this.logger.warn(
@@ -1784,8 +1784,8 @@ export class CollectionDataService {
       ctx: {
         userId: ctx.userId ?? 'system',
         username: ctx.username,
-        permissions: ctx.permissions,
-        roles: ctx.roles,
+        permissions: ctx.permissionCodes,
+        roles: ctx.roleCodes,
       },
       collectionCode: collection.code,
       deletedRecord: existingResult.record,
@@ -1980,8 +1980,8 @@ export class CollectionDataService {
           ctx: {
             userId: ctx.userId ?? 'system',
             username: ctx.username,
-            permissions: ctx.permissions,
-            roles: ctx.roles,
+            permissions: ctx.permissionCodes,
+            roles: ctx.roleCodes,
           },
           collectionCode: collection.code,
           deletedRecord: record,

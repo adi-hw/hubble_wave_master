@@ -1366,8 +1366,14 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
     return {
       userId: ctx.userId,
       email: attributes['email'] as string | undefined,
-      roleIds: (attributes['roleIds'] as string[]) || ctx.roles || [],
-      roleNames: ctx.roles || [],
+      // W2 Stream 1 PR1: `roleIds` is the UUID key against
+      // `CollectionAccessRule.roleId` / `PropertyAccessRule.roleId`,
+      // `roleNames` is the stable code for ABAC predicates that match
+      // role strings. Both flow from `IdentityResolverPort`; the
+      // pre-Stream-1 ctx.roles fallback (which conflated codes and IDs)
+      // is retired.
+      roleIds: ctx.roleIds,
+      roleNames: ctx.roleCodes,
       groupIds,
       teamIds: (attributes['teamIds'] as string[]) || [],
       departmentId: attributes['departmentId'] as string | undefined,
@@ -1728,7 +1734,10 @@ export class AuthorizationService implements AccessRuleCacheInvalidationPort {
       case 'userId':
         return ctx.userId;
       case 'roles':
-        return Array.isArray(ctx.roles) ? ctx.roles : [];
+        // ABAC predicates that reference 'roles' match against role
+        // codes (the human-readable form authors write in conditions);
+        // role UUIDs are the wrong shape for string-membership tests.
+        return Array.isArray(ctx.roleCodes) ? ctx.roleCodes : [];
       case 'groups':
         return (ctx.attributes?.['groupIds'] as string[] | undefined) ?? [];
       case 'sites':

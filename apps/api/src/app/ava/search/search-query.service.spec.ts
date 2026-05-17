@@ -32,8 +32,11 @@ describe('SearchQueryService — F136 PR-2 pre-filter', () => {
   const ctx = (isAdmin = false): UserRequestContext => ({
     kind: 'user',
     userId: 'user-1',
-    roles: ['role-alpha'],
-    permissions: [],
+    roleIds: ['role-alpha'],
+    roleCodes: ['role-alpha'],
+    permissionCodes: [],
+    groupIds: [],
+    securityStamp: 'stamp-test',
     isAdmin,
   });
 
