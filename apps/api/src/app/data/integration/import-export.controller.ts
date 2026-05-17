@@ -16,7 +16,13 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { ImportExportService } from './import-export.service';
 import { ImportExportStatus, ExportFormat, PropertyMappingEntry } from '@hubblewave/instance-db';
 
@@ -49,8 +55,16 @@ interface CreateExportJobDto {
 
 @ApiTags('Import/Export')
 @ApiBearerAuth()
+/**
+ * Canon §28 / W2 Stream 3 Task 23 — data import/export administration.
+ * Platform data-pipeline management; gated by
+ * `@RequirePermission('system:configure')`. Per-collection ACL still
+ * applies inside the import/export jobs when they read/write target
+ * collections — those checks live in the service.
+ */
 @Controller('data')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class ImportExportController {
   constructor(private readonly importExportService: ImportExportService) {}
 

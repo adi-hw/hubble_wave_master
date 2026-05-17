@@ -17,7 +17,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { ConnectorService } from './connector.service';
 import {
   ConnectionStatus,
@@ -61,8 +67,17 @@ interface CreateSyncConfigDto {
 
 @ApiTags('Connectors')
 @ApiBearerAuth()
+/**
+ * Canon §28 / W2 Stream 3 Task 23 — connector / connection / mapping
+ * / sync-config administration. Platform integration plumbing —
+ * `@RequirePermission('system:configure')` is the right gate. Admin
+ * holds the capability via seeded role_permissions. Each handler
+ * still attributes the actor via `@CurrentUser` and applies its own
+ * owner-of-connection check for per-row ownership semantics.
+ */
 @Controller('connectors')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('system:configure')
 export class ConnectorController {
   constructor(private readonly connectorService: ConnectorService) {}
 
