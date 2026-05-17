@@ -113,6 +113,9 @@ jobs:
       - name: No-HS256 signing check (canon §29.9 / W2 Stream 1 PR4)
         run: npm run no-hs256:check
 
+      - name: No untyped @Req() check (canon §29.3 + §29.6 / W2 Stream 1 PR6)
+        run: npm run no-untyped-req:check
+
       - name: Scanner self-tests (W0 task 2 + per-scanner suites)
         # Each scanner ships with a self-test that proves it catches the
         # patterns it claims to. Without this gate, future scanner edits
