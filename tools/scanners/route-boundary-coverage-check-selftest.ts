@@ -102,7 +102,7 @@ export class XController {
   );
   const r = runScanner(dir);
   const result = parseResult(r.stdout);
-  assertTrue(r.code === 0, 'good-permission: exit 0 (reporting-only)');
+  assertTrue(r.code === 0, 'good-permission: exit 0 (no failures, hard-gate default)');
   assertTrue(result.failureCount === 0, 'good-permission: 0 failures');
   rmSync(dir, { recursive: true, force: true });
 }
@@ -409,7 +409,26 @@ export class XController {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture 14: --strict mode — exits 1 on any failure
+// Fixture 14: hard-gate default — exits 1 on any failure (Stream 3 PR-final)
+// ---------------------------------------------------------------------------
+{
+  const dir = setupFixtureDir(
+    `import { Controller, Get } from '@nestjs/common';
+
+@Controller('x')
+export class XController {
+  @Get()
+  list() { return []; }
+}`,
+  );
+  // No flag — default is hard gate as of 2026-05-17.
+  const r = runScanner(dir);
+  assertTrue(r.code === 1, 'default + failure: exits 1 (hard gate)');
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// ---------------------------------------------------------------------------
+// Fixture 14b: legacy --strict alias still exits 1 on failure
 // ---------------------------------------------------------------------------
 {
   const dir = setupFixtureDir(
@@ -422,7 +441,30 @@ export class XController {
 }`,
   );
   const r = runScanner(dir, '--strict');
-  assertTrue(r.code === 1, '--strict + failure: exits 1');
+  assertTrue(r.code === 1, 'legacy --strict + failure: exits 1');
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// ---------------------------------------------------------------------------
+// Fixture 14c: --reporting opts back into exit-0 mode
+// ---------------------------------------------------------------------------
+{
+  const dir = setupFixtureDir(
+    `import { Controller, Get } from '@nestjs/common';
+
+@Controller('x')
+export class XController {
+  @Get()
+  list() { return []; }
+}`,
+  );
+  const r = runScanner(dir, '--reporting');
+  assertTrue(r.code === 0, '--reporting + failure: exits 0 (report only)');
+  const result = parseResult(r.stdout);
+  assertTrue(
+    result.failureCount === 1,
+    '--reporting still reports failures (1 failure)',
+  );
   rmSync(dir, { recursive: true, force: true });
 }
 

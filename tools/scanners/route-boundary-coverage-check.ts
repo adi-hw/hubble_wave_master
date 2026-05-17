@@ -34,13 +34,14 @@
  *     fails (mirrors the `no-untyped-req-check` scanner; the
  *     coverage scanner subsumes that gate for handler-level use).
  *
- * Mode (Stream 3 PR1 lands reporting-only):
- *   - Default: exit 0, write the structured report to
- *     `dist/route-boundary-report.json` (a JSON file CI builds can
- *     attach as an artefact). The scanner outputs a human summary
- *     plus the file path.
- *   - `--strict`: exit non-zero on any failure. Stream 3 PR-final
- *     wires this once the sweep completes.
+ * Mode (Stream 3 PR-final, 2026-05-17): hard gate by default. Any
+ * unallowed failure exits non-zero. The structured report at
+ * `dist/route-boundary-report.json` is still written for CI artefact
+ * inspection. The legacy `--strict` flag is preserved as a no-op
+ * alias for back-compat. A `--reporting` flag opts back into the
+ * exit-0 reporting mode for ad-hoc local exploration (and is never
+ * used by CI). This mirrors the Stream 2 PR3 hard-gate convention
+ * `permission-registry-sync-check` adopted.
  *
  * Allowlist: `tools/scanners/route-boundary-coverage-allowlist.json`.
  * Each entry `{ target, rationale, addedBy, addedAt, followUp? }`
@@ -55,9 +56,10 @@
  * regex.
  *
  * Usage:
- *   npx tsx tools/scanners/route-boundary-coverage-check.ts           (human, reporting)
- *   npx tsx tools/scanners/route-boundary-coverage-check.ts --ci      (JSON, reporting)
- *   npx tsx tools/scanners/route-boundary-coverage-check.ts --strict  (hard gate)
+ *   npx tsx tools/scanners/route-boundary-coverage-check.ts              (hard gate, default)
+ *   npx tsx tools/scanners/route-boundary-coverage-check.ts --reporting  (exit 0, report only)
+ *   npx tsx tools/scanners/route-boundary-coverage-check.ts --ci         (JSON, hard gate)
+ *   npx tsx tools/scanners/route-boundary-coverage-check.ts --strict     (no-op back-compat alias)
  *   npx tsx tools/scanners/route-boundary-coverage-check.ts --root=path
  */
 import { readFileSync, readdirSync, mkdirSync, statSync, writeFileSync, existsSync } from 'fs';
@@ -139,12 +141,16 @@ function parseArgs(argv: string[]): {
 } {
   let root = '.';
   let ci = false;
-  let strict = false;
+  // Stream 3 PR-final (2026-05-17): hard gate by default. `--reporting`
+  // opts back into exit-0 mode. `--strict` is preserved as a no-op
+  // alias for any pre-flip callers.
+  let strict = true;
   let fixturesRoot: string | null = null;
   for (const arg of argv) {
     if (arg.startsWith('--root=')) root = arg.slice('--root='.length);
     else if (arg === '--ci') ci = true;
-    else if (arg === '--strict') strict = true;
+    else if (arg === '--strict') strict = true; // no-op back-compat
+    else if (arg === '--reporting') strict = false;
     else if (arg.startsWith('--fixtures=')) {
       fixturesRoot = arg.slice('--fixtures='.length);
     }
@@ -583,7 +589,7 @@ function main() {
       }
       if (!strict) {
         console.log(
-          `\nMode: reporting-only — exiting 0. Stream 3 PR-final flips to --strict.`,
+          `\nMode: --reporting opt-out — exiting 0. Default is hard gate (Stream 3 PR-final, 2026-05-17).`,
         );
       }
       if (!fixturesRoot) {

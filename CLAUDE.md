@@ -612,6 +612,31 @@ explicit amendment note (date, fix code if from a remediation wave,
 
 Past amendments (most recent first):
 
+- 2026-05-17 (W2 Stream 3 PR-final): route-boundary coverage scanner
+  flipped to hard-gate default + control-plane plane added to
+  `PERMISSION_REGISTRY`. Stream 3 sweep complete — every HTTP handler
+  under `apps/api/src` and `apps/control-plane/src` (881 handlers
+  across 28 controllers) carries exactly one primary boundary
+  decorator (`@RequirePermission` / `@RequireCollectionAccess` /
+  `@AuthenticatedOnly` / `@Public`), with the `Roles` decorator now
+  reserved for auxiliary defense atop a registry-backed capability.
+  `tools/scanners/route-boundary-coverage-check.ts` is now strict by
+  default; the legacy `--strict` flag is a no-op alias and
+  `--reporting` opts back into exit-0 mode for ad-hoc local
+  inspection only. `PERMISSION_REGISTRY` gained 22
+  `control_plane:*` codes (registry 25 → 47); the locked
+  `PERMISSION_CODE_REGEX` requires underscores in the code string, so
+  the codes spell `control_plane:` while the `plane` field value
+  retains `'control-plane'`. New control-plane-local decorators land
+  at `apps/control-plane/src/app/auth/{require-permission,
+  authenticated-only}.decorator.ts` + `permissions.guard.ts` (wired
+  as global `APP_GUARD` after `JwtAuthGuard` + `RolesGuard`). The
+  control-plane permission guard maps each code to a minimum role
+  tier via a static rule derived from the registry (`:read` →
+  viewer, other actions → operator, `dangerous: true` → admin),
+  preserving the canon §17 division between the instance plane's
+  per-user RBAC and the control plane's role-tier authorization.
+
 - 2026-05-17 (W2 Stream 2 PR6): AccessAuditPort relocation +
   `logAccessDenied` audit row on 403. The `AccessAuditPort` interface
   + `ACCESS_AUDIT_PORT` token moved from
