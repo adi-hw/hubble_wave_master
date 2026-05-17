@@ -4398,11 +4398,196 @@ Pack validator gains 3 publish gates:
 
 ---
 
-### 13.18 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.18 Worked example: §3.17 Bulk Import / Commissioning Staging (full artifact-level spec — AVA-normalized review grid + atomic publish + N-hour rollback)
 
-Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.17 cover §3.1 — §3.16; the remaining 2 substrate sections + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+#### 13.18.1 Tables
 
-**Substrate (2 remaining sections — §3.1-§3.16 ✅):**
+Three new tables in `schema: 'import'` (NEW schema).
+
+**`import.import_batch`** — taskable; one row per bulk-import operation.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Same posture |
+| `purpose` | `varchar(64)` | — | NOT NULL | Pack-declared; e.g. `asset_commissioning`, `seed_users`, `import_work_orders`, `pack_data_import` |
+| `source_filename` | `text` | — | NOT NULL | Original filename for audit |
+| `source_uploader_user_id` | `uuid` | — | NOT NULL | FK |
+| `source_attachment_upload_id` | `uuid` | — | NULL | FK → `storage.attachment_uploads(id)` — the §3.12 staged upload |
+| `target_collection_id` | `uuid` | — | NOT NULL | Where rows publish on `publish` action |
+| `row_count` | `int` | — | NOT NULL | Total rows ingested |
+| `status` | `varchar(16)` | `'ingested'` | NOT NULL | CHECK ∈ `{ingested, normalizing, reviewable, publishing, published, rolled_back, abandoned}` |
+| `ava_normalization_run_id` | `uuid` | — | NULL | FK → `ava.ava_proposals(id)` for the batch-level normalization run |
+| `ava_confidence_summary` | `jsonb` | `'{}'::jsonb` | NOT NULL | `{ high: int, medium: int, low: int, per_field_avg: {...} }` |
+| `published_at` | `timestamptz` | — | NULL | — |
+| `published_by_user_id` | `uuid` | — | NULL | FK |
+| `rollback_deadline` | `timestamptz` | — | NULL | `published_at + customer_policy.rollback_window_hours` (default 24h) |
+| `rolled_back_at` | `timestamptz` | — | NULL | — |
+| `rolled_back_by_user_id` | `uuid` | — | NULL | FK |
+| `rollback_reason` | `text` | — | NULL | — |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_ib_status ON (status, created_at) WHERE status IN ('reviewable', 'publishing', 'published')`; `ix_ib_rollback ON (rollback_deadline) WHERE status = 'published' AND rolled_back_at IS NULL`.
+
+**`import.import_row`** — per-row staging; one row per source-file row.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `batch_id` | `uuid` | — | NOT NULL | FK |
+| `source_row_index` | `int` | — | NOT NULL | Position in source file (0-based; for forensic backtracking) |
+| `source_row_payload` | `jsonb` | — | NOT NULL | Original row content |
+| `ava_normalized_payload` | `jsonb` | — | NULL | AVA's normalized output; NULL until normalization complete |
+| `ava_confidence_per_field` | `jsonb` | — | NULL | `{ <field_code>: { confidence: float, band: 'high'|'medium'|'low' } }` |
+| `reviewer_overrides` | `jsonb` | `'{}'::jsonb` | NOT NULL | Reviewer's per-field corrections; merged with `ava_normalized_payload` at publish time |
+| `reviewed_by_user_id` | `uuid` | — | NULL | Set when reviewer touches the row |
+| `reviewed_at` | `timestamptz` | — | NULL | — |
+| `status` | `varchar(16)` | `'pending'` | NOT NULL | CHECK ∈ `{pending, accepted, rejected}` |
+| `rejection_reason` | `text` | — | NULL | — |
+| `published_record_id` | `uuid` | — | NULL | Set on publish; FK to the resulting row in `target_collection_id` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; `ix_ir_batch_status ON (batch_id, status)`; `ix_ir_published ON (batch_id, published_record_id) WHERE published_record_id IS NOT NULL`.
+
+**`import.import_review_session`** — reviewer assignment + progress tracking.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `batch_id` | `uuid` | — | NOT NULL | FK |
+| `reviewer_user_id` | `uuid` | — | NOT NULL | FK |
+| `assigned_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `started_at` | `timestamptz` | — | NULL | First touch on a row |
+| `completed_at` | `timestamptz` | — | NULL | When reviewer signals "done" |
+| `rows_reviewed_count` | `int` | `0` | NOT NULL | Updated as reviewer progresses |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+
+UNIQUE `(batch_id, reviewer_user_id)`.
+
+#### 13.18.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1943000000000-create-import-schema.ts` | `CREATE SCHEMA import;` |
+| 2 | `1943000000001-create-import-batch.ts` | Table + indexes |
+| 3 | `1943000000002-create-import-row.ts` | Table + indexes |
+| 4 | `1943000000003-create-import-review-session.ts` | Table + indexes |
+
+#### 13.18.3 Services
+
+`apps/api/src/app/import/` (new API module) + `apps/worker/src/import/` (new worker module).
+
+**`ImportBatchService`** — `apps/api/src/app/import/import-batch.service.ts`:
+
+```typescript
+ingest(input: IngestRequest, ctx: UserRequestContext): Promise<ImportBatch>;
+listRows(batchId: string, filter: RowFilter, ctx: UserRequestContext): Promise<ImportRow[]>;
+applyReviewerOverride(rowId: string, overrides: Record<string, unknown>, ctx: UserRequestContext): Promise<void>;
+setRowStatus(rowId: string, status: 'accepted' | 'rejected', ctx: UserRequestContext): Promise<void>;
+publish(batchId: string, ctx: UserRequestContext): Promise<PublishResult>;
+rollback(batchId: string, reason: string, ctx: UserRequestContext): Promise<RollbackResult>;
+abandon(batchId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+```
+
+`ingest(...)` flow:
+1. Caller provides a `source_attachment_upload_id` (§3.12 clean attachment) OR an inline payload (for small batches < 1000 rows).
+2. Authority: `import:batch:ingest` permission.
+3. Parse the file format (CSV / XLSX / JSON) according to pack's `import.purposes[].format` declaration.
+4. Insert `import_batch` row with `status='ingested', row_count=N`; bulk-insert `import_row` rows with `source_row_payload`.
+5. Enqueue normalization job via `ImportNormalizationProcessor`.
+
+`publish(...)` flow — the atomic-publish guarantee per §3.17 prose:
+1. Authority: `import:batch:publish`.
+2. Verify all `import_row.status ∈ {accepted, rejected}`; refuse with `UNREVIEWED_ROWS_EXIST` if any `pending`.
+3. Inside a SINGLE database transaction:
+   a. Set `import_batch.status='publishing'`.
+   b. For each `import_row` with `status='accepted'`: merge `ava_normalized_payload` ⊕ `reviewer_overrides` → final payload; insert into `target_collection_id` via the standard `DataRecordService.create(...)` (so canon §28 validation + audit chain extension all flow). Stamp `import_row.published_record_id`.
+   c. Set `import_batch.status='published', published_at=now(), published_by_user_id`.
+   d. Compute `rollback_deadline = published_at + customer_policy.rollback_window_hours` (default 24).
+   e. Audit chain extends with one summary row + N detail rows; the batch's audit row carries the per-row published IDs.
+4. Return `{ batchId, publishedCount, rollbackDeadline }`.
+
+`rollback(...)` flow:
+1. Authority: `import:batch:rollback`.
+2. Verify `status='published' AND rolled_back_at IS NULL AND rollback_deadline > now()`. Refuse with `ROLLBACK_WINDOW_EXPIRED` past the deadline.
+3. Inside a transaction:
+   - For each `import_row` with non-NULL `published_record_id`: SOFT-DELETE the published record via `DataRecordService.softDelete(...)` (record-not-deleted; status flipped to `archived` so audit chain remains intact).
+   - Stamp `import_batch.status='rolled_back'`, `rolled_back_at`, `rolled_back_by_user_id`, `rollback_reason`.
+   - High-severity audit event via `AccessAuditPort.logSecurityEvent({ severity: 'high', kind: 'bulk_import_rollback', ... })`.
+4. Return `{ rolledBackCount }`.
+
+**`ImportNormalizationProcessor`** — worker:
+1. Read batch's `source_row_payload` rows.
+2. For each row, invoke pack's declared AVA normalization tool (`AVATool` registered for purpose).
+3. Stamp `ava_normalized_payload` + `ava_confidence_per_field`.
+4. When all rows normalized, set `import_batch.status='reviewable'`; notify the assigned reviewer.
+5. Compute `ava_confidence_summary` aggregate.
+
+**`RollbackWindowExpiryProcessor`** — worker; daily scheduled:
+- Selects published batches whose `rollback_deadline < now() - INTERVAL '7 days'` (a grace window after deadline for forensic queries); archives the `source_row_payload` JSON to cold storage; nullifies the column to reclaim DB space. Doesn't delete batches — they remain queryable forever (canon §10 audit retention applies).
+
+#### 13.18.4 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/import/batches` | `@RequirePermission('import:batch:ingest')` | `{ purpose, sourceAttachmentUploadId?, inlinePayload?, targetCollectionId }` |
+| `GET` | `/api/import/batches/:id/rows` | `@RequirePermission('import:batch:review')` | filter params |
+| `PATCH` | `/api/import/rows/:id` | `@RequirePermission('import:batch:review')` | `{ reviewerOverrides?, status? }` |
+| `POST` | `/api/import/batches/:id/publish` | `@RequirePermission('import:batch:publish')` (`dangerous: true`) | — |
+| `POST` | `/api/import/batches/:id/rollback` | `@RequirePermission('import:batch:rollback')` (`dangerous: true`) | `{ reason }` |
+| `POST` | `/api/import/batches/:id/abandon` | `@RequirePermission('import:batch:ingest')` (own batch only) | `{ reason }` |
+| `GET` | `/api/import/batches` | `@RequirePermission('import:batch:read')` | filter |
+
+#### 13.18.5 Validator extensions
+
+Pack validator gains 3 publish gates:
+
+1. **G18.1** — Pack `import.purposes[]` MUST declare `(name, target_collection_id, format, normalization_tool_name)`. Error: `MISSING_IMPORT_PURPOSE_DECLARATION`.
+2. **G18.2** — `format` MUST be in `{csv, xlsx, json}`. Error: `INVALID_IMPORT_FORMAT`.
+3. **G18.3** — `normalization_tool_name` MUST resolve to a registered `AVATool` for the pack. Error: `MISSING_IMPORT_NORMALIZATION_TOOL`.
+
+#### 13.18.6 Service-boundary scanner rules
+
+| Entity | Allowed writers |
+|---|---|
+| `ImportBatch` | `ImportBatchService.*`, `ImportNormalizationProcessor.process` |
+| `ImportRow` | `ImportBatchService.*`, `ImportNormalizationProcessor.process`, `RollbackWindowExpiryProcessor.expire` |
+| `ImportReviewSession` | `ImportReviewSessionService.*` |
+
+#### 13.18.7 Tests (self-test ≥ 11 assertions)
+
+1. **`import-ingest-csv.spec.ts`** — upload CSV via §3.12; ingest batch; row_count matches; per-row source payload captured.
+2. **`import-normalization-fires.spec.ts`** — `ImportNormalizationProcessor` runs; per-row `ava_normalized_payload` + `ava_confidence_per_field` populated; batch advances to `reviewable`.
+3. **`import-reviewer-override.spec.ts`** — reviewer corrects field on row N; `reviewer_overrides` merged at publish time (overrides win over AVA's value).
+4. **`import-publish-atomic.spec.ts`** — 100 accepted rows; publish creates 100 target-collection records inside one transaction; one failure mid-publish rolls back ALL inserts.
+5. **`import-publish-rejects-pending.spec.ts`** — 1 row still `pending`; publish refused with `UNREVIEWED_ROWS_EXIST`.
+6. **`import-rollback-window.spec.ts`** — publish; rollback within 24h soft-deletes all published rows; `import_batch.status='rolled_back'`.
+7. **`import-rollback-window-expired.spec.ts`** — rollback attempt > 24h after publish → `ROLLBACK_WINDOW_EXPIRED`.
+8. **`import-customer-rollback-window-policy.spec.ts`** — customer policy `rollback_window_hours=72`; rollback at 48h succeeds.
+9. **`import-abandon.spec.ts`** — abandon `reviewable` batch; status `abandoned`; rows never published.
+10. **`import-rollback-high-severity-audit.spec.ts`** — rollback writes `AccessAuditPort.logSecurityEvent` with `severity='high'`, `kind='bulk_import_rollback'`.
+11. **`import-validator-undeclared-tool.spec.ts`** — pack declares `normalization_tool_name='unknownTool'`; G18.3 publish refusal.
+
+#### 13.18.8 PR breakdown for §3.17
+
+| PR | Goal | Files | Acceptance |
+|---:|---|---|---|
+| 1 | Schema + tables + entities + `ImportBatchService.ingest/listRows/applyReviewerOverride/setRowStatus` + tests 1, 3 | Migrations 1-4; entity area patch; `apps/api/src/app/import/import-batch.service.ts`; CSV/XLSX/JSON parsers | Ingest captures rows; reviewer overrides persist |
+| 2 | `ImportNormalizationProcessor` + AVA integration + test 2 | `apps/worker/src/import/normalization.processor.ts`; AVAToolRegistry lookup | AVA normalization fires; confidence per field populated |
+| 3 | Atomic `publish` + transaction wrapping + tests 4, 5 | Atomic publish path; DataRecordService integration | All-or-nothing publish; pending rows block |
+| 4 | `rollback` + customer policy + window enforcement + tests 6, 7, 8, 10 + canon §43 amendment + AccessAuditPort security event | `apps/api/src/app/import/rollback.controller.ts`; CLAUDE.md amendment; AccessAuditPort hook | Rollback works within window; expired refused; high-severity audit emitted |
+| 5 | `abandon` + `RollbackWindowExpiryProcessor` cold-storage archival + validator G18.1-G18.3 + tests 9, 11 | `apps/worker/src/import/rollback-expiry.processor.ts`; pack-validator extension | Abandon flow; cold-storage archival; validator catches bad declarations |
+
+**Total: 5 PRs for §3.17. Estimated effort: ~10-12 working days.**
+
+---
+
+### 13.19 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+
+Per user direction, all implementation detail is inline in this single mega-spec. Worked examples §13.2 — §13.18 cover §3.1 — §3.17; the remaining 1 substrate section + 4 packs + 30 workflows + 35 marquees get the same artifact-level treatment in subsequent commits on `phase4/clinical-facilities-pack-design`.
+
+**Substrate (1 remaining section — §3.1-§3.17 ✅):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -4419,7 +4604,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.14 Semantic Search / Vector Match — §13.15 (5 PRs)
 - ✅ §3.15 Spatial + Relationship Graph — §13.16 (5 PRs)
 - ✅ §3.16 Financial Control primitive — §13.17 (5 PRs)
-- §3.17 Bulk Import / Commissioning Staging (4 PRs)
+- ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - §3.18 Integration Secrets + Egress Policy (5 PRs)
 
 **Packs (4 packs):**
@@ -4436,7 +4621,7 @@ Each workflow needs a state-machine specification: states + transitions + guards
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.19 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.20 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -4457,7 +4642,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.20 What's left to do BEFORE code starts
+### 13.21 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
