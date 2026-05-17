@@ -12,7 +12,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard, CurrentUser, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 import {
   AVASchemaService,
   DesignCollectionDto,
@@ -42,6 +47,14 @@ interface MigrationRequestDto {
 
 @ApiTags('AVA - Schema Assistance')
 @ApiBearerAuth()
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — AVA schema-authoring
+ * assist (collection design, formula generation, view design,
+ * data-quality recommendations). User-facing AI feature; the
+ * resulting authored metadata still goes through the
+ * metadata-collection permission gate when persisted.
+ */
+@AuthenticatedOnly()
 @Controller('ava/schema')
 @UseGuards(JwtAuthGuard)
 export class AVASchemaController {

@@ -30,7 +30,14 @@ import {
   AVA_BRANDING,
 } from '@hubblewave/ai';
 import { DataSource } from 'typeorm';
-import { JwtAuthGuard, CurrentUser, RequestUser, extractContext, AuthenticatedRequest } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  AuthenticatedRequest,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+  extractContext,
+} from '@hubblewave/auth-guard';
 import { AvaPreviewService } from './ava-preview.service';
 
 /**
@@ -119,6 +126,13 @@ interface PreviewRequestDto {
 
 @ApiTags('AVA - AI Virtual Assistant')
 @ApiBearerAuth()
+/**
+ * Canon §28 + §11 / W2 Stream 3 Task 25 — AVA conversational + AI
+ * authoring assistant. User-facing feature surface; authenticated
+ * identity is sufficient. Per-collection ACL applies at the data
+ * layer for routes that read corpus/records.
+ */
+@AuthenticatedOnly()
 @Controller('ava')
 @UseGuards(JwtAuthGuard)
 export class AVAController {

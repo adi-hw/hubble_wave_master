@@ -1,10 +1,22 @@
 import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, RequestUser, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequestUser,
+  RequirePermission,
+} from '@hubblewave/auth-guard';
 import { AvaToolsService, CreateAvaToolRequest, UpdateAvaToolRequest } from './ava-tools.service';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 25 — AVA tool registry administration
+ * (catalog of platform-side tools the AI runtime can invoke). Gated
+ * by `@RequirePermission('ava:admin')` — admin holds it via seeded
+ * role_permissions.
+ */
 @Controller('ava/tools')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('ava:admin')
 export class AvaToolsController {
   constructor(private readonly toolsService: AvaToolsService) {}
 

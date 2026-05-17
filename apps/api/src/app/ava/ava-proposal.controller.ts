@@ -12,7 +12,12 @@ import {
   AvaProposal,
   AvaProposalService,
 } from '@hubblewave/instance-db';
-import { CurrentUser, JwtAuthGuard, RequestUser } from '@hubblewave/auth-guard';
+import {
+  AuthenticatedOnly,
+  CurrentUser,
+  JwtAuthGuard,
+  RequestUser,
+} from '@hubblewave/auth-guard';
 
 interface SuggestProposalDto {
   kind: string;
@@ -47,6 +52,22 @@ interface ExecuteProposalDto {
  */
 @ApiTags('AVA - Proposals')
 @ApiBearerAuth()
+/**
+ * Canon §12 / W2 Stream 3 Task 25 — AVA proposal lifecycle (suggest
+ * → preview → approve → execute → audit per canon §12). Every
+ * handler operates on the caller's own proposals via `@CurrentUser`.
+ * Each proposal's executor verifies the approve / execute trust
+ * level per canon §12 before applying side effects; this controller
+ * gate only requires authenticated identity.
+ *
+ * Path bug noted: `@Controller('api/ava/proposals')` produces a
+ * `/api/api/ava/proposals` URL once the global prefix is applied.
+ * That's archaeology from the pre-W2 routing — leaving the path
+ * unchanged here to avoid breaking existing AVA-internal callers;
+ * a dedicated PR will retire the `api/` segment alongside any
+ * caller updates.
+ */
+@AuthenticatedOnly()
 @Controller('api/ava/proposals')
 @UseGuards(JwtAuthGuard)
 export class AvaProposalController {
