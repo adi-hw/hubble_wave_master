@@ -5150,6 +5150,158 @@ Each adapter declares `egress_allowlist_entry` requirements at pack install per 
 
 ---
 
+### 14.2 `clinical-maintenance` overlay (~8 PRs)
+
+Healthcare-vertical overlay on top of maintenance-core. Every collection added here justified by **PHI implication, FDA/UDI/ECRI vocabulary, or non-portable evidence schema** — clinical assets are NOT just maintenance-core assets with a different label, they carry regulatory data that has no place in the general pack.
+
+This overlay POPULATES the `ws_biomed_engineer` workspace declared by maintenance-core in §14.1.5. Pack manifest declares the overlay's dependency on `maintenance-core@>=2026.05` and refuses install if maintenance-core is not present at the required version.
+
+#### 14.2.1 Collections (12 total)
+
+All in `schema: 'clinical_maintenance'`; customer-namespaced extensions at `cust__clinical_maintenance__<collection_id>`.
+
+**Device classification + vocabulary (4 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / PHI posture |
+|---|---|---|---|---|---|
+| `clinical_device_class` | — | ✓ full | — | `id`, `code` ∈ {class_i, class_ii, class_iii}, `label`, `fda_subpart`, `risk_tier` (low/moderate/high), `regulatory_pathway` (510k/PMA/de_novo/exempt) | FDA seeded; no PHI |
+| `udi_record` | — | ✓ assigned_only | ✓ device_name + label | `id`, `device_identifier` (DI), `production_identifier` (PI), `gs1_barcode`, `manufacturer_di`, `device_name`, `gmdn_term_id`, `class_id`, `linked_asset_id`, `device_publish_date`, `lot_number`, `serial_number_pattern` | §3.14 vector for AVA device lookup; no PHI |
+| `gmdn_term` | — | ✓ full | ✓ term + definition | `id`, `code`, `term`, `definition`, `category_code`, `is_active` | §3.14 vector; seeded from GMDN agency; no PHI |
+| `ecri_recall` | — | ✓ assigned_only | ✓ summary + affected_models | `id`, `ecri_id`, `published_at`, `severity`, `affected_manufacturer`, `affected_models[]`, `affected_lot_numbers[]`, `summary`, `recommended_action`, `regulatory_reference` | §3.14 vector for §3.2 semantic_recall (marquee #31); no PHI |
+
+**AEM (Alternative Equipment Maintenance) program (2 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / PHI posture |
+|---|---|---|---|---|---|
+| `aem_program` | — | ✓ full | — | `id`, `code`, `label`, `justification_document_id`, `committee_membership_user_ids[]`, `effective_from`, `effective_until`, `is_active`, `pm_modification_kind` (extended_interval/skipped_pm/reduced_scope) | FDA AEM requires documented committee; no PHI |
+| `aem_program_membership` | ✓ regulated | — | — | `id`, `aem_program_id`, `asset_id`, `clinical_device_class_id`, `risk_assessment_score`, `decision_signature_chain_id`, `effective_from`, `effective_until`, `status` ∈ {proposed, committee_review, approved, rejected, retired} | §3.1; §3.6 closure signature with `signature_meaning='responsibility'` |
+
+**Calibration + sterilization + PHI disposal (3 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / PHI posture |
+|---|---|---|---|---|---|
+| `calibration_certificate` | — regulated | ✓ assigned_only | — | `id`, `inspection_id`, `asset_id`, `udi_record_id`, `cert_number`, `calibrated_at`, `expires_at`, `traceability_chain_jsonb` (NIST traceability path back to primary standard), `pdf_evidence_artifact_id`, `signature_chain_id` | §3.6 signature; §3.12 evidence_artifact for PDF; non-portable schema — clinical-specific |
+| `sterilization_cycle` | ✓ regulated | ✓ assigned_only | — | `id`, `asset_id` (the autoclave/sterilizer), `cycle_number`, `started_at`, `completed_at`, `cycle_kind` (steam/eo/peroxide_plasma), `temperature_peak`, `pressure_peak`, `bi_test_result` (biological indicator: passed/failed/pending), `loaded_instrument_set_ids[]`, `signature_chain_id`, `status` | §3.1; §3.5 observation_streams (temperature/pressure rolled up); §3.6 verification signature |
+| `phi_disposal_record` | ✓ regulated | — | — | `id`, `asset_id` (the device decommissioned), `disposal_method` (degauss/shred/wipe_to_nist_800_88/destroy), `disposal_date`, `witness_user_id`, `chain_of_custody_jsonb`, `signature_chain_id`, `nist_compliance_attested` (bool), `status` | §3.1; §3.6 closure with `signature_meaning='responsibility'`; **never stores PHI itself — records the destruction of PHI-bearing media** |
+
+**EHR linkage + clinical criticality (3 collections):**
+
+| Collection | Taskable | Sync→Mobile | Vector | Key properties | Substrate / PHI posture |
+|---|---|---|---|---|---|
+| `ehr_context_link` | — | — | — | `id`, `asset_id`, `ehr_system` (epic/cerner/meditech), `ehr_record_kind` (encounter_id/order_id/patient_id_hash), `ehr_ref` (encrypted token, NEVER raw patient identifier), `linked_at`, `linked_by_user_id`, `revoked_at` | **Read-only resolver; the ehr_ref column is KMS-encrypted; the property is `break_glass_eligible=false` AND `confidentiality_class='unrelated_patient_context'` (hard-deny)** — even Break-Glass cannot unmask. The linkage exists to navigate to the EHR system via a deep link, NOT to display PHI in HubbleWave. |
+| `life_support_designation` | — | ✓ full | — | `id`, `asset_id`, `designation_kind` (life_support/critical_care/general_clinical), `joint_commission_category`, `effective_from`, `effective_until`, `last_review_date`, `next_review_due` | No PHI; drives §28 evaluator for asset-criticality-aware authz |
+| `clinical_criticality_score` | — | ✓ assigned_only | — | `id`, `asset_id`, `score` (0-100), `factors_jsonb` (patient_contact_frequency, life_support_role, infection_risk_class, downtime_tolerance_minutes), `computed_at`, `computed_by_rule_set_version` | Per-asset; no PHI; drives MTBF/MTTR weighting + NAC quarantine guardrails per §3.18 |
+
+**Total: 12 collections.** All `signature_chain_id` references resolve to `compliance.signature_chains` per §3.6 (cross-pack reference to platform substrate is encouraged).
+
+**PHI handling rules (hard-coded into pack validator at install time):**
+- NO `clinical_maintenance` collection has a column flagged `confidentiality_class IN ('public', 'internal', 'sensitive')` while ALSO storing patient identifiers. Patient identifiers (when needed for navigation) are encrypted handles in `ehr_context_link.ehr_ref` only.
+- `phi_disposal_record` is the inverse — it records that PHI WAS destroyed, never stores the destroyed PHI itself.
+- §3.10 break-glass override is EXPLICITLY DISABLED on `ehr_context_link.ehr_ref` via `confidentiality_class='unrelated_patient_context'` (hard-deny class).
+
+#### 14.2.2 Workflows (3 state machines)
+
+**WF-OC1: aem_committee_review** (on `aem_program_membership`)
+```
+proposed → risk_assessed → committee_review → approved
+                        → committee_review → rejected
+                        → approved → re-evaluation_due → committee_review → approved | rejected | retired
+```
+Roles: `biomed_engineer` proposes; `biomed_committee` (group) reviews; `compliance_officer` records final signature. Guards:
+- Transition `proposed → risk_assessed` requires `risk_assessment_score` populated AND `aem_program.justification_document_id` resolves to an active document.
+- Transition `committee_review → approved` requires §3.6 signature with `signature_meaning='responsibility'` from any user holding `biomed_committee` role.
+- Audit: every transition logs the committee membership snapshot at decision time.
+
+**WF-OC2: phi_safe_disposal** (on `phi_disposal_record`)
+```
+asset_marked_for_disposal → custody_assigned → media_isolated → disposal_method_applied → witness_attested → certified → archived
+                                                                                        → witness_rejected → re-isolate
+```
+Roles: `compliance_officer` initiates; `it_security_officer` performs disposal; `witness_user_id` (third party, must differ from disposer) attests. Guards:
+- Transition `disposal_method_applied → witness_attested` requires §3.6 closure signature with `signature_meaning='responsibility'` AND `witness_user_id ≠ disposer_user_id` (separation of duties).
+- `nist_compliance_attested=true` is REQUIRED to enter `certified` for any device with `clinical_criticality_score > 70`.
+
+**WF-OC3: ecri_advisory_response** (on `recall_response` from maintenance-core, but specialized for ECRI source)
+```
+ecri_advisory_received → asset_query_run → affected_assets_identified → priority_assigned → remediation_in_progress → verified → closed
+                                                                                          → no_action_required (false positive) → closed
+```
+Roles: AVA performs asset_query_run (via §3.14 vector + §3.15 graph for asset-cohort identification); `biomed_engineer` triages; `compliance_officer` verifies closure with §3.6 signature. Guards:
+- `affected_assets_identified` requires §3.14 confidence ≥ 0.85 OR human-confirmed match.
+- `verified` requires evidence_artifact per affected asset (e.g., firmware patch verification photo / vendor letter / replacement disposition).
+
+#### 14.2.3 Automation rules (~6)
+
+| # | Trigger | Condition | Action | Mode |
+|---:|---|---|---|---|
+| 1 | `after save ecri_recall` | source=ecri AND severity ∈ {critical, high} | Run AVA asset-query (semantic + graph) against UDI corpus; create `recall_response` rows for matched assets; notify biomed_engineer | rule |
+| 2 | `after save calibration_certificate` | — | Update parent `inspection.outcome='calibrated'`; schedule next calibration at `expires_at - 30 days` | rule |
+| 3 | `scheduled daily` | `calibration_certificate.expires_at - 30 days = today` | Notify biomed_engineer + auto-generate PM for next calibration | rule |
+| 4 | `before save aem_program_membership` | status='approved' AND signature_chain_id IS NULL | Block save with `AEM_APPROVAL_REQUIRES_SIGNATURE` | rule |
+| 5 | `after save sterilization_cycle` | bi_test_result='failed' | Quarantine all `loaded_instrument_set_ids[]` (status='quarantined') + create reactive WO for sterilization investigation | rule |
+| 6 | `before save phi_disposal_record` | status='certified' AND witness_user_id = disposer_user_id | Block save with `SEPARATION_OF_DUTIES_VIOLATION` | rule |
+
+#### 14.2.4 Views
+
+Adds clinical-specific views to the biomed engineer persona:
+- `clinical_devices_due_for_calibration_30d` (overrides maintenance-core's generic version with UDI + class color-coding)
+- `aem_program_membership_open` (committee review queue)
+- `ecri_advisory_inbox` (severity-ranked)
+- `phi_disposal_queue` (devices flagged for decommission with attached PHI media)
+- `sterilization_cycles_today` (autoclave dashboard)
+- `clinical_recall_response_audit_trail` (cross-references with maintenance-core's recall_response)
+- `udi_lookup_grid` (FDA-formatted columns)
+- `life_support_assets_review_due` (Joint Commission compliance)
+
+8 clinical views + the biomed engineer role inherits all relevant maintenance-core views.
+
+#### 14.2.5 Workspace population
+
+This overlay populates `ws_biomed_engineer` (declared in §14.1.5 by maintenance-core). Page composition (4 pages):
+
+| Page | Composition | Primitives | Surface |
+|---|---|---|---|
+| Calibrations | `<CalibrationCalendar>` + `<UDILookup>` + scheduled-vs-overdue stats | foundation + Chart | web |
+| Recall Response | `<RecallResponseTracker>` + `<SemanticRecallMatchBoard>` + ECRI advisory inbox | foundation + §3.14 plugin | web |
+| AEM Program | `<AemProgramDashboard>` + committee membership queue + decision timeline | foundation + Chart | web |
+| Clinical Asset Review | `<EhrContextPanel>` (deep-link only, NO PHI) + life-support designation grid + criticality score visualization | foundation + Card | web |
+
+#### 14.2.6 Plugin components (3, in `@hubblewave/clinical-maintenance-plugins`)
+
+| Component | Props | Surface | Substrate |
+|---|---|---|---|
+| `<UDILookup>` | `{ initialQuery?, onResolve }` | web + mobile | §3.14 vector + FDA UDI integration |
+| `<EhrContextPanel>` | `{ assetId }` | web | calls EHR resolver (deep-link only; renders external link button, NO PHI display) |
+| `<AemProgramDashboard>` | `{ programId?, scope }` | web | foundation + Chart |
+
+#### 14.2.7 Integration adapters (4, via §3.13 SDK)
+
+| Adapter | Operations | Conformance fixtures | Purpose |
+|---|---|---|---|
+| `hl7-v2` | `parse_segment`, `parse_message`, `route_to_collection` | `hl7v2-fixtures-v2` (ADT-A08, ADT-A03, ORU-R01 — see §13.14 example) | EHR-side message ingestion; routes to ehr_context_link or to maintenance-core asset based on segment type |
+| `fhir-r4` | `read_resource`, `subscribe_resource_event` | `fhir-r4-fixtures-v1` (Device, DeviceMetric, Location, Encounter) | Pull EHR Device resources; map to UDI records; subscribe to Device events for status changes |
+| `ecri-feed` | `pull_advisories`, `parse_recall_xml` | `ecri-fixtures-v1` | Daily/weekly pull from ECRI Health Devices Alerts; landlines into `ecri_recall` |
+| `fda-udi-feed` | `pull_global_udi_export`, `enrich_udi_record` | `fda-udi-fixtures-v1` | Sync GUDID; enrich `udi_record` with new DI/PI |
+
+All four adapters declare egress allowlist entries: `hl7-v2` uses internal-only (no egress); `fhir-r4` requires customer EHR base URL allowlist; `ecri-feed` requires `api.ecri.org`; `fda-udi-feed` requires `accessgudid.nlm.nih.gov`.
+
+#### 14.2.8 PR breakdown for clinical-maintenance (~8 PRs)
+
+| PR | Goal | Files / scope | Acceptance |
+|---:|---|---|---|
+| 1 | Overlay pack scaffold + manifest + dependency on maintenance-core + clinical_device_class + gmdn_term + udi_record (3 vocabulary collections) + FDA seed data | `packs/clinical-maintenance/manifest.yaml`; clinical schema + 3 migrations + entities; FDA UDI seed migration | Pack installs only when maintenance-core ≥ required version is present; 510(k) class enum loaded; GMDN vocab seeded |
+| 2 | `ecri_recall` collection + `<SemanticRecallMatchBoard>` integration with §3.14 + automation rule 1 + WF-OC3 | ECRI collection + plugin + workflow | ECRI advisory → AVA-driven asset cohort → recall_response cascade tested with fixtures |
+| 3 | `aem_program` + `aem_program_membership` + WF-OC1 + auto rule 4 + AEM dashboard | AEM tables + workflow + `<AemProgramDashboard>` plugin | Committee review flow round-trips with §3.6 signature; auto rule 4 blocks signature-less approval |
+| 4 | `calibration_certificate` + `sterilization_cycle` + auto rules 2, 3, 5 | Tables + plugins update | Calibration expiry triggers PM regeneration; sterilization BI failure quarantines instruments |
+| 5 | `phi_disposal_record` + WF-OC2 + auto rule 6 (separation-of-duties) + canon §10 PHI-disposal audit | Table + workflow + canon amendment | NIST-800-88 compliance attested; SoD enforced; high-severity audit on every disposal |
+| 6 | `ehr_context_link` + `<EhrContextPanel>` (deep-link only, NO PHI display) + `life_support_designation` + `clinical_criticality_score` + KMS encryption of ehr_ref | EHR linkage + criticality scoring + property metadata for `confidentiality_class='unrelated_patient_context'` hard-deny | EHR linkage works without PHI ever rendering in HubbleWave UI; life-support designation drives NAC quarantine guardrails |
+| 7 | HL7-v2 + FHIR-R4 adapters (live + simulator) + conformance fixtures | `@hubblewave/hl7v2-*` + `@hubblewave/fhir-r4-*` packages + fixture bundles | Both adapters pass conformance replay; integration tests with mock EHR |
+| 8 | ECRI feed + FDA UDI feed adapters + `ws_biomed_engineer` workspace population + canon amendment | Adapter packages + UI Builder page definitions for biomed workspace 4 pages; CLAUDE.md amendment | All 4 adapters conform; biomed workspace fully functional; canon merged |
+
+**Total: 8 PRs for clinical-maintenance overlay. Estimated effort: ~16-20 working days.**
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -5174,8 +5326,9 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 
-**Packs (4 packs, 1 of 4 specified):**
+**Packs (4 packs, 2 of 4 specified):**
 - ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
+- ✅ `clinical-maintenance` overlay — 12 collections, 3 workflows, 6 automation rules, 3 plugins, 4 integrations. ~8 PRs. **Spec at §14.2.**
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
 - `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
 - `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
