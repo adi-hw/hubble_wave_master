@@ -197,14 +197,17 @@ export class MetricsService {
           AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())`,
       [ownerId],
     );
-    const roles = (roleRows || []).map((row) => row.code).filter(Boolean);
+    const roleCodes = (roleRows || []).map((row) => row.code).filter(Boolean);
 
     return {
       kind: 'user',
       userId: ownerId,
-      roles,
-      permissions: [],
+      roleIds: [],
+      roleCodes,
+      permissionCodes: [],
+      groupIds: [],
       isAdmin: !!user.isAdmin,
+      securityStamp: user.securityStamp ?? '',
     };
   }
 
@@ -224,7 +227,7 @@ export class MetricsService {
             metricCode: metric.code,
             cadence: metric.cadence,
             pointsWritten,
-            ownerRoles: owner.roles,
+            ownerRoles: owner.roleCodes,
             ownerIsAdmin: owner.isAdmin,
           },
         }),

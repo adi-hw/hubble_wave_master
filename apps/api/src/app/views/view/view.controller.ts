@@ -26,11 +26,11 @@ export class ViewController {
     @Req() req: InstanceRequest,
   ): Promise<ResolvedView> {
     const authContext = extractContext(req);
-    let effectiveRoles = authContext.roles || [];
+    let effectiveRoles = authContext.roleCodes || [];
     if (previewAsRole) {
       const canPreview =
-        authContext.roles?.includes('admin') ||
-        authContext.permissions?.includes('metadata.forms.edit');
+        authContext.roleCodes?.includes('admin') ||
+        authContext.permissionCodes?.includes('metadata.forms.edit');
       if (!canPreview) {
         throw new ForbiddenException(
           'previewAsRole requires `metadata.forms.edit` or admin role',

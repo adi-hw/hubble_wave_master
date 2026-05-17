@@ -57,7 +57,7 @@ export class ApiKeyController {
     if (!apiKey) {
       throw new NotFoundException('API key not found');
     }
-    const isAdmin = user.roles?.includes('admin');
+    const isAdmin = user.roleCodes?.includes('admin');
     if (!isAdmin && apiKey.createdBy !== user.id) {
       throw new ForbiddenException('Not the owner of this API key');
     }

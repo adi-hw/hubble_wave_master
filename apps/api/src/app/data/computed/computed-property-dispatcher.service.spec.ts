@@ -23,14 +23,18 @@ describe('ComputedPropertyDispatcher — Phase 1 §6.5 wire-through', () => {
     const dataSource = {
       query: jest.fn().mockResolvedValue([]),
     };
+    const runtimeAnomalyService = {
+      record: jest.fn().mockResolvedValue(undefined),
+    };
     const dispatcher = new ComputedPropertyDispatcher(
       formulaService as never,
       lookupService as never,
       hierarchicalService as never,
       outboxRepo as never,
       dataSource as never,
+      runtimeAnomalyService as never,
     );
-    return { dispatcher, formulaService, lookupService, hierarchicalService, outboxRepo, dataSource };
+    return { dispatcher, formulaService, lookupService, hierarchicalService, outboxRepo, dataSource, runtimeAnomalyService };
   };
 
   const ctx = { userId: 'user-1' };

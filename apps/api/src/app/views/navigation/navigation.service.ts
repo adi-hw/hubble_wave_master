@@ -65,10 +65,10 @@ export class NavigationService {
     };
   }
 
-  async buildContext(userId: string, roles: string[]): Promise<NavigationContext> {
+  async buildContext(userId: string, roleCodes: string[]): Promise<NavigationContext> {
     this.ensureUserId(userId);
     const groups = await this.fetchUserGroups(userId);
-    return { userId, roles, groups };
+    return { userId, roleCodes, groups };
   }
 
   private async findModules(input: NavigationResolveInput): Promise<NavigationModule[]> {
@@ -136,7 +136,7 @@ export class NavigationService {
       case 'instance':
         return true;
       case 'role':
-        return variant.scopeKey ? context.roles.includes(variant.scopeKey) : false;
+        return variant.scopeKey ? context.roleCodes.includes(variant.scopeKey) : false;
       case 'group':
         return variant.scopeKey ? context.groups.includes(variant.scopeKey) : false;
       case 'personal':

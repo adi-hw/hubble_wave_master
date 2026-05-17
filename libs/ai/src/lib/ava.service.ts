@@ -20,9 +20,12 @@ function avaContextToRequestContext(ctx: { userId: string }): UserRequestContext
   return {
     kind: 'user',
     userId: ctx.userId,
-    roles: [],
-    permissions: [],
+    roleIds: [],
+    roleCodes: [],
+    permissionCodes: [],
+    groupIds: [],
     isAdmin: false,
+    securityStamp: '',
   };
 }
 

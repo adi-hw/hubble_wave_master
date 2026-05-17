@@ -1036,9 +1036,12 @@ export class AutomationRuntimeService {
     const ctx: UserRequestContext = {
       kind: 'user',
       userId: userId ?? '00000000-0000-0000-0000-000000000000',
-      roles: [],
-      permissions: [],
+      roleIds: [],
+      roleCodes: [],
+      permissionCodes: [],
+      groupIds: [],
       isAdmin: !userId,
+      securityStamp: '',
     };
     const propertyRepo = this.dataSource.getRepository(PropertyDefinition);
     const properties = await propertyRepo

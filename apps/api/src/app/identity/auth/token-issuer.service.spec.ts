@@ -43,8 +43,10 @@ const TEST_INSTANCE_ID = 'inst-test-1234';
 function buildIdentity(overrides: Partial<ResolvedIdentity> = {}): ResolvedIdentity {
   return {
     userId: 'user-1',
-    roles: ['user'],
-    permissions: ['records.read'],
+    roleIds: ['role-id-user'],
+    roleCodes: ['user'],
+    permissionCodes: ['records.read'],
+    groupIds: [],
     isAdmin: false,
     status: 'active',
     securityStamp: 'stamp-aaa-111',

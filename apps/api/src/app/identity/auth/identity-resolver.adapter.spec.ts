@@ -43,8 +43,10 @@ function buildPermResolverMock(
       userId: 'u-1',
       permissions: new Set(permissions),
       permissionDetails: new Map(),
-      roleIds: [],
-      roles: roleCodes.map((code) => ({ code }) as { code: string }),
+      roleIds: roleCodes.map((code) => `role-id-${code}`),
+      roles: roleCodes.map(
+        (code) => ({ id: `role-id-${code}`, code }) as { id: string; code: string },
+      ),
       groupIds,
       computedAt: new Date(),
       expiresAt: new Date(),
@@ -66,8 +68,9 @@ describe('IdentityResolverAdapter', () => {
   it('hits the cache when a fresh entry exists', async () => {
     const cached = {
       userId: 'u-1',
-      roles: ['user'],
-      permissions: ['p1'],
+      roleIds: ['role-1'],
+      roleCodes: ['user'],
+      permissionCodes: ['p1'],
       isAdmin: false,
       status: 'active',
       securityStamp: 'stamp-cached-1',
@@ -98,8 +101,9 @@ describe('IdentityResolverAdapter', () => {
     const result = await adapter.resolveIdentity('u-1');
     expect(result).toEqual({
       userId: 'u-1',
-      roles: ['user'],
-      permissions: ['records.read'],
+      roleIds: ['role-id-user'],
+      roleCodes: ['user'],
+      permissionCodes: ['records.read'],
       isAdmin: false,
       status: 'active',
       securityStamp: 'stamp-from-db-9',

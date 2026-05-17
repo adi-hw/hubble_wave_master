@@ -16,7 +16,7 @@ export type ViewResolveInput = {
 
 export type ViewContext = {
   userId: string;
-  roles: string[];
+  roleCodes: string[];
   groups: string[];
 };
 

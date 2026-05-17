@@ -56,8 +56,8 @@ export class DisplayRuleController {
   ) {
     const wantsDrafts = includeDrafts === 'true';
     if (wantsDrafts) {
-      const userPerms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
-      const userRoles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+      const userPerms: string[] = Array.isArray(user?.permissionCodes) ? user.permissionCodes : [];
+      const userRoles: string[] = Array.isArray(user?.roleCodes) ? user.roleCodes : [];
       const allowed =
         userRoles.includes('admin') ||
         userPerms.includes('metadata.policies.edit');

@@ -314,8 +314,8 @@ export class CollectionController {
     if (!user?.id) {
       throw new ForbiddenException('Authentication required');
     }
-    const userPermissions: string[] = Array.isArray(user.permissions) ? user.permissions : [];
-    const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+    const userPermissions: string[] = Array.isArray(user.permissionCodes) ? user.permissionCodes : [];
+    const userRoles: string[] = Array.isArray(user.roleCodes) ? user.roleCodes : [];
     const isAdmin = userRoles.includes('admin');
     const hasSpreadsheetWrite = userPermissions.includes(
       'metadata.collections.spreadsheet.write',

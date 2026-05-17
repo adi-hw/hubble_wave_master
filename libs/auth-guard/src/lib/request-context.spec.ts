@@ -18,8 +18,11 @@ describe('RequestContext narrowing helpers (canon §29.7)', () => {
   const userCtx: UserRequestContext = {
     kind: 'user',
     userId: 'u-1',
-    roles: ['member'],
-    permissions: [],
+    roleIds: ['role-1'],
+    roleCodes: ['member'],
+    permissionCodes: [],
+    groupIds: [],
+    securityStamp: 'stamp-1',
     isAdmin: false,
   };
 

@@ -224,7 +224,7 @@ export class SearchQueryService {
 
     const ast = compileSearchAuthz({
       userId: context.userId,
-      userRoleIds: context.roles ?? [],
+      userRoleIds: context.roleIds,
       userGroupIds: [],
       collectionRules: ruleData,
     });

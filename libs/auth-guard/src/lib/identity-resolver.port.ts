@@ -8,15 +8,16 @@
  * Worse, an offline-deactivated user could keep operating with a stale token
  * because the guard never touched the DB.
  *
- * The port lets `libs/auth-guard` stay free of `@hubblewave/instance-db`
- * and `apps/api` identity services while still letting the guard fetch the
- * latest identity state on every authenticated request. The consuming Nest
- * app supplies an implementation via `IDENTITY_RESOLVER_PORT`.
+ * W2 Stream 1 PR1 closes F013 at the contract level: JWTs no longer carry
+ * `roles` / `permissions`, so there is no embedded array to trust. The
+ * port is the ONLY identity source — `JwtAuthGuard` fails closed when
+ * `IDENTITY_RESOLVER_PORT` is unbound (the pre-Stream-1 JWT-payload
+ * fallback is retired). Production services + tests both bind the port.
  *
- * When the port is unbound (e.g. light-weight integration tests that stub
- * out the identity stack), the guard falls back to the JWT payload — this
- * preserves backward compatibility for existing test fixtures. Production
- * services must bind the port to close F013.
+ * The port lets `libs/auth-guard` stay free of `@hubblewave/instance-db`
+ * and `apps/api` identity services while still letting the guard fetch
+ * the latest identity state on every authenticated request. The consuming
+ * Nest app supplies an implementation via `IDENTITY_RESOLVER_PORT`.
  */
 export interface IdentityResolverPort {
   /**
@@ -33,14 +34,44 @@ export interface IdentityResolverPort {
  * against the role hierarchy. `status` mirrors `users.status` from the
  * instance DB; any value other than `'active'` causes the guard to reject
  * the request, matching the `JwtStrategy.validate` posture in apps/api.
+ *
+ * W2 Stream 1 PR1: the `roles` / `permissions` shorthand is replaced by
+ * the explicit `roleIds` + `roleCodes` + `permissionCodes` split so
+ * downstream code can pick the right key for its call site. JWTs no
+ * longer carry these fields; the adapter resolves them from the DB on
+ * every authenticated request.
  */
 export interface ResolvedIdentity {
   /** User id (must match the JWT sub claim). */
   userId: string;
-  /** Effective role codes after inheritance + group expansion. */
-  roles: string[];
-  /** Effective permission codes after role resolution. */
-  permissions: string[];
+  /**
+   * Effective role UUIDs (direct + group + inherited). The ACL-match
+   * key against `CollectionAccessRule.roleId` / `PropertyAccessRule.roleId`.
+   * Always populated; empty array for users with no role assignments.
+   */
+  roleIds: string[];
+  /**
+   * Effective role codes (direct + group + inherited). The audit /
+   * `@Roles()` / ABAC-string-match key. Stable across role-row
+   * replacements.
+   */
+  roleCodes: string[];
+  /**
+   * Effective platform-capability codes (`<domain>:<action>` /
+   * `<domain>:<resource>:<action>`) per W2 spec §2.1. The
+   * `@RequirePermission` lookup key. Pre-W2 → Stream 2 PR3: empty for
+   * every user because path (ii) leaves `platform_permissions`
+   * unpopulated until the registry sync ships.
+   */
+  permissionCodes: string[];
+  /**
+   * Direct group membership IDs (W6.D / F047). Always populated; empty
+   * array for users in no groups. Used by `JwtAuthGuard` to seed
+   * `UserRequestContext.groupCache` at request start so the §28
+   * evaluator matches `CollectionAccessRule.groupId` /
+   * `PropertyAccessRule.groupId` without extra DB queries.
+   */
+  groupIds: string[];
   /** True when the user holds an admin role (`admin`, `system_admin`, etc.). */
   isAdmin: boolean;
   /**
@@ -56,21 +87,6 @@ export interface ResolvedIdentity {
    * force-logout, and account suspend.
    */
   securityStamp: string;
-  /**
-   * Direct group membership IDs for the user (W6.D / F047).
-   *
-   * Used by `JwtAuthGuard` to seed `UserRequestContext.groupCache` at
-   * request start so the §28 authz evaluator can correctly match
-   * group-based ACL rules without additional per-request DB queries.
-   *
-   * Populated from the `group_members` table by the adapter. Covered by
-   * the adapter's Redis cache (60s TTL) so the DB is queried at most once
-   * per TTL window per user. Absence of this field (e.g. legacy adapters
-   * that pre-date W6.D) is treated as an empty group list, which is
-   * consistent with the pre-W6.D behaviour where `groupIds` was never
-   * populated.
-   */
-  groupIds?: string[];
 }
 
 /** Nest DI token for binding the port implementation. */

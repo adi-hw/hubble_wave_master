@@ -27,13 +27,28 @@ export class PropertyAccessInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Check if user is admin - skip property access filtering for admins
+    // Check if user is admin - skip property access filtering for admins.
+    // W2 Stream 1 PR1: read role codes from `roleCodes`. The fallbacks on
+    // legacy `roles` / `permissions` cover transient test fixtures that
+    // still build the pre-Stream-1 shape inline. Note that
+    // `system.admin` / `collection.admin` are pre-W2 dot-style codes;
+    // Stream 2 PR3 will materialize the registry with colon-segment
+    // codes (`system:admin`, `collection:admin`) and this check moves
+    // there.
+    const adminRoleCodes = Array.isArray(rawUser.roleCodes)
+      ? rawUser.roleCodes
+      : Array.isArray(rawUser.roles)
+        ? rawUser.roles
+        : [];
+    const adminPermissionCodes = Array.isArray(rawUser.permissionCodes)
+      ? rawUser.permissionCodes
+      : Array.isArray(rawUser.permissions)
+        ? rawUser.permissions
+        : [];
     const isAdmin = rawUser.isAdmin || rawUser.is_admin ||
-      (Array.isArray(rawUser.roles) && rawUser.roles.includes('admin')) ||
-      (Array.isArray(rawUser.permissions) && (
-        rawUser.permissions.includes('system.admin') ||
-        rawUser.permissions.includes('collection.admin')
-      ));
+      adminRoleCodes.includes('admin') ||
+      adminPermissionCodes.includes('system.admin') ||
+      adminPermissionCodes.includes('collection.admin');
 
     if (isAdmin) {
       return next.handle();

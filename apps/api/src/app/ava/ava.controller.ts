@@ -161,7 +161,7 @@ export class AVAController {
     const context: AVAContext = {
       userId: user.id,
       userName: user.username,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
     };
 
     return {
@@ -184,7 +184,7 @@ export class AVAController {
     const context: AVAContext = {
       userId: user.id,
       userName: user.username,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
       ...dto.context,
     };
 
@@ -300,7 +300,7 @@ export class AVAController {
     const context: AVAContext = {
       userId: user.id,
       userName: user.username,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
       ...dto.context,
     };
 
@@ -499,7 +499,7 @@ export class AVAController {
 
     const context = {
       userId: user.id,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
     };
 
     const insights = await this.insightsService.generateInsights(
@@ -522,7 +522,7 @@ export class AVAController {
 
     const context = {
       userId: user.id,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
     };
 
     const recommendations = await this.insightsService.getPersonalizedRecommendations(
@@ -543,7 +543,7 @@ export class AVAController {
   ) {
     const context: AVAContext = {
       userId: user.id,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
       currentPage,
     };
 
@@ -564,7 +564,7 @@ export class AVAController {
 
     const context: AVAContext = {
       userId: user.id,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
     };
 
     if (!dto.previewId) {
@@ -604,7 +604,7 @@ export class AVAController {
   ) {
     const context: AVAContext = {
       userId: user.id,
-      userRole: user.roles?.[0],
+      userRole: user.roleCodes?.[0],
     };
 
     return this.previewService.preview({

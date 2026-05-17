@@ -379,18 +379,24 @@ export class RecordMutationService {
       return {
         kind: 'user',
         userId: this.systemUserId,
-        roles: [],
-        permissions: [],
+        roleIds: [],
+        roleCodes: [],
+        permissionCodes: [],
+        groupIds: [],
         isAdmin: true,
+        securityStamp: '',
       };
     }
 
     return {
       kind: 'user',
       userId,
-      roles: [],
-      permissions: [],
+      roleIds: [],
+      roleCodes: [],
+      permissionCodes: [],
+      groupIds: [],
       isAdmin: false,
+      securityStamp: '',
     };
   }
 }

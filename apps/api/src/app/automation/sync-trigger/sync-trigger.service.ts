@@ -36,7 +36,7 @@ export class SyncTriggerService {
     const userContext = {
       id: ctx.userId,
       email: ctx.username,
-      roles: ctx.roles,
+      roles: ctx.roleCodes,
     };
 
     const parent = request.parentAutomationContext

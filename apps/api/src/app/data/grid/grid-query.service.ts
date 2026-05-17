@@ -163,7 +163,7 @@ export class GridQueryService {
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     // Get readable fields
-    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roleCodes);
     const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     if (!readableFields.length) {
@@ -238,7 +238,7 @@ export class GridQueryService {
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
     // Get readable fields for filtering
-    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roleCodes);
     const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     // Build count query
@@ -301,7 +301,7 @@ export class GridQueryService {
     const model = await this.modelRegistry.getCollection(request.collection);
     await this.authz.ensureTableAccess(ctx, model.storageTable, 'read');
 
-    const allFields = await this.modelRegistry.getProperties(request.collection, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(request.collection, ctx.roleCodes);
     const readableFields = await this.authz.filterReadableFields(ctx, model.storageTable, allFields);
     if (request.column && !readableFields.find((f) => f.code === request.column)) {
       // Either the column doesn't exist or the actor can't read it.
@@ -385,7 +385,7 @@ export class GridQueryService {
     const model = await this.modelRegistry.getCollection(collection);
     await this.authz.ensureCollectionAccess(ctx, model.collectionId, 'read');
 
-    const allFields = await this.modelRegistry.getProperties(collection, ctx.roles);
+    const allFields = await this.modelRegistry.getProperties(collection, ctx.roleCodes);
     const readableFields = await this.authz.filterReadableFieldsForCollection(ctx, model.collectionId, allFields);
 
     // Track reference properties that need LEFT JOINs for display values
@@ -912,7 +912,7 @@ export class GridQueryService {
   private buildAbacParams(ctx: UserRequestContext): Record<string, unknown> {
     return {
       userId: ctx.userId,
-      roles: ctx.roles,
+      roles: ctx.roleCodes,
       groups: ctx.attributes?.groups ?? [],
       sites: ctx.attributes?.sites ?? [],
     };

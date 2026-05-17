@@ -13,7 +13,7 @@ export class NavigationController {
     @Query('code') code: NavigationResolveInput['code'],
     @CurrentUser() user: RequestUser,
   ): Promise<ResolvedNavigation> {
-    const context = await this.navigationService.buildContext(user.id, user.roles || []);
+    const context = await this.navigationService.buildContext(user.id, user.roleCodes || []);
     return this.navigationService.resolveNavigation({ code }, context);
   }
 }

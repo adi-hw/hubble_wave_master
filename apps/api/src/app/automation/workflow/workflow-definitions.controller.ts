@@ -142,8 +142,8 @@ export class WorkflowDefinitionsController {
     if (!user) return undefined;
     return {
       id: user.id,
-      roles: user.roles,
-      permissions: user.permissions,
+      roles: user.roleCodes,
+      permissions: user.permissionCodes,
     };
   }
 }

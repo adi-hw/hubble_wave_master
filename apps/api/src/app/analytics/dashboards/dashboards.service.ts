@@ -146,7 +146,7 @@ export class DashboardsService {
       if (allowed.length === 0) {
         return false;
       }
-      const userRoles = context.roles || [];
+      const userRoles = context.roleCodes;
       return allowed.some((role) => userRoles.includes(role));
     }
     return false;

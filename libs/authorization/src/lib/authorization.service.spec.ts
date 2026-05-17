@@ -25,8 +25,11 @@ function buildContext(overrides: Partial<UserRequestContext> = {}): UserRequestC
   return {
     kind: 'user',
     userId: 'user-1',
-    roles: [ROLE_VIEWER],
-    permissions: [],
+    roleIds: [ROLE_VIEWER],
+    roleCodes: ['viewer'],
+    permissionCodes: [],
+    groupIds: [],
+    securityStamp: 'stamp-test',
     isAdmin: false,
     attributes: { roleIds: [ROLE_VIEWER] },
     ...overrides,
@@ -164,7 +167,12 @@ describe('AuthorizationService — collection-id API', () => {
     const { service, collectionAclRepo } = buildService({ collectionRules: [adminRule] });
 
     const allowed = await service.canAccessCollection(
-      buildContext({ isAdmin: true, attributes: { roleIds: [ADMIN_ROLE_ID] } }),
+      buildContext({
+        isAdmin: true,
+        roleIds: [ADMIN_ROLE_ID],
+        roleCodes: ['admin'],
+        attributes: { roleIds: [ADMIN_ROLE_ID] },
+      }),
       COLLECTION_ID,
       'read',
     );
@@ -312,9 +320,13 @@ describe('AuthorizationService — multi-rule row-level predicates (F003)', () =
 
   function buildMultiRuleContext(): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles: [ROLE_VIEWER, ROLE_ANALYST],
-      permissions: [],
+      roleIds: [ROLE_VIEWER, ROLE_ANALYST],
+      roleCodes: ['viewer', 'analyst'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: {
         roleIds: [ROLE_VIEWER, ROLE_ANALYST],
@@ -467,9 +479,13 @@ describe('AuthorizationService — multi-rule field permissions (F024 + canon §
 
   function buildMultiRoleContext(roles: string[]): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles,
-      permissions: [],
+      roleIds: roles,
+      roleCodes: roles.map((_, i) => `role-${i}`),
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: { roleIds: roles },
     } as unknown as UserRequestContext;
@@ -596,8 +612,11 @@ describe('AuthorizationService — admin via seeded policies (canon §28.6 / Pla
     return {
       kind: 'user',
       userId: 'admin-1',
-      roles: [ADMIN_ROLE_ID],
-      permissions: [],
+      roleIds: [ADMIN_ROLE_ID],
+      roleCodes: ['admin'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: true,
       attributes: { roleIds: [ADMIN_ROLE_ID] },
     } as unknown as UserRequestContext;
@@ -775,9 +794,13 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
     );
 
     const ctx = {
+      kind: 'user',
       userId: 'user-1',
-      roles: [ROLE_VIEWER],
-      permissions: [],
+      roleIds: [ROLE_VIEWER],
+      roleCodes: ['viewer'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: {
         roleIds: [ROLE_VIEWER],
@@ -817,8 +840,11 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
     const ctx = {
       kind: 'user',
       userId: 'user-1',
-      roles: [ROLE_VIEWER],
-      permissions: [],
+      roleIds: [ROLE_VIEWER],
+      roleCodes: ['viewer'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: {
         roleIds: [ROLE_VIEWER],
@@ -861,8 +887,11 @@ describe('AuthorizationService — SQL principal-filter pushdown (F023)', () => 
     const ctx = {
       kind: 'user',
       userId: 'user-1',
-      roles: [ROLE_VIEWER],
-      permissions: [],
+      roleIds: [ROLE_VIEWER],
+      roleCodes: ['viewer'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: {
         roleIds: [ROLE_VIEWER],
@@ -1258,7 +1287,7 @@ describe('AuthorizationService — collection deny rules (F006, canon §28.3/§2
     });
 
     const ctx = buildContext({
-      roles: [ROLE_VIEWER, ROLE_RESTRICTED],
+      roleIds: [ROLE_VIEWER, ROLE_RESTRICTED],
       attributes: { roleIds: [ROLE_VIEWER, ROLE_RESTRICTED] },
     });
     const allowed = await service.canAccessCollection(ctx, COLLECTION_ID, 'read');
@@ -1426,9 +1455,13 @@ describe('AuthorizationService — field deny rules (F006, canon §28.2)', () =>
 
   function buildCtx(roles: string[]): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles,
-      permissions: [],
+      roleIds: roles,
+      roleCodes: roles.map((_, i) => `role-${i}`),
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: { roleIds: roles },
     } as unknown as UserRequestContext;
@@ -1555,9 +1588,13 @@ describe('AuthorizationService — masking direction (canon §28.5)', () => {
 
   function buildCtxM(roles: string[]): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles,
-      permissions: [],
+      roleIds: roles,
+      roleCodes: roles.map((_, i) => `role-${i}`),
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: { roleIds: roles },
     } as unknown as UserRequestContext;
@@ -1680,9 +1717,13 @@ describe('AuthorizationService — wildcard field rules (§28.2 levels 3-4)', ()
 
   function buildCtxW(roles: string[]): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles,
-      permissions: [],
+      roleIds: roles,
+      roleCodes: roles.map((_, i) => `role-${i}`),
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: { roleIds: roles },
     } as unknown as UserRequestContext;
@@ -2059,9 +2100,13 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
 
   function buildCtxF(roles: string[]): UserRequestContext {
     return {
+      kind: 'user',
       userId: 'user-1',
-      roles,
-      permissions: [],
+      roleIds: roles,
+      roleCodes: roles.map((_, i) => `role-${i}`),
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-test',
       isAdmin: false,
       attributes: { roleIds: roles },
     } as unknown as UserRequestContext;
@@ -2415,8 +2460,11 @@ describe('AuthorizationService — secureFieldsByDefault flag (F005, §28.2 leve
     const adminCtx: UserRequestContext = {
       kind: 'user',
       userId: 'admin-1',
-      roles: [ADMIN_ROLE_ID_F],
-      permissions: [],
+      roleIds: [ADMIN_ROLE_ID_F],
+      roleCodes: ['admin'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-admin',
       isAdmin: true,
       attributes: { roleIds: [ADMIN_ROLE_ID_F] },
     };
@@ -2473,8 +2521,11 @@ describe('AuthorizationService — explainability (§28.7)', () => {
     return {
       kind: 'user',
       userId: 'user-1',
-      roles: [ROLE_E],
-      permissions: [],
+      roleIds: [ROLE_E],
+      roleCodes: ['role-e'],
+      permissionCodes: [],
+      groupIds: [],
+      securityStamp: 'stamp-e',
       isAdmin: false,
       attributes: { roleIds: [ROLE_E] },
       ...overrides,

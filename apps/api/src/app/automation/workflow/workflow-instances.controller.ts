@@ -22,7 +22,7 @@ export class WorkflowInstancesController {
   ) {
     const all = await this.instances.list({ state, processFlowId, collectionId, recordId });
     // Scope listing: non-admins only see workflow instances they started.
-    if (user.roles?.includes('admin')) {
+    if (user.roleCodes?.includes('admin')) {
       return all;
     }
     return all.filter((i) => i.startedBy === user.id);
@@ -31,7 +31,7 @@ export class WorkflowInstancesController {
   @Get('instances/:id')
   async getById(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     const instance = await this.instances.getById(id);
-    if (instance.startedBy !== user.id && !user.roles?.includes('admin')) {
+    if (instance.startedBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     return instance;
@@ -40,7 +40,7 @@ export class WorkflowInstancesController {
   @Get('instances/:id/history')
   async getHistory(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     const instance = await this.instances.getById(id);
-    if (instance.startedBy !== user.id && !user.roles?.includes('admin')) {
+    if (instance.startedBy !== user.id && !user.roleCodes?.includes('admin')) {
       throw new ForbiddenException('Not the owner');
     }
     return this.instances.getHistory(id);

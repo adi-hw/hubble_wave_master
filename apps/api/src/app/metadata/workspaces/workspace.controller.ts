@@ -42,10 +42,10 @@ import type { PanelLayout, WorkspaceVariantScope } from '@hubblewave/instance-db
  */
 const hasEditorScope = (user?: RequestUser): boolean => {
   if (!user) return false;
-  if ((user.roles ?? []).includes('admin') || (user.roles ?? []).includes('super_admin')) {
+  if ((user.roleCodes ?? []).includes('admin') || (user.roleCodes ?? []).includes('super_admin')) {
     return true;
   }
-  return (user.permissions ?? []).includes('metadata.workspaces.edit');
+  return (user.permissionCodes ?? []).includes('metadata.workspaces.edit');
 };
 
 @Controller('workspaces')
@@ -194,7 +194,7 @@ export class WorkspaceController {
         pageId,
         {
           userId: user?.id,
-          roles: user?.roles ?? [],
+          roles: user?.roleCodes ?? [],
           // Callers that do not supply group membership receive no
           // group-variant match — group-scoped variants are resolved
           // only when the actor includes its group set explicitly.
