@@ -88,6 +88,9 @@ const PUBLIC_ALLOWLIST = new Set([
   // material or KMS identifiers.
   // -------------------------------------------------------------------
   'apps/api/src/app/identity/auth/jwks.controller.ts',
+  // Control-plane companion (canon §18 carve-out + §29.2). Same RFC 7517
+  // posture, separate key per plane. Added by Stream 1 PR3.
+  'apps/control-plane/src/app/auth/jwks.controller.ts',
   // -------------------------------------------------------------------
   // Category 7: Service-token bootstrap mint endpoint (canon §29.7).
   // POST /internal/service-token bypasses JwtAuthGuard because the

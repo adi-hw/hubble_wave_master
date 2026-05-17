@@ -30,6 +30,7 @@ export { TerraformJob, TerraformJobStatus, TerraformOperation, TerraformOutputLi
 export { GlobalSettings } from './global-settings.entity';
 export { RevokedToken } from './revoked-token.entity';
 export { RefreshToken } from './refresh-token.entity';
+export { KeyMetadata, KeyProvider, KeyAlgorithm, KeyState } from './key-metadata.entity';
 
 // ============================================================
 // Entity Array for TypeORM Configuration
@@ -47,6 +48,7 @@ import { TerraformJob } from './terraform-job.entity';
 import { GlobalSettings } from './global-settings.entity';
 import { RevokedToken } from './revoked-token.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { KeyMetadata } from './key-metadata.entity';
 
 export const controlPlaneEntities = [
   Customer,
@@ -62,4 +64,5 @@ export const controlPlaneEntities = [
   GlobalSettings,
   RevokedToken,
   RefreshToken,
+  KeyMetadata,
 ];
