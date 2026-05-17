@@ -238,17 +238,35 @@ function analyzeHandler(
 
   // Collect all @RequirePermission codes (method first, falling back to
   // class — same effective semantics as `Reflector.getAllAndOverride`).
+  // Handles both call shapes:
+  //   - @RequirePermission('code')
+  //   - @RequirePermission('a', 'b', ...)
+  //   - @RequirePermission(['a', 'b'], 'any' | 'all')
+  // The mode marker `'any' | 'all'` is excluded from the code list.
   const requirePermissionDecorators = (methodPrimary.includes('RequirePermission')
     ? method.getDecorators()
     : klass.getDecorators()
   ).filter((d) => d.getName() === 'RequirePermission');
+  const MODE_MARKERS = new Set(['any', 'all']);
   const permissionCodes: string[] = [];
   for (const d of requirePermissionDecorators) {
     const args = d.getArguments();
     for (const arg of args) {
       const text = arg.getText().trim();
+      // Array form: @RequirePermission(['a', 'b'], 'mode')
+      if (text.startsWith('[')) {
+        const re = /['"]([^'"]+)['"]/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(text)) !== null) {
+          if (!MODE_MARKERS.has(m[1])) permissionCodes.push(m[1]);
+        }
+        continue;
+      }
+      // Plain string form: @RequirePermission('a')
       const m = /^['"]([^'"]+)['"]$/.exec(text);
-      if (m) permissionCodes.push(m[1]);
+      if (m && !MODE_MARKERS.has(m[1])) {
+        permissionCodes.push(m[1]);
+      }
     }
   }
 

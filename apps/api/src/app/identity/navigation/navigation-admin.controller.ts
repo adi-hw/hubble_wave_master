@@ -2,13 +2,20 @@ import { Controller, Get, Post, Body, Param, Delete, Patch, NotFoundException, U
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NavProfile, NavNode, NavPatch } from '@hubblewave/instance-db';
-import { JwtAuthGuard, Roles, RolesGuard } from '@hubblewave/auth-guard';
+import { JwtAuthGuard, PermissionsGuard, RequirePermission } from '@hubblewave/auth-guard';
 import { CreateNavProfileDto, UpdateNavProfileDto, CreateNavNodeDto, UpdateNavNodeDto } from './dto/navigation.dto';
 import { SkipAbac } from '../abac/abac.guard';
 
+/**
+ * Canon §28 / W2 Stream 3 Task 20 — navigation administration is
+ * gated by `@RequirePermission('metadata:navigation:manage')`. The
+ * pre-Stream-3 class-level `@Roles('admin')` was redundant once the
+ * capability model expressed the same authority; the admin role
+ * holds the capability via seeded `role_permissions` rows.
+ */
 @Controller('admin/navigation')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission('metadata:navigation:manage')
 @SkipAbac()
 export class NavigationAdminController {
   constructor(

@@ -216,6 +216,16 @@ export const PERMISSION_REGISTRY: ReadonlyArray<PlatformPermission> = [
     description:
       'Read authorization policy definitions (collection access rules, property access rules).',
   },
+  {
+    code: 'authorization:explain:read',
+    plane: 'instance',
+    domain: 'authorization',
+    resource: 'explain',
+    action: 'read',
+    dangerous: true,
+    description:
+      'Read authorization decisions for arbitrary users via /authorization/explain — surfaces ACL reasoning; manage admin-only.',
+  },
 
   // Metadata ---------------------------------------------------------------
   {
