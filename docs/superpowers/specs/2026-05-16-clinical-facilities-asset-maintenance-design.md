@@ -6243,6 +6243,171 @@ ecri_advisory_received ──> asset_query_run ──> affected_assets_identifie
 
 ---
 
+### 15.3 facilities-maintenance workflows (5 state machines)
+
+#### 15.3.1 WF-OF1 fca_assessment_cycle (on `fca_assessment`)
+
+**Diagram:**
+```
+scheduled ──> in_progress ──> findings_logged ──> reviewed ──> approved ──> archived
+                                               └── re_inspection_requested ──> in_progress
+                                               └── critical_findings_open ──> blocked (cannot transition to reviewed)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| scheduled | in_progress | `user_action:start_inspection` | inspector at site OR remote-eligible inspection | `fca_inspector` | — | `fca.started` |
+| in_progress | findings_logged | `user_action:complete_inspection` | at least one `fca_finding` row OR explicit "no findings" attestation via §3.6 signature | `fca_inspector` | — | `fca.findings_logged` |
+| findings_logged | reviewed | `user_action:request_review` | findings reviewed by inspector for completeness | `fca_inspector` | enqueue for facilities_manager | `fca.review_requested` |
+| reviewed | approved | `user_action:approve` | **all findings have `status='resolved'` OR `linked_capital_replacement_request_id` set** AND §3.6 signature `signature_meaning='approval'` | `compliance_officer` | finalize assessment | `fca.approved` |
+| reviewed | re_inspection_requested | `user_action:request_reinspection` | rejection reason set | `facilities_manager`/`compliance_officer` | clear reviewed timestamp | `fca.reinspection_requested` |
+| reviewed | critical_findings_open | `system_event:auto` | any `severity='critical'` finding with status NOT resolved AND no linked CR | `system` | block approval | `fca.critical_blocking` |
+| approved | archived | `system_event:scheduled_tick` | archive_after_days reached (default 365) | `system` | move to archive partition | `fca.archived` |
+
+**Edge cases:**
+- Re-inspection cycles: same `fca_assessment.id` is reused (state transitions back); inspection count tracked via `assessment_iterations[]` JSONB.
+- Finding promoted to critical post-inspection: `findings_logged → reviewed` transition re-evaluates `critical_findings_open` guard; approval blocked retroactively if a finding's severity is escalated.
+- Cross-pack with maintenance-core: every `fca_finding` with `severity ∈ {poor, critical}` MUST link to `capital_replacement_request_id` (the WF-15 trigger). Validator catches missing links at `findings_logged → reviewed`.
+- Multi-system FCA (one assessment covering hvac + electrical + plumbing): single assessment row; findings tagged by `system_kind`; approval rolls up all systems.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-of1-fca-assessment.json`.
+
+---
+
+#### 15.3.2 WF-OF2 refrigerant_leak_response (on `refrigerant_log` where `event_kind='leak_detected'`)
+
+**Diagram:**
+```
+detected ──> isolated ──> quantified ──> epa_form_drafted ──> epa_form_filed ──> repaired ──> re_charged ──> verified
+                                                                              └── exceeds_25pct_annual_loss ──> epa_violation_response_workflow
+                                                                              └── repair_deferred (with reason) ──> isolated (cycle)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| detected | isolated | `user_action:isolate_system` | technician EPA Section 608 certified | `epa_certified_technician` | mark building_system status='isolated' | `refr.isolated` |
+| isolated | quantified | `user_action:record_loss` | `quantity_change_lbs` measured | `epa_certified_technician` | update `refrigerant_inventory.quantity_lbs` | `refr.quantified` |
+| quantified | epa_form_drafted | `system_event:auto` | annual loss > 0 AND system size > 50 lb | `system` | invoke AVA EPA form drafter | `refr.epa_drafted` |
+| quantified | (skip to repaired) | `system_event:auto` | annual loss = 0 OR system size ≤ 50 lb (EPA threshold) | `system` | bypass EPA path | `refr.below_epa_threshold` |
+| epa_form_drafted | epa_form_filed | `user_action:file_form` | EPA form PDF attached via §3.12; `technician_certification_number` populated | `facilities_manager` | §3.12 attachment + `epa_form_filed_id` linked | `refr.epa_filed` |
+| epa_form_filed | repaired | `user_action:complete_repair` | repair WO (linked) completed | `epa_certified_technician` | — | `refr.repaired` |
+| repaired | re_charged | `user_action:record_recharge` | `quantity_change_lbs` (positive, refill amount) recorded | `epa_certified_technician` | update `refrigerant_inventory.quantity_lbs` | `refr.recharged` |
+| re_charged | verified | `user_action:verify_no_leak` | post-repair leak test passed (evidence attached) | `compliance_officer` | §3.6 closure signature | `refr.verified` |
+| any (post-quantified) | exceeds_25pct_annual_loss | `pack_rule:auto_rule_1_facilities` | cumulative annual loss > 25% of inventory | `system` | page compliance_officer; enqueue EPA-violation sub-workflow | `refr.violation_threshold` |
+| isolated | repair_deferred | `user_action:defer_repair` | deferral reason set (e.g. parts on order); target_repair_date set | `facilities_manager` | hold state | `refr.deferred` |
+| repair_deferred | isolated | `system_event:scheduled_tick` | target_repair_date past OR parts available | `system` | resume | `refr.repair_resumed` |
+
+**Edge cases:**
+- 25% threshold crossed mid-flow: WF-OF2 continues normally but flagged with violation; EPA reporting escalates to mandatory CAA Section 608 enforcement form.
+- Multiple leaks in same system within fiscal year: cumulative tracking via materialized view; ANY transition that pushes cumulative > 25% triggers the violation branch.
+- Non-EPA refrigerant (HFO with very low GWP): pack policy can bypass EPA path; but `refrigerant_log` row still required for inventory tracking.
+- Repair contractor (vendor) performs work: external-collaborator session (§3.11) used; signature_chain captures contractor's certification number for audit.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-of2-refrigerant-leak.json`.
+
+---
+
+#### 15.3.3 WF-OF3 commissioning_signoff (on `commissioning_record`)
+
+**Diagram:**
+```
+in_progress ──> cx_testing ──> punch_list_resolved ──> final_acceptance_review ──> signed_off ──> ongoing_monitoring (terminal-but-active)
+                                                                                └── rejected ──> cx_testing (cycle)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| in_progress | cx_testing | `user_action:begin_testing` | system installed; commissioning_authority assigned | `commissioning_agent` | — | `cx.testing_started` |
+| cx_testing | punch_list_resolved | `user_action:close_punch_items` | every punch-list item has `status='resolved'` OR `accepted_with_qualification` | `commissioning_agent` | — | `cx.punch_resolved` |
+| punch_list_resolved | final_acceptance_review | `user_action:request_acceptance` | — | `commissioning_agent` | enqueue for facilities_manager + owner | `cx.acceptance_requested` |
+| final_acceptance_review | signed_off | `user_action:sign_off` | §3.6 signature `signature_meaning='approval'` from facilities_manager AND from project_owner (dual signature for major systems) | `facilities_manager + project_owner` | begin warranty period if linked | `cx.signed_off` |
+| final_acceptance_review | rejected | `user_action:reject` | rejection reason set | `facilities_manager`/`project_owner` | back to cx_testing | `cx.rejected` |
+| signed_off | ongoing_monitoring | `system_event:auto` | `commissioning_kind ∈ {ongoing, monitoring_based}` | `system` | recurring cx check enqueued | `cx.monitoring_started` |
+
+**Edge cases:**
+- Retro-commissioning (existing system): skip in_progress; start at cx_testing with baseline assessment.
+- Punch-list item rejected by owner during final_acceptance_review: state cycles back to cx_testing for that item; the rest of the system can proceed if all critical items pass.
+- Dual signature requirement: major systems (HVAC plant, electrical service, fire suppression) require both facilities_manager AND project_owner signatures; smaller systems (single AHU) require only facilities_manager.
+- Ongoing_monitoring termination: when ongoing_monitoring runs longer than `commissioning_record.monitoring_until`, auto-transition to `archived` after final report generation.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-of3-commissioning.json`.
+
+---
+
+#### 15.3.4 WF-OF4 move_request_approval (on `move_request`)
+
+**Diagram:**
+```
+proposed ──> originator_review ──> facility_manager_review ──> it_review ──> safety_review ──> scheduled ──> executed ──> closed
+            └── rejected (any reviewer can reject) ──> originator_review (revise)
+            └── withdrawn (originator) ──> archived
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| proposed | originator_review | `system_event:auto` | request submitted with required fields | `system` | — | `move.proposed` |
+| originator_review | facility_manager_review | `user_action:submit_for_review` | from/to spaces exist; assets_to_move resolved | `requester` | — | `move.facility_review_started` |
+| facility_manager_review | it_review | `user_action:approve` | space capacity sufficient; no conflicting move_requests overlap | `facilities_manager` | — | `move.facility_approved` |
+| facility_manager_review | rejected | `user_action:reject` | reason set | `facilities_manager` | back to originator_review | `move.facility_rejected` |
+| it_review | safety_review | `user_action:approve` OR `user_action:skip_if_no_assets` | when `asset_ids_to_move[]` non-empty: IT approval required; otherwise auto-skip | `it_manager`/`system` | — | `move.it_approved` |
+| it_review | rejected | `user_action:reject` | reason set | `it_manager` | back to originator_review | `move.it_rejected` |
+| safety_review | scheduled | `user_action:approve` OR `user_action:skip_if_no_hazards` | when assets include hazardous-class items: safety review required; otherwise auto-skip | `safety_officer`/`system` | INSERT linked WO with checklist | `move.scheduled` |
+| safety_review | rejected | `user_action:reject` | reason set | `safety_officer` | back to originator_review | `move.safety_rejected` |
+| scheduled | executed | `workflow_complete:wf-1[completed]` (move WO closes via WF-1) | linked WO completed AND checklist completed | `system` | — | `move.executed` |
+| executed | closed | `user_action:close` | §3.6 closure signature `signature_meaning='approval'` from facilities_manager | `facilities_manager` | finalize | `move.closed` |
+| any (proposed/originator_review) | withdrawn | `user_action:withdraw` | actor = requester | `requester` | — | `move.withdrawn` |
+
+**Edge cases:**
+- Skip-if-empty logic: IT review auto-skipped when no assets to move; safety review auto-skipped when no hazardous-class assets. Audit records skips with explicit `skipped_reason`.
+- Reviewer reassignment mid-flow: original reviewer unavailable → manager reassigns; audit captures both the original assignee and the reassignment.
+- Destination occupied: auto rule 5 (§14.3.3) blocks save at `proposed` if `to_space_id` has existing `seat_assignment` rows for different occupants — request must clear destination first.
+- Concurrent move requests targeting same destination: priority rule (§14.3.2 WF-OF5 pattern) applied; later request gets `conflict_detected` flag during facility_manager_review.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-of4-move-request.json`.
+
+---
+
+#### 15.3.5 WF-OF5 space_reservation_conflict_resolution (on `space_reservation`)
+
+**Diagram:**
+```
+on save space_reservation:
+  ──> conflict_check ──> no_conflict ──> confirmed
+                       └── conflict_detected ──> priority_rule_applied ──> incumbent_wins (this declined) | new_wins (incumbent canceled + this confirmed + alternates offered to incumbent)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| (NEW) | conflict_check | `user_action:create_reservation` OR `system_event:scheduled_pm_window` | required fields present | `requester`/`system` | scan overlapping reservations on same space_id + time window | `res.conflict_check_started` |
+| conflict_check | no_conflict | `system_event:auto` | zero overlaps | `system` | — | `res.no_conflict` |
+| no_conflict | confirmed | `system_event:auto` | — | `system` | task_projection refresh | `res.confirmed` |
+| conflict_check | conflict_detected | `system_event:auto` | at least one overlap with status ∈ {confirmed, in_progress} | `system` | — | `res.conflict_detected` |
+| conflict_detected | priority_rule_applied | `system_event:auto` | pack-policy priority rule resolves | `system` | record priority decision | `res.priority_applied` |
+| priority_rule_applied | incumbent_wins | `system_event:auto` | incumbent_priority ≥ new_priority | `system` | reject new reservation with alternate suggestions | `res.incumbent_wins` |
+| priority_rule_applied | new_wins | `system_event:auto` | new_priority > incumbent_priority | `system` | cancel incumbent reservation; confirm new; notify incumbent with AVA-suggested alternates (§3.15 adjacency + capacity) | `res.new_wins` |
+| confirmed | in_progress | `system_event:scheduled_tick` | now() ≥ start_at | `system` | — | `res.in_progress` |
+| in_progress | completed | `system_event:scheduled_tick` | now() ≥ end_at (auto rule 3, §14.3.3) | `system` | release space | `res.completed` |
+
+**Edge cases:**
+- Recurring reservation (RRULE): each occurrence runs conflict check independently; one canceled occurrence does not cancel the series.
+- Pack-policy priority rule customization: default priority `maintenance_window > event > training > vendor_visit > meeting`; customer may override via pack manifest.
+- AVA alternate suggestions: when `new_wins` cancels an incumbent, AVA proposes 3 alternate spaces using §3.15 floor adjacency + space capacity match within the original time window; suggestion attached to the cancellation notification.
+- Simultaneous-priority conflict (same priority): first-to-confirm wins; subsequent are declined with alternates.
+- Long-running maintenance window blocking many small meetings: pack-policy can configure soft-priority rules (e.g. "maintenance_window can be moved if 5+ meetings would be displaced") with multi-stage review.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-of5-reservation-conflict.json`.
+
+---
+
+**§15.3 summary:** 5 facilities-maintenance workflows specified. WF-OF1 cross-references maintenance-core's WF-15 capital replacement (every severe finding MUST link to a capital_replacement_request_id — validator-enforced). WF-OF2 codifies EPA Section 608 reporting flow including the 25% annual loss escalation branch that fires from ANY post-quantification transition. WF-OF3 introduces dual-signature requirement for major systems + the `ongoing_monitoring` terminal-but-active state for retro-commissioning. WF-OF4 demonstrates the skip-if-empty pattern for multi-stage reviews (IT review auto-skipped when no assets; safety skipped when no hazards). WF-OF5 is the only workflow that runs INSIDE the save hook (conflict_check transition happens before the row is committed) — uses pack-policy priority rules + AVA alternate suggestions for conflict resolution.
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -6273,9 +6438,10 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
 - ✅ `ot-security-maintenance` overlay — 6 collections, 4 workflows, 5 automation rules, 3 plugins, 5 integrations, 1 workspace. ~10 PRs. **Spec at §14.4.**
 
-**Workflows (30 total, 21 of 30 deep dives specified ✅):**
+**Workflows (30 total, 26 of 30 deep dives specified ✅):**
 - ✅ 18 maintenance-core workflows (WF-1 through WF-20, with WF-7 + WF-10 as lite versions). **Deep dives at §15.1.**
 - ✅ 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). **Deep dives at §15.2.**
+- ✅ 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). **Deep dives at §15.3.**
 - 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). Pack-summary at §14.3.2; deep dive pending §15.3.
 - 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing). Pack-summary at §14.4.2; deep dive pending §15.4.
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
