@@ -6408,6 +6408,154 @@ on save space_reservation:
 
 ---
 
+### 15.4 ot-security-maintenance workflows (4 state machines)
+
+#### 15.4.1 WF-OT1 vulnerability_response (on `ot_asset_vulnerability`)
+
+**Diagram:**
+```
+open ──> triaging ──> mitigation_plan_drafted ──> mitigation_approved ──> mitigating ──> mitigated ──> verified ──> closed
+                                              └── mitigation_rejected ──> triaging (cycle)
+                                              └── accepted_risk ──> archived (with dual signature)
+                                              └── suppressed_false_positive ──> archived (with signature + reason)
+                                              └── superseded_by_convergence ──> archived (linked to WF-OT4)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| open | triaging | `system_event:auto` OR `user_action:claim` | AVA initial triage runs (CVSS + exposure → risk score); claimed by officer | `system`/`ot_security_officer` | compute risk_score row | `vuln.triaging` |
+| triaging | mitigation_plan_drafted | `user_action:draft_mitigation` | `mitigation_kind` set ∈ {patch, config_change, network_isolation, compensating_control, accepted_risk} | `ot_security_officer` | — | `vuln.plan_drafted` |
+| mitigation_plan_drafted | mitigation_approved | `workflow_complete:transaction_approval[approved]` OR `user_action:approve_no_cost` | §3.16 transaction_approval if mitigation cost > threshold; for accepted_risk: §3.6 signature `signature_meaning='responsibility'` from ot_security_officer + countersign from compliance_officer | `ot_security_officer + compliance_officer` | record approval evidence | `vuln.approved` |
+| mitigation_plan_drafted | mitigation_rejected | `user_action:reject_plan` | reason set | `ot_security_officer`/`compliance_officer` | back to triaging | `vuln.plan_rejected` |
+| mitigation_approved | mitigating | `user_action:start_mitigation` | linked WO opened for mitigation work | `assigned_technician` | — | `vuln.mitigating` |
+| mitigating | mitigated | `user_action:mark_mitigated` | mitigation work completed; evidence_artifact attached (e.g., post-patch nmap scan showing port closed; vendor confirmation; config diff) | `assigned_technician` | INSERT §3.12 evidence_artifact | `vuln.mitigated` |
+| mitigated | verified | `user_action:verify` | §3.6 closure signature `signature_meaning='verification'` from ot_security_officer; evidence_artifact reviewed | `ot_security_officer` | finalize | `vuln.verified` |
+| verified | closed | `user_action:close` | terminal | `ot_security_officer` | — | `vuln.closed` |
+| any (pre-mitigated) | accepted_risk | `user_action:accept_risk` | dual signature (ot_security_officer + compliance_officer); business justification documented | `ot_security_officer + compliance_officer` | high-severity audit | `vuln.accepted_risk` |
+| any (pre-mitigated) | suppressed_false_positive | `user_action:suppress` | signature + reason set | `ot_security_officer` | — | `vuln.false_positive` |
+| any (pre-mitigated) | superseded_by_convergence | `workflow_complete:wf-ot4[approved]` | WF-OT4 convergence approved AND vulnerability merged into PM | `system` | link convergence_chain_entry_id; close as merged | `vuln.converged` |
+
+**Edge cases:**
+- CVSS score updates (NVD revises CVSS): `risk_score` recomputes; if score crosses severity threshold, vulnerability stays in current state but visibility alert fires.
+- Compensating control becomes ineffective: re-open path via `mitigated → verified → re-open` (special re-open transition with audit); reusable for "we patched but a new exploit bypasses".
+- Multi-asset vulnerability (same CVE on N assets): one ot_asset_vulnerability row per (asset_id, cve_id) pair; parent grouping via `vulnerability_cohort_id` for batch mitigation tracking.
+- Accepted_risk re-evaluation: scheduled review every 90d; if still accepted, dual-signature renewal; if no signature within 14d of review_due, escalate to compliance_officer.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-ot1-vulnerability-response.json`.
+
+---
+
+#### 15.4.2 WF-OT2 network_anomaly_review (on `network_baseline` drift detection)
+
+**Diagram:**
+```
+within_baseline ──> minor_drift ──> reviewed_acceptable ──> continue_monitoring (returns to within_baseline)
+                  │              └── reviewed_requires_action ──> policy_update_or_quarantine
+                  └── significant_drift ──> escalated_to_officer ──> policy_update_or_quarantine
+                  └── anomalous ──> auto_alert + escalated_to_officer ──> quarantine_proposed ──> quarantine_executed (NAC dual-confirmation per §3.18)
+                                                                       └── policy_update ──> continue_monitoring
+                                                                       └── ignore_with_justification ──> archived
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| within_baseline | minor_drift | `pack_rule:auto_rule_3` | hourly compare detected drift in 1-3 range | `system` | — | `net.minor_drift` |
+| within_baseline | significant_drift | `pack_rule:auto_rule_3` | drift in 3-7 range | `system` | notify ot_security_officer | `net.significant_drift` |
+| within_baseline | anomalous | `pack_rule:auto_rule_3` | drift > 7 OR explicit anomaly signature match | `system` | page on-call; INSERT runtime_anomaly | `net.anomalous` |
+| minor_drift | reviewed_acceptable | `user_action:accept_drift` | review reason set | `ot_security_officer` | — | `net.minor_accepted` |
+| minor_drift | reviewed_requires_action | `user_action:flag_action_needed` | — | `ot_security_officer` | — | `net.minor_actionable` |
+| reviewed_acceptable | continue_monitoring | `system_event:auto` | — | `system` | refresh baseline last_compared_at | `net.monitoring_resumed` |
+| significant_drift | escalated_to_officer | `system_event:auto` | — | `system` | — | `net.escalated` |
+| escalated_to_officer | policy_update_or_quarantine | `user_action:decide` | decision made | `ot_security_officer` | branch to one of: policy_update, quarantine_proposed | `net.officer_decision` |
+| reviewed_requires_action | policy_update_or_quarantine | `user_action:decide` | decision made | `ot_security_officer` | — | `net.action_decision` |
+| any | quarantine_proposed | `user_action:propose_quarantine` | safety_check_passed evidence available OR not-life-support asset | `ot_security_officer` | **dependency: §3.18 §3.18 KillswitchService NAC dual-confirmation guardrails MUST be satisfied** | `net.quarantine_proposed` |
+| quarantine_proposed | quarantine_executed | `workflow_complete:nac_dual_confirmation[approved]` | §3.18 dual-confirmation: ot_security_officer + maintenance_manager + customer_override_flag + safety_check_passed_evidence_id | `ot_security_officer + maintenance_manager` | adapter call `nac-quarantine.quarantine_asset` via §3.13 AdapterCallExecutor; asset.status='quarantined'; clinical mobile banner | `net.quarantine_executed` |
+| quarantine_proposed | policy_update | `user_action:update_policy_instead` | `network_policy` edited + signed via §3.6 | `ot_security_officer` | UPDATE network_policy + signature_chain | `net.policy_updated` |
+| quarantine_proposed | ignore_with_justification | `user_action:ignore` | dual signature + justification reason | `ot_security_officer + compliance_officer` | high-severity audit | `net.ignored` |
+| anomalous | (skip directly) auto_quarantine | `pack_rule:critical_anomaly_pattern` | match against known-attack-signatures library AND `clinical_criticality_score < 70` AND customer_override_flag set | `system` | invoke §3.18 NAC quarantine; dual confirmation deferred to post-action review | `net.auto_quarantined` |
+
+**Edge cases:**
+- Clinical-critical asset auto_quarantine: REFUSED — `clinical_criticality_score ≥ 70` OR `life_support_designation` present forces manual dual-confirmation; never auto-quarantine clinical-critical regardless of attack-signature match.
+- Quarantine bypass without dual-confirmation: §3.18 G19.3 validator catches at install if pack manifest doesn't declare `dual_confirmation_required=true` for nac-quarantine adapter.
+- Baseline drift cause is legitimate config change: ot_security_officer should `policy_update` to update baseline to new expected traffic pattern; failure to do so causes recurring `anomalous` alarms on that asset.
+- Quarantine release: separate workflow (not part of WF-OT2) handles asset restoration; release also requires dual-confirmation per §3.18 symmetry.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-ot2-network-anomaly.json`.
+
+---
+
+#### 15.4.3 WF-OT3 security_advisory_distribution (on `security_advisory`)
+
+**Diagram:**
+```
+ingested ──> asset_query_run ──> affected_assets_identified ──> notifications_sent ──> acknowledgements_collected ──> action_tracking ──> closed
+                              └── no_assets_affected ──> closed
+                                                                                                                  └── action_deadline_breached ──> escalated_to_officer
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| ingested | asset_query_run | `system_event:auto` | dedup check: §3.14 vector similarity to existing advisories < 0.95 (not a duplicate) | `system` | invoke AVA asset-cohort tool (§3.14 + §3.15) | `adv.query_started` |
+| ingested | duplicate_suppressed | `system_event:auto` | dedup found ≥ 0.95 similar advisory | `system` | link to existing advisory; audit dedup decision | `adv.duplicate` |
+| asset_query_run | affected_assets_identified | `system_event:auto` | matches above confidence threshold | `system` | — | `adv.affected_identified` |
+| asset_query_run | no_assets_affected | `system_event:auto` | zero matches | `system` | mark resolved | `adv.no_match` |
+| affected_assets_identified | notifications_sent | `system_event:auto` | per-asset owners resolved | `system` | dispatch notifications via per-asset owner role | `adv.notified` |
+| notifications_sent | acknowledgements_collected | `user_action:acknowledge` (multiple) | each affected_asset's owner acks | `asset_owner` | — | `adv.acked` |
+| acknowledgements_collected | action_tracking | `system_event:auto` | per-asset action plan submitted (link to ot_asset_vulnerability or recall_response) | `system` | — | `adv.action_tracked` |
+| action_tracking | closed | `user_action:close` | all linked vulnerability/recall responses closed | `ot_security_officer` | finalize | `adv.closed` |
+| action_tracking | action_deadline_breached | `pack_rule:auto_rule_5_ot_security` | `action_deadline < now()` AND not all linked actions closed | `system` | page on-call ot_security_officer | `adv.deadline_breached` |
+
+**Edge cases:**
+- Multi-source dedup: same CVE may arrive from Claroty + Medigate + Asimily — §3.14 vector dedup recognizes; one advisory row, links the multi-source references.
+- Owner acknowledgement timeout: if `acknowledgements_collected` doesn't reach 100% within deadline, fallback to ot_security_officer who triages on behalf of unresponsive owners.
+- Advisory withdrawn by source: transition to `superseded` terminal state; existing actions remain valid but no new action required.
+- Cross-pack with clinical: when advisory targets medical devices, parallel WF-OC3 ecri_advisory_response also fires; the two workflows share `affected_asset_id` set but track independently.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-ot3-advisory-distribution.json`.
+
+---
+
+#### 15.4.4 WF-OT4 ava_convergence_routing (marquee #26 — the differentiator)
+
+**Diagram:**
+```
+ot_vulnerability_opened + upcoming_pm_for_same_asset_exists ──> ava_proposes_convergence ──> security_officer_reviews ──> approved ──> pm_modified_to_include_patch_step ──> vulnerability_marked_closed_as_merged
+                                                                                          └── rejected ──> standard_WF-OT1_flow
+                                                                                          └── modified (tech + scope edits) ──> approved_with_modifications ──> pm_modified_to_include_patch_step
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| (NEW from WF-OT1 triaging) | ava_proposes_convergence | `pack_rule:auto_rule_2_ot_security` | `ot_asset_vulnerability.mitigation_kind='patch'` AND same asset has `maintenance_work_order` scheduled within next 14 days (configurable) | `system` | invoke §3.8 AVA synthesizeConvergenceProposal — emits transient FormDefinition showing merged plan; INSERT `ava_proposals` row | `conv.proposed` |
+| ava_proposes_convergence | security_officer_reviews | `system_event:auto` | AVA confidence ≥ 0.75 (lower bar than other AVA flows because human approval is the gate) | `system` | enqueue for ot_security_officer | `conv.review_started` |
+| security_officer_reviews | approved | `user_action:approve` | §3.6 signature `signature_meaning='approval'` | `ot_security_officer` | — | `conv.approved` |
+| security_officer_reviews | approved_with_modifications | `user_action:approve_with_edits` | scope edits applied (e.g. "patch + verify port" instead of just "patch"); §3.6 signature | `ot_security_officer` | record edits | `conv.modified_approval` |
+| security_officer_reviews | rejected | `user_action:reject` | reason set | `ot_security_officer` | revert to WF-OT1 standard flow | `conv.rejected` |
+| approved / approved_with_modifications | pm_modified_to_include_patch_step | `system_event:auto` | — | `system` | **CROSS-PACK WRITE**: write additional `checklist_item` to existing `checklist_instance` on the linked maintenance-core WO; record convergence_chain_entry_id linking BOTH ot_asset_vulnerability AND maintenance_work_order in ONE signature_chain row | `conv.pm_modified` |
+| pm_modified_to_include_patch_step | vulnerability_marked_closed_as_merged | `system_event:auto` | — | `system` | transition WF-OT1 vulnerability state to `superseded_by_convergence` | `conv.vuln_merged` |
+
+**Edge cases:**
+- Multiple upcoming PMs for the same asset within horizon: AVA picks the EARLIEST one for convergence; if technician availability differs across candidates, AVA's confidence score reflects assignment compatibility.
+- 14d horizon configurable per pack policy: customer with bi-weekly PM cadence may extend to 28d; customer with daily PM may shorten to 7d.
+- Convergence rejected, but later the vulnerability deadline approaches: WF-OT1 standard flow handles; the rejection audit is preserved for review.
+- Cross-pack signature_chains row: §15.4.4 is the ONLY workflow producing a single signature_chains row referencing BOTH a vulnerability_id AND a work_order_id — this is what makes "convergence" auditable as a single architectural decision, not a paired hack.
+- AVA tool failure (synthesize call errors): fallback to WF-OT1 standard flow; no proposal created; runtime_anomaly emitted.
+- Multi-vulnerability per upcoming PM: AVA can propose convergence for MULTIPLE vulnerabilities into the same PM (e.g., asset has 3 open patches scheduled separately, AVA proposes one PM to address all 3); single signature_chains row references all N vulnerabilities + the PM.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-ot4-convergence.json`.
+
+---
+
+**§15.4 summary:** 4 OT-security workflows specified. WF-OT1 is the standard vulnerability lifecycle with accepted_risk requiring dual signatures + 90d periodic re-evaluation. WF-OT2 codifies the §3.18 NAC dual-confirmation hard requirement for any quarantine action AND the explicit refusal to auto-quarantine clinical-critical or life-support assets. WF-OT3 handles cross-source advisory dedup via §3.14 vector similarity ≥ 0.95 and cross-pack interaction with clinical's WF-OC3 for medical-device advisories. WF-OT4 is the marquee #26 differentiator: a single cross-pack write that creates ONE signature_chains row referencing BOTH the ot_asset_vulnerability AND the maintenance_work_order, making convergence an auditable architectural decision rather than a paired hack. This cross-pack atomicity is structurally possible only because ot-security is an OVERLAY on maintenance-core, not a separate platform.
+
+**Workflow deep-dive section complete: all 30 workflows specified across §15.1-§15.4.** Total Phase 4 scope at this point: 18 substrate (§13) + 4 packs (§14) + 30 workflows (§15) = the architectural skeleton. Remaining: 35 marquee end-to-end specs.
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -6438,10 +6586,11 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
 - ✅ `ot-security-maintenance` overlay — 6 collections, 4 workflows, 5 automation rules, 3 plugins, 5 integrations, 1 workspace. ~10 PRs. **Spec at §14.4.**
 
-**Workflows (30 total, 26 of 30 deep dives specified ✅):**
+**Workflows (30 total, ALL 30 deep dives specified ✅):**
 - ✅ 18 maintenance-core workflows (WF-1 through WF-20, with WF-7 + WF-10 as lite versions). **Deep dives at §15.1.**
 - ✅ 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). **Deep dives at §15.2.**
 - ✅ 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). **Deep dives at §15.3.**
+- ✅ 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing per marquee #26). **Deep dives at §15.4.**
 - 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). Pack-summary at §14.3.2; deep dive pending §15.3.
 - 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing). Pack-summary at §14.4.2; deep dive pending §15.4.
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
