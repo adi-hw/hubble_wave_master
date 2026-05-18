@@ -37,6 +37,38 @@ function parseArgs(argv: string[]): { root: string; manifest: string; ci: boolea
   return { root, manifest, ci };
 }
 
+/**
+ * Paths whose `.entity.ts` files describe NON-instance-plane entities and
+ * therefore must not be validated against the instance-plane manifest.
+ * The scanner's manifest at `tools/scanners/entity-schema-manifest.json`
+ * is the schema-split contract for the instance DB only (canon §17
+ * modular monolith → `apps/api`). Other planes have their own DBs and
+ * their own schema models:
+ *
+ *   - `libs/control-plane-db/` — control-plane DB (canon §18 — traditional
+ *     multi-tenant SaaS admin app, not subject to the instance schema
+ *     split). Entities live in `public` and would collide with instance-
+ *     plane entries of the same table name (e.g. `refresh_tokens`, which
+ *     appears in both planes — `identity.refresh_tokens` on the instance
+ *     DB and `public.refresh_tokens` on the control-plane DB).
+ *
+ * A future fix can replace this with a per-plane manifest section
+ * (`{ instance: {...}, controlPlane: {...} }`) when there are enough
+ * planes to justify the structural change. Today's two-plane reality
+ * is cheaper to express as a path skip.
+ */
+const SKIP_PATH_FRAGMENTS = [
+  // Cross-platform: match both forward-slash + backslash separators so
+  // the scanner works on Windows and POSIX without a shell-side
+  // normalisation step.
+  'libs/control-plane-db',
+  'libs\\control-plane-db',
+];
+
+function shouldSkipPath(file: string): boolean {
+  return SKIP_PATH_FRAGMENTS.some((fragment) => file.includes(fragment));
+}
+
 function findEntityFiles(root: string): string[] {
   const results: string[] = [];
   function walk(dir: string) {
@@ -50,6 +82,7 @@ function findEntityFiles(root: string): string[] {
         if (entry === 'node_modules' || entry === 'dist' || entry === '.git' || entry === '.claude') continue;
         walk(full);
       } else if (entry.endsWith('.entity.ts')) {
+        if (shouldSkipPath(full)) continue;
         results.push(full);
       }
     }

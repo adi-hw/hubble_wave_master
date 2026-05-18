@@ -319,30 +319,18 @@ Estimated calendar to all checkboxes done: **12–15 months solo** (per RESUME-C
 
 ## What to do next session
 
-Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`. master is at `7b47d49` with all of Effort A and the W0+W1 portion of Effort B consolidated.
+Start by reading this file (PLATFORM-ROADMAP.md) and `RESUME-CONTEXT.md`. master is at the `phase3-w2-complete` tag (Phase 3 W2 Platform Integrity closed 2026-05-17).
 
-**Recommended next move (2026-05-17)**: pick from the W3 deferral list in `CLAUDE.md` §24. The biggest chunk is the frontend trio (37/38/39 — field-permission wiring, 401/403 UX, SSE invalidation channels) and needs browser verification per the CLAUDE.md frontend rule. The smallest backend fix is the `AuthorizationService.getPropertyRules` query path bug (the Task 36 integration spec documents it with an inline shim — fixing the underlying query unblocks tightening that shim away).
+**Recommended next move (2026-05-17)**: pick from the W3 deferral list in `CLAUDE.md` §24. In priority order:
 
-Specifically:
+1. **Frontend field-permission wiring** (was Task 37) — biggest chunk, web-client + web-control-plane render hidden/masked/read-only/denied fields per the `permissions.fields` payload Task 36 added. Needs browser verification per the CLAUDE.md frontend rule.
+2. **Frontend 401/403 UX** (was Task 38, F102) — unified empty-state + retry across both clients.
+3. **SSE invalidation channels** (was Task 39) — per-plane SSE endpoints + frontend subscribers for sub-1s permission-change propagation.
+4. **`AuthorizationService.getPropertyRules` query path bug** — smallest backend fix; the method queries a non-existent `collectionId` column on `PropertyAccessRule`. Production binds a custom repository that joins through `PropertyDefinition`; the integration specs `apps/api/test/integration/{permissions-payload,collection-data-masking}.spec.ts` document the bug with an inline shim. Fixing the underlying query lets both specs drop the shim.
+5. **Service-token scope + ACL paths in `w2-validate`** — the harness scaffolding is in place; add a seeded service principal + bootstrap exchange + scope/ACL assertions.
+6. **Admin role retirement 1s-budget assertion** — live DB mutation + bus observation.
 
-```text
-Read docs/superpowers/PLATFORM-ROADMAP.md and RESUME-CONTEXT.md.
-
-Then:
-1. Phase 1 prerequisite: extend tools/service-boundary-check.ts and tools/authz-bypass-check.ts
-   to walk apps/api/src/app/{identity,metadata,data,...}/ — currently SERVICE_DIR_RE only
-   matches apps/svc-*, leaving ~56,100 LoC of migrated services unscanned.
-2. Survey svc-automation sub-modules + cross-deps (PowerShell snippet from RESUME-CONTEXT.md).
-3. Write the svc-automation migration plan at docs/superpowers/plans/<today>-platform-w1-automation-migration.md
-   in the same shape as data and metadata migration plans.
-4. Execute the plan via subagent-driven-development.
-5. Tag arc-w1-automation-complete.
-```
-
-After svc-automation lands, the priorities go:
-1. Continue W1 architectural migration (svc-ava → svc-workflow → svc-control-plane → fold-in services → final cutover)
-2. Then Phase 2 critical security (W2 authz correctness, W3 JWT/SSO/MFA, W5 audit/data-plane)
-3. Then Phase 3 architectural moat (W2-W8 from spec § 8)
+The Phase 1 / W1 architectural migration is COMPLETE (the legacy bullet list referencing svc-automation / svc-ava / svc-control-plane migrations is stale; those landed under `arc-w1-complete`). The Phase 2 security audit categories (F003-F006, F021, F136, F146) all closed in W2 — see the canon §24 wave summary for the per-finding outcomes.
 
 ---
 

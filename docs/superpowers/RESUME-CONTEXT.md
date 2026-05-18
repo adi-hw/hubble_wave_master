@@ -306,7 +306,7 @@ Spawn a new Claude Code worktree off `master` and say:
 
 Auto mode for continuous execution if you want minimal interruption.
 
-**Recommended next move (per PLATFORM-ROADMAP.md)**: Phase 2 W2 authorization correctness fixes (F003, F004, F005, F006, F021, F146, F136). These are HIPAA-blocking correctness bugs in shared libs.
+**Recommended next move (per PLATFORM-ROADMAP.md, 2026-05-17)**: pick from the W3 deferral list in `CLAUDE.md` §24 — frontend field-permission wiring (was Task 37) is the biggest chunk; the `AuthorizationService.getPropertyRules` query path bug is the smallest backend fix. Phase 2 W2 authz correctness (F003-F006, F021, F136, F146) all closed in the W2 wave.
 
 ## Useful tags + commands cheat sheet
 
