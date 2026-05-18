@@ -275,7 +275,7 @@ In priority order:
 5. **Service-token scope + ACL paths in `w2-validate`** — harness scaffolding is in place; needs seeded service principal + bootstrap exchange + scope/ACL assertions.
 6. **Admin role retirement 1s-budget assertion** — live DB mutation + bus observation.
 
-Also: **entity-schema scanner per-plane manifest** (round-3 W2 follow-up debt) — the current scanner skips `libs/control-plane-db/` to dodge the `refresh_tokens` collision; a per-plane manifest would let it validate control-plane entities against control-plane expectations rather than skip them entirely.
+The entity-schema scanner per-plane manifest shipped in W2 follow-up round 3 (PR #103). Manifest now has `{ instance: {...}, controlPlane: {...} }` sections; scanner detects plane by path and validates against the matching section. Control-plane drift is caught instead of skipped wholesale.
 
 ### Original W3 (JWT / session / MFA / SSO hardening, ~13 findings) — most folded into W2
 
@@ -297,7 +297,7 @@ Spawn a new Claude Code worktree off `master` (or pick up an existing worktree) 
 
 > Read `docs/superpowers/PLATFORM-ROADMAP.md` and `docs/superpowers/RESUME-CONTEXT.md` and tell me what's done.
 >
-> Then I want to: [insert next request — e.g. "fix the AuthorizationService.getPropertyRules query path bug", "wire frontend field-permission rendering in web-client", "design the entity-schema per-plane manifest"].
+> Then I want to: [insert next request — e.g. "fix the AuthorizationService.getPropertyRules query path bug", "wire frontend field-permission rendering in web-client", "wire SSE invalidation channels"].
 
 Auto mode for continuous execution if you want minimal interruption.
 
