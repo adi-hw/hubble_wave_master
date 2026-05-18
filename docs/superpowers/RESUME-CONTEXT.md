@@ -260,31 +260,26 @@ grep -E "^\s*\*\s+\[" apps/api/src/app/<area>/<area>.module.ts
 
 Verify all newly-migrated sub-modules show `[x]` in the comment-block checklist. The first metadata combined batch missed this — the @Module decorator was correct but the human-readable checklist was stale. One follow-up commit synced it. Adding the self-review step prevents this.
 
-## What's next — Phase 2 (W2 onward)
+## What's next — W3 onward (post-W2)
 
-Phase 1 is COMPLETE. The architectural reshape from a 14-service distributed system to a 3-process modular monolith (apps/api + apps/worker + apps/control-plane) is done.
+Phase 1 (architectural reshape) and Phase 3 W2 (Platform Integrity) are both COMPLETE as of 2026-05-17. The W2 wave closed F003-F006, F021, F136, F146 plus delivered the boundary-consistency contracts the original Phase 2 backlog set out to address (canon §28 evaluator unification, ES256 cross-plane, permission registry, route-boundary hard gate, fail-closed PermissionsGuard, audit provenance). See `CLAUDE.md` §24 (the 2026-05-17 W2-complete entry) for the per-finding outcomes.
 
-The remaining work is the security/correctness audit remediation (Effort B from PLATFORM-ROADMAP.md) plus the spec-defined waves W2–W8. Phase 2 priorities by criticality:
+### Immediate (W3 deferrals from `CLAUDE.md` §24)
 
-### Immediate (Phase 2 / W2 — ~3 weeks)
+In priority order:
 
-**Authorization correctness fixes (must land before any customer pilot)**
+1. **Frontend field-permission wiring** (was W2 Task 37) — biggest chunk; web-client + web-control-plane render hidden/masked/read-only/denied fields per the `permissions.fields` payload Task 36 added. Needs browser verification per the CLAUDE.md frontend rule.
+2. **Frontend 401/403 UX** (was Task 38, F102) — unified empty-state + retry across both clients.
+3. **SSE invalidation channels** (was Task 39) — per-plane SSE endpoints + frontend subscribers for sub-1s permission-change propagation.
+4. **`AuthorizationService.getPropertyRules` query path bug** — smallest backend fix. The method queries a non-existent `collectionId` column on `PropertyAccessRule`. Two integration specs (`permissions-payload.spec.ts`, `collection-data-masking.spec.ts`) document the bug with an inline shim — fixing the underlying query lets both drop the shim.
+5. **Service-token scope + ACL paths in `w2-validate`** — harness scaffolding is in place; needs seeded service principal + bootstrap exchange + scope/ACL assertions.
+6. **Admin role retirement 1s-budget assertion** — live DB mutation + bus observation.
 
-| ID | Finding | Path |
-|---|---|---|
-| F003 | ACL predicates AND'd not OR'd → users see fewer records than entitled | `libs/authorization/src/lib/authorization.service.ts:144-163` |
-| F004 | Field-level masking hardcoded NONE — HIPAA blocker | `libs/authorization/src/lib/property-acl.repository.ts:514` |
-| F005 | Field-level access defaults to ALLOW | `libs/authorization/src/lib/property-acl.repository.ts:343-446` |
-| F006 | No deny rules in ACL model | `libs/authorization/src/lib/types.ts:30-61` |
-| F021 | Admin role bypasses everything — canon §10 violation | `libs/auth-guard/.../permissions.guard.ts:97-101` |
-| F146 | Insights dashboards: no authz on layout content | `apps/api/src/app/analytics/dashboards/dashboards.service.ts` (tracked in `authz-bypass-check.ts` KNOWN_BYPASSES) |
-| F136 | Search authz post-filters after search (pagination + facet leak) | `apps/api/src/app/ava/search/search-query.service.ts` (post-cutover path) |
+Also: **entity-schema scanner per-plane manifest** (round-3 W2 follow-up debt) — the current scanner skips `libs/control-plane-db/` to dodge the `refresh_tokens` collision; a per-plane manifest would let it validate control-plane entities against control-plane expectations rather than skip them entirely.
 
-Plus lib consolidation: the 3 orphan libs (`libs/relationship-resolver`, `libs/schema-engine`, `libs/schema-validator`) flagged in `tools/dead-code-allowlist.json` need either reconnecting to apps/api or deletion after feature-parity verification.
+### Original W3 (JWT / session / MFA / SSO hardening, ~13 findings) — most folded into W2
 
-### W3 — JWT / session / MFA / SSO hardening (~3 weeks)
-
-Refresh-token reuse detection, JWT revocation, OIDC PKCE/nonce/state, JWT key rotation, MFA recovery code hashing, service-to-service auth, permission-cache invalidation. ~13 findings.
+Several of the original W3 items landed during W2 (refresh-token family rotation + reuse detection per canon §29.5; ES256 + JWKS per §29.1; service-to-service auth per §29.7; permission-cache invalidation per F025). What remains: OIDC PKCE/nonce/state hardening, MFA recovery-code hashing — both still owed and not in the W2 scope.
 
 ### W4–W8 (per spec §8)
 
@@ -298,11 +293,11 @@ See PLATFORM-ROADMAP.md for the full sequenced backlog.
 
 ## How to start a fresh session
 
-Spawn a new Claude Code worktree off `master` and say:
+Spawn a new Claude Code worktree off `master` (or pick up an existing worktree) and say:
 
 > Read `docs/superpowers/PLATFORM-ROADMAP.md` and `docs/superpowers/RESUME-CONTEXT.md` and tell me what's done.
 >
-> Then I want to: [insert next request — e.g. "extend the scanners to scan apps/api before continuing migrations", "write the svc-automation migration plan", "execute the svc-ava migration", "tackle Phase 2 W2 authz correctness fixes"].
+> Then I want to: [insert next request — e.g. "fix the AuthorizationService.getPropertyRules query path bug", "wire frontend field-permission rendering in web-client", "design the entity-schema per-plane manifest"].
 
 Auto mode for continuous execution if you want minimal interruption.
 

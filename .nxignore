@@ -1,1 +1,8 @@
 .claude/worktrees/
+
+# Git worktrees rooted under the repo. Each worktree is a full repo
+# checkout — its nested apps/ and libs/ carry duplicate project.json
+# entries that Nx's project-graph scanner would treat as a name
+# collision. Mirroring `.gitignore`'s `*-wt/` rule.
+phase4-wt/
+*-wt/

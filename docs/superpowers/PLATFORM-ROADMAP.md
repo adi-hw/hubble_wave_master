@@ -341,11 +341,12 @@ The Phase 1 / W1 architectural migration is COMPLETE (the legacy bullet list ref
 git log --oneline -1
 git tag --list | grep arc
 
-# What's been migrated?
-ls apps/api/src/app/                          # has identity, metadata, kernel, db, audit
-ls apps/svc-identity/src/app/                  # only app.module.ts (thin adapter)
-ls apps/svc-metadata/src/app/                  # only app.module.ts (thin adapter)
-ls apps/svc-data apps/svc-automation apps/svc-ava ...  # still full services
+# What's been migrated? (Phase 1 W1 complete; all 11 svc-* dirs deleted)
+ls apps/api/src/app/                          # identity, metadata, data, automation, ava, views, notifications, instance-api, analytics
+ls apps/control-plane/src/app/                # control-plane Nest app (canon §18)
+# Legacy svc-* directories are gone — the W1 final cutover deleted them.
+# If a doc / script still references `apps/svc-identity` etc., it's
+# pre-2026-05-15 drift; flag it for cleanup.
 
 # What security work exists in sibling branch?
 git log --oneline 96c92c2..claude/condescending-shamir-92422b 2>/dev/null  # 27 commits
@@ -358,8 +359,8 @@ done
 # All scanners green?
 npm run authz:check && npm run audit:check && npm run security:check && npm run deps:check
 
-# All builds clean?
-npx nx build api && npx nx build worker && npx nx build svc-identity && npx nx build svc-metadata
+# All builds clean? (post-W1: svc-* targets removed)
+npx nx run-many --target=build --projects=api,control-plane,worker,web-client,web-control-plane,svc-migrations
 ```
 
 ---
