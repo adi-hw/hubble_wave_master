@@ -7328,17 +7328,20 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). **Deep dives at §15.2.**
 - ✅ 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). **Deep dives at §15.3.**
 - ✅ 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing per marquee #26). **Deep dives at §15.4.**
-- 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). Pack-summary at §14.3.2; deep dive pending §15.3.
-- 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing). Pack-summary at §14.4.2; deep dive pending §15.4.
-- `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
-- `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
-- `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
 
-**Marquees (35 total):**
-Each marquee is an integration test plus user-facing wiring. Specs include: end-to-end happy path; negative tests; edge cases; metrics + provenance verification. Typically 1-3 PRs per marquee on top of the underlying substrate + pack.
+**Marquees (35 total, ALL 35 specified ✅):**
+- ✅ AI marquees #1-5 — **Deep dives at §16.1**
+- ✅ Technician superpowers #6-9 — **Deep dives at §16.2**
+- ✅ Connected-network superpowers #10-13 — **Deep dives at §16.3**
+- ✅ Systemic differentiators #14-17 — **Deep dives at §16.4**
+- ✅ WO-processing views #18-22 — **Deep dives at §16.5**
+- ✅ Category resets #23-26 — **Deep dives at §16.6**
+- ✅ Back-office reinventions #27-30 — **Deep dives at §16.7**
+- ✅ Edge reinventions #31-35 — **Deep dives at §16.8**
 
-**Workflows (18 maintenance-core + 3 clinical + 5 facilities + 4 OT security = 30 total):**
-Each workflow needs a state-machine specification: states + transitions + guards + actions + roles authorized for each transition + audit events emitted. Format: state diagram (Mermaid or ASCII) + transition table.
+Every marquee carries an explicit user-perceivable latency budget + audit-trail commitment + fixture path at `apps/api/test/fixtures/marquees/mq-NN-<slug>.json`. Cross-pack interactions identified (e.g., MQ-#26's cross-pack signature_chains row referencing both ot_asset_vulnerability AND maintenance_work_order; MQ-#23's cross-pack warranty intercept; MQ-#32's blast-radius cascading across clinical + facilities).
+
+**Phase 4 design spec is COMPLETE.** 18 substrate (§13) + 4 packs (§14) + 30 workflows (§15) + 35 marquees (§16) = the full architectural skeleton ready for implementation phase.
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
