@@ -7018,6 +7018,172 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
+### 16.6 Category resets (#23-26)
+
+#### 16.6.1 Marquee #23 — Active Entitlement Shield (reinvents Contracts)
+
+**Value:** ServiceNow/Nuvolo Contracts are static data-entry forms; warranty leakage costs hospitals millions. HubbleWave: (a) AVA Document AI extracts MSA clauses on PDF upload; (b) at WO triage, AVA intercepts: "MRI covered under Gold Philips warranty — route to Philips?". One tap routes via §3.11 zero-login contractor flow.
+
+**Substrate deps:** §3.8 AVA UI synthesis; canon §11 document AI for MSA PDF; §14.1.1 `master_service_agreement` + `warranty` + `service_contract`; §15.1.2 WF-2 entitlement intercept; §3.11 collaborator session.
+
+**Setup fixtures:** Philips MRI service contract PDF (50 pages); MRI asset linked to vendor; AVA tool `extractMsaTerms(pdf)` `trust_state='execute'` (extraction Suggest but persisted-as-draft); WO incoming for the MRI.
+
+**Golden path:** (1) Coordinator drops 50-page Philips PDF onto `master_service_agreement` collection. (2) AVA Document AI extracts: SLA = "4h response", covered_components = `["magnet", "gradient_coil", "rf_coil"]`, exclusion_list = `["software_upgrade", "site_prep"]`, response_window = 4h, parts_labor_coverage = `parts_plus_labor`. (3) Structured `master_service_agreement` row written (Preview mode → coordinator confirms). (4) Later: WO submitted for the MRI (display issue). (5) WF-2 entitlement intercept fires; AVA checks `master_service_agreement` + `warranty` against asset + failure category. (6) Match: confidence 0.92 — display issue covered. (7) Dispatcher sees inline prompt: "This MRI is under Gold Philips warranty (4h response, parts+labor covered) — route to Philips?". (8) One tap → §3.11 collaborator magic-link issued to Philips contact; vendor performs work + e-signs (MQ-#15 path).
+
+**Assertions:** PDF extraction p95 ≤ 30s (long pages OK; this is non-real-time path); MSA terms reviewable + correctable before persist (Preview mode); entitlement intercept latency at triage p95 ≤ 200ms; warranty leakage elimination measured: 100% of warranty-covered WOs route to vendor instead of internal tech (operational measure).
+
+**Negative tests:** MSA terms ambiguous → extraction marked low-confidence + flagged for coordinator review; warranty expired → no intercept; covered but vendor unreachable → §3.18 KillswitchService check + AVA proposes alternate vendor; vendor rejects job → falls back to WF-1 internal flow.
+
+**Provenance walk:** PDF upload → `evidence_artifacts`; extraction → `ava_proposals` (`synthesis_kind='msa_extraction'`, factors_jsonb=full term map); MSA persist → `master_service_agreement` row + audit; entitlement intercept → `ava_proposals` (`synthesis_kind='warranty_match'`); vendor route → MQ-#15 chain.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-23-entitlement-shield.json`
+
+---
+
+#### 16.6.2 Marquee #24 — Live Operational Canvas (reinvents Space Management)
+
+**Value:** Nuvolo treats space as office-planner; HubbleWave makes it live operational. (a) `<FloorPlanRouter>` + `<LiveOperationalCanvas>` plot the most efficient walking path for multi-PM shifts (TSP-approx). (b) Invisible Space Audits — `wifi-beacon-occupancy` adapter materializes `occupancy_log` automatically with aggregate-only privacy (canon §44 + facilities G18.4).
+
+**Substrate deps:** §3.15 graph + routeSolve; §14.3.1 `space` + `occupancy_log`; §14.3.7 `<LiveOperationalCanvas>` plugin; §14.3.7 `wifi-beacon-occupancy` adapter (aggregate-only invariant + adapter G18.4); §3.5 observation streams.
+
+**Setup fixtures:** facilities overlay installed; full floor plan loaded; tech with 8 PMs on Floor 3 today; Wi-Fi controller adapter active for that floor; `<LiveOperationalCanvas>` WebGL fixture.
+
+**Golden path:** (1) Tech opens `<LiveOperationalCanvas>` showing assigned 8 PMs. (2) AVA invokes routing: TSP-approx solver over `<FloorPlanRouter>` graph. (3) Returns ordered walking path between rooms + estimated time saved (e.g., 18 minutes saved over default order). (4) Path highlighted on canvas with arrows. (5) As tech walks: presence dots update in real-time. (6) Separately: Wi-Fi adapter aggregates 5-min bucket occupancy per room; `<OccupancyHeatmap>` shows utilization without ever rendering per-individual data (k-anon ≥ 3).
+
+**Assertions:** routing compute (8 stops) p95 ≤ 800ms; presence updates < 5s lag; occupancy heatmap k-anonymity threshold (k=3) refuses to render buckets where occupant_count < 3; adapter privacy invariant: per-MAC events DISCARDED at adapter layer (asserted via fixture tests confirming `occupancy_log.source != per_individual`).
+
+**Negative tests:** TSP solver timeout on > 30 stops → falls back to simple proximity sort; Wi-Fi adapter producing per-individual data → pack-validator G19.4 refuses install; occupancy bucket count < 3 → heatmap cell empty (k-anon enforced).
+
+**Provenance walk:** routing → `ava_proposals` (`synthesis_kind='tsp_walking_path'`); occupancy ingestion → `observations` rows → rolled up to `occupancy_log` (aggregate only); per-bucket display attribution = `(space_id, time_bucket)` pair with count ≥ 3.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-24-live-operational-canvas.json`
+
+---
+
+#### 16.6.3 Marquee #25 — Continuous Observations Engine (reinvents Rounds)
+
+**Value:** Nuvolo: 50 fire extinguishers = 50 task rows = polymorphic-task-table bloat. HubbleWave: a round is NOT a task; it's a Batch Observation Session. 50 checks = 50 observations + 0 WO rows. Only failures spawn reactive WOs. Glove-Mode Rapid Fire swipe-deck.
+
+**Substrate deps:** §14.1.1 `work_round_session` (NOT taskable) + `work_round_definition` + auto rule 20 (failed observation spawns WO); §3.5 observation streams (partitioned); §3.7 mobile + `<RoundsRunner>` swipe primitive; §15.1.13 WF-13.
+
+**Setup fixtures:** round_definition "Floor 3 fire-extinguisher rounds" with 50 ordered asset_ids; tech assigned; AVA dynamic-round tool registered for trend-based step injection.
+
+**Golden path:** (1) Tech opens `<RoundsRunner>` for the round; WF-13 `started`. (2) Card 1 (asset 1) appears with observation prompts. (3) Tech swipes RIGHT (Pass) → `observations` row written + auto-advance. (4) Cards 2-49 similarly. (5) Card 32: tech swipes LEFT (Fail) → spawn reactive `maintenance_work_order` via auto rule 20 + capture failure note. (6) Card 33: tech long-presses → captures measurement value. (7) Card 50 complete; tech taps "End Round" → WF-13 `completed`. (8) Reactive WOs visible in dispatcher queue; round session NOT in task_projection (per design — only the spawned WOs become tasks). (9) Dynamic Smart Rounds: AVA analyzes failure trends; if brand-X beds fail bed-rail checks across the hospital this week → AVA injects a mandatory bed-rail check into next day's standard rounds for that floor.
+
+**Assertions:** card-swipe → next card render p95 ≤ 80ms (Glove-Mode budget); 50 observations = 50 `observations` rows + 0 WO rows for passes + N WO rows for failures (zero polymorphic-task bloat); round_completion_review (WF-13) NOT taskable (asserted via `task_projection` absence); dynamic-round injection traceable to AVA trend tool.
+
+**Negative tests:** round abandoned (4h idle) → auto-completed with `stopping_early_reason='timeout'`; failed observation dedup window 24h prevents duplicate reactive WOs on same asset+failure_kind; dynamic-round injection without AVA confidence → no injection.
+
+**Provenance walk:** each observation → `observations` row in §3.5; each spawned WO → `maintenance_work_orders` + `audit_logs.event_kind='wo.spawned_from_round'` with `round_session_id`; dynamic injection → `ava_proposals` (`synthesis_kind='dynamic_round_injection'`).
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-25-rounds.json`
+
+---
+
+#### 16.6.4 Marquee #26 — Network-to-Physical Triage (NAC Quarantine)
+
+**Value:** ServiceNow/Nuvolo ingest OT alerts → avalanche of separate tickets. HubbleWave converges digital + physical: (a) AVA Convergence Routing proposes attaching patch-install step to upcoming PM; (b) Quarantine Lockout via NAC adapter with §3.18 dual-confirmation gate.
+
+**Substrate deps:** §14.4.X `ot_asset_vulnerability` + `nac-quarantine` adapter; §3.18 NAC dual-confirmation; §3.8 AVA UI synthesis for convergence proposal; §15.4.4 WF-OT4 convergence routing; §15.4.2 WF-OT2 network anomaly review; §14.1.1 cross-pack write into `maintenance_work_order.checklist_items`.
+
+**Setup fixtures:** ot-security overlay installed; vulnerability open on infusion pump 4521 with `mitigation_kind='patch'`; same pump has PM scheduled in 10 days; AVA `synthesizeConvergenceProposal` tool registered; nac-quarantine adapter active with `dual_confirmation_required=true`.
+
+**Golden path:**
+- **Path A (Convergence):** (1) OT vulnerability opens (CVE-2026-1234 on pump 4521). (2) Auto rule 2 fires (mitigation_kind=patch + upcoming PM in 14d). (3) AVA synthesizes convergence proposal: "Attach patch-install step to PM scheduled Tuesday? Saves a trip + satisfies SLA window". (4) OT Security Officer reviews + signs off (§3.6 'approval'). (5) ONE `signature_chains` row references BOTH the `ot_asset_vulnerability` AND `maintenance_work_order` (cross-pack atomicity per §15.4.4). (6) PM gains a new `checklist_item`; vulnerability auto-closed as `superseded_by_convergence`.
+- **Path B (Quarantine):** (1) Active exploit detected (CVE + observed-exfil signature). (2) WF-OT2 anomaly review transitions to `quarantine_proposed`. (3) §3.18 dual-confirmation required: ot_security_officer + maintenance_manager + customer_override_flag + safety_check_passed_evidence_id. (4) Critical safety check: pump's `clinical_criticality_score=82` (life_support tier) → quarantine REFUSED with explicit message "Clinical-critical asset; manual review required before NAC quarantine". (5) For non-clinical-critical assets: both confirmations + safety evidence + override flag present → `nac-quarantine.quarantine_asset(asset_id)` invoked. (6) Asset `status='quarantined'`; mobile app shows "Do Not Use — Cybersecurity Quarantine" banner. (7) All steps in `signature_chains`.
+
+**Assertions:** convergence proposal AVA confidence ≥0.75 to surface; cross-pack signature_chains row references both records; NAC quarantine ALWAYS requires §3.18 dual-confirmation (asserted); clinical-critical assets (`clinical_criticality_score ≥ 70` OR `life_support_designation`) refused auto-quarantine regardless of attack-signature match.
+
+**Negative tests:** convergence proposal rejected → vulnerability stays in WF-OT1 standard flow; NAC dual-confirmation incomplete (only one confirmer) → quarantine refused with structured error; asset is clinical-critical → auto-quarantine path refused even with all guardrails present.
+
+**Provenance walk:** convergence path → cross-pack signature_chains row + `audit_logs.event_kind='vuln.converged_with_pm'`; quarantine path → `audit_logs.event_kind='nac.quarantine_executed'` with dual-confirmer user_ids + safety_evidence_id + audit attribution AT EACH STAGE of dual-confirm. Cross-pack atomicity (§15.4.4) is the marquee #26 architectural payoff: separate platforms would need 2PC + reconciliation; overlay model does it in one transaction.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-26-network-to-physical.json`
+
+---
+
+### 16.7 Back-office reinventions (#27-30)
+
+#### 16.7.1 Marquee #27 — Predictive TCO (Active Intercept at parts-order time)
+
+**Value:** AVA continuously computes `replacement_urgency_score` (per MQ-#17) + active intercept at parts-order: "$4k controller board for 10-year-old ultrasound — residual $6,200, TCO ratio 65%. Generate Capital Replacement Request instead?" ServiceNow's ledger never interrupts.
+
+**Substrate deps:** MQ-#17 score; §14.1.1 `capital_replacement_request` (taskable); §15.1.15 WF-15 capital_replacement_review; §3.16 transaction_approval; AVA active-intercept tool at parts-order modal.
+
+**Setup fixtures:** 10-year-old ultrasound asset; cumulative repair cost over 18mo = $11k; residual_value_cents = $6,200,000; replacement_urgency_score = 76 (from MQ-#17); tech opens parts-order modal to request $4k controller board.
+
+**Golden path:** (1) Tech opens parts-order modal for $4k controller board (ultrasound). (2) AVA active-intercept tool fires: queries asset.residual_value_cents + recent repair spend; computes `repair_cost_total + new_part_cost / remaining_residual_value = (11000 + 4000) / 6200 = 2.42` ratio. (3) Threshold check: customer policy `capital_replacement_threshold=0.6`; current ratio 2.42 >> threshold. (4) Modal interrupts: "This repair is $4,000; cumulative cost + this repair = $15,000; remaining residual value = $6,200 (TCO ratio 2.42). Generate Capital Replacement Request to Director instead?". (5) Tech approves intercept → `capital_replacement_request` row inserted via auto rule 21 + Maintenance Manager notification. (6) WF-15 capital_replacement_review proceeds (director approval via §3.16 + procurement_proposal generation chain to WF-16). (7) If tech overrides intercept ("repair anyway") → audited with reason code; parts order proceeds.
+
+**Assertions:** parts-order modal → active intercept compute p95 ≤ 400ms; ratio computation deterministic; threshold configurable per customer policy; intercept override audited with reason code; cross-workflow chain (MQ-#27 → WF-15 → WF-16 → §3.16) all explicit `workflow_complete:` triggers.
+
+**Negative tests:** asset with no residual_value (new install < 30d) → no intercept; replacement_urgency_score below decision threshold → no intercept; warranty-covered asset → MQ-#23 entitlement intercept fires first (different path); intercept override without reason code → blocked.
+
+**Provenance walk:** parts-order intercept → `ava_proposals` (`synthesis_kind='tco_active_intercept'`, factors_jsonb=ratio_breakdown + threshold + decision); intercept-accept → `capital_replacement_request` row + cascade; intercept-override → `audit_logs.event_kind='tco_intercept.overridden'` with reason code.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-27-predictive-tco.json`
+
+---
+
+#### 16.7.2 Marquee #28 — Autonomous JIT Procurement
+
+**Value:** AVA reads next 30-90 days of `pm_schedule` + historical break-fix consumption + supplier lead times → drafts `procurement_proposal` (AVA-pre-filled shopping carts per vendor). Procurement Manager: Approve All / Edit / Skip. "Stock hit zero" Nuvolo failure mode eliminated.
+
+**Substrate deps:** §14.1.1 `procurement_proposal` (taskable) + `pm_schedule` + `parts_consumption` + `vendor`; §15.1.16 WF-16 procurement_proposal_approval (marquee #28); §3.16 transaction_approval if total > threshold; §14.1.6 `<ProcurementProposalCart>` plugin.
+
+**Setup fixtures:** 30 PMs scheduled in next 60 days; 18 months of parts_consumption data; 5 vendors with MSA rate cards; AVA JIT procurement tool `proposeJitCart(horizon_days, scope)` `trust_state='preview'`.
+
+**Golden path:** (1) AVA scheduled tool runs nightly: reads PMs + consumption history + lead times. (2) Drafts `procurement_proposal` rows grouped by vendor: e.g., "Philips: 12 filters + 6 controller boards + 3 sensor packs = $18,400". Each line carries provenance: which PMs and historical failures justified the quantity. (3) Procurement Manager opens `<ProcurementProposalCart>` next morning. (4) Reviews cart line-by-line; sees provenance per line. (5) Taps "Approve All" → WF-16 transitions `proposed → approved_to_po → po_generated`; `purchase_order` rows created per vendor with `source='ava_jit_proposal'`. (6) Or: "Edit" specific lines; "Skip" others. Partial-approve cycles back to `reviewed` state per WF-16.
+
+**Assertions:** nightly JIT compute completes for 30 PMs + 5 vendors in p95 ≤ 60s; provenance attached per line (which PMs + which historical consumption); `purchase_order.source='ava_jit_proposal'` for fully-AVA-approved lines; partial-approve loop functional.
+
+**Negative tests:** insufficient parts_consumption history → AVA refuses (insufficient confidence); vendor unavailable → line marked `vendor_unavailable_replanned`; PM canceled mid-proposal → AVA refreshes cart; total exceeds approval threshold → WF-3 transaction_approval gate fires.
+
+**Provenance walk:** JIT compute → `ava_proposals` (`synthesis_kind='jit_procurement_proposal'`, factors_jsonb=per-line {pm_ids_contributing, consumption_history_ids, lead_time_days}); approval → WF-16 chain → `purchase_order` rows with `source='ava_jit_proposal'`. "stock hit zero" failure mode never appears in audit because it's prevented.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-28-jit-procurement.json`
+
+---
+
+#### 16.7.3 Marquee #29 — AI-Enforced Vendor Invoice Reconciliation
+
+**Value:** Vendor PDF dropped at §3.11 contractor portal → AVA Document AI extracts billed-hours + line-items + rates → cross-references `time_on_site` + MSA rate card + `parts_consumption` → match or `invoice_discrepancy`. AP sees only reconciled/approved-with-variance; stop being bottleneck.
+
+**Substrate deps:** §14.1.1 `vendor_invoice` (taskable) + `master_service_agreement` (rate card from MQ-#23 extraction) + `parts_consumption`; §3.16 three_way_match_record; §15.1.17 WF-17 vendor_invoice_reconciliation; §14.1.6 `<InvoiceDiscrepancyBoard>` plugin; canon §11 Document AI.
+
+**Setup fixtures:** vendor's 4-page invoice PDF dropped via MQ-#15 contractor portal; matching WO with `time_on_site=3.5h` + `parts_consumption` for 2 controller boards; MSA rate card with `labor_rate=$150/h` + `parts_markup=10%`.
+
+**Golden path:** (1) Vendor uploads invoice PDF via §3.11 magic-link portal. (2) `vendor_invoice` row created in `status='received'`. (3) Auto rule 17 fires WF-17. (4) AVA Document AI extracts: `billed_hours=4.0`, `billed_parts=[ctrl_board:$425×2]`, `billed_total=$1,495`. (5) Cross-reference: time_on_site=3.5h × $150 = $525; parts_consumption=2 boards × $400 (MSA rate) = $800; expected_total=$1,325. (6) Variance = $1,495 - $1,325 = +$170 (12.8%); tolerance per pack policy = 5% → exceeds. (7) `status` transitions to `discrepancy_flagged`. (8) WF-17 enqueues human review on `<InvoiceDiscrepancyBoard>`. (9) AP clerk reviews; sees AVA explanation: "0.5h time mismatch; parts markup mismatch ($25 over MSA rate)". (10) AP clerk requests vendor clarification via contractor portal OR approves with variance reason code. (11) Approved-with-variance → §3.16 three_way_match_record written; status `approved → paid`.
+
+**Assertions:** PDF extraction p95 ≤ 25s; cross-reference compute p95 ≤ 600ms; discrepancy auto-flag when variance > pack tolerance; AP clerk sees AVA reasoning + linked WO time/parts data; three_way_match_record written on approval.
+
+**Negative tests:** invoice references unknown asset/WO → flagged `unknown_reference` + manual review; vendor not in MSA → discrepancy with reason `no_rate_card_match`; duplicate invoice number → dedup at received state.
+
+**Provenance walk:** PDF → `evidence_artifacts`; extraction → `ava_proposals` (`synthesis_kind='invoice_extraction'`); cross-reference → `ava_proposals` (`synthesis_kind='invoice_reconciliation'`, factors_jsonb=full breakdown); status transitions → `vendor_invoice` audit; approval → `three_way_match_record` + `audit_logs.event_kind='inv.three_way_match'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-29-invoice-reconciliation.json`
+
+---
+
+#### 16.7.4 Marquee #30 — Fleet-as-Asset (asset is an asset)
+
+**Value:** ServiceNow/Nuvolo ship Fleet Management as separate module. HubbleWave: vehicles are `asset` rows with `asset_type='vehicle'` + telematics capability binding to §3.5 streams. Mileage-based PM auto-fires. Fault codes → reactive WO with AVA-suggested fix. Proves §17.5 customization-contract claim.
+
+**Substrate deps:** §14.1.1 `asset` (with `asset_class='vehicle'`); §14.1.7 `obd2-telematics-feed` adapter; §3.5 observation streams (engine_rpm/coolant_temp/mileage/gps_lat/gps_lon/fault_code); §3.3 utilization-trigger PM generation; §15.1.18 WF-18 fleet_telematics_to_pm; MQ-#4 deterministic parts staging.
+
+**Setup fixtures:** fire-rescue truck asset with `asset_class='vehicle'`; obd2-telematics-feed adapter active for the truck's VIN; pm_schedule "oil change every 5000 miles" with utilization-trigger; current mileage 4,950; vehicle currently driving (live observation stream).
+
+**Golden path:** (1) Truck's OBD2 streams mileage observations every 30s into `observations` (subject=truck asset, stream_kind='mileage'). (2) Crosses 5,000 mile threshold. (3) §3.5 alert fires; WF-18 `threshold_breached → pm_schedule_consulted → wo_generated`. (4) `maintenance_work_order` created (oil change PM); WF-4 idempotency on `(pm_schedule_id, mileage_snapshot)`. (5) MQ-#4 deterministic parts staging runs: reserves oil filter from stock. (6) Mechanic notified. (7) Separately: truck reports fault code DTC P0420 (catalyst inefficiency); auto rule emits `runtime_anomaly` + spawns reactive WO with AVA suggested fix linked to catalytic converter parts catalog.
+
+**Assertions:** mileage threshold → WO generation p95 ≤ 8s of observation arrival; idempotency on duplicate mileage observation (same value) → suppresses duplicate WO; obd2 adapter conforms to §3.13 simulator fixtures; vehicle PMs use EXACT same maintenance-core schema as MRI PMs (zero new tables added — §17.5 proof asserted).
+
+**Negative tests:** OBD2 feed interrupted > 1h → gap detection alarm + fleet_manager notified; meter rollover (e.g., mileage reset) → handled by WF-4 idempotency snapshot; vehicle out-of-service before WO → WO marked `aborted` cleanly.
+
+**Provenance walk:** OBD2 observation → `observations` row; threshold breach → `audit_logs.event_kind='fleet.threshold_breached'` + WF-18 chain; WO generation → `audit_logs.event_kind='pm.wo_generated'` with `triggered_by_stream='mileage'`; fault code → `runtime_anomaly` row + reactive WO; ZERO new tables — fleet uses maintenance-core's asset/PM/observation primitives.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-30-fleet-as-asset.json`
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
