@@ -19,15 +19,17 @@ The HubbleWave platform's 2026-05-09 spec (Appendix D, lines 1558-1635) pre-inve
 
 **Outcome we are designing for:** a substrate pack + three vertical overlays that ship together, win the RFP, and prove the canon §17.5 customization contract on a real domain — without violating greenfield discipline (canon §1), without bypassing upgrade safety (canon §13), and without re-implementing the architectural mistakes Nuvolo inherited from ServiceNow.
 
-## 1.1 Implementation Priority (binding before this work starts)
+## 1.1 Implementation Priority (preconditions cleared 2026-05-17)
 
-This vertical is compliance-heavy and depends on identity + authorization invariants that the current Phase 3 W2 work hardens. **Before any of this plan's work begins, the existing platform must be sound:**
+This vertical is compliance-heavy and depends on identity + authorization invariants that the current Phase 3 W2 work hardens. The three preconditions originally listed here have now been resolved into the executable plan:
 
-1. **W2 Stream 1 platform-blocker cleanup** must land first: the role-code vs role-id auth mismatch resolution, the migration / package coherence fixes, and the scanner baseline that ensures CI is green on all 8 architectural scanners. This vertical relies on §28 + §29 invariants that those streams establish.
-2. **Pack capability contract** (§8 §17.5 amendment) must extend pack manifests + validators to support: `requires_capabilities`, `provides_capabilities`, `capability_bindings`, `task_projection.attrs[]`, `public_intake.schemas[]`, connector simulator declarations, reserved-namespace signing via Verified Pack Registry. Without these, every #23-35 marquee is implementable only by violating the customization contract.
-3. **Metadata safety fields** must be added to `PropertyDefinition` BEFORE the surfaces that consume them: `projection_safe`, `confidentiality_class`, `break_glass_eligible`, `sync_to_mobile`, `taskable_field_mapping`, `vector_indexed`. Validator rules refuse pack publish if these are missing where required.
+1. **W2 Stream 1 platform-blocker cleanup — ✅ CLEARED** at tag `phase3-w2-complete` (commit `fe71976`, merged to master 2026-05-17). The role-code vs role-id auth mismatch resolution, migration/package coherence fixes, and scanner baseline (13 architectural scanners green) all shipped across 16 PRs in the W2 wave. Per the [W2 close commit](https://github.com/adi-hw/HW-Platform-/commit/7abb5bf): "boundary consistency landed across identity / authz / audit / search / scanner enforcement". G0a inherits this baseline.
 
-Phase 0 of §6 incorporates this prework explicitly; G0a cannot start until these three items are done.
+2. **Pack capability contract** (§8 §17.5 amendment) — **converted into pre-flight PR-A1 of G0a**. The pack-validator extension (accepting `requires_capabilities`, `provides_capabilities`, `capability_bindings`, `task_projection.attrs[]`, `public_intake.schemas[]`, connector simulator declarations, reserved-namespace signing) lands as the first executable PR of G0a. Without this extension, no substrate PR's pack manifest can declare its capability bindings. See implementation plan §3 (G0a PR-A1).
+
+3. **Metadata safety fields on `PropertyDefinition`** — **converted into pre-flight PR-A2 of G0a**. The migration adding `projection_safe`, `confidentiality_class`, `break_glass_eligible`, `sync_to_mobile`, `taskable_field_mapping`, `vector_indexed` columns lands BEFORE any substrate PR that consumes them. The columns are nullable on the migration; downstream substrate PRs (§13.8 mobile parity, §13.11 break-glass, §13.14 vector match, etc.) populate them as their pack publish requirements are introduced. See implementation plan §3 (G0a PR-A2 + PR-A3).
+
+**Status:** All three preconditions cleared. Precondition #1 by W2 wave completion; preconditions #2 + #3 by reclassification into the executable PR sequence as G0a pre-flight PRs (PR-A1, PR-A2, PR-A3) at the start of week 1. G0a is now startable.
 
 ---
 

@@ -22,7 +22,7 @@ The plan does NOT duplicate the spec's per-section PR breakdowns; it sequences t
 
 | Gate | Target week | Spec sections | PRs allocated | Acceptance demo |
 |---|---:|---|---:|---|
-| **G0a** Foundation | 5 | §13.2 + §13.4 + §13.5 + §13.6 (partial) + §13.7 (single-sig) | ~26 | Taskable + scheduling + observation base + single-signature path; CI green |
+| **G0a** Foundation | 5 | Pre-flight PR-A1/A2/A3 (§1.1 preconditions #2+#3) + §13.2 + §13.4 + §13.5 + §13.6 (partial) + §13.7 (single-sig) | ~29 | Pack-validator capability fields + property_definitions safety columns + taskable + scheduling + observation base + single-signature path; CI green |
 | **G0b** Advanced | 11 | §13.3 + §13.7 (Merkle) + §13.8 + §13.9 + §13.10 + §13.11 + §13.12 | ~52 | task_projection w/ circuit breaker + Merkle batch + mobile parity + kiosk |
 | **G0c** Marquee substrate | 17 | §13.13 + §13.14 + §13.15 + §13.16 + §13.17 + §13.18 + §13.19 | ~38 | Storage + Connector + Vector + Graph + Financial + Import + Secrets all live |
 | **G1** maintenance-core | 23 | §14.1 + selected §15.1 workflows + MQ-#1 | ~28 | WO + PM + checklists + mobile tech workspace + voice WO capture |
@@ -36,17 +36,32 @@ The plan does NOT duplicate the spec's per-section PR breakdowns; it sequences t
 
 Each gate ends with a written gate-acceptance memo + Go/No-Go decision (per §5.3). Gate slip → re-baseline before continuing.
 
-## 3. G0a — Foundation substrate (Weeks 1-5; ~26 PRs)
+## 3. G0a — Foundation substrate (Weeks 1-5; ~29 PRs incl. 3 pre-flight)
 
 **Goal:** §3.1 taskable + §3.3 scheduling + §3.4 list-scale + §3.5 observation base + §3.6 single-signature path + processed_events ledger + Redis Consumer Groups + idempotency scaffold. Foundation CI scanners green.
 
-**§1.1 prerequisites cleared before G0a starts:** W2 Stream 1 role-code/role-id auth resolution + migration/package coherence + scanner baseline green on all architectural scanners. (Pinned in pause memory.)
+**§1.1 precondition status (2026-05-17):**
+- ✅ **Precondition #1 (W2 Stream 1)** — CLEARED at tag `phase3-w2-complete` (commit `fe71976`, merged to master). 16-PR W2 wave delivered role-code/role-id auth resolution, migration/package coherence, 13-scanner baseline green.
+- 🔄 **Precondition #2 (Pack capability contract)** — embedded as PR-A1 below.
+- 🔄 **Precondition #3 (Metadata safety fields)** — embedded as PR-A2 below.
 
-### G0a PR sequence
+The two remaining preconditions are NOT separate "operator action items" anymore; they are the first executable PRs of G0a (pre-flight PR-A1 + PR-A2 + PR-A3). All G0a substrate PRs (001+) depend on these three.
+
+### G0a pre-flight PRs (week 1 — must merge before PR-001)
 
 | PR# | Spec ref | Scope | Depends |
 |---:|---|---|---|
-| 001 | §13.2 PR-1 | `taskable_capability` table + entity + initial validator | — |
+| **A1** | §1.1 precondition #2 + §8 §17.5 amendment | `libs/pack-validator` extended to accept new pack-manifest fields: `requires_capabilities` (string[]), `provides_capabilities` (string[]), `capability_bindings` ({capability_code → binding_spec}), `task_projection.attrs[]` ({attr_name, source_path, projection_index_kind}), `public_intake.schemas[]` ({purpose, json_schema}), `connector_simulator_declarations[]` ({adapter_id, fixture_set_id, conformance_version}), `reserved_namespace_signing` ({ed25519_public_key_id, signed_namespaces[]}). Schema acceptance only — runtime enforcement comes per substrate PR. Pack-validator self-test: 8 assertions covering field presence + type checks + reserved-namespace pattern. Files: `libs/pack-validator/src/lib/manifest-schema.ts`, `libs/pack-validator/src/lib/manifest-schema.spec.ts`. | W2 baseline (precondition #1) |
+| **A2** | §1.1 precondition #3 | `metadata.property_definitions` migration adding 6 nullable columns: `projection_safe boolean`, `confidentiality_class varchar(64)` (CHECK enum: public/internal/sensitive/never_reveal/legal_hold/sealed_investigation/system_secret/unrelated_patient_context), `break_glass_eligible boolean DEFAULT false`, `sync_to_mobile boolean DEFAULT false`, `taskable_field_mapping jsonb`, `vector_indexed boolean DEFAULT false`. Entity update in `libs/instance-db/src/lib/entities/metadata.ts`. Migration: `1932500000000-add-property-safety-fields.ts`. Validator G11.1 (break_glass_eligible mutually exclusive with hard-deny classes) lands here as scaffold; full enforcement per §13.11 PR-1. | A1 |
+| **A3** | (CI verification) | End-to-end CI sweep on master after A1+A2 merge: all 13 architectural scanners green; migration runs cleanly on a fresh dev instance + on a phase3-w2-complete-tagged instance; no allowlist additions to `audit-bypass-check.ts` / `service-boundary-check.ts` / `permission-registry-sync-check.ts` / `route-boundary-coverage-check.ts`. Self-test additions for pack-validator schema acceptance. **Acceptance memo signed by operator before PR-001 ships.** | A1, A2 |
+
+**Pre-flight acceptance:** All 13 architectural scanners green; pack-manifest schema accepts new fields; property_definitions has the 6 safety columns; substrate PRs can begin.
+
+### G0a substrate PR sequence (week 1-5; ~26 PRs)
+
+| PR# | Spec ref | Scope | Depends |
+|---:|---|---|---|
+| 001 | §13.2 PR-1 | `taskable_capability` table + entity + initial validator | A3 |
 | 002 | §13.2 PR-2 | `task_emission` generation hook + before-save automation | 001 |
 | 003 | §13.2 PR-3 | Per-pack opt-in registration + service-boundary scanner extension | 001 |
 | 004 | §13.2 PR-4 | `generation_runs` idempotency table + double-fire test | 002 |
@@ -428,7 +443,7 @@ This chain is ~115 PRs long. At a sustained throughput of 5 PRs/week on the crit
 
 | Gate | Critical PRs | Slack PRs allocated | Slip absorb capacity |
 |---|---:|---:|---|
-| G0a | 25 | 1 | 1 PR slip = 1 week slip; no buffer |
+| G0a | 28 (incl. 3 pre-flight) | 1 | 1 PR slip = 1 week slip; no buffer |
 | G0b | 41 | 11 | ~2 weeks slip absorbed within gate |
 | G0c | 38 | 0 | None (tight gate) — pre-allocate from G0b slack if needed |
 | G1 | 28 | 0 | None — G1 has dense pack work; consider extending to 7 weeks if PR throughput < target |
@@ -444,14 +459,15 @@ This chain is ~115 PRs long. At a sustained throughput of 5 PRs/week on the crit
 
 Before PR-001 ships, all of the following MUST be true:
 
-1. ✅ All 18 substrate worked examples specified at artifact level (§13.2-§13.19)
-2. ✅ All 4 pack composition specs landed (§14.1-§14.4)
-3. ✅ All 30 workflow state-machine deep dives complete (§15.1-§15.4)
-4. ✅ All 35 marquee end-to-end specs landed (§16.1-§16.8)
-5. ⏳ §1.1 prerequisites cleared: W2 Stream 1 role-code/role-id auth resolution + migration/package coherence + scanner baseline green
-6. ⏳ Canon amendments listed in §8 of design spec drafted as PR drafts (lands incrementally as substrate ships)
+1. ✅ All 18 substrate worked examples specified at artifact level (§13.2-§13.19) — landed at `78ed4d3`
+2. ✅ All 4 pack composition specs landed (§14.1-§14.4) — landed at `78ed4d3`
+3. ✅ All 30 workflow state-machine deep dives complete (§15.1-§15.4) — landed at `78ed4d3`
+4. ✅ All 35 marquee end-to-end specs landed (§16.1-§16.8) — landed at `78ed4d3`
+5. ✅ **§1.1 precondition #1 cleared** — W2 Stream 1 role-code/role-id auth resolution + migration/package coherence + 13-scanner baseline green. Evidence: tag `phase3-w2-complete` (commit `fe71976`), merged to master via PR sequence closing 2026-05-17.
+6. 🔄 **§1.1 preconditions #2 + #3 embedded as G0a pre-flight PRs A1/A2/A3** (see §3 above) — no longer separate operator action items; they are the first executable PRs.
+7. ✅ **Canon amendments listed in §8 of design spec** — each substrate worked example commits its canon amendment as part of its final PR (§13.7 PR-6 commits canon §32; §13.8 PR-8 commits canon §33; etc.). Drafts already inline in the design spec's §24 amendment ledger. Per-substrate PRs land them incrementally; no separate pre-G0a canon work needed.
 
-Items 1-4 are complete as of `78ed4d3`. Items 5-6 require operator action before G0a kickoff.
+**Status:** All preconditions ✅ or embedded in PR sequence. **G0a is startable.** Pre-flight PRs A1+A2+A3 are the first 3 PRs of week 1; substrate PR-001 (taskable capability) lands when A3 acceptance memo is signed.
 
 ## 17. Notes for AI agent execution
 
@@ -475,4 +491,4 @@ AI agents executing this plan MUST NOT:
 
 This plan is a living document. As PRs land, mark them ✅ in the per-gate tables. When the design spec is amended (e.g., new canon section), update the corresponding "Spec ref" column. The plan's "Depends" column is the authoritative source for cross-PR ordering during execution.
 
-**Status:** Implementation-ready as of `78ed4d3` (2026-05-17). Next operator decision: clear §1.1 prerequisites + draft canon amendments + kick off G0a.
+**Status:** Implementation-ready as of `78ed4d3` (2026-05-17). **§1.1 preconditions cleared 2026-05-17** (precondition #1 by W2 wave completion; preconditions #2 + #3 embedded as pre-flight PR-A1/A2/A3 at start of G0a). **G0a is startable.** Next operator action: kick off G0a pre-flight PR-A1 (pack-validator capability contract extension).
