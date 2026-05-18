@@ -6828,6 +6828,196 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
+### 16.4 Systemic differentiators (#14-17)
+
+#### 16.4.1 Marquee #14 — Auditor Kiosk (Joint Commission, FDA)
+
+**Value:** Compliance Officer issues §3.11 kiosk session bound to auditor's iPad. Auditor sees PM compliance + signature_chains ledger + CSV/PDF export. No edit affordance anywhere. Hands auditor mathematically verifiable evidence. ServiceNow/Nuvolo need manual prep + custom dashboards.
+
+**Substrate deps:** §3.11 kiosk session tokens (canon §29.7 audience='kiosk'); §3.6 signature_chains ledger; §14.1.5 `ws_auditor_kiosk` workspace; §14.1.6 `<AuditorKioskShell>` plugin; §28 evaluator hard-rejects writes from kiosk audience.
+
+**Setup fixtures:** Compliance Officer with `identity:kiosk:issue`; iPad device fingerprint pre-registered; kiosk_sessions purpose `joint_commission_audit`; 200 signed `electronic_signatures` rows + their `signature_chains` rows across last 12mo.
+
+**Golden path:** (1) Compliance Officer issues kiosk session via `POST /api/identity/kiosk-sessions`; receives code. (2) Hands auditor iPad with QR code; auditor scans → `/api/public/kiosk/<code>/bind`. (3) iPad's user_agent + screen_dims + tz_offset → device fingerprint computed; kiosk JWT minted with `aud='kiosk'`, `permitted_actions=['read']`, `workspace_id=ws_auditor_kiosk`. (4) iPad navigates to `ws_auditor_kiosk` (read-only shell). (5) Auditor browses: PM compliance dashboard, drill-down on critical life-safety assets, signature_chains ledger with date filters. (6) Auditor taps "Export" → CSV/PDF generated server-side, no edit affordances anywhere. (7) End of audit: Compliance Officer revokes session in one tap; subsequent iPad API calls → 401.
+
+**Assertions:** issue → bind round-trip p95 ≤ 2s; kiosk JWT carries device_fp_hash; ANY write attempt by kiosk audience → §28 minimal 403 + AccessAuditPort.logAccessDenied row; revoke → 401 within next token check; CSV/PDF exports complete + downloadable within 5s for 12mo data window.
+
+**Negative tests:** mismatched device fingerprint (different iPad presents same JWT) → 401; expired session bind → 410; non-`workspace_id` route attempt → 404; replay of kiosk JWT after revoke → 401; CSV export of records auditor's workspace doesn't reach → empty (no leak).
+
+**Provenance walk:** issue → `kiosk_sessions` row + `audit_logs.event_kind='kiosk.issued'`; bind → `audit_logs.event_kind='kiosk.bound'` with device_fp_hash; each read → `audit_logs.event_kind='kiosk.api_call'` with workspace_id + endpoint; revoke → `audit_logs.event_kind='kiosk.revoked'`. The whole audit window's activity is traceable to the kiosk_session row.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-14-auditor-kiosk.json`
+
+---
+
+#### 16.4.2 Marquee #15 — Zero-Login Contractor Flow
+
+**Value:** External vendor receives §3.11 magic-link via SMS/email; mobile web view (`<ContractorPortal>`); attach photo + voice close-out + e-sign. No app/password/training/per-seat license. ServiceNow/Nuvolo charge per-seat → most hospitals manage contractors by email + lose audit trail.
+
+**Substrate deps:** §3.11 collaborator_invitations (canon §29.7 audience='collaborator'); §3.12 attachments; §3.6 e-signature; §14.1.6 `<ContractorPortal>` plugin; §14.1.5 `ws_auditor_kiosk` is NOT this — collaborator audience differs from kiosk audience.
+
+**Setup fixtures:** WO routed to vendor "Acme Elevator Co"; coordinator with `identity:collaborator:issue`; vendor contact email + phone in `vendor_contact`; pack-declared `permitted_actions=['view', 'attach_photo', 'add_note', 'sign_closeout']`.
+
+**Golden path:** (1) Coordinator routes WO to vendor; clicks "Invite Vendor". (2) `POST /api/identity/collaborator-invitations` with `scope_collection_id=maintenance_work_order`, `scope_record_id=<WO.id>`, `permitted_actions=[...]`, `delivery_method='email+sms'`. (3) System sends magic-link via email + SMS. (4) Vendor taps link on mobile browser → `<ContractorPortal>` loads. (5) Vendor sees: WO, asset, location, attach photo button, voice memo button, e-sign panel. (6) Vendor attaches 3 photos + voice memo close-out. (7) Vendor e-signs (single signature; collaborator session limits to ≤ 4h post-redeem). (8) System generates `electronic_signatures` row with `signer_user_id=<collaborator_principal>` (system-mapped user for vendor); signature_chains extended. (9) Coordinator gets notified; WF-2 entitlement_intercept transitions to `vendor_completed`. (10) Per-asset `vendor_scorecard` recomputed.
+
+**Assertions:** invite → SMS+email delivery p95 ≤ 30s (operational measure of NotificationService); magic-link redeem → portal load p95 ≤ 3s; single-use redemption (replay → 410); attach photos + sign → all in `signature_chains` with `signer_user_id` resolved to system collaborator principal; vendor cannot access ANY other WO (scope_record_id strictly enforced by §28 evaluator + audience guard).
+
+**Negative tests:** vendor tries to navigate to `/wo/<other_id>` → 403 minimal shape; magic-link redemption attempt 2 → 410; collaborator JWT used after 4h working session expiry → 401; vendor uploads malicious file → §3.12 scan-pipeline quarantines, vendor sees "file rejected"; vendor signature_meaning='closure' but reason_code not seeded → publish refused.
+
+**Provenance walk:** invitation → `collaborator_invitations` row + `audit_logs.event_kind='collaborator.invited'`; redeem → `consumed_at` stamped + JWT issued + `audit_logs.event_kind='collaborator.redeemed'`; each attachment → `attachment_uploads` chain with `collaborator_invitation_id` annotation; close-out signature → `electronic_signatures` + `signature_chains` linking to invitation. Compliance officer can query "every external collaborator action on this asset in the last 12mo" in one click.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-15-zero-login-contractor.json`
+
+---
+
+#### 16.4.3 Marquee #16 — Smart Sprint Batching
+
+**Value:** AVA-proposed Sprints via deterministic clustering (locality × PM proximity × skills × scoring). Each Sprint shows clustering criteria + scoring weights. Auditable. Dispatcher one-tap approves. Post-G6 trained ML refines weights without changing structure.
+
+**Substrate deps:** §3.2 task_projection; §14.1.1 `pm_schedule` + `technician_presence`; §3.15 floor-plan adjacency; AVA deterministic clustering engine; §14.1.6 `<SprintBoard>` plugin.
+
+**Setup fixtures:** 50 open WOs across 4 floors; 8 active techs with `technician_presence` + skill matrix; 12 `pm_schedule` rows due in next 14 days; AVA clustering tool `proposeSprints(scope, technician_id, horizon_minutes)` `trust_state='preview'`.
+
+**Golden path:** (1) Dispatcher opens `<SprintBoard>`. (2) Selects tech "Sarah" + 240-minute window. (3) AVA invokes clustering: (a) cluster 50 open WOs by locality (floor + wing); (b) overlay PMs due in next 14d sharing locality + Sarah's skills; (c) intersect with Sarah's current presence (Floor 4); (d) score by `total_estimated_time × locality_proximity ÷ trips_saved`. (4) Returns proposal: `"Sarah, 4 WOs morning: 3 reactive Floor 4 + 1 HVAC PM Tuesday Floor 4. 95 min, 2 trips saved."`. (5) Dispatcher reviews provenance sheet: clustering criteria + scoring weights + filtered candidates. (6) Dispatcher taps "Apply"; all 4 WOs reassigned to Sarah with linked `dispatch_assignment` rows.
+
+**Assertions:** Sprint proposal compute p95 ≤ 1.2s; deterministic for same fixture inputs + presence state; Sprint card shows clustering criteria + scoring weights (explainability mandate); dispatcher MUST approve (not auto-applied per canon §12 Preview mode).
+
+**Negative tests:** Sarah skill mismatch on candidate WOs → excluded from Sprint with reason; Sarah presence inactive → no Sprint proposed; locality data unavailable for an asset → falls back to wing-level grouping with reduced confidence score; multi-Sprint proposal rejected if any candidate WO already assigned to another tech.
+
+**Provenance walk:** clustering invocation → `ava_proposals` (`synthesis_kind='sprint_proposal'`, factors_jsonb={candidate_wos, clustering_basis, scoring_weights}); approval → bulk `audit_logs.event_kind='wo.assigned'` rows + `dispatch_assignment` rows linking to Sprint proposal_id; dispatcher can query "show me every Sprint approved this week by clustering_basis" via materialized view.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-16-smart-sprint.json`
+
+---
+
+#### 16.4.4 Marquee #17 — Repair-vs-Replace Score
+
+**Value:** Every asset carries Replacement Urgency Score (deterministic rubric: quantitative factors + transparent sentiment from close-out narratives). Every score explainable end-to-end. Maintenance Manager sign-off before forward to Finance. ServiceNow/Nuvolo treat this as a separate "asset analytics" SKU.
+
+**Substrate deps:** §14.1.1 `asset` (cumulative repair cost via `parts_consumption` aggregate) + `warranty` + `vendor_scorecard`; §14.1.1 `asset_pin` + close-out narratives; AVA deterministic sentiment lexicon (pack-shipped); §14.1.6 `<ReplacementUrgencyScore>` plugin; §3.16 `capital_replacement_request` cross-ref.
+
+**Setup fixtures:** asset with 18mo of `parts_consumption` + WO history + 6 `asset_pin` voice notes + 3 close-out narratives with negative sentiment phrases; pack sentiment lexicon (positive/negative phrase library); rubric weights as published constants.
+
+**Golden path:** (1) Maintenance Manager opens `<ReplacementUrgencyScore>` plugin for asset. (2) Engine computes:
+  - Quantitative factors: `cumulative_repair_cost / replacement_cost` (0.42), `MTBF_trend` (declining 15% YoY), `warranty_remaining_days` (60), `downtime_hours_last_180d` (24).
+  - Qualitative factors: lexicon scans close-out narratives + asset_pins for negative phrases; each match credited to a `qualitative_signal_match` row.
+  - Final score: weighted sum, normalized 0-100 → 76.
+(3) UI shows score 76 + provenance sheet: every factor + weight + contribution.
+(4) Maintenance Manager reviews provenance (each lexicon match clickable to source); signs off via §3.6 `signature_meaning='approval'`.
+(5) Score now forwarded to Finance dashboard (cross-pack reference for CFO).
+
+**Assertions:** score compute p95 ≤ 800ms; deterministic for same inputs; every factor + weight shown in provenance; lexicon match attribution clickable to source WO/pin; sign-off creates `electronic_signatures` + `signature_chains` row.
+
+**Negative tests:** asset with < 90d history → score returns "insufficient data" + factors visible (none); lexicon match in regulated/redacted field → ignored (audit notes redacted-skip); manager sign-off without provenance review → blocked (UX guardrail, not security); score above threshold AND no `capital_replacement_request` exists → AVA suggests creating one (per MQ-#27 Active Intercept).
+
+**Provenance walk:** score compute → `ava_proposals` (`synthesis_kind='replacement_urgency_score'`, factors_jsonb=full breakdown + `engine_rule_set_version`); manager sign-off → `electronic_signatures` + `signature_chains`; forward to Finance → `audit_logs.event_kind='replacement_score.forwarded'` with `dest='cfo_dashboard'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-17-repair-replace-score.json`
+
+---
+
+### 16.5 WO-processing views (#18-22)
+
+#### 16.5.1 Marquee #18 — Pivot-Kanban (contextual boards)
+
+**Value:** Dispatcher's Kanban pivotable by state / floor / skill / category / priority. One-tap pivot. Drag-between-columns executes AVA macros (drag to "Electrical" → re-assigns + updates category + writes audit). ServiceNow's VTB groups only by state.
+
+**Substrate deps:** §3.2 task_projection (the data source); §14.1.6 `<PivotKanban>` plugin; AVA macro tool registry (each pivot-column has a registered drag-action macro); §15.1.1 WF-1 transitions invoked by macros.
+
+**Setup fixtures:** 100 WOs in `task_projection` with state/floor/skill/category/priority columns; AVA macros registered: `reassignToElectrician`, `updateCategoryAndReassign`, `escalatePriority`; dispatcher with `wo:update` + `task_projection:read`.
+
+**Golden path:** (1) Dispatcher opens `<PivotKanban>` defaulted to state pivot. (2) Switches pivot via dropdown to "by skill"; columns become `[mechanical, electrical, hvac, plumbing, hazmat]`; WOs regroup in p95 ≤ 600ms (task_projection materialized). (3) Drags WO-1042 (currently in mechanical) to "electrical". (4) AVA macro `updateCategoryAndReassign` invoked: identifies nearest available electrician via §3.15 + presence; reassigns + updates `wo.category='electrical'` + writes `audit_logs.event_kind='wo.recategorized'` with `drag_macro_id`. (5) Card flips to new column; new assignee notified.
+
+**Assertions:** pivot switch p95 ≤ 600ms (task_projection refresh + UI re-render); drag executes macro within 1.5s of release; macro provenance accessible (which AVA tool ran + result); WOs that fail macro guard (no available electrician) → reverted with toast explaining why.
+
+**Negative tests:** drag to invalid column (e.g., to "completed" state) → refused; concurrent drag conflict (two dispatchers move same WO) → first-write-wins + second sees toast; AVA macro fails service-side → revert with structured error.
+
+**Provenance walk:** pivot view materialized from task_projection (no new audit rows); drag macros → `ava_proposals` row with macro_name + factors + result; downstream `wo.update` → `audit_logs` rows tagged with `triggered_by_drag_macro_id`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-18-pivot-kanban.json`
+
+---
+
+#### 16.5.2 Marquee #19 — Dual-Axis Timeline (Asset vs Technician sync)
+
+**Value:** Gantt with two horizontal tracks (techs on top, critical assets on bottom). Drag a PM block → AVA highlights valid tech × asset-window intersections. Eliminates Tetris-with-spreadsheets pain for OR scheduling.
+
+**Substrate deps:** §14.1.1 `pm_schedule` + `maintenance_work_order` (PM blocks); §14.2.1 clinical-maintenance `ehr_context_link` (asset window from EHR scheduling — clinical overlay only); §14.3 facilities calendars; §14.1.6 `<DualAxisTimeline>` plugin.
+
+**Setup fixtures:** clinical overlay installed; 4 techs with shifts + current WOs in timeline range; 6 critical assets (MRI, CT, sterilizers, autoclaves) with availability windows from `ehr_context_link` (read-only, no PHI); 3 PMs scheduled in the range.
+
+**Golden path:** (1) Dispatcher opens `<DualAxisTimeline>` for current week. (2) Sees techs Sarah/Maria/John/Tom (top) + MRI-1/CT-1/CT-2/Sterilizer-A/Autoclave-B/X-ray-1 (bottom). (3) Drags a 4-hour MRI PM block. (4) As dragging: AVA highlights valid intersections in green (tech free + asset-window available). (5) Releases on Tuesday 14:00-18:00; PM block snaps to nearest intersection. (6) `maintenance_work_order` updated with `scheduled_at` + `assigned_technician_id`.
+
+**Assertions:** drag intersection compute p95 ≤ 200ms (intersection set = O(techs × assets) bounded); EHR context resolved as deep-link only (NO PHI displayed); PM block placement triggers WO update via WF-1; conflict on placement (technician already booked) → snap reverts + toast.
+
+**Negative tests:** clinical-maintenance overlay NOT installed → asset-window track shows blanks for clinical-only assets (graceful degrade); EHR context unavailable → asset window shown as "unknown — coordinate manually"; drag to past time → refused.
+
+**Provenance walk:** drag finalization → `audit_logs.event_kind='pm.scheduled_via_timeline'`; if EHR context was consulted → `audit_logs.event_kind='ehr_context.read'` with `ehr_context_link_id` (no PHI in audit).
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-19-dual-axis-timeline.json`
+
+---
+
+#### 16.5.3 Marquee #20 — Triage Deck (Superhuman-style keyboard dispatch)
+
+**Value:** Incoming unassigned WOs presented one-at-a-time as massive card with photo + nurse voice + AVA suggested tech + reasoning. Keyboard-driven: Right=accept, Left=reject, Up=escalate, Down=defer, Number=override. Dispatcher clears 50 in 2 minutes.
+
+**Substrate deps:** §3.2 task_projection (unassigned queue); §3.7 keyboard primitives on web; §14.1.6 `<TriageDeck>` plugin; AVA WO triage tool reusing MQ-#1+#3 structuring.
+
+**Setup fixtures:** 50 unassigned WOs in task_projection; AVA WO triage tool registered; 8 active techs with skills; dispatcher hotkey handlers tested.
+
+**Golden path:** (1) Dispatcher opens `<TriageDeck>`. (2) Card 1: WO photo + nurse voice transcript + AVA's suggested tech "John" + reasoning ("nearest available + skill match + 18-month history with this asset class"). (3) Dispatcher hits Right Arrow → `wo.assigned` to John via WF-1 → card flips to next. (4) Card 2: Dispatcher hits Up Arrow → `priority='critical'` + escalate to manager. (5) Card 3: Dispatcher hits 5 → keyboard-driven tech selector by number; types `5` → tech-5 Maria accepted; flips. (6) Card 4: Dispatcher hits Left Arrow → AVA's suggestion rejected; queue card for more info. (7) Repeats; 50 cards cleared in 2 minutes.
+
+**Assertions:** keypress → next card render p95 ≤ 100ms (intentional UX speed); AVA reasoning shown on every card (no black-box assignment); rejected cards re-queued with rejection reason; deterministic outcome — same fixture input + keypresses produce same final state.
+
+**Negative tests:** AVA suggestion service down → card shows "manual triage required" + tech list; conflict (WO assigned by another dispatcher concurrently) → card refreshed + dispatcher notified; tech selector by number out-of-range → no-op + audio cue.
+
+**Provenance walk:** each card decision → `audit_logs.event_kind='wo.triaged_via_deck'` with `keypress` + `ava_suggestion_id` + `decision`; supports replay of dispatcher's exact actions for training.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-20-triage-deck.json`
+
+---
+
+#### 16.5.4 Marquee #21 — Live Command Map (spatial god-mode)
+
+**Value:** Floorplan/campus map; WOs heat-map dots colored by priority; techs as moving blue dots from `technician_presence`. Lasso-select a cluster + drag to a tech = Major Incident batch assignment in one gesture.
+
+**Substrate deps:** §3.2 task_projection (live queue); §3.15 spatial graph; §3.5 observation stream (real-time presence); §14.1.6 `<LiveCommandMap>` plugin; facilities overlay's `cad_drawing_link` / `ifc_space_link` (for the map source).
+
+**Setup fixtures:** facilities overlay installed with campus map (3 floors loaded); 15 WOs scattered across floors with priorities (5 critical/4 high/6 routine); 8 techs with presence opted-in; lasso + drag gesture handlers tested.
+
+**Golden path:** (1) Maintenance Manager opens `<LiveCommandMap>`. (2) Sees 15 colored dots (red/yellow/blue) + 8 blue moving dots (techs). (3) Identifies cluster: 15 red dots on Floor 3 (burst pipe scenario). (4) Lassos the cluster; UI shows "15 WOs selected". (5) Drags onto nearest tech's blue dot (Maria). (6) Drop triggers AVA macro: "Create Major Incident batch — assign all 15 to Maria?" + estimated time. (7) Manager confirms; macro runs: all 15 `maintenance_work_order` rows get `assigned_technician_id=Maria` + `priority='critical'` + a `major_incident_id` linking them; Maria notified.
+
+**Assertions:** map render p95 ≤ 800ms (3 floors); lasso compute under 100ms; drag-batch macro p95 ≤ 1.5s for 15 WOs; presence updates via WebSocket (p99 latency ≤ 5s); EVERY presence dot for opted-IN techs only (privacy invariant).
+
+**Negative tests:** tech with presence opted-OUT → NOT shown on map; major incident batch refused if any candidate WO is already in `completed` state; map source unavailable → graceful fallback to text-based list.
+
+**Provenance walk:** lasso-drag macro → `ava_proposals` (`synthesis_kind='major_incident_batch'`); confirm → bulk `audit_logs.event_kind='wo.batch_assigned'` rows + new `major_incident_id` row; presence stream → `audit_logs.event_kind='presence.updated'` (low-frequency, opt-in only).
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-21-live-command-map.json`
+
+---
+
+#### 16.5.5 Marquee #22 — Dependency Graph (bottleneck hunting)
+
+**Value:** Complex repairs with inter-trade dependencies (Carpentry → Plumbing → Electrical). Graph view: WOs as bubbles + dependency arrows; AVA computes critical path + badges bottleneck WO in glowing red. Shifts manager from reactive ticketing to proactive bottleneck elimination.
+
+**Substrate deps:** §14.1.1 `work_order_dependency` join collection; §3.15 graph traversal + critical-path algorithm; §14.1.6 `<DependencyGraph>` plugin.
+
+**Setup fixtures:** 12 WOs related to one complex repair; 8 `work_order_dependency` rows (DAG); 3 trades involved (carpentry/plumbing/electrical); AVA critical-path tool registered.
+
+**Golden path:** (1) Maintenance Manager opens `<DependencyGraph>` view for the complex repair. (2) Sees 12 bubbles + 8 arrows; layout via §3.15 graph traversal. (3) AVA computes critical path: identifies that one $15 drywall repair (Carpentry trade) is blocking 3 high-priority plumbing tasks. (4) Critical-path WOs glow red; manager sees clearly: "drywall WO blocks 3 plumbing WOs". (5) Manager clicks bottleneck WO → opens full WO detail. (6) Reassigns to fast-track tech or splits scope to unblock.
+
+**Assertions:** graph render p95 ≤ 700ms; critical-path compute p95 ≤ 400ms for ≤ 100 WO DAG; bottleneck identification deterministic; cycle detection refuses DAG cycle creation at insert-time (per §3.15 G16.2 facilities overlay equivalent: dag=true edge kind).
+
+**Negative tests:** cycle in `work_order_dependency` → critical-path tool refuses; orphan WOs (no deps) → shown isolated; very large DAG (>200 WOs) → AVA suggests sub-graph filter; concurrent dependency edits → row-level conflict resolution.
+
+**Provenance walk:** critical path compute → `ava_proposals` (`synthesis_kind='critical_path'`, factors_jsonb={dag_snapshot, bottleneck_nodes}); manager actions on bottleneck → standard WO audit; pack-validator at install ensures dependency cycles are rejected.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-22-dependency-graph.json`
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
