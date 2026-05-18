@@ -5614,6 +5614,531 @@ The `generic-cmdb-export` adapter is "outbound only" — it pushes data to a cus
 
 ---
 
+## 15. Workflow State-Machine Deep Dives
+
+§14's pack specs gave 1-paragraph summaries per workflow. §15 expands each into the implementation-ready form: full state diagram, per-transition table (from/to/trigger/guard/actor role/side effect/audit event), edge cases, and the fixture path that proves the state machine. **30 workflows total: 18 maintenance-core (§15.1) + 3 clinical (§15.2) + 5 facilities (§15.3) + 4 OT-security (§15.4).**
+
+Each transition row in the per-workflow tables uses a uniform vocabulary:
+
+- **Trigger** — `system_event:<event>` (e.g. `system_event:scheduled_tick`); `user_action:<action>`; `pack_rule:<rule_id>`; `workflow_complete:<other_wf>`.
+- **Guard** — predicate evaluated atomically with the transition; failure rejects with structured error code.
+- **Actor role** — the role required to invoke a user-action trigger; system events have actor `system`.
+- **Side effect** — the deterministic write performed in the same DB transaction as the state flip.
+- **Audit event** — the `audit_logs.event_kind` emitted via `withAudit(...)` (§3.6).
+
+Edge-case bullets cover at minimum: timeout/expiry, concurrent transition contention, partial-failure rollback, and re-entry idempotency. Test fixture paths name the JSON fixtures every implementing PR MUST land alongside the workflow code.
+
+### 15.1 maintenance-core workflows (18 state machines)
+
+#### 15.1.1 WF-1 WO intake/triage (on `maintenance_work_order`)
+
+**Diagram:**
+```
+draft ── submit ──> submitted ── triage ──> triaged ── assign ──> assigned ── start ──> in_progress
+                                                                                │
+                                                                                ├── block ──> blocked ── resume ──> in_progress
+                                                                                └── complete ──> completed
+        ┌── reject (from any pre-in_progress state) ──> rejected
+        └── divert (from triaged) ──> entitlement_intercept (→ WF-2)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| draft | submitted | `user_action:submit` | required fields present | `requester` | task_projection refresh | `wo.submitted` |
+| submitted | triaged | `user_action:triage` | `priority` set | `dispatcher` | — | `wo.triaged` |
+| triaged | assigned | `user_action:assign` | technician has required skills | `dispatcher` | notify technician | `wo.assigned` |
+| triaged | entitlement_intercept | `pack_rule:entitlement_match` | active `service_contract` covers asset+failure | `system` | divert to WF-2 | `wo.diverted_to_vendor` |
+| triaged | rejected | `user_action:reject` | reason_code set | `dispatcher`/`maintenance_manager` | — | `wo.rejected` |
+| assigned | in_progress | `user_action:start` | technician at asset site OR remote-eligible | `assigned_technician` | start SLA timer | `wo.started` |
+| in_progress | blocked | `user_action:block` | block reason set | `assigned_technician` | pause SLA timer; alert dispatcher | `wo.blocked` |
+| blocked | in_progress | `user_action:resume` | block reason resolved | `assigned_technician`/`dispatcher` | resume SLA timer | `wo.resumed` |
+| in_progress | completed | `user_action:complete` | checklist 100% AND closure signature (§3.6) | `assigned_technician` | stop SLA timer; trigger WF-12 | `wo.completed` |
+
+**Edge cases:**
+- SLA expiry while `blocked`: timer remains paused; WF-11 escalation does NOT fire until back in `in_progress`.
+- Concurrent assign attempts on same WO: row-level lock on `task_projection` row; second writer gets 409 with `WO_ALREADY_ASSIGNED`.
+- Re-entry: idempotency on `wo_number` — duplicate submits with same client UUID return existing row.
+- Cancellation post-assignment: must transition through `blocked` first; direct cancel from `in_progress` rejected.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-1-wo-intake-triage.json` (8 happy-path + 6 edge-case scenarios).
+
+---
+
+#### 15.1.2 WF-2 WO triage with entitlement intercept (marquee #23 extension of WF-1)
+
+**Diagram:**
+```
+entitlement_intercept ── ava_resolve ──> entitlement_proposed ── approve ──> vendor_dispatched ── vendor_complete ──> vendor_completed ── close_out ──> human_close_out (→ WF-12)
+                                       │
+                                       └── reject ──> back to WF-1 assigned (internal tech path)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| entitlement_intercept | entitlement_proposed | `system_event:ava_contract_match` | §3.14 confidence ≥ 0.85 AND service_contract active | `system` | persist `ava_proposal_id` | `entitlement.proposed` |
+| entitlement_proposed | vendor_dispatched | `user_action:approve_dispatch` | vendor reachable per recent health check | `dispatcher` | dispatch via vendor API/email | `entitlement.dispatched` |
+| entitlement_proposed | back_to_internal | `user_action:reject_proposal` | rejection reason set | `dispatcher` | transition WO to WF-1 `assigned` | `entitlement.rejected_to_internal` |
+| vendor_dispatched | vendor_completed | `system_event:vendor_callback` OR `user_action:mark_vendor_done` | vendor signature OR signed proof attached | `system`/`dispatcher` | attach evidence_artifact | `vendor.work_completed` |
+| vendor_completed | human_close_out | `user_action:close` | invoice received OR vendor PO closed | `maintenance_manager` | transition to WF-12 | `wo.entitlement_closed` |
+
+**Edge cases:**
+- AVA confidence drift: if §3.14 confidence falls below 0.85 between propose and approve (re-evaluation), require fresh approval.
+- Vendor unreachable: 3 retry attempts at 4h intervals; then auto-divert back to internal via `reject_proposal`.
+- Vendor invoice arrives before vendor_callback: WF-17 invoice reconciliation runs independently; this workflow does NOT block on invoice.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-2-entitlement-intercept.json`.
+
+---
+
+#### 15.1.3 WF-3 WO approval (for high-value orders via §3.16)
+
+**Diagram:**
+```
+awaiting_approval ── transaction_approval.approved ──> approved (→ WF-1 in_progress)
+                  └── transaction_approval.rejected ──> rejected
+                  └── timeout (14d) ──> expired (→ WF-1 cancelled)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| awaiting_approval | approved | `workflow_complete:transaction_approval[approved]` | TransactionApproval.status='approved' (§3.16) | `system` | resume WF-1 in_progress | `wo.approval_granted` |
+| awaiting_approval | rejected | `workflow_complete:transaction_approval[rejected]` | status='rejected' | `system` | notify requester | `wo.approval_denied` |
+| awaiting_approval | expired | `system_event:scheduled_tick + expires_at past` | now() > expires_at AND status='pending' | `system` | mark transaction_approval expired | `wo.approval_expired` |
+
+**Edge cases:**
+- Re-submit after rejection: creates a NEW TransactionApproval; the original audit chain preserves the rejection forever.
+- Approval expires while WO still in `awaiting_approval`: cascades cancel back to WO via system event.
+- Amount changes after approval requested but before decided: requires withdraw + resubmit (§3.16 `withdraw`).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-3-wo-approval.json`.
+
+---
+
+#### 15.1.4 WF-4 PM generation orchestration (on `pm_schedule`)
+
+**Diagram:**
+```
+pending ── due_check ──> due_now ── generate ──> wo_generated ── observation_settled ──> completed
+        └── premature ──> skip
+        generation_failed ──> retry (max 3) ──> wo_generated  OR  ──> failed_permanent (anomaly emitted)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| pending | due_now | `system_event:scheduled_tick` | `next_due_at <= now()` | `system` | — | `pm.due` |
+| due_now | wo_generated | `system_event:generate` | NOT (`last_generated_at` within 1h of `next_due_at`) — idempotency | `system` | INSERT `maintenance_work_order`; update `last_generated_at` | `pm.wo_generated` |
+| due_now | skip | `pack_rule:asset_in_maintenance_pause` | asset.status='maintenance_pause' | `system` | record skip; reschedule | `pm.skipped` |
+| wo_generated | completed | `workflow_complete:wf-12[wo close-out]` | linked WO closed | `system` | reschedule `next_due_at` | `pm.cycle_completed` |
+| due_now | generation_failed | `system_event:exception` | INSERT exception | `system` | log error | `pm.generation_error` |
+| generation_failed | wo_generated | `system_event:retry` | retry_count < 3 | `system` | retry INSERT | `pm.retry_succeeded` |
+| generation_failed | failed_permanent | `system_event:retry` | retry_count >= 3 | `system` | emit anomaly; page on-call | `pm.failed_permanent` |
+
+**Edge cases:**
+- Utilization-trigger PMs (mileage/runtime): idempotency uses `(pm_schedule_id, meter_reading_snapshot)` — same reading does not regenerate.
+- Calendar-trigger overlap with utilization-trigger: whichever fires first; subsequent trigger within 1h is suppressed.
+- Pack-policy `pm_skip_if_open_wo_for_asset`: when set, transition to `skip` if asset has open WO.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-4-pm-generation.json`.
+
+---
+
+#### 15.1.5 WF-5 Calibration signoff (on `inspection` where `inspection_kind='calibration'`)
+
+**Diagram:**
+```
+scheduled ──> in_progress ──> calibration_recorded ──> awaiting_signoff ──> signed_off ──> (cert valid until expiry)
+                                                                       └── rejected_redo ──> in_progress
+                                                                       expired (scheduled tick) ──> expired
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| scheduled | in_progress | `user_action:start` | technician on site | `biomed_engineer`/`calibration_tech` | — | `cal.started` |
+| in_progress | calibration_recorded | `user_action:record_results` | measurement values within instrument range | `biomed_engineer` | INSERT `calibration_certificate` draft | `cal.recorded` |
+| calibration_recorded | awaiting_signoff | `system_event:auto` | traceability_chain populated | `system` | — | `cal.ready_for_signoff` |
+| awaiting_signoff | signed_off | `user_action:sign` | §3.6 fresh WebAuthn AND signature_meaning='verification' | `compliance_officer`/`biomed_committee` | finalize cert; attach §3.12 PDF | `cal.signed_off` |
+| awaiting_signoff | rejected_redo | `user_action:reject` | rejection reason set | `compliance_officer` | clear draft; back to in_progress | `cal.signoff_rejected` |
+| signed_off | expired | `system_event:scheduled_tick` | now() > expires_at | `system` | auto-trigger next calibration PM | `cal.expired` |
+
+**Edge cases:**
+- Multi-witness calibration (FDA Class III): requires 2 signatures with `witness_user_id ≠ signer_user_id` (separation pattern reused from §14.2 WF-OC2).
+- Out-of-tolerance result: state stays in `calibration_recorded` but evaluator marks `requires_adjustment=true`; technician must re-record after adjustment.
+- Asset out-of-service before signoff: transition to `aborted`; audit captures partial measurements.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-5-calibration-signoff.json`.
+
+---
+
+#### 15.1.6 WF-6 Recall remediation (on `recall_response`)
+
+**Diagram:**
+```
+pending ──> in_progress ──> remediated ──> verified ──> closed
+                         └── no_action_required ──> closed
+                         └── failed_remediation ──> escalated
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| pending | in_progress | `user_action:start_remediation` | recall_response.assigned_user_id set | `biomed_engineer`/`maintenance_tech` | — | `recall.started` |
+| in_progress | remediated | `user_action:mark_remediated` | action_kind ∈ {patch, replace, decommission} executed + evidence attached | `biomed_engineer` | INSERT evidence_artifact | `recall.remediated` |
+| remediated | verified | `user_action:verify` | §3.6 signature with `signature_meaning='verification'` | `compliance_officer` | finalize | `recall.verified` |
+| in_progress | no_action_required | `user_action:false_positive` | reason_code set | `biomed_engineer` | mark FP | `recall.false_positive` |
+| in_progress | failed_remediation | `user_action:flag_failure` | reason set | `biomed_engineer` | escalate to manager | `recall.failed` |
+| verified / no_action / failed | closed | `user_action:close` | terminal state | `compliance_officer` | finalize record | `recall.closed` |
+
+**Edge cases:**
+- SLA based on advisory severity: critical=72h, high=7d, medium=30d. SLA breach in `in_progress` triggers anomaly + paging.
+- Multi-asset advisory: one parent recall_response per advisory; one child per affected asset; parent closes only when ALL children verified.
+- Vendor patch delay: extend SLA with documented reason; audit records extension.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-6-recall-remediation.json`.
+
+---
+
+#### 15.1.7 WF-7 FCA review (lite — full version in §14.3 WF-OF1)
+
+**Diagram:**
+```
+scheduled ──> in_progress ──> findings_logged ──> resolved
+```
+
+**Transitions:** simplified — single happy path; defers to §14.3 WF-OF1 when facilities-maintenance overlay installed.
+
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| scheduled | in_progress | `user_action:start` | inspector assigned | `fca_inspector` | — | `fca.started` |
+| in_progress | findings_logged | `user_action:complete_inspection` | findings recorded OR no-findings attestation | `fca_inspector` | — | `fca.findings_logged` |
+| findings_logged | resolved | `user_action:mark_resolved` | every finding has status=resolved OR linked CR request | `facilities_manager` | — | `fca.resolved` |
+
+**Edge cases:** When `facilities-maintenance` overlay installs, this lite version is REPLACED by WF-OF1 (validator G14.2 enforces).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-7-fca-lite.json`.
+
+---
+
+#### 15.1.8 WF-8 Permit-to-work authorization (on `permit_to_work`)
+
+**Diagram:**
+```
+requested ──> hazard_assessed ──> authorized ──> loto_in_progress ──> work_in_progress ──> work_complete ──> loto_removed ──> closed
+                                              └── rejected ──> closed
+                                                                                                          loto_remove_blocked ──> escalated
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| requested | hazard_assessed | `user_action:assess_hazards` | hazard_class set | `safety_officer` | — | `permit.hazard_assessed` |
+| hazard_assessed | authorized | `user_action:authorize` | §3.6 signature `signature_meaning='approval'`; valid_from/valid_until set | `safety_officer`/`maintenance_manager` | INSERT `signature_chains` row | `permit.authorized` |
+| hazard_assessed | rejected | `user_action:reject` | reason_code set | `safety_officer` | — | `permit.rejected` |
+| authorized | loto_in_progress | `user_action:begin_loto` | `valid_from <= now() <= valid_until` | `assigned_technician` | INSERT `loto_step_check` rows | `permit.loto_started` |
+| loto_in_progress | work_in_progress | `user_action:loto_complete` | all `loto_step_check` rows verified + signed | `assigned_technician` | — | `permit.work_started` |
+| work_in_progress | work_complete | `user_action:complete_work` | linked WO completed | `assigned_technician` | — | `permit.work_complete` |
+| work_complete | loto_removed | `user_action:remove_loto` | all LOTO removals signed in reverse order | `assigned_technician` | — | `permit.loto_removed` |
+| loto_removed | closed | `user_action:close` | §3.6 closure signature | `safety_officer` | finalize | `permit.closed` |
+| loto_in_progress | loto_remove_blocked | `system_event:expiry` OR `user_action:emergency_stop` | hazard re-emerged | `safety_officer`/`system` | page emergency | `permit.loto_blocked` |
+
+**Edge cases:**
+- Permit expiry during `work_in_progress`: hard-stop work; require renewal sub-workflow; audit emergency-stop.
+- LOTO step out-of-sequence: validator rejects (sequence enforced).
+- Multiple technicians sharing permit: each must add their own LOTO step_check with their personal lock; permit closes only when all locks removed.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-8-permit-to-work.json`.
+
+---
+
+#### 15.1.9 WF-9 Parts reorder
+
+**Diagram:**
+```
+triggered ──> procurement_proposal_drafted ──> po_generated ──> received ──> stock_updated
+            └── below_threshold_recovered ──> closed_no_action
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| triggered | procurement_proposal_drafted | `pack_rule:reorder_threshold_breach` | `parts_catalog.reorder_threshold` exceeded | `system` | INSERT `procurement_proposal` | `parts.reorder_triggered` |
+| procurement_proposal_drafted | po_generated | `workflow_complete:wf-16[approved_to_po]` | proposal approved | `system` | INSERT `purchase_order` | `parts.po_generated` |
+| po_generated | received | `system_event:receipt_logged` | receipt entry created | `system`/`receiving_clerk` | INSERT `stock_movement` (receive) | `parts.received` |
+| received | stock_updated | `system_event:auto` | stock count incremented | `system` | refresh inventory views | `parts.stock_updated` |
+| triggered | closed_no_action | `system_event:stock_replenished_externally` | on hand > threshold before proposal drafted | `system` | — | `parts.no_action` |
+
+**Edge cases:**
+- Concurrent reorder triggers (multiple meters cross threshold): debounce — one proposal per `(parts_catalog_id, 24h window)`.
+- Vendor lead time exceeded: re-trigger with escalation flag → procurement_proposal with `urgency='high'`.
+- Manual override (someone places PO outside automation): system detects existing PO covering the part and skips automation.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-9-parts-reorder.json`.
+
+---
+
+#### 15.1.10 WF-10 AEM review (lite — full version in §14.2 WF-OC1)
+
+Defers entirely to §14.2 WF-OC1 when clinical-maintenance overlay installed. Lite version supports legacy/industrial-equipment AEM-equivalent decisions (not clinical-regulated).
+
+**Diagram:** `assessed → committee_review → outcome (membership_added | excluded | re_evaluate)`
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-10-aem-lite.json`.
+
+---
+
+#### 15.1.11 WF-11 WO escalation loop (background, on `maintenance_work_order`)
+
+**Diagram:**
+```
+running ──> sla_warning (T-2h) ──> sla_breached (T+0) ──> escalated_to_manager ──> escalated_to_director (T+24h)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| running | sla_warning | `system_event:scheduled_tick` | now() ≥ sla_due_at - 2h | `system` | notify assignee + manager | `wo.sla_warning` |
+| sla_warning | sla_breached | `system_event:scheduled_tick` | now() ≥ sla_due_at | `system` | INSERT runtime_anomaly | `wo.sla_breached` |
+| sla_breached | escalated_to_manager | `system_event:auto` | — | `system` | reassign visibility | `wo.escalated_manager` |
+| escalated_to_manager | escalated_to_director | `system_event:scheduled_tick` | now() ≥ sla_due_at + 24h | `system` | page director | `wo.escalated_director` |
+
+**Edge cases:**
+- WO transitions to `blocked` during escalation: pause escalation timer (per WF-1 §15.1.1 edge case); resume on un-block.
+- Multiple SLA breaches per WO lifecycle (block + resume cycle): each breach gets a fresh audit row.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-11-escalation.json`.
+
+---
+
+#### 15.1.12 WF-12 WO close-out (on `maintenance_work_order`)
+
+**Diagram:**
+```
+completed ──> review ──> closed_final
+                       └── reopened ──> WF-1 in_progress
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| completed | review | `system_event:auto` | checklist 100% AND closure signature present | `system` | enqueue manager review | `wo.review_queued` |
+| review | closed_final | `user_action:close` | cost reconciliation done AND parts_consumption recorded | `maintenance_manager` | finalize task_projection; mark cycle complete | `wo.closed_final` |
+| review | reopened | `user_action:reopen` | reason_code set | `maintenance_manager`/`requester` | revert task_projection | `wo.reopened` |
+
+**Edge cases:**
+- Missing closure signature in `completed`: cannot reach `review` — WF-1 transition guards already enforce.
+- Reopen-storm prevention: re-open count > 3 requires director approval.
+- Parts not reconciled at close: gentle warning; close allowed; flag in monthly variance report.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-12-close-out.json`.
+
+---
+
+#### 15.1.13 WF-13 round_completion_review (on `work_round_session`; marquee #25)
+
+**Diagram:**
+```
+started ──> in_progress ──> observations_streaming ──> completed ──> reviewed
+                                                                    └── reactive_wos_spawned
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| started | in_progress | `user_action:tap_first_asset` | technician assigned | `technician` | start §3.5 observation stream | `round.started` |
+| in_progress | observations_streaming | `system_event:auto` | first observation recorded | `system` | — | `round.streaming` |
+| observations_streaming | completed | `user_action:end_round` | all `round_definition.ordered_asset_ids[]` touched OR explicit "stopping early" reason | `technician` | finalize observations | `round.completed` |
+| completed | reactive_wos_spawned | `pack_rule:auto_rule_20_failed_observation` | any observation `verdict='failed'` | `system` | INSERT `maintenance_work_order` per failure | `round.reactive_wos_spawned` |
+| completed/reactive_wos_spawned | reviewed | `user_action:close_round` | manager review | `dispatcher`/`maintenance_manager` | — | `round.reviewed` |
+
+**Edge cases:**
+- Round abandoned (technician walks away): session times out after 4h idle; auto-transition to `completed` with `stopping_early_reason='timeout'`.
+- Failed observations spawn duplicate WOs: dedup by `(asset_id, failure_kind, 24h window)`.
+- Round NOT taskable: no `task_projection` row written for the session itself; only spawned WOs become tasks (§14.1.1 collection table).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-13-rounds.json`.
+
+---
+
+#### 15.1.14 WF-14 contract_renewal_cycle (on `service_contract`)
+
+**Diagram:**
+```
+active ──(T-90)──> t_90_notified ──(T-30)──> t_30_notified ──(T-7)──> t_7_notified ──(T+0)──> expired
+                                                                                            └── renewed (any pre-expiry transition) ──> active
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| active | t_90_notified | `pack_rule:auto_rule_7` | end_date - 90d = today | `system` | notify maintenance_manager + procurement_manager | `contract.t_90` |
+| t_90_notified | t_30_notified | `pack_rule:auto_rule_8` | end_date - 30d = today | `system` | escalation notification | `contract.t_30` |
+| t_30_notified | t_7_notified | `pack_rule:auto_rule_9` | end_date - 7d = today | `system` | page-on-call notification | `contract.t_7` |
+| t_7_notified | expired | `system_event:scheduled_tick` | now() ≥ end_date | `system` | mark expired; trigger renewal procurement_proposal | `contract.expired` |
+| any (active...t_7_notified) | active (new contract) | `user_action:renew` | new MSA/contract created via WF-16 | `procurement_manager` | link old → new contract | `contract.renewed` |
+
+**Edge cases:**
+- Auto-renewal flag (`auto_renewal=true`): on T+0, automatically extend by 1 year unless explicit cancellation queued.
+- Renewal proposed but not approved before T+0: extend grace period 30d; if still unapproved, lapse to `expired` with `renewal_failed` flag.
+- Mid-cycle modification (rate-card change): new MSA row links to existing contract; original retained for audit.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-14-contract-renewal.json`.
+
+---
+
+#### 15.1.15 WF-15 capital_replacement_review (marquee #27, on `capital_replacement_request`)
+
+**Diagram:**
+```
+proposed ──> director_review ──> approved ──> procurement_proposal_linked ──> asset_decommissioned
+           └── rejected ──> archived
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| proposed | director_review | `pack_rule:active_intercept` | (repair_cost / residual_value) > policy.capital_replacement_threshold (default 0.6) | `system` | notify director | `capr.proposed` |
+| director_review | approved | `workflow_complete:transaction_approval[approved]` | §3.16 `transaction_kind='capital_purchase'` approved | `director` | — | `capr.approved` |
+| director_review | rejected | `workflow_complete:transaction_approval[rejected]` | rejection with reason | `director` | — | `capr.rejected` |
+| approved | procurement_proposal_linked | `pack_rule:auto_rule_21` | — | `system` | INSERT `procurement_proposal` linking to this CR request | `capr.procurement_linked` |
+| procurement_proposal_linked | asset_decommissioned | `workflow_complete:wf-16[approved_to_po]` AND `system_event:replacement_received` | new replacement asset commissioned + old asset marked decommissioned | `system` | flip `asset.status='decommissioned'`; cascade pm_asset_assignment deactivation | `capr.completed` |
+
+**Edge cases:**
+- Replacement not received within 90d of approval: trigger escalation + emit anomaly.
+- Old asset has open WOs at decommission time: refuse decommission until WOs closed OR transferred to replacement.
+- Multi-asset replacement (fleet replacement): single capr; multiple linked procurement_proposals; decommission cascade per item.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-15-capital-replacement.json`.
+
+---
+
+#### 15.1.16 WF-16 procurement_proposal_approval (marquee #28, on `procurement_proposal`)
+
+**Diagram:**
+```
+proposed ──> reviewed ──> approved_to_po ──> po_generated ──> closed
+                       └── rejected ──> archived
+                       └── partial_approve ──> reviewed (looped until all lines decided)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| proposed | reviewed | `user_action:start_review` | proposal opened | `procurement_manager` | — | `proc.review_started` |
+| reviewed | approved_to_po | `user_action:approve_all` | all lines marked accepted; §3.6 signature `signature_meaning='approval'` | `procurement_manager` | — | `proc.approved_all` |
+| reviewed | partial_approve | `user_action:approve_some_skip_others` | at least one line accepted, at least one skipped | `procurement_manager` | mark skipped lines as `skipped` | `proc.partial_approve` |
+| reviewed | rejected | `user_action:reject_all` | reason_code set | `procurement_manager` | — | `proc.rejected` |
+| approved_to_po | po_generated | `system_event:auto` | accepted lines have valid vendor + parts | `system` | INSERT `purchase_order` per vendor grouping | `proc.po_generated` |
+| po_generated | closed | `system_event:po_received_or_closed` | linked PO reaches terminal state | `system` | — | `proc.closed` |
+
+**Edge cases:**
+- AVA confidence varies per line: lines below confidence threshold get visual cue requiring explicit per-line action; "approve all" still requires reviewer to acknowledge low-confidence lines.
+- Vendor unavailable post-approval: line marked `vendor_unavailable_replanned`; reviewer re-routes to alternate vendor.
+- Currency mismatch with cost center: validator catches at draft time.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-16-procurement-proposal.json`.
+
+---
+
+#### 15.1.17 WF-17 vendor_invoice_reconciliation (marquee #29, on `vendor_invoice`)
+
+**Diagram:**
+```
+received ──> ai_reconciled ──> matched ──> approved ──> paid
+                            └── discrepancy_flagged ──> human_review ──> approved
+                                                                       └── rejected ──> disputed
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| received | ai_reconciled | `pack_rule:auto_rule_17` | invoice PDF uploaded + parsed | `system` | extract line items; cross-ref MSA + time_on_site + parts_consumption | `inv.ai_reconciled` |
+| ai_reconciled | matched | `system_event:auto` | variance_cents ≤ tolerance | `system` | INSERT `three_way_match_record` (§3.16) | `inv.matched` |
+| ai_reconciled | discrepancy_flagged | `system_event:auto` | variance > tolerance | `system` | enqueue human review | `inv.discrepancy` |
+| matched | approved | `system_event:auto` | three_way_match success | `system` | — | `inv.approved` |
+| discrepancy_flagged | human_review | `user_action:claim` | AP clerk assigned | `ap_clerk` | — | `inv.review_claimed` |
+| human_review | approved | `user_action:approve_with_reason` | variance_reason_code_id set + §3.6 signature | `ap_clerk`/`controller` | — | `inv.approved_with_variance` |
+| human_review | rejected | `user_action:reject` | reason set | `ap_clerk`/`controller` | — | `inv.rejected` |
+| rejected | disputed | `user_action:open_dispute` | dispute reason set | `ap_clerk` | notify vendor | `inv.disputed` |
+| approved | paid | `system_event:payment_executed` | payment system callback | `system` | mark paid | `inv.paid` |
+
+**Edge cases:**
+- Multi-PO invoice (one invoice covering multiple POs): split invoice into per-PO three_way_match attempts; partial match permitted.
+- Duplicate invoice number: dedup at `received` — second attempt returns existing row.
+- Currency conversion: invoice in foreign currency; system converts to base; variance computed in base currency; tolerance applied in base.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-17-invoice-recon.json`.
+
+---
+
+#### 15.1.18 WF-18 fleet_telematics_to_pm (marquee #30)
+
+**Diagram:**
+```
+threshold_breached ──> pm_schedule_consulted ──> wo_generated ──> linked_pm_complete
+                                              └── no_pm_matches ──> ignored
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| threshold_breached | pm_schedule_consulted | `system_event:observation_alert` | observation kind=mileage AND value > pm_schedule.meter_threshold | `system` | resolve pm_schedule | `fleet.threshold_breached` |
+| pm_schedule_consulted | wo_generated | `system_event:auto` | matching utilization-trigger pm_schedule exists AND `last_generated_at` snapshot mismatch | `system` | INSERT WO via WF-4 path | `fleet.wo_generated` |
+| pm_schedule_consulted | ignored | `system_event:auto` | no matching pm_schedule | `system` | — | `fleet.no_pm_match` |
+| wo_generated | linked_pm_complete | `workflow_complete:wf-12` | linked WO closed | `system` | record meter snapshot for next idempotency | `fleet.cycle_complete` |
+
+**Edge cases:**
+- Mileage observation arrives during WO open for the same threshold: idempotency suppresses duplicate WO.
+- Negative mileage delta (meter rollover): WF-4 PM generation rules handle; this workflow trusts §3.5 anomaly detection.
+- OBD2 adapter feed interruption: gaps detected; fleet manager notified; PM cadence preserved by calendar fallback.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-18-fleet-telematics.json`.
+
+---
+
+#### 15.1.19 WF-19 asset_import_commissioning (marquee #33) — delegates to §3.17 import_batch state machine
+
+WF-19 is a thin pack-side wrapper around §3.17 `import_batch` (states: ingested → normalizing → reviewable → publishing → published | rolled_back | abandoned). The maintenance-core pack supplies the AVA normalization tool (`asset_csv_normalizer`) that maps source rows to `asset` + `asset_meter` writes. Refer to §13.18 PR-breakdown for the underlying primitive state machine; the pack adds:
+
+- **Pack-specific guard**: `reviewable → publishing` requires every row's `ava_normalized_payload.asset_type_id` resolves to an existing seeded `asset_type` row (validator G14-asset-import). Unrecognized types fail the per-row check and the batch cannot publish until rows are accepted/rejected.
+- **Pack-specific side effect**: on `publishing → published`, the pack writes BOTH `asset` rows AND `asset_meter` rows derived from the normalized payload's meter columns (mileage/runtime/etc.).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-19-asset-import.json`.
+
+---
+
+#### 15.1.20 WF-20 key_revocation_on_termination (marquee #35)
+
+**Diagram:**
+```
+hr_termination_event ──> open_key_assignments_enumerated ──> per_key: unrecovered_key_flag_created ──> per_key: recovery_wo_dispatched ──> per_key: recovered | per_key: escalated_to_lock_change
+```
+
+**Transitions (per `unrecovered_key_flag`):**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| (NEW) | flag_created | `pack_rule:auto_rule_15` | `users.status → terminated` AND open key_assignment for user | `system` | INSERT `unrecovered_key_flag`; INSERT `recovery_wo` | `key.flag_created` |
+| flag_created | recovery_in_progress | `user_action:dispatch_recovery` | recovery WO assigned | `security_officer` | — | `key.recovery_dispatched` |
+| recovery_in_progress | recovered | `user_action:confirm_recovery` | key physically returned AND §3.6 signature | `security_officer` | `key_assignment.status='recovered'`; close recovery WO | `key.recovered` |
+| recovery_in_progress | escalated_to_lock_change | `system_event:scheduled_tick` | now() > flag_created_at + policy.escalation_days (default 7) | `system` | trigger lock-change procurement workflow | `key.escalated` |
+
+**Edge cases:**
+- Master key unrecovered: cascade impact — every lock the master_key opens is flagged; bulk rekey procurement workflow auto-created.
+- Recovery during escalation: cancel escalation, mark recovered, audit both events.
+- Multiple keys held by terminated user: one flag per key; recovery handled in parallel; security_officer sees grouped view.
+- False-positive termination (rehired): admin reverses `users.status='terminated'` within grace window → cascading flag retraction (with audit retention).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-20-key-revocation.json`.
+
+---
+
+**§15.1 summary:** All 18 maintenance-core workflows specified with full state diagrams, per-transition tables (uniform vocabulary: trigger/guard/actor/side-effect/audit event), edge cases, and fixture paths. Every taskable transition that closes a record requires a §3.6 closure signature; every SLA-breach transition emits a runtime_anomaly + audit row; every cross-pack invocation (WF-15 → WF-16, WF-9 → WF-16, WF-17 → §3.16) uses `workflow_complete:<other_wf>` triggers for explicit cross-workflow coupling.
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -5643,6 +6168,12 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ `clinical-maintenance` overlay — 12 collections, 3 workflows, 6 automation rules, 3 plugins, 4 integrations. ~8 PRs. **Spec at §14.2.**
 - ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
 - ✅ `ot-security-maintenance` overlay — 6 collections, 4 workflows, 5 automation rules, 3 plugins, 5 integrations, 1 workspace. ~10 PRs. **Spec at §14.4.**
+
+**Workflows (30 total, 18 of 30 deep dives specified ✅):**
+- ✅ 18 maintenance-core workflows (WF-1 through WF-20, with WF-7 + WF-10 as lite versions). **Deep dives at §15.1.**
+- 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). Pack-summary at §14.2.2; deep dive pending §15.2.
+- 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). Pack-summary at §14.3.2; deep dive pending §15.3.
+- 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing). Pack-summary at §14.4.2; deep dive pending §15.4.
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
 - `facilities-maintenance` — 14 collections, 5 workflows, 7 plugins, 4 integrations. ~10 PRs.
 - `ot-security-maintenance` — 6 collections, 4 workflows, 3 plugins, 5 integrations, 1 workspace. ~10 PRs.
