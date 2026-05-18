@@ -6556,6 +6556,114 @@ ot_vulnerability_opened + upcoming_pm_for_same_asset_exists ──> ava_proposes
 
 ---
 
+## 16. Marquee End-to-End Specifications
+
+§5.1 enumerated 35 marquees as one-paragraph value statements. §16 expands each into implementation-ready form: substrate dependencies (§3.X + §14.X + §15.X cross-refs), setup fixtures, golden-path E2E with numbered assertions, negative tests, metric assertions (latency budget + audit row counts + signature_chains extension), provenance walk, fixture path. Each marquee pins a user-perceivable latency budget and an audit-trail commitment.
+
+Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#6-9), connected-network (#10-13), systemic differentiators (#14-17), WO-processing views (#18-22), category resets (#23-26), back-office reinventions (#27-30), edge reinventions (#31-35).
+
+### 16.1 AI marquees (#1-5)
+
+#### 16.1.1 Marquee #1 — Voice WO capture + AVA structuring
+
+**Value:** Tap-mic-speak-submit beats Nuvolo's 7-form-field WO intake; AVA structures with full provenance.
+
+**Substrate deps:** §3.8 Suggest-mode; §3.14 asset+location resolution; §3.7 mobile + `<RecordVoiceButton>` + `<WoConfirmationCard>`; §14.1.1 `maintenance_work_order`; §15.1.1 WF-1 target `submitted`.
+
+**Setup fixtures:** technician with `wo:create`; 5 assets (incl. pump 4521 UDI match); 3 locations (incl. Room 312); AVA tool `transcribeAndStructureWoVoiceCapture` `trust_state='suggest'`; §3.12 audio retention 90d.
+
+**Golden path:** (1) Tech taps `<RecordVoiceButton>` 4s → voice memo to §3.12. (2) AVA transcribes `"Infusion pump 4521 in room 312 is alarming..."`. (3) Structured: `asset_id=<pump_4521.id>` (UDI 0.97), `location_id=<room_312.id>`, `category='display_alarm'`, `priority='high'`. (4) `<WoConfirmationCard>` shows draft + per-field confidence. (5) Submit → WF-1 `submitted`.
+
+**Assertions:** voice → confirmation card p95 ≤ 4s; idempotent on `client_idempotency_uuid`; 1 `ava_proposals` (`synthesis_kind='wo_voice_structure'`); 1 `evidence_artifacts`.
+
+**Negative tests:** no recognizable asset → manual selection; silence < 1s → no row; network drop → §3.7 queue; AVA timeout > 10s → manual fallback.
+
+**Provenance walk:** voice → `attachment_uploads`+`evidence_artifacts`; transcription → `ava_proposals`; submit → `maintenance_work_orders` + `task_projection` refresh + `audit_logs.event_kind='wo.submitted'` linking `ava_proposals.id`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-01-voice-wo-capture.json`
+
+---
+
+#### 16.1.2 Marquee #2 — "Invisible Manual" (AVA-native troubleshooting)
+
+**Value:** AVA dynamically synthesizes inline troubleshooting checklist from ingested service manual — not text. ServiceNow/Nuvolo AI cannot orchestrate UI components.
+
+**Substrate deps:** §3.8 transient `FormDefinition`; canon §11 document AI; §3.14 manual-passage retrieval; §3.7 mobile + `<ChecklistRunner>`; §3.6 per-step signatures when verification required; WF-1 `in_progress`.
+
+**Setup fixtures:** WO `in_progress` on Baxter Sigma Spectrum pump; pump's 200-page service PDF ingested + chunked into pgvector; AVA tool `synthesizeTroubleshootingChecklist` `trust_state='execute'`; §3.14 `vector_index_entry` per chunk.
+
+**Golden path:** (1) Tech opens WO mobile, taps mic, `"AVA, what does Error Code E-42 mean on a Baxter Sigma Spectrum?"`. (2) §3.14 vector returns top-3 chunks. (3) AVA invokes synthesis tool; emits 6-item `FormDefinition`. (4) Validator synthesis-mode passes (≤20 fields, ≤depth 3, vocabulary check). (5) `<ChecklistRunner>` renders inline. (6) Outcomes stamped into `ava_proposals.synthesized_form_def`.
+
+**Assertions:** voice → first item p95 ≤ 3s; validator no errors; 1 `ava_proposals` (`validator_passed=true`); checklist NOT persisted to `metadata.form_definitions`; manual-passage citations per step.
+
+**Negative tests:** no ingested manual → "no manual available", suggest `<BarcodeScanner>`; non-primitive → `SYNTHESIS_INVALID_PRIMITIVE`; > 20 fields → `SYNTHESIS_FIELD_CAP_EXCEEDED`; mobile-ineligible on sync-eligible collection → refused.
+
+**Provenance walk:** transcription → `ava_proposals` (kind='troubleshooting_checklist'); each step → `audit_logs` row with step_index + outcome + `vector_index_entry.id`; verification steps additionally write `electronic_signatures`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-02-invisible-manual.json`
+
+---
+
+#### 16.1.3 Marquee #3 — "Walk-by" frictionless nurse intake
+
+**Value:** Nurse scans QR + voice memo + walks away. No login, no portal. AVA triages + routes to biomed. Nuvolo/ServiceNow licensing makes this expensive.
+
+**Substrate deps:** §3.9 public intake (signed-token, canon §29.2 kid); §3.12 attachment; §3.8 AVA structured extraction; §3.14 vector; §15.X public_intake processor; §14.1.1 `maintenance_work_order`.
+
+**Setup fixtures:** active `public_intake_tokens` scoped to `asset=infusion_pump_4521`, `purpose='walkby_nurse_intake'`; pack `public_intake.schemas[]`; AVA voice-triage tool; §3.12 voice retention 30d.
+
+**Golden path:** (1) Nurse scans QR → `/p/<tokenCode>`. (2) Page: "Hold to record" + asset photo. (3) Holds, says `"Screen is frozen and it keeps beeping"`, releases. (4) `POST /attachment-url` → presigned S3 URL. (5) Browser uploads audio direct to S3. (6) `POST /submit` with `{clientIdempotencyUuid, payload, attachments}`. (7) Response: `{submissionCode}` ONLY. (8) `PublicIntakeProcessor` awaits scan-clean; AVA voice-triage. (9) Returns `category='display_alarm'`, `priority='medium'` (life_support designation tunes), `suggested_assignee_group='biomed'`. (10) Worker dispatches under system principal `intake:dispatch:walkby_nurse_intake`; creates WO. (11) Maria sees WO within projection lag (< 2s).
+
+**Assertions:** QR scan → response p95 ≤ 1.5s (audio upload async); response ONLY `submissionCode` (zero operational data leak asserted); WO appears p95 ≤ 8s of scan-clean; `use_count` incremented atomically.
+
+**Negative tests:** expired/revoked → 410 generic; rate-limit 101/min/IP_hash → 429 + `RuntimeAnomaly`; AV scan dirty → `outcome='refused_scan_failed'`; `use_count > max_uses` → 410.
+
+**Provenance walk:** issuance → `public_intake_tokens`; submission → `public_intake_submissions` (ip_hash + ua_hash); voice → `evidence_artifacts`; AVA triage → `ava_proposals`; WO → `audit_logs.event_kind='wo.submitted'` with `triggered_by_intake_submission_id`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-03-walkby-nurse-intake.json`
+
+---
+
+#### 16.1.4 Marquee #4 — Deterministic parts staging
+
+**Value:** Tech sees "Part reserved in Bin B4" BEFORE leaving desk. Explainable rules (frequency × recency × keyword match) — NOT trained ML. Post-G6 ML refines on SAME explainable substrate.
+
+**Substrate deps:** §3.14 vector (asset model + symptom keywords → parts); §14.1.1 `parts_consumption` history; §14.1.1 `parts_requisition` taskable; AVA deterministic rules engine.
+
+**Setup fixtures:** 5 `parts_catalog` rows (incl. controller_board_bxsigma_v3, on_hand=8); 50 historical `parts_consumption` rows on Sigma Spectrum pumps over 18mo; 1 incoming WO with asset_id + symptom keywords.
+
+**Golden path:** (1) Worker pipeline post-submission receives `(wo_id, asset_id, symptom_keywords)`. (2) Engine queries: `parts_consumption` for asset_class last 365d ranked by frequency; symptom cross-ref via §3.14 vector; recency weight. (3) Score = `frequency × recency × keyword_match`; > 0.85 AND `on_hand ≥ 1` qualifies. (4) Engine writes `parts_requisition` (`source='ava_deterministic_staging'`); atomic decrement `inventory_lot.quantity_on_hand`. (5) Mobile renders "Part reserved in Bin B4". (6) Click → `<ProvenanceSheet>` shows ranking factors + 3 historical WOs.
+
+**Assertions:** staging p95 ≤ 600ms; quantity=1 atomically reserved; provenance accessible; `engine_rule_set_version` on proposal.
+
+**Negative tests:** score < 0.85 → no reservation; on_hand = 0 → offer `<PartFinder>` MQ-#10; ambiguous (3+ tied) → top-3 for tech choice; no history → no reservation.
+
+**Provenance walk:** invocation → `audit_logs.event_kind='parts_staging.invoked'`; results → `ava_proposals` (`synthesis_kind='deterministic_parts_recommendation'`, `engine_rule_set_version`); reservation → `parts_requisitions` + `audit_logs.event_kind='req.created'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-04-deterministic-parts.json`
+
+---
+
+#### 16.1.5 Marquee #5 — "Break-Glass" PHI access
+
+**Value:** 10-min unmask with reason code + fresh WebAuthn; auto-revoke; HIPAA-auditable. ServiceNow/Nuvolo ACLs static.
+
+**Substrate deps:** §3.10 break-glass; §3.6 e-signature; §3.7.5.1 re-auth 'responsibility' (WebAuthn); §14.2.1 `ehr_context_link` hard-deny class; `BreakGlassRevokerService`; maintenance-core `maintenance_work_order.patient_context`.
+
+**Setup fixtures:** WO #1042 with `patient_context` (`break_glass_eligible=true`, `confidentiality_class='sensitive'`); value `"Airborne Isolation — N95 Required, Room 312 — VRE precautions"` (masked); tech with `compliance:break_glass:request`; WebAuthn enrolled; reason code `clinical_maintenance__break_glass_emergency_repair`.
+
+**Golden path:** (1) Tech opens WO; `patient_context` masked. (2) Tech taps `<BreakGlassButton>`; sheet for reason_code + WebAuthn. (3) Selects "Emergency Repair"; TouchID. (4) POST `/api/compliance/break-glass/grants`. (5) Three-stage check: hard-deny ✓ eligibility ✓ row visibility ✓. (6) Fresh WebAuthn < 60s ✓; reason_code 'break_glass' meaning ✓. (7) Inside `withAudit`: `electronic_signatures` + `signature_chains` + `field_unmask_grants` (granted_until = now() + 600s); cache-bust. (8) Response `{grantId, grantedUntil}`. Re-fetch; evaluator stage-2 ALLOW; unmasked. (9) After 600s: revoker stamps OR evaluator fail-safe.
+
+**Assertions:** tap → unmasked p95 ≤ 2s (WebAuthn dominates); exactly 1 `field_unmask_grants` + 1 `electronic_signatures` + 1 `signature_chains` row per grant; after 600s: masked again; HIPAA query via `ix_fug_active`.
+
+**Negative tests:** `unrelated_patient_context` hard-deny → `BREAK_GLASS_PROPERTY_INELIGIBLE` (admin cannot override); stale WebAuthn → `WEBAUTHN_STALE`; no row visibility → §28 403; reason code wrong meanings → refused; duration > 3600s → clamped.
+
+**Provenance walk:** tap → `audit_logs.event_kind='break_glass.requested'`; WebAuthn → `audit_logs.event_kind='webauthn.verify_ok'`; grant → `field_unmask_grants` + `electronic_signatures` + `signature_chains`; each read → `audit_logs.event_kind='field_access.unmasked'` with `grant_id`; auto-revoke → `audit_logs.event_kind='grant.auto_revoked'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-05-break-glass-phi.json`
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
