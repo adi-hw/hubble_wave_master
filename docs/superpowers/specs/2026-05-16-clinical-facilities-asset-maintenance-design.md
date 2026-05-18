@@ -7184,6 +7184,115 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
+### 16.8 Edge reinventions (#31-35)
+
+#### 16.8.1 Marquee #31 — Semantic Recall Quarantine
+
+**Value:** ServiceNow/Nuvolo do dumb text-matching → recalls miss matches on messy data (typos, model variants, rebrandings). HubbleWave: AVA vector-search semantic similarity against asset metadata; "Philips Model X" matches "Philps Mod-X" with confidence scores. Confidence >0.85 auto-quarantine + recall_response; 0.70-0.85 surface for biomed confirm; <0.70 notification only.
+
+**Substrate deps:** §3.14 vector match (semantic similarity); §14.2.1 `ecri_recall` + `recall_response` (clinical overlay); §15.2.3 WF-OC3 ecri_advisory_response; §14.1.6 `<SemanticRecallMatchBoard>` plugin.
+
+**Setup fixtures:** clinical overlay installed; 200 medical-device assets with varying spelling of "Philips Model X" (4 variants); ECRI recall just published: `"Philips Model X infusion pumps — Class II"`; §3.14 `vector_index_entry` pre-built for asset metadata.
+
+**Golden path:** (1) ECRI feed adapter ingests recall → `ecri_recall` row. (2) WF-OC3 `ecri_advisory_received → asset_query_run`. (3) AVA invokes §3.14 vector search over asset corpus for semantic similarity to recall description. (4) Returns ranked matches: `[asset_4521 (0.94), asset_4527 (0.91), asset_4513 (0.78), asset_4509 (0.65)]`. (5) Confidence >0.85 (assets 4521, 4527) → auto-tag "Do Not Use — Active Recall" + auto-spawn `recall_response` taskable rows; dispatcher to biomed group. (6) Confidence 0.70-0.85 (asset 4513) → surface on `<SemanticRecallMatchBoard>` for biomed engineer one-tap confirm. (7) Confidence <0.70 (asset 4509) → notification only; no auto-action. (8) Biomed engineer confirms asset 4513 (sees it IS a Model X variant) → adds to recall_response queue.
+
+**Assertions:** vector match compute p95 ≤ 1.5s for 200 assets; confidence bands consistent with §3.14 thresholds; auto-quarantine writes `do_not_use_banner` flag on mobile app; biomed-confirmed matches join recall_response queue with `confidence_at_match` recorded.
+
+**Negative tests:** zero matches above any threshold → no action + advisory marked `no_assets_affected`; manufacturer dispute (recall withdrawn) → cascade-cancel all recall_response rows + WF-OC3 transitions to `superseded`; AVA service down → fallback to keyword match (degraded mode noted in audit).
+
+**Provenance walk:** vector search → `ava_proposals` (`synthesis_kind='semantic_recall_match'`, factors_jsonb=ranked candidates with confidence + matched terms); auto-quarantine → `audit_logs.event_kind='asset.recall_quarantined'` with `recall_id` + `confidence_at_match`; biomed confirms → `audit_logs.event_kind='recall.human_confirmed'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-31-semantic-recall.json`
+
+---
+
+#### 16.8.2 Marquee #32 — Graph-Native Reverse Calibration Traceability (Analyzer Blast Radius)
+
+**Value:** Fluke Analyzer goes out of tolerance → every patient monitor it calibrated in last 6 months potentially has bad readings. ServiceNow/Nuvolo report-builders make this nightmarish; HubbleWave's observation substrate makes it a one-click query. Compliance officer's worst nightmare becomes 30-second query.
+
+**Substrate deps:** §3.15 graph traversal + blastRadius; §14.2.1 `calibration_certificate` + `inspection` (each calibration writes both an inspection row AND a graph edge `instrument_calibrated_asset`); §14.1.6 `<AnalyzerBlastRadiusBoard>` plugin in `ws_biomed_engineer`; mass `recall_response` cascade.
+
+**Setup fixtures:** clinical overlay installed; Fluke Analyzer asset with 500 historical calibrations in last 6 months; §3.15 `relationship_edge` rows with `edge_kind='instrument_calibrated_asset'` linking Fluke → 500 patient monitors; Fluke just went out of tolerance during its own self-calibration.
+
+**Golden path:** (1) Fluke calibration certificate flags `requires_adjustment=true` (per §15.1.5 WF-5 edge case). (2) Biomed engineer opens Fluke's asset detail. (3) Clicks "Blast Radius — Analyze impact". (4) `<AnalyzerBlastRadiusBoard>` invokes §3.15 blastRadius(startNode=Fluke, edge_kind='instrument_calibrated_asset', depth=1, time_window=180d). (5) Returns 500 patient monitor assets touched in last 6 months. (6) Bulk action: "Suspend clinical status on all"; `<DoNotUseBanner>` flag flips on each; reactive `maintenance_work_order` (re-calibrate) auto-generated for each. (7) Total: 1 query + 1 bulk action + 500 reactive WOs + 1 high-severity audit row.
+
+**Assertions:** blastRadius compute p95 ≤ 1.5s for 500-node neighborhood; bulk suspend writes 500 asset.status updates + 500 reactive WOs in ONE transaction; `<DoNotUseBanner>` flag visible on mobile within 8s; signature_chains records mass-suspend as single high-severity decision.
+
+**Negative tests:** edge data missing for some calibrations → those assets surface with "unknown calibration source" flag rather than silent omission; bulk-suspend without §3.6 signature → blocked; concurrent biomed engineer running blast radius → second sees first's results.
+
+**Provenance walk:** blastRadius → `ava_proposals` (`synthesis_kind='blast_radius_query'`, factors_jsonb=traversal_path + matched_nodes); bulk suspend → `audit_logs.event_kind='asset.mass_suspended'` with `triggered_by_fluke_id` + `affected_asset_count`; 500 reactive WOs → bulk WF-1 audit chain; one high-severity AccessAuditPort.logSecurityEvent.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-32-analyzer-blast-radius.json`
+
+---
+
+#### 16.8.3 Marquee #33 — AVA Auto-Commissioning (Capital Project Handover)
+
+**Value:** Contractor hands facilities a messy 5,000-row Excel after construction. ServiceNow/Nuvolo customers spend 6 months on manual entry. HubbleWave: drag-drop spreadsheet → AVA normalizes (naming conventions, asset_type categorization, location inference) → reviewable grid → bulk publish. The 6-month commissioning lag disappears.
+
+**Substrate deps:** §3.17 import primitive (`import_batch` + `import_row`); §14.1.1 `asset_import_batch` (thin alias over §3.17); §15.1.19 WF-19 asset_import_commissioning; §14.1.6 `<AssetImportWizard>` plugin; AVA spreadsheet normalization tool reusing canon §11 document AI.
+
+**Setup fixtures:** facilities manager with `import:batch:ingest` + `import:batch:publish`; 5,000-row sample CSV with varying column names + naming inconsistencies; AVA tool `asset_csv_normalizer` registered (pack maintenance-core); existing asset_type taxonomy + location codes seeded.
+
+**Golden path:** (1) Facilities manager drag-drops CSV into `<AssetImportWizard>`. (2) Upload via §3.12 storage → `import_batch` row created in `status='ingested'`. (3) Worker invokes `ImportNormalizationProcessor`. (4) For each row, AVA normalizer runs: maps column variants ("HVAC-1A" / "hvac_1a" / "HVAC#1A" → standardized); categorizes asset_type (e.g., "Variable Refrigerant Volume System" → `asset_type='hvac_vrv'`); infers location_id from heuristics (column headers + value patterns); writes `ava_normalized_payload` + `ava_confidence_per_field`. (5) Batch transitions `normalizing → reviewable`. (6) Manager opens review grid; sees per-row AVA confidence; corrects 50 ambiguous rows. (7) Taps "Publish All Accepted" → WF-19 transitions `reviewable → publishing → published` in ONE DB transaction. (8) 4,950 `asset` rows + 4,950 `asset_meter` rows created (per WF-19 pack-specific side effect). (9) Atomic publish: all-or-nothing; if any row fails, ALL roll back. (10) 24h rollback window per §3.17.
+
+**Assertions:** normalization compute for 5,000 rows p95 ≤ 5 minutes (async, batched); review grid render p95 ≤ 2s; publish operation atomic (verified by partial-failure injection test); rollback within 24h works (per §3.17 customer policy override).
+
+**Negative tests:** asset_type unmappable for some rows → flagged as `requires_review`; bulk publish refused if any row `status='pending'` → `UNREVIEWED_ROWS_EXIST`; concurrent publish by two facility managers → second blocked at `import_batch.status='publishing'` lock; rollback past 24h → `ROLLBACK_WINDOW_EXPIRED`.
+
+**Provenance walk:** CSV → `evidence_artifacts` (the raw file retained); each row's normalization → `ava_proposals` (`synthesis_kind='asset_csv_normalize'`, per-row `factors_jsonb`); publish → `audit_logs.event_kind='import_batch.published'` + per-row `audit_logs.event_kind='asset.commissioned_via_import'` with `import_batch_id`; rollback (if used) → high-severity audit per §3.17.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-33-auto-commissioning.json`
+
+---
+
+#### 16.8.4 Marquee #34 — Joint Commission EoC Auditor Proof (extension of #14)
+
+**Value:** Auditor Kiosk gets a Live Operational Canvas mode for Joint Commission EoC audit. Tap any room → see every PM done in that room + every inspection with **Merkle root hashes** from `signature_chains` for each. Tap fire-door → signed inspection row + Merkle proof binding to chain head. Cryptographic proof, not screenshots of PDFs.
+
+**Substrate deps:** MQ-#14 Auditor Kiosk (kiosk session); §14.3.7 `<LiveOperationalCanvas>` (Floor plan WebGL); §3.6 signature_chains (Merkle batch from §13.7 batched signing); §3.15 graph; clinical+facilities overlays.
+
+**Setup fixtures:** kiosk session for auditor; 200 inspections in last 6mo across 50 rooms; each inspection signed via §3.6 Merkle batch (auditor can inspect 50 inspections under one root); fire-door inspection example with cryptographic chain.
+
+**Golden path:** (1) Auditor's iPad in `ws_auditor_kiosk` audience='kiosk'. (2) Switch to "EoC Audit" mode (registered as plugin in `ws_auditor_kiosk`). (3) Floor plan renders with PM-completion heat overlay (color = days since last PM per room). (4) Auditor taps Room 312. (5) Workspace shows: 3 PMs completed last 6mo + 2 inspections (fire door + life-safety device). (6) Auditor taps fire-door inspection row. (7) Sees: inspector_user_id + inspection_outcome + reason_code + `signature_chains.hash_hex` + `signature_chains.merkle_root_chain_entry_id` (if part of a batch) + `<MerkleProofViewer>` showing the leaf-hash → root path. (8) Auditor verifies cryptographic proof: leaf bytes (canonical signer/action/timestamp/payload_hash) re-hashed → matches chain row; chain row links forward to current head. (9) Auditor downloads CSV with all hashes for offline verification.
+
+**Assertions:** Merkle proof render p95 ≤ 1s per inspection; cryptographic verification client-side (auditor's own re-hash of leaf bytes matches stored hash); CSV download includes hash columns; kiosk audience read-only constraint enforced (any modification attempt → §28 403).
+
+**Negative tests:** signature_chains entry tampered (admin tries to edit signature row) → DB-level CHECK constraint refuses; Merkle proof verification fails on a single row → escalation flag; chain row's predecessor hash mismatch → integrity alert.
+
+**Provenance walk:** Auditor tap → `audit_logs.event_kind='kiosk.eoc_audit.viewed'`; CSV download → `audit_logs.event_kind='kiosk.audit_export'` with row_count + hashes_included; the proof itself is self-contained (cryptographic, not auditable beyond the chain).
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-34-joint-commission-eoc.json`
+
+---
+
+#### 16.8.5 Marquee #35 — Cryptographic Key Custody & Locksmithing
+
+**Value:** Nuvolo/ServiceNow ship simple `keys` table. HubbleWave treats physical keys as restricted assets with full regulated-action ledger: `key_record` + `key_assignment` (taskable + regulated; every issuance signed) + `unrecovered_key_flag` (auto-generated on employee termination). Master-key requires additional supervisor co-sign.
+
+**Substrate deps:** §14.1.1 `key_record` + `key_assignment` (taskable + regulated) + `unrecovered_key_flag`; §3.6 e-signatures + Merkle batch; §15.1.20 WF-20 key_revocation_on_termination; §3.15 graph (key → opens_locks); §14.1.6 `<KeyCustodyLedger>` plugin.
+
+**Setup fixtures:** 200 key_record rows (master + sub-master + operating + control classes); 80 active key_assignments; HR `users.status='terminated'` event for a tech with 3 keys (1 master + 2 operating); security officer with `key_assignment:create` + `key_record:manage` permissions; lock-change procurement workflow registered.
+
+**Golden path:**
+- **Path A (Issuance):** (1) Security officer issues operating key to new tech via `<KeyCustodyLedger>`. (2) `key_assignment` row created (taskable, regulated). (3) §3.6 signature required from holder + from issuer (dual-sign). (4) For master keys: ADDITIONAL supervisor co-sign required (3 signatures total). (5) `signature_chains` row binds the custody transfer. (6) `key_record.status='issued'`.
+- **Path B (HR Termination):** (1) HR system fires `users.status='terminated'` event for tech holding 3 keys. (2) WF-20 auto rule 15 invoked. (3) For each open `key_assignment` for that user: emit `unrecovered_key_flag` row (taskable) + create recovery WO + notify Security Officer. (4) Master-key flag fires CASCADING IMPACT: `<KeyCustodyLedger>` traverses §3.15 graph (key → opens_locks); every lock the master key opens flagged with "Pending Rekey"; bulk rekey procurement workflow auto-created. (5) For operating keys: 7-day escalation: if not recovered by day 7, transition to `escalated_to_lock_change` + procurement workflow for replacement lock.
+- **Path C (Recovery):** (1) Tech returns key physically. (2) Security officer confirms recovery on `<KeyCustodyLedger>`. (3) §3.6 closure signature + dual-confirm if master key. (4) `key_record.status='returned'`; `key_assignment.actual_return_at` stamped; `unrecovered_key_flag.cleared_at` stamped.
+
+**Assertions:** key issuance → audit trail complete (issuer + holder + supervisor signatures for master); HR termination → auto-recovery flow fires within 60s; master-key cascade traverses §3.15 graph correctly (every connected lock flagged); 7-day escalation timer fires + transitions states; audit query "every master-key transfer this quarter with signer identity + reason code" runs in <5s.
+
+**Negative tests:** key issuance without signatures → blocked; master-key issuance without supervisor co-sign → blocked; HR termination of user with no active key_assignments → no-op; concurrent recovery attempt by two security officers → first-write-wins.
+
+**Provenance walk:** issuance → `key_assignment` row + 2-3 `electronic_signatures` (chain via §3.6 batch); HR termination → cascade `audit_logs.event_kind='key.flagged_on_termination'` with `master_key_cascade_count` per unrecovered_key_flag; recovery → `audit_logs.event_kind='key.recovered'` + `unrecovered_key_flag.cleared_at`; escalation → `audit_logs.event_kind='key.escalated_to_lock_change'` + linked procurement_workflow_id; audit can query "every master-key transfer + every unrecovered_key incident this quarter" via partial indexes on key_record.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-35-key-custody.json`
+
+---
+
+**§16 complete: ALL 35 marquees specified at the implementation-ready level.** Total Phase 4 scope at this point: 18 substrate (§13) + 4 packs (§14) + 30 workflows (§15) + 35 marquees (§16) = the full Phase 4 architectural skeleton. Every marquee carries an explicit latency budget + audit-trail commitment + fixture path. Every cross-pack interaction is identified (e.g., MQ-#26's cross-pack signature_chains row).
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
