@@ -6664,6 +6664,170 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
+### 16.2 Technician superpowers (#6-9)
+
+#### 16.2.1 Marquee #6 — Glove-Mode swipe UX
+
+**Value:** `<SwipeProgressCard>` / `<ThumbToggle>` / `<LargeActionButton>` (64dp min tap target). Built for nitrile-glove, one-handed, ladder use. ServiceNow's mobile is a miniaturized desktop.
+
+**Substrate deps:** §3.7 mobile parity + field-tool primitives; canon §27 UI Builder; WF-1 state transitions (right=start, left=block, long-right=complete).
+
+**Setup fixtures:** WO in `assigned`; mobile fixture with `@hubblewave/ui-primitives-mobile` adapter; gesture-simulator harness for E2E.
+
+**Golden path:** (1) Tech opens WO list; sees stack of `<SwipeProgressCard>` items. (2) Swipes right on top card → WF-1 `assigned → in_progress`; haptic feedback < 16ms after gesture-end. (3) Inside detail, opens checklist; taps `<ThumbToggle>` on full-row zone for each item (no precision tapping). (4) Long-swipe-right on detail → `in_progress → completed`; closure signature sheet pops up. (5) Web equivalent: same `<SwipeProgressCard>` renders with drag (mouse-down + drag-right + mouse-up) producing identical state transition.
+
+**Assertions:** gesture-end → UI feedback p95 ≤ 16ms (60fps frame budget); §3.7 primitive parity scanner asserts both `-web` and `-mobile` export every primitive used; tap targets ≥ 64dp on iOS + Android (Reanimated layout measure).
+
+**Negative tests:** accidental short-swipe → no state change (must clear 75% of card width); web drag without releasing → no transition until release event; primitive missing from one adapter → CI fails on §3.7 parity scanner.
+
+**Provenance walk:** swipe → `audit_logs.event_kind='wo.started'` (or block/complete) with `triggered_via='swipe_gesture'` annotation in payload (lets QA replay gesture telemetry).
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-06-glove-mode-swipe.json`
+
+---
+
+#### 16.2.2 Marquee #7 — Generative close-out
+
+**Value:** Tech speaks resolution → AVA renders compliance-grade close-out narrative + reason codes + parts log + closure signature. 3-minute typing chore becomes 5-second voice memo with HIGHER audit quality.
+
+**Substrate deps:** §3.8 AVA UI synthesis; canon §11 voice; §3.6 regulated-action; §3.7.5.1 closure signature meaning='closure' (WebAuthn); §3.6 Merkle batch for end-of-shift bulk close.
+
+**Setup fixtures:** WO in `in_progress` with checklist 100%; AVA tool `synthesizeWoCloseout` `trust_state='preview'` (per canon §12 — high-stakes Preview before persist); reason-code seeds for `corrective_action_taken`, `calibration_verified`, `parts_consumed`.
+
+**Golden path:** (1) Tech taps mic at WO end: `"Swapped the intake O-ring, recalibrated pressure to 50 PSI, ran a test cycle, all good."`. (2) AVA transcribes + synthesizes: resolution_narrative (FDA-grade prose), reason_codes (`corrective_action_taken` + `calibration_verified`), parts_consumption auto-populated (matches §16.1.4 reservation), pre-filled resolution fields. (3) `<SwipeProgressCard>` shows draft for review. (4) Tech swipes right to approve. (5) Single-action: closure signature via §3.6 chain (Plan Fix 41 linearization). End-of-shift batch: §3.6 Merkle batch root over N closures with one WebAuthn assertion.
+
+**Assertions:** voice → draft render p95 ≤ 5s; reason codes auto-selected from regulated-action vocabulary (no free-text); 1 `electronic_signatures` + 1 `signature_chains` row per WO; Merkle batch root cardinality assertion when bulk-closing.
+
+**Negative tests:** voice contains regulated keyword (`patient_identifier`) → AVA refuses to include; redacted with `[redacted-pii]`; safety officer notified. Calibration value out of tolerance → close-out blocked with "value exceeds asset tolerance; manual review required".
+
+**Provenance walk:** voice → `evidence_artifacts` (audio); AVA synthesis → `ava_proposals` (`synthesis_kind='wo_closeout'`); approval → `electronic_signatures` + `signature_chains` + `audit_logs.event_kind='wo.completed'`. Audit asks "show me every close-out signed under reason `calibration_verified` in this quarter" → indexed via `signature_chains.payload->>signature_meaning`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-07-generative-closeout.json`
+
+---
+
+#### 16.2.3 Marquee #8 — Dirty Nameplate Vision Extraction
+
+**Value:** AVA OCR + fuzzy-match resolves scratched/dusty/dim asset nameplates to asset registry with confidence score. Barcode-missing kills Nuvolo customers in the field; this is the answer.
+
+**Substrate deps:** §3.7 mobile + `<NameplateCamera>` primitive; canon §11 AVA Vision; §3.14 vector match for fuzzy asset registry resolution; §3.12 photo evidence; fallback to `<BarcodeScanner>` if confidence < 70%.
+
+**Setup fixtures:** 200 assets in registry incl. one with intentional nameplate variations: serial `BX-2026-4521` indexed; `<NameplateCamera>` primitive registered; AVA Vision tool `extractAssetNameplate(imageBlob)` `trust_state='execute'`.
+
+**Golden path:** (1) Tech opens `<NameplateCamera>` on mobile; snaps photo of scratched, dusty pump nameplate. (2) AVA Vision OCRs + fuzzy-matches: returns top-3 candidates with confidence scores: `{asset_4521: 0.94, asset_4527: 0.71, asset_4513: 0.62}`. (3) Confidence > 90% → auto-opens asset_4521 detail; nameplate photo attached as `asset_pin`. (4) Mobile shows confidence + provenance: which OCR'd characters matched which registry fields.
+
+**Assertions:** photo capture → confidence display p95 ≤ 2.5s; OCR + fuzzy match deterministic given same input + registry state; `<NameplateCamera>` primitive parity confirmed by §3.7 scanner.
+
+**Negative tests:** confidence 70-90% → surfaces top-3 candidates for tap-confirm (not auto-open); confidence < 70% → falls back to `<BarcodeScanner>` with "AVA couldn't recognize this nameplate" + photo still attached as `asset_pin`; no asset_registry rows at all → manual asset selection.
+
+**Provenance walk:** photo → `attachment_uploads`+`evidence_artifacts`; AVA call → `ava_proposals` (`synthesis_kind='nameplate_ocr'`, factors_jsonb={ocr_text, fuzzy_match_scores}); asset open → `audit_logs.event_kind='asset.opened_via_nameplate'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-08-dirty-nameplate.json`
+
+---
+
+#### 16.2.4 Marquee #9 — Elevator Mode (offline as identity)
+
+**Value:** Every action locally optimistic with <16ms UI response. Full shift in airplane mode. Inline "Offline" badge, never a spinner. Speed is the #1 complaint against Nuvolo; this is the answer.
+
+**Substrate deps:** §3.7 Elevator Mode acceptance contract; WatermelonDB local store; §3.7 sync conflict resolution (header server_wins / completion last_write_wins); §3.6 offline signature queue + post-reconnect WebAuthn confirm.
+
+**Setup fixtures:** mobile fixture with WatermelonDB pre-seeded with 50 records (assigned WOs + assets + parts); network controller for E2E (block/unblock outbound HTTP); §3.6 `offline_signature_queue` cleanup hook.
+
+**Golden path (FULL E2E):** (1) Tech opens mobile online; pulls 5 WOs (full sync). (2) Network blocked. (3) Tech opens WO #1: instant render (local DB). (4) Swipes through 3 state transitions: each <16ms UI feedback; queued for sync. (5) Captures photo: stored locally with `attachment_uploads.status='presigned_offline'`. (6) Voice close-out: AVA-mock returns canned synthesis (or offline AVA stub depending on capability); rendered locally. (7) Signs close-out: §3.6 offline_signature_queue row inserted (pending_reauth). (8) Repeats for WO #2-5. (9) Network restored. (10) Sync queue flushes: each WO write resolves per server_wins/LWW policy; attachments upload; signature queue confirmed via single WebAuthn assertion + Merkle batch root binding all 5 signatures.
+
+**Assertions:** UI feedback per gesture p95 ≤ 16ms (60fps frame budget); ZERO blocking spinners in entire flow (asserted via UI fixture); after reconnect, all 5 WOs reach `completed` state in server DB within 8s of sync flush; one merkle_root signature_chains row binds all 5 closure signatures; offline_signature_queue rows deleted on successful confirm.
+
+**Negative tests:** signature conflict (server modified during offline window) → operator review queue; sync conflict on header field → server_wins, conflict row in `mobile_sync_conflicts`; sync conflict on completion field → last_write_wins, audit captures both versions; AV scan dirty on offline-attached photo → quarantine, WO close requires retake.
+
+**Provenance walk:** each offline action → WatermelonDB row with `local_id`; sync push → server-side row insert + `audit_logs.event_kind='wo.<state>.synced'` with `offline_originated_at`; signature confirm → `electronic_signatures` rows from `offline_signature_queue` rolled into one merkle_root `signature_chains` row.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-09-elevator-mode.json`
+
+---
+
+### 16.3 Connected-network superpowers (#10-13)
+
+#### 16.3.1 Marquee #10 — Peer-to-peer parts locator
+
+**Value:** Tech asks "Find Part" → AVA queries stockrooms + every clocked-in tech's cart stock; replies "John on Floor 2 has 3 of these — ping him?". Inventory becomes a dynamic mobile network. Privacy: presence opt-in.
+
+**Substrate deps:** §14.1.1 `inventory_location` + `mobile_inventory_holding` + `technician_presence`; §3.15 graph (proximity); §3.14 vector (cross-ref part keywords); MQ-#4 deterministic engine reused.
+
+**Setup fixtures:** 5 stockroom rows; 8 active techs with `mobile_inventory_holding` rows; `technician_presence` opt-in for 6 of 8; 1 in-progress WO needing controller_board_bxsigma_v3; tech privacy policy: `technician_presence.visibility='maintenance_team_peers'`.
+
+**Golden path:** (1) Tech taps "Find Part" on WO. (2) Engine queries: (a) `inventory_location` rooms with on_hand ≥ 1; (b) `mobile_inventory_holding` of clocked-in techs whose presence is opted-in AND visible to peers; (c) intersect with `technician_presence` proximity (≤ same floor, optional). (3) Returns ranked: `"John Smith (Floor 2): 3 controller boards | Stockroom B4: 8 boards (Floor 1)"`. (4) Tech taps "Ask John". (5) `parts_requisition` created with `status='pending_peer_consent'`, `source='peer_transfer'`, `holder_user_id=john`. (6) John gets push notification: "Maria needs 1 controller board for WO-1042 — accept?". (7) John taps Accept → status flips to `confirmed_peer_transfer`; `parts_consumption` row updated when Maria physically receives.
+
+**Assertions:** "Find Part" → ranked list p95 ≤ 800ms; opted-OUT presence rows ABSENT from results (privacy invariant asserted); peer-transfer requisition has `holder_user_id` set; consent flow audited.
+
+**Negative tests:** zero opted-in peers with the part → only stockroom suggestions; john declines → requisition canceled; john ignores > 5min → auto-cancel + try next candidate; presence privacy revoked mid-flow → AVA suggestion list refreshes without that tech.
+
+**Provenance walk:** AVA query → `ava_proposals` (`synthesis_kind='p2p_parts_locator'`, factors_jsonb={stockroom_results, peer_results, ranking_basis}); requisition → `parts_requisitions` row with `source='peer_transfer'`; peer consent → `audit_logs.event_kind='peer_transfer.confirmed'`; transfer execution → `parts_consumption` with `transfer_origin_user_id`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-10-p2p-parts.json`
+
+---
+
+#### 16.3.2 Marquee #11 — "Tribal Knowledge" Asset Pins
+
+**Value:** Veteran tech says "the manual says X, but just jiggle the bypass valve first" → AVA transcribes + stores in `asset_pin`. Junior tech later scans asset → AVA surfaces: "3 technicians have noted a quirk with this valve". Solves "veteran retires, knowledge lost".
+
+**Substrate deps:** §14.1.1 `asset_pin` collection (vector_indexed on voice_note_transcript); §3.14 vector match (semantic surfacing); §3.7 mobile voice capture; canon §11 transcription + summarization.
+
+**Setup fixtures:** 1 pump asset (asset_4521); 3 existing `asset_pin` rows (voice + photo); §3.14 vector index entries for transcripts; veteran tech with `wo:create` + `asset_pin:create` permissions.
+
+**Golden path:** (1) Veteran taps mic on asset_4521 record: `"Hey guys, the manual says X, but just jiggle the bypass valve first before resetting."`. (2) AVA transcribes; classifies severity (`tip` vs `warning` vs `safety_critical`); summarizes 1-line headline. (3) `asset_pin` row written (`pin_kind='voice_note'`, body=transcript, severity classification). (4) §3.14 vector index updated. (5) Later: junior tech scans asset_4521 (MQ-#8 nameplate or QR). (6) AVA proactively surfaces: "3 technicians have noted a quirk with this valve — tap to hear."; renders top-3 pins ranked by severity + recency. (7) Junior taps → veteran's voice plays at 1× with AVA-summarized transcript.
+
+**Assertions:** voice → pin saved p95 ≤ 4s; asset open with pins → surface render p95 ≤ 1s (vector index hit); severity classification deterministic for fixture inputs; pin retrieval respects §28 (junior can only see pins on assets they can read).
+
+**Negative tests:** voice silent < 1s → no pin; transcription confidence < 0.5 → flagged for review (not surfaced); pin marked `safety_critical` AND not signed-off by safety officer → blocked from surfacing until reviewed.
+
+**Provenance walk:** voice → `evidence_artifacts` (audio); transcription → `ava_proposals` (`synthesis_kind='asset_pin_transcribe'`); `asset_pin` row with `source_ava_proposal_id`; surface event → `audit_logs.event_kind='asset_pin.surfaced'`.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-11-tribal-knowledge.json`
+
+---
+
+#### 16.3.3 Marquee #12 — Contextual Floor-Plan Routing ("Blue Dot")
+
+**Value:** WO says "West Wing Floor 3 Utility Closet 3B". Tech taps "Take me to Asset" → Google-Maps-style indoor navigation with highlighted path. Nuvolo's space module is heavy + desktop-leaning; this is fluid + mobile-first + offline-cached.
+
+**Substrate deps:** §3.15 graph (spatial + relationship); §14.3.1 `space` + `location_relationship`; §14.3.7 `<FloorPlanRouter>` plugin; §14.3.X `cad_drawing_link` / `ifc_space_link` (facilities overlay); §3.15 `routeSolve` (Dijkstra/A*).
+
+**Setup fixtures:** facilities overlay installed; floor-plan graph for "West Wing Floor 3" loaded (rooms, corridors, doors); CAD drawing linked; tech `technician_presence` location = "West Wing Floor 1 Lobby".
+
+**Golden path:** (1) WO open; tech taps "Take me to Asset". (2) `<FloorPlanRouter>` plugin invokes `routeSolve(graph_id='west_wing', from=lobby, to=closet_3b, weighting='walking_time')`. (3) Returns ordered path: `lobby → stairwell_A → floor_3_corridor → utility_closet_3b` with estimated 3 minutes. (4) Mobile renders floor plan with highlighted path + blue dot at tech's current location (technician_presence updates). (5) As tech moves, blue dot updates in near-real-time (WebSocket from technician_presence stream).
+
+**Assertions:** route compute p95 ≤ 300ms (Dijkstra over ≤500 nodes typical floor); floor plan render p95 ≤ 1s; offline cached if pre-fetched during pull-sync; door-locked metadata filter (after-hours edges excluded if applicable).
+
+**Negative tests:** target room not in graph → "Location not mapped" + photo guidance fallback; tech's current location not known → start from a configurable default (e.g., shift-start anchor); door-locked after-hours route → alternate or "no accessible path" with notify-security option.
+
+**Provenance walk:** route compute → `audit_logs.event_kind='routing.computed'` with from/to/weighting payload; presence updates → `technician_presence` row updates with `last_seen_at`; if door access fails → `audit_logs.event_kind='door.access_denied'` linked to badge-reader telemetry.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-12-floor-plan-routing.json`
+
+---
+
+#### 16.3.4 Marquee #13 — Smart LOTO with AVA Vision
+
+**Value:** OSHA 1910.147 lockout/tagout enforced step-by-step via AVA Vision lock-confirmation. Each verified step writes `loto_step_check` chained into `signature_chains`. Procedure becomes mathematically auditable evidence.
+
+**Substrate deps:** §14.1.1 `permit_to_work` (regulated taskable) + `loto_step_check` (regulated); §3.6 signatures + Merkle batch; §3.12 photo evidence; canon §11 AVA Vision; §15.1.8 WF-8 permit-to-work workflow.
+
+**Setup fixtures:** permit_to_work in `authorized` state; pack-declared LOTO procedure (5 steps: electrical_disconnect, lockout_pad_install, voltage_zero_verify, tag_attach, secondary_lock_install); AVA Vision tool `verifyLockPlacement(imageBlob, expected_lock_type)` `trust_state='execute'`.
+
+**Golden path:** (1) Tech opens `<LotoStepRunner>` for permit. (2) Step 1 prompts "Disconnect electrical service". Tech actions; taps "Mark Complete". (3) Step 2: "Install lockout pad on disconnect". Tech installs lock, snaps photo. (4) AVA Vision invoked with image + expected lock_type='red_clamshell_padlock'. (5) Confidence > 70% AND lock matches expected type → step verified; `loto_step_check` row written with §3.6 signature. (6) Tech can swipe to step 3. (7) Steps 3-5 follow same pattern. (8) On completion: all 5 `loto_step_check` rows linked to one Merkle batch root in `signature_chains`. (9) WF-8 transitions `authorized → loto_in_progress → work_in_progress`.
+
+**Assertions:** photo capture + AVA verify p95 ≤ 3s; step BLOCKED if confidence < 70% with "AVA cannot confirm lock placement; retake or escalate"; all 5 `loto_step_check` rows present and linked to permit; Merkle batch root binds them.
+
+**Negative tests:** wrong lock type in photo (e.g., installed yellow but expected red) → step blocked with structured error; vision fails service-side → fallback to manual safety officer confirmation; tech tries to skip step → workflow refuses (steps enforced in sequence per WF-8); permit expires mid-LOTO → hard-stop work + escalate per WF-8 emergency_stop edge case.
+
+**Provenance walk:** each step photo → `evidence_artifacts`; AVA verification → `ava_proposals` (`synthesis_kind='loto_lock_verify'`, factors_jsonb={lock_type, confidence, ocr_extracted_text}); `loto_step_check` row + linked `electronic_signatures` chained via `signature_chains`; on permit close, Merkle batch root encodes all 5 step signatures.
+
+**Fixture path:** `apps/api/test/fixtures/marquees/mq-13-smart-loto.json`
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
