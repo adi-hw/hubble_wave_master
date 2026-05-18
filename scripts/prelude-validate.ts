@@ -331,6 +331,16 @@ assert('all Prelude scanners exit 0', async () => {
 
 async function main(): Promise<void> {
   const skipRebuild = process.argv.includes('--skip-rebuild');
+  // `--keep-api` leaves the spawned apps/api process running after the
+  // harness finishes. Used by CI to chain `prelude:validate` →
+  // `w2:validate` against the same booted process: prelude boots,
+  // runs its assertions, exits keeping the API alive; w2 then runs
+  // with `--skip-api-boot` against that same process. Without this
+  // flag the harness kills the API on exit, which silently broke the
+  // w2-validate CI step until this PR caught the wiring (every HTTP
+  // assertion got curl 000 because there was nothing on :3000 to
+  // answer it).
+  const keepApi = process.argv.includes('--keep-api');
 
   if (!skipRebuild) {
     console.log('▶ Tearing down + rebuilding fresh DB...');
@@ -370,8 +380,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // Stop the API process if we started it
-  if (apiProcess) {
+  // Stop the API process if we started it — unless `--keep-api` was
+  // passed, in which case the caller wants the API alive for a
+  // downstream harness (e.g. CI chains prelude → w2-validate).
+  if (apiProcess && !keepApi) {
     apiProcess.kill();
     apiProcess = null;
   }

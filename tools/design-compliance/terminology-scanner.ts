@@ -48,7 +48,52 @@ const TERMINOLOGY_RULES: TerminologyRule[] = [
     context:
       'Use "Instance" instead of "tenant" - HubbleWave uses Single-Instance-Per-Customer architecture',
     severity: 'error',
-    exceptions: ['tenant-db', 'tenantId in migrations', 'multi-tenant'],
+    // Pre-W2 the canon was strictly "no tenant terminology". Canon §5
+    // SOFTEN (2026-05-09) added pooled mode (multi-tenant via Postgres
+    // RLS) as an optional deployment topology alongside the default
+    // single-tenant model. The pooled-mode code paths legitimately
+    // use `tenant_id` / `tenantId` / `TenantScopedStorageClient` /
+    // `TenantContextPort` to key resources to the active tenant.
+    // The exceptions below recognize those canonical pooled-mode
+    // identifiers so the scanner can stay strict everywhere ELSE
+    // without firing on the storage isolation layer. Pre-W2 exceptions
+    // (`tenant-db`, `multi-tenant`, `tenantId in migrations`)
+    // preserved at the head of the list.
+    exceptions: [
+      'tenant-db',
+      'multi-tenant',
+      'tenantId in migrations',
+      // Pooled-mode (canon §5 SOFTEN) — these symbols are the
+      // canonical pooled-mode primitives. Lines that mention any
+      // of them are pooled-mode-aware code, not pre-W2 drift.
+      'tenantId',
+      'tenant_id',
+      'TenantScoped',
+      'tenant-scoped',
+      'tenant context',
+      'tenant-context',
+      'TenantContext',
+      'tenant resolver',
+      'TenantId',
+      'tenants/',
+      'tenant prefix',
+      'tenant isolation',
+      'tenant id',
+      // Dashboard scope vocabulary (canon §7 SOFTEN, 2026-05-09): the
+      // pre-W2 5-tier hierarchy used `'tenant'` as a literal scope
+      // value (alongside system / role / personal). The SOFTEN
+      // simplified the hierarchy but the persisted column values
+      // still use the legacy strings. Renaming the scope vocabulary
+      // is a separate carry-forward (out of scope for the W2
+      // follow-up); the exception below suppresses the false-positive
+      // on lines that reference the scope-literal vocabulary.
+      `'tenant'`,
+      `'system'`,
+      `'role'`,
+      `'personal'`,
+      'DashboardScope',
+      'intra-tenant scope',
+    ],
     autofix: false,
   },
   {
