@@ -6139,6 +6139,110 @@ hr_termination_event ──> open_key_assignments_enumerated ──> per_key: un
 
 ---
 
+### 15.2 clinical-maintenance workflows (3 state machines)
+
+#### 15.2.1 WF-OC1 aem_committee_review (on `aem_program_membership`)
+
+**Diagram:**
+```
+proposed ──> risk_assessed ──> committee_review ──> approved ──> active ──> re_evaluation_due ──> committee_review ──> approved | rejected | retired
+                                                 └── rejected ──> archived
+                                                 └── deferred ──> risk_assessed (cycle back for more data)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| proposed | risk_assessed | `user_action:assess` | `risk_assessment_score` populated AND `aem_program.justification_document_id` resolves to active doc | `biomed_engineer` | — | `aem.risk_assessed` |
+| risk_assessed | committee_review | `user_action:submit_to_committee` | committee membership has quorum ≥ 3 | `biomed_engineer` | notify committee members | `aem.committee_review_started` |
+| committee_review | approved | `user_action:approve` | §3.6 signature `signature_meaning='responsibility'` from a `biomed_committee` role-holder | `biomed_committee` | INSERT signature_chain row carrying committee membership snapshot | `aem.approved` |
+| committee_review | rejected | `user_action:reject` | reason_code in `clinical_maintenance__aem_*` namespace | `biomed_committee` | — | `aem.rejected` |
+| committee_review | deferred | `user_action:defer_for_more_data` | requested-data list set | `biomed_committee` | notify biomed_engineer | `aem.deferred` |
+| approved | active | `system_event:auto` | effective_from ≤ now() | `system` | apply pm_modification_kind (extended_interval / skipped_pm / reduced_scope) to linked `pm_asset_assignment` | `aem.active` |
+| active | re_evaluation_due | `system_event:scheduled_tick` | `effective_until - 30d ≤ today` | `system` | notify committee | `aem.re_eval_due` |
+| any (active/re_eval) | retired | `user_action:retire` OR `system_event:effective_until_past` | reason set | `biomed_committee`/`system` | revert pm_asset_assignment to default cadence | `aem.retired` |
+
+**Edge cases:**
+- Committee quorum drops below 3 during review: state stays in `committee_review`; transition to `approved/rejected` blocked until quorum restored. Audit captures the gap.
+- Signature replay verification: the snapshot of committee membership at decision time is captured in `signature_chains.payload` (leaf-tuple includes committee user_ids); membership change after the fact does not invalidate the historical decision per §3.7.5.1 snapshot pattern.
+- Asset moved between AEM programs: requires explicit `retired` + new `proposed`; no implicit reassignment.
+- AEM-affected asset has open WO using the modified pm cadence: WO is NOT auto-cancelled; runs to completion under the AEM-modified schedule.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-oc1-aem-committee-review.json`.
+
+---
+
+#### 15.2.2 WF-OC2 phi_safe_disposal (on `phi_disposal_record`)
+
+**Diagram:**
+```
+asset_marked_for_disposal ──> custody_assigned ──> media_isolated ──> disposal_method_applied ──> witness_attested ──> certified ──> archived
+                                                                                                └── witness_rejected ──> re_isolate ──> disposal_method_applied
+                                                                                                  emergency_destruction (override) ──> archived (with high-severity audit)
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| asset_marked_for_disposal | custody_assigned | `user_action:assign_custody` | disposer_user_id set | `compliance_officer` | — | `phi.custody_assigned` |
+| custody_assigned | media_isolated | `user_action:isolate_media` | physical isolation confirmed; chain_of_custody_jsonb seeded | `it_security_officer` (disposer) | — | `phi.media_isolated` |
+| media_isolated | disposal_method_applied | `user_action:apply_method` | disposal_method ∈ {degauss, shred, wipe_to_nist_800_88, destroy} AND method-appropriate for device kind | `it_security_officer` | append to chain_of_custody_jsonb | `phi.method_applied` |
+| disposal_method_applied | witness_attested | `user_action:attest` | **separation of duties: `witness_user_id ≠ disposer_user_id`** AND §3.6 closure signature `signature_meaning='responsibility'` from witness | `witness` (third party) | INSERT signature_chain row | `phi.witness_attested` |
+| disposal_method_applied | witness_rejected | `user_action:reject_attestation` | rejection reason set | `witness` | — | `phi.witness_rejected` |
+| witness_rejected | re_isolate | `user_action:re_isolate` | reason addressed; new isolation evidence | `it_security_officer` | — | `phi.re_isolated` |
+| re_isolate | disposal_method_applied | `user_action:reapply_method` | — | `it_security_officer` | — | `phi.method_reapplied` |
+| witness_attested | certified | `user_action:certify` | for clinical_criticality_score > 70: `nist_compliance_attested = true` (REQUIRED) | `compliance_officer` | finalize record | `phi.certified` |
+| any | archived | `user_action:archive` | terminal state | `compliance_officer` | move to archive partition | `phi.archived` |
+| disposal_method_applied/witness_rejected | emergency_destruction | `user_action:emergency_override` | imminent-threat reason + dual signatures | `compliance_officer + ciso` | high-severity audit `phi.emergency_destruction` | `phi.emergency_destruction` |
+
+**Edge cases:**
+- Disposer attempts to self-attest (witness_user_id = disposer_user_id): auto rule 6 (§14.2.3) blocks save with `SEPARATION_OF_DUTIES_VIOLATION`.
+- Chain-of-custody gap (timestamps non-monotonic in `chain_of_custody_jsonb`): validator flags at `media_isolated → disposal_method_applied` transition.
+- Device has linked EHR context: requires `ehr_context_link.revoked_at` set BEFORE `media_isolated` (revocation precedes physical disposal); audit records the revocation timestamp.
+- Multi-device batch disposal: one `phi_disposal_record` per device — no batch disposal allowed (audit clarity requirement).
+- NIST 800-88 method choice for storage media: validator constrains `disposal_method` based on `asset_type.discriminator` (HDD → degauss or wipe_to_nist_800_88; SSD → destroy or wipe; paper records → shred).
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-oc2-phi-disposal.json`.
+
+---
+
+#### 15.2.3 WF-OC3 ecri_advisory_response (on `recall_response` with ECRI source)
+
+**Diagram:**
+```
+ecri_advisory_received ──> asset_query_run ──> affected_assets_identified ──> priority_assigned ──> remediation_in_progress ──> verified ──> closed
+                                            └── no_assets_affected ──> false_positive ──> closed
+                                            └── ambiguous_match ──> human_triage ──> affected_assets_identified | false_positive
+```
+
+**Transitions:**
+| From | To | Trigger | Guard | Actor | Side effect | Audit event |
+|---|---|---|---|---|---|---|
+| ecri_advisory_received | asset_query_run | `pack_rule:auto_rule_1_clinical` | severity ∈ {critical, high} | `system` | invoke AVA asset-cohort tool (§3.14 + §3.15) | `ecri.advisory_received` |
+| asset_query_run | affected_assets_identified | `system_event:auto` | §3.14 match confidence ≥ 0.85 for at least one asset | `system` | INSERT child `recall_response` per matched asset | `ecri.assets_identified` |
+| asset_query_run | no_assets_affected | `system_event:auto` | 0 matches above confidence threshold | `system` | mark advisory_response as resolved | `ecri.no_match` |
+| asset_query_run | ambiguous_match | `system_event:auto` | matches in 0.7-0.85 confidence band | `system` | enqueue human triage | `ecri.ambiguous` |
+| ambiguous_match | affected_assets_identified | `user_action:confirm_matches` | biomed selects subset of candidates | `biomed_engineer` | INSERT child responses for confirmed only | `ecri.human_confirmed` |
+| ambiguous_match | false_positive | `user_action:dismiss` | dismissal reason set | `biomed_engineer` | — | `ecri.dismissed` |
+| affected_assets_identified | priority_assigned | `system_event:auto` | severity → SLA mapping applied to each child | `system` | each child gets `recall_response.target_completion_date` | `ecri.prioritized` |
+| priority_assigned | remediation_in_progress | `user_action:start_remediation` | resource assigned | `biomed_engineer` | — | `ecri.remediation_started` |
+| remediation_in_progress | verified | `user_action:verify_all_children` | every child `recall_response.status='verified'` (per WF-6) | `compliance_officer` | — | `ecri.verified` |
+| verified / false_positive / no_assets_affected | closed | `user_action:close` | terminal | `compliance_officer` | finalize | `ecri.closed` |
+
+**Edge cases:**
+- AVA confidence per child varies: a parent verification requires every child INDIVIDUALLY verified — no batch verify.
+- Late-arriving asset (newly commissioned device that matches existing closed advisory): pack scheduled job runs daily re-match against still-active advisories; matched newly-commissioned assets spawn new child responses without reopening the parent.
+- Cross-pack interaction: when `ot-security-maintenance` is installed, ECRI advisories that are ALSO cyber-vulnerabilities (e.g., medical device with CVE) ALSO trigger `ot_asset_vulnerability` row creation via cross-pack hook; WF-OT4 convergence routing may then propose merging with upcoming PMs.
+- Manufacturer disputes (recall claim withdrawn): parent transitions to `false_positive` after compliance review; children cascading-cancel.
+
+**Fixtures:** `apps/api/test/fixtures/workflows/wf-oc3-ecri-advisory.json`.
+
+---
+
+**§15.2 summary:** 3 clinical-maintenance workflows specified. WF-OC1 introduces the committee-membership-snapshot pattern (committee user_ids captured in signature_chain.payload at decision time — same pattern as §3.7.5.1 e-signature snapshots). WF-OC2 enforces separation of duties at the data-model level (witness ≠ disposer is a CHECK constraint) AND adds emergency_destruction with dual signatures for imminent-threat scenarios. WF-OC3 cross-references §3.14 vector + §3.15 graph for asset-cohort identification with explicit confidence bands (high ≥ 0.85 auto, medium 0.7-0.85 human triage, low < 0.7 no-action).
+
+---
+
 ### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
@@ -6169,9 +6273,9 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ `facilities-maintenance` overlay — 14 collections, 5 workflows, 7 automation rules, 7 plugins, 4 integrations. ~10 PRs. **Spec at §14.3.**
 - ✅ `ot-security-maintenance` overlay — 6 collections, 4 workflows, 5 automation rules, 3 plugins, 5 integrations, 1 workspace. ~10 PRs. **Spec at §14.4.**
 
-**Workflows (30 total, 18 of 30 deep dives specified ✅):**
+**Workflows (30 total, 21 of 30 deep dives specified ✅):**
 - ✅ 18 maintenance-core workflows (WF-1 through WF-20, with WF-7 + WF-10 as lite versions). **Deep dives at §15.1.**
-- 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). Pack-summary at §14.2.2; deep dive pending §15.2.
+- ✅ 3 clinical-maintenance workflows (WF-OC1 AEM committee, WF-OC2 PHI disposal, WF-OC3 ECRI advisory). **Deep dives at §15.2.**
 - 5 facilities-maintenance workflows (WF-OF1 FCA cycle, WF-OF2 refrigerant leak, WF-OF3 commissioning signoff, WF-OF4 move request, WF-OF5 reservation conflict). Pack-summary at §14.3.2; deep dive pending §15.3.
 - 4 OT-security workflows (WF-OT1 vuln response, WF-OT2 network anomaly, WF-OT3 advisory distribution, WF-OT4 convergence routing). Pack-summary at §14.4.2; deep dive pending §15.4.
 - `clinical-maintenance` — 12 collections, 3 workflows, 3 plugins, 4 integrations. ~8 PRs.
