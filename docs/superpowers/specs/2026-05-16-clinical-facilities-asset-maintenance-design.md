@@ -5098,9 +5098,245 @@ Integration tests at `apps/api/test/integration/customization-overrides-*.spec.t
 
 ---
 
-## 14. Pack Composition Implementation Plans
+### 13.21 Worked example: §3.20 Generic Rounds + Observation Sessions (full artifact-level spec — rounds for anything; minimal-step creation; cross-pack reusability)
 
-§13's worked examples specify the platform's 18 substrate primitives. §14 specifies how the four customer-facing packs compose those primitives. Each pack section follows the same shape: collections (with taskable/sync/vector flags + key columns + substrate dependencies), workflows (state machines with transitions/guards/audit), automation rules, views, workspaces, plugin components, integration adapters, and PR breakdown.
+#### 13.21.1 Tables
+
+Three new tables in `schema: 'rounds'` (NEW schema). Generalizes maintenance-core's asset-only `work_round_definition` / `work_round_session` into cross-pack substrate.
+
+**`rounds.round_definitions`** — template; one row per round-type pack ships or customer authors.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `code` | `varchar(120)` | — | NOT NULL | UNIQUE per `(scope_pack_id)`; pack-namespaced (`maintenance-core__fire_extinguisher_round`, `clinical__patient_room_hygiene_round`) |
+| `label` | `text` | — | NOT NULL | Human-readable |
+| `scope_pack_id` | `text` | — | NULL | NULL = platform-shipped; else the pack that owns it. Customer-authored rounds use `cust__{customer_id}` namespace |
+| `target_kind` | `varchar(16)` | — | NOT NULL | Default target kind per stop (overrideable per stop); CHECK ∈ `{asset, location, space, user, abstract, mixed}` |
+| `ordered_stops` | `jsonb` | — | NOT NULL | Array of `{stop_id, target_kind, target_resolver_jsonb, observation_stream_template_id, response_kind, measurement_bounds_jsonb, required, prompt_text}` |
+| `pm_schedule_id` | `uuid` | — | NULL | FK → §3.3 `pm_schedule(id)`; when set, scheduling primitive auto-generates `round_sessions` per the rrule |
+| `assignment_policy` | `varchar(32)` | `'self_assign'` | NOT NULL | CHECK ∈ `{self_assign, round_robin, on_call_group, fixed_assignee}` |
+| `fixed_assignee_user_id` | `uuid` | — | NULL | Required when `assignment_policy='fixed_assignee'`; FK |
+| `is_active` | `boolean` | `true` | NOT NULL | — |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; UNIQUE `(scope_pack_id, code)`; `ix_rd_active ON (is_active, scope_pack_id) WHERE is_active = true`; `ix_rd_scheduled ON (pm_schedule_id) WHERE pm_schedule_id IS NOT NULL`.
+
+**`rounds.round_sessions`** — runtime session; one row per instantiated round (replaces and supersedes maintenance-core's earlier `work_round_session`).
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `instance_id` | `uuid` | — | NULL | Pooled-mode tenant binding |
+| `round_definition_id` | `uuid` | — | NULL | NULL for fully ad-hoc rounds; else FK |
+| `creation_path` | `varchar(16)` | — | NOT NULL | CHECK ∈ `{ad_hoc, scheduled, template_clone}` |
+| `scheduled_at` | `timestamptz` | — | NULL | When scheduled — when this session was supposed to start; idempotency key with `(round_definition_id, scheduled_at)` |
+| `actual_started_at` | `timestamptz` | — | NULL | First stop completion |
+| `actual_completed_at` | `timestamptz` | — | NULL | Last stop completion |
+| `assignee_user_id` | `uuid` | — | NOT NULL | FK |
+| `status` | `varchar(16)` | `'started'` | NOT NULL | CHECK ∈ `{started, in_progress, completed, abandoned, reviewed}` |
+| `stops_total` | `int` | — | NOT NULL | At session start; for progress UI |
+| `stops_completed` | `int` | `0` | NOT NULL | Incremented per stop completion |
+| `failures_spawned_wo_ids` | `uuid[]` | `'{}'::uuid[]` | NOT NULL | WOs spawned by failed observations (per MQ-#25) |
+| `abandoned_reason` | `varchar(64)` | — | NULL | `timeout` / `manual_stop` / `device_failure` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+
+Indexes: PK; UNIQUE `(round_definition_id, scheduled_at) WHERE scheduled_at IS NOT NULL` (idempotency for scheduled generation); `ix_rs_assignee ON (assignee_user_id, status, created_at DESC) WHERE status != 'reviewed'`; `ix_rs_status ON (status, actual_started_at DESC)`.
+
+**`rounds.round_session_stops`** — per-stop execution state; each row links to an `observations` row in §3.5.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `round_session_id` | `uuid` | — | NOT NULL | FK |
+| `stop_sequence` | `int` | — | NOT NULL | Order within session |
+| `stop_id_from_definition` | `varchar(120)` | — | NULL | NULL for ad-hoc stops; else references `round_definitions.ordered_stops[].stop_id` |
+| `target_kind` | `varchar(16)` | — | NOT NULL | Same enum as round_definitions |
+| `target_collection_id` | `uuid` | — | NULL | For asset/location/space/user targets |
+| `target_record_id` | `uuid` | — | NULL | For asset/location/space/user targets |
+| `target_abstract_label` | `text` | — | NULL | For `target_kind='abstract'` |
+| `status` | `varchar(16)` | `'pending'` | NOT NULL | CHECK ∈ `{pending, in_progress, completed, skipped}` |
+| `observation_id` | `bigint` | — | NULL | FK → §3.5 `observations(id)`; populated on completion |
+| `completed_at` | `timestamptz` | — | NULL | — |
+
+Indexes: PK; `ix_rss_session ON (round_session_id, stop_sequence)`; `ix_rss_observation ON (observation_id) WHERE observation_id IS NOT NULL`.
+
+#### 13.21.2 Services
+
+`apps/api/src/app/rounds/` (new module).
+
+**`RoundsDefinitionService`** — CRUD on templates; pack-installer integration; admin endpoint for customer-authored templates.
+
+**`RoundsSessionService`** — `apps/api/src/app/rounds/round-session.service.ts`:
+
+```typescript
+createAdHoc(input: AdHocRoundRequest, ctx: UserRequestContext): Promise<RoundSession>;
+createFromTemplate(templateId: string, ctx: UserRequestContext): Promise<RoundSession>;
+recordStopOutcome(stopId: string, outcome: StopOutcome, ctx: UserRequestContext): Promise<{ observationId: number; spawnedWoId?: string }>;
+completeSession(sessionId: string, ctx: UserRequestContext): Promise<void>;
+abandonSession(sessionId: string, reason: string, ctx: UserRequestContext): Promise<void>;
+```
+
+`recordStopOutcome` inside `withAudit`: writes §3.5 `observations` row (the result), updates `round_session_stops.observation_id` + `status='completed'`, spawns reactive WO via auto rule 20 if `outcome.verdict='failed'`, increments `round_sessions.stops_completed`. Single transaction.
+
+**`RoundsGenerationProcessor`** — worker; scheduled via §3.3 SchedulingModule:
+- On `pm_schedule` fire for a `pm_schedule_id` referenced by an active `round_definition`, generates a `round_sessions` row with `creation_path='scheduled'`, `scheduled_at=now()`.
+- Idempotency: `(round_definition_id, scheduled_at)` UNIQUE constraint prevents duplicates.
+- Notifies assignee per `round_definition.assignment_policy`.
+
+#### 13.21.3 API endpoints + UX flow
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/rounds/definitions` | `@RequirePermission('rounds:definition:manage')` | Template CRUD |
+| `GET` | `/api/rounds/definitions` | `@AuthenticatedOnly()` | List for picker |
+| `POST` | `/api/rounds/sessions` | `@RequirePermission('rounds:session:start')` | `{ templateId?, adHocStops? }` — ad-hoc OR clone-from-template; 3-tap flow uses this |
+| `POST` | `/api/rounds/sessions/:id/stops/:stopId/outcome` | `@RequireCollectionAccess('write')` (resolved via target) | `{ verdict, value, photoAttachmentId? }` |
+| `POST` | `/api/rounds/sessions/:id/complete` | `@RequirePermission('rounds:session:start')` (own session) | — |
+| `POST` | `/api/rounds/sessions/:id/abandon` | `@RequirePermission('rounds:session:start')` (own session) | `{ reason }` |
+
+3-tap creation UX:
+1. Home → "Start Round"
+2. Picker: pick template OR "Custom"
+3. First stop card renders; round starts
+
+#### 13.21.4 Tests (≥ 12 assertions)
+
+1. Template with 50 stops → 50 observation rows + 0 WO rows on all-pass session
+2. Failed stop spawns WO via auto rule 20; observation row carries `verdict='failed'`
+3. Ad-hoc round creation: 3-tap flow, no template_id, custom stops persisted
+4. Scheduled round idempotency: same `(round_definition_id, scheduled_at)` rejected with 409
+5. Cross-pack round target: clinical pack round on maintenance-core asset; canon §28 evaluator allows; observation visible per pack ACL
+6. Polymorphic target kinds: each of asset/location/space/user/abstract round-trips
+7. Glove-Mode swipe → outcome record → next-card render p95 ≤ 80ms
+8. Abandon flow: session marked abandoned with reason; partial observations preserved
+9. Assignment policies: self_assign / round_robin / on_call_group / fixed_assignee all produce correct assignee
+10. Mobile + desktop parity: same round renders correctly via both `<RoundsRunner>` adapters per §3.7 parity scanner
+11. Customer cloning a pack template: customer-namespaced round_definition with same ordered_stops; pack template unchanged
+12. Customer overriding pack template (per §3.19 override_policy): allowed if pack declared `customer_overridable: {kinds: ['modify', 'replace']}`; refused otherwise
+
+#### 13.21.5 PR breakdown (~7 PRs, lands G0b/G0c)
+
+| PR | Goal | Files | Gate |
+|---:|---|---|---|
+| 1 | Schema + 3 tables + entities + `RoundsDefinitionService` CRUD + admin endpoint + permission codes | Migration; entity area patch; service module | G0b |
+| 2 | `RoundsSessionService.createAdHoc / createFromTemplate / recordStopOutcome / completeSession / abandonSession` + auto rule 20 wire | Service module; integration with §3.5 observations + §3.6 audit-in-tx | G0b |
+| 3 | `RoundsGenerationProcessor` worker + idempotency on (round_definition_id, scheduled_at) + §3.3 SchedulingModule hook | Worker module | G0b |
+| 4 | `<RoundsRunner>` Glove-Mode swipe-deck primitive in `@hubblewave/ui-primitives-mobile` + desktop adapter via §3.7 parity + `<StopBuilder>` ad-hoc primitive + tests 7, 10 | UI primitives | G0c |
+| 5 | Cross-pack target resolution via §3.15 graph + canon §28 evaluator pass-through + tests 5 + canon §46 amendment | `apps/api/src/app/rounds/cross-pack-target-resolver.ts`; CLAUDE.md | G0c |
+| 6 | §3.19 override integration: `round_definition` becomes overridable surface via existing target_kind=`'collection_record'` per §3.19 OR direct row override per canon §17.5 fork-and-edit; tests 11, 12 | §3.19 adapter check; canon §17.5 alignment | G0c |
+| 7 | Reporting integration with §3.21: ship 3 default report_definitions (per-template pass-rate, per-stop failure heatmap, per-assignee velocity) + tests + acceptance demo | Pack-installer hook for default reports | G0c |
+
+**Total: 7 PRs for §3.20. Estimated effort: ~12-15 working days.**
+
+---
+
+### 13.22 Worked example: §3.21 Platform Reporting Framework (full artifact-level spec — custom-aggregation builder + materialized views + scheduled exports + alerting)
+
+#### 13.22.1 Tables
+
+Five new tables in `schema: 'analytics'` (NEW schema).
+
+**`analytics.report_definitions`** — saved aggregations; the "report" entity.
+
+Key columns: `id`, `code`, `label`, `scope_pack_id` (NULL=customer-authored), `source_kind` ∈ `{collection, observation_stream, custom_sql}`, `source_ref` (collection_id or stream_code), `group_by_fields jsonb[]`, `aggregations jsonb[]` (each `{function, field, label}`), `filters_jsonb` (canon §28-compatible row predicates), `materialization_policy` ∈ `{real_time, snapshot_5min, snapshot_hourly, snapshot_daily, snapshot_weekly, snapshot_on_demand}`, `custom_sql_override text` (gated behind `analytics:report:sql_override` dangerous=true), `owner_user_id`, `signature_chain_id`, `audit_log_id`.
+
+**`analytics.report_materialized_snapshots`** — pre-computed result rows; partitioned monthly by `snapshot_taken_at`.
+
+Key columns: `id`, `report_definition_id`, `snapshot_taken_at`, `row_data jsonb` (the aggregated rows; one row per group), `ttl_until timestamptz` (per materialization_policy), `created_at`. Indexed for fast lookup by `report_definition_id + snapshot_taken_at DESC`.
+
+**`analytics.report_export_schedules`** — CSV/PDF generation cron.
+
+Key columns: `id`, `report_definition_id`, `format` ∈ `{csv, pdf, json}`, `frequency_rrule`, `recipient_user_ids uuid[]`, `delivery_method` ∈ `{email, in_app_notification, signed_url_only}`, `next_run_at`, `retention_class` (per §3.12 evidence_artifacts), `is_active`.
+
+**`analytics.report_alert_rules`** — threshold-based alerting.
+
+Key columns: `id`, `report_definition_id`, `threshold_predicate_jsonb` (e.g., `{op: 'lt', field: 'pass_rate', value: 0.80, scope: 'any_group'}`), `alert_severity` ∈ `{info, warning, critical}`, `notification_channels` ∈ `{email, slack, pagerduty, in_app}[]`, `cooldown_seconds`, `is_active`, `last_fired_at`.
+
+**`analytics.report_alert_events`** — every fired alert; partitioned monthly via pg_partman.
+
+Key columns: `id (bigserial)`, `report_alert_rule_id`, `fired_at`, `matching_rows_jsonb`, `notification_dispatch_status`, `acknowledged_by_user_id`, `acknowledged_at`.
+
+#### 13.22.2 Services
+
+`apps/api/src/app/analytics/` (new module).
+
+**`ReportDefinitionService`** — CRUD on report definitions; integrates with `<ReportBuilder>` plugin; refuses custom_sql_override without `analytics:report:sql_override` permission.
+
+**`ReportMaterializationProcessor`** — worker; runs per `materialization_policy`:
+- `real_time` reports: triggered on source-collection write events; cardinality limit 10k rows
+- `snapshot_*` reports: cron-scheduled refresh; pg materialized views OR snapshot tables chosen by `ReportMaterializationStrategySelector` heuristic (matview if ≤100k rows; snapshot table otherwise)
+- On refresh: re-runs aggregation under SYSTEM principal (§29.7) but EVERY recipient's read filters their slice via §28 evaluator
+
+**`ReportExportProcessor`** — worker; runs per `report_export_schedules.next_run_at`:
+- Generates CSV (csv-stringify) or PDF (pdfkit auditor-readable layout) or JSON
+- Output → §3.12 evidence_artifacts with `retention_class`
+- Delivery: email (NotificationService) OR signed URL via §3.11 collaborator session OR in-app notification
+
+**`ReportAlertEvaluator`** — worker; runs after every materialization tick:
+- For each active alert rule, evaluates threshold predicate against latest snapshot
+- If predicate matches AND `last_fired_at + cooldown_seconds < now()`: fires notification + writes `report_alert_events` row
+- Cooldown anti-storm: per-rule cooldown_seconds (default 1h); per-recipient cooldown via NotificationService
+
+**`<ReportBuilder>` plugin** — visual aggregation builder:
+- Drag source: pick collection OR observation_stream
+- Drag GROUP BY: pick fields from source
+- Drag aggregations: COUNT / SUM / AVG / MIN / MAX / P50 / P95 per field
+- Filters: canon §28-compatible row predicates (e.g., `status = 'failed' AND captured_at > '30 days ago'`)
+- Preview: live aggregation against current data (sampled to 1000 rows for performance)
+- Save: persists as `report_definitions` row; pick materialization_policy on save
+
+#### 13.22.3 §28-aware aggregation safety (binding)
+
+1. **Row-level masking applied BEFORE aggregation:** Aggregator queries always include `WHERE <canon §28 row filter>` for the requestor's context. Rows the requestor can't read are excluded BEFORE COUNT/SUM/AVG.
+2. **Field-level masking applied AFTER aggregation:** If any aggregated field is masked for the requestor (e.g., `salary` for a non-admin), the aggregation is refused with `AGGREGATION_OVER_MASKED_FIELD`.
+3. **K-anonymity threshold (default k=3):** Grouped output where any field has `confidentiality_class ≠ 'public'` is filtered to require ≥ k matching rows per group. Smaller groups are suppressed from output with `<below_k_anonymity_threshold>` placeholder. K configurable per pack policy.
+4. **Per-recipient slicing:** Same `report_definition` emits different output per recipient based on their §28 read scope; the `recipient_user_ids[]` on export schedule is the recipient list; each recipient's slice is computed independently.
+
+#### 13.22.4 Tests (≥ 16 assertions)
+
+1. ReportBuilder visual flow: drag source → group → aggregate → save → row written
+2. real_time materialization: source write triggers refresh; result available <2s
+3. snapshot_hourly: cron fires; matview refreshed; result available
+4. Cardinality heuristic: 50k row aggregation → pg matview chosen; 500k row → snapshot table chosen
+5. §28 row-masking before aggregation: user without read access on rows X-Y → COUNT excludes them
+6. §28 field-masking after aggregation: user with masked salary → aggregation over salary refused
+7. K-anonymity: group with k=2 rows where confidentiality_class='sensitive' → suppressed
+8. Per-recipient slicing: same report, two recipients with different scopes → different CSV outputs
+9. Scheduled CSV export delivers via email + signed URL; recipient receives correctly-sliced data
+10. Scheduled PDF export renders auditor-readable layout via pdfkit
+11. ReportAlertEvaluator fires when threshold matches; respects cooldown
+12. Alert dispatch via Slack / PagerDuty / in-app channels; failure-tolerant (one channel down does NOT block others)
+13. custom_sql_override gated behind permission; refused for non-admin
+14. ReportBuilder preview returns sampled 1000 rows; full materialization deferred to background
+15. Materialization handles source-collection schema changes per §3.19 customer_overridable surfaces (yellow auto-migrate)
+16. CSV/PDF export retention: respects pack-policy retention_class via §3.12 evidence_artifacts
+
+#### 13.22.5 PR breakdown (~10 PRs, lands G0b/G0c)
+
+| PR | Goal | Files | Gate |
+|---:|---|---|---|
+| 1 | Schema + 5 tables + entities + `ReportDefinitionService` CRUD + 5 permission codes | Migration; entities; service module | G0b |
+| 2 | `<ReportBuilder>` plugin: drag-source / drag-group / drag-aggregate / filter builder / preview | `@hubblewave/ui-primitives-web` (and `-mobile` for view-only); tests 1, 14 | G0b |
+| 3 | `ReportMaterializationProcessor` real_time path + snapshot_* policies + cardinality heuristic + matview-vs-table selector + tests 2, 3, 4 | Worker module | G0b |
+| 4 | §28-aware aggregation safety: row-masking before + field-masking after + k-anonymity + per-recipient slicing + tests 5, 6, 7, 8 | `apps/api/src/app/analytics/aggregation-safety.ts` | G0c |
+| 5 | `ReportExportProcessor` CSV/PDF/JSON generators + §3.12 evidence_artifact integration + delivery via §3.11 / NotificationService + tests 9, 10, 16 | Worker module | G0c |
+| 6 | `ReportAlertEvaluator` + threshold predicates + cooldown + multi-channel dispatch + tests 11, 12 | Worker module | G0c |
+| 7 | custom_sql_override gating + AST safety check (no DROP / TRUNCATE / cross-schema mutations) + permission registry update + test 13 | Service extension; SQL AST validator | G0c |
+| 8 | Schema-change resilience: report materializations handle source schema changes per §3.19 yellow auto-migrate; canon §47 amendment + test 15 | Integration with §3.19 UpgradeOverrideClassifier; CLAUDE.md amendment | G0c |
+| 9 | Default report library: pack-installer can ship default reports per pack (e.g., maintenance-core ships "PM compliance %", "MTTR", "MTBF trend") | Pack-installer hook; report_definitions seed | G0c |
+| 10 | §3.20 rounds integration: 3 default round reports (per-template pass-rate, per-stop failure heatmap, per-assignee velocity) wire as §3.20 PR-7 acceptance | Integration with §13.21 PR-7 | G0c |
+
+**Total: 10 PRs for §3.21. Estimated effort: ~18-22 working days.**
+
+**G0c acceptance contract update (revised again 2026-05-18):** "ALL §3.19 customization override + §3.20 rounds substrate + §3.21 reporting framework ready before G1 pack work begins. `<ReportBuilder>` builds visual aggregations; ReportMaterializationProcessor maintains snapshots per policy; CSV/PDF exports deliver per recipient slicing; ReportAlertEvaluator fires + respects cooldown; §28-aware aggregation safety asserted via test 5/6/7/8."
+
+---
+
+## 14. Pack Composition Implementation Plans
 
 The pack specs are denser than substrate worked examples because each enumerates ~50 collections, ~20 workflows, and ~30 plugins. Per-item depth is calibrated so the spec is implementable without further design (column types implicit when canonical; full property catalogs deferred to pack manifest files that ship with the pack code).
 
@@ -7583,11 +7819,11 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
-### 13.21 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.23 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
 
-**Substrate (0 remaining — §3.1-§3.19 ✅ ALL DONE):**
+**Substrate (0 remaining — §3.1-§3.21 ✅ ALL DONE):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -7607,6 +7843,8 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
 - ✅ §3.19 Universal Customer Customization Override + Composition — §13.20 (13 PRs; G0b/G0c per founder direction 2026-05-18 "platform capabilities must all be ready before pack work starts")
+- ✅ §3.20 Generic Rounds + Observation Sessions — §13.21 (7 PRs; G0b/G0c)
+- ✅ §3.21 Platform Reporting Framework — §13.22 (10 PRs; G0b/G0c)
 
 **Packs (4 packs, ALL 4 specified ✅):**
 - ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
@@ -7636,7 +7874,7 @@ Every marquee carries an explicit user-perceivable latency budget + audit-trail 
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.22 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.24 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -7657,7 +7895,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.23 What's left to do BEFORE code starts
+### 13.25 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.
