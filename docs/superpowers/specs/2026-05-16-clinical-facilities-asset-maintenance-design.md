@@ -180,6 +180,22 @@ Split across three gates per §5.3:
 - **NAC guardrails (per #26):** the `nac-quarantine` adapter cannot fire a quarantine action without (a) dual-confirmation (security officer + maintenance manager), (b) customer-policy override flag, (c) an active `quarantine_safety_check_passed` evidence row written by an asset-criticality precheck — these gates prevent accidental clinical-operations impact.
 - **Service-boundary:** secrets writes restricted to `apps/api/src/app/integrations/secrets/**`; egress allowlist + outbound_call_log restricted to `apps/worker/src/integrations/egress/**`.
 
+### 3.19 Universal Customer Customization Override + Composition (canon §45 NEW — the customization-vs-upgrade moat across all 9 surfaces)
+
+ServiceNow has 9+ customization layers (Business Rules, UI Policies, Client Scripts, Script Includes, UI Pages, UI Scripts, UI Macros, Workflows, Flow Designer), each with its own imperative customization API and no shared contract. Customizations accumulate across layers over 20 years; upgrades break across layers in unpredictable ways. HubbleWave has the same 9 layers BUT every customization across every layer follows ONE shared contract: metadata-only, customer-namespaced, version-declared, signature-chained, validator-classified. **§3.19 is the single primitive that makes that contract real.**
+
+- **What:** One `metadata.customization_overrides` table with `target_kind` discriminator covering all 9 customization surfaces; per-surface adapter implementations apply load-time overrides to pack-shipped artifacts; pre-upgrade validator classifies every active override as green / yellow (auto-migrate) / red (block upgrade) across ALL surfaces in one pass. Pack authors mark artifacts with `customer_overridable: false | { kinds: [...] }` at publish time to declare platform invariants (audit emission, signature chain writes, security checks).
+- **9 surfaces covered (target_kind enum):** `workflow`, `automation_rule`, `form_definition`, `view`, `workspace_page`, `property_validator`, `collection_access_rule`, `notification_template`, `ava_tool_config`.
+- **5 override_kind enum values:** `skip` (disable artifact), `modify` (change specific fields), `replace` (substitute customer-namespaced artifact), `add` (inject customer-defined artifact), `remove` (delete; only on customer_overridable points).
+- **New table (schema `metadata`):** `customization_overrides` (`(id, customer_id, target_kind, target_pack_id, target_artifact_id, override_kind, override_spec jsonb, target_platform_api_version, priority smallint, signature_chain_id, created_by_user_id, audit_log_id, is_active, created_at)`). Single table; per-surface adapters interpret `override_spec` per their schema. Customer-namespaced data referenced by `replace` / `add` overrides lives in `cust__{pack}__customizations__{surface}` tables per canon §17.5.
+- **Override Merge Engine:** `UniversalOverrideMergeEngine.mergeForExecution(packArtifact, customerOverrides[])` applied at LOAD time when each surface's runtime instantiates a pack-shipped artifact. Deterministic ordering: priority asc, then created_at asc. Nesting depth capped at 3 to prevent override storms.
+- **Pre-upgrade validator classifier:** for each active override at upgrade time, classify against the new pack version: **green** (target still exists with same identity), **yellow** (target renamed AND pack ships rename hint in migration manifest; auto-migrate), **red** (target removed OR override depends on signature/side-effect that changed; upgrade BLOCKED until customer reviews + re-targets). Validator runs in ONE pass across all 9 surfaces.
+- **Pack-author override-eligibility declaration:** every pack-shipped workflow/automation_rule/form/etc. carries an `override_policy` declaration: `false` (platform-invariant; cannot be overridden by customer) OR `{ kinds: ['skip', 'modify', 'replace'], reason: 'documentation_string' }` (officially supported customization). The pack-validator at publish time refuses missing `override_policy` declarations on any pack-shipped artifact.
+- **Audit trail:** every override creation/modification signed via §3.6 signature_chain with `signature_meaning='approval'`; override application at runtime emits an `audit_logs` row tagging the override_id active at the moment of execution (so the audit chain shows EXACTLY which overrides ran for a given record's lifecycle).
+- **Acceptance contract (the customization-vs-upgrade moat):** Every active override across all 9 surfaces must classify green or yellow at upgrade time. Red overrides BLOCK the upgrade with structured error listing affected customers + remediation hints. The validator IS the upgrade gate, not an advisory.
+- **Service-boundary:** `customization_overrides` writes restricted to `apps/api/src/app/customization/**`. Per-surface adapter implementations live alongside their surface's runtime (workflow override adapter in workflow runtime; form override adapter in form runtime; etc.). The merge engine + validator are in `apps/api/src/app/customization/` shared modules.
+- **Why this matters for pitch:** without §3.19, "every workflow / form / automation rule is customizable without upgrade impact" is marketing. With §3.19, it's an architectural commitment with a bounded validator surface and a binding contract.
+
 ---
 
 ## 4. Pack Composition (4 packs, ~55 pack PRs)
@@ -4810,6 +4826,254 @@ Self-test: 8 assertions covering (a) wrapped call passes; (b) unwrapped axios.ge
 
 ---
 
+### 13.20 Worked example: §3.19 Universal Customer Customization Override (full artifact-level spec — the customization-vs-upgrade moat across all 9 surfaces)
+
+#### 13.20.1 Tables
+
+**`metadata.customization_overrides`** — ONE platform table covering all 9 customization surfaces; per-surface adapters interpret `override_spec` per their schema.
+
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | NOT NULL | PK |
+| `customer_id` | `uuid` | — | NULL | NULL in single-tenant mode (canon §5); NOT NULL in pooled mode (RLS-enforced) |
+| `target_kind` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{workflow, automation_rule, form_definition, view, workspace_page, property_validator, collection_access_rule, notification_template, ava_tool_config}` |
+| `target_pack_id` | `text` | — | NOT NULL | Which pack ships the target artifact (e.g., `maintenance-core`) |
+| `target_artifact_id` | `text` | — | NOT NULL | Stable identifier of the artifact within the pack (e.g., workflow `wf_wo_intake`; form `f_wo_detail`) |
+| `target_sub_path` | `text` | — | NULL | When override targets a specific child (e.g., workflow state name `step_2`; form field `serial_number`); NULL when override applies to whole artifact |
+| `override_kind` | `varchar(32)` | — | NOT NULL | CHECK ∈ `{skip, modify, replace, add, remove}` |
+| `override_spec` | `jsonb` | — | NOT NULL | Per-surface schema for the change content (validated by per-surface adapter) |
+| `target_platform_api_version` | `varchar(32)` | — | NOT NULL | Semver of the platform release the override was authored against |
+| `priority` | `smallint` | `100` | NOT NULL | Lower applied first; conflicts resolved by priority then `created_at` asc |
+| `signature_chain_id` | `uuid` | — | NOT NULL | UNIQUE; FK → `compliance.signature_chains(id)`; every override creation is signed via §3.6 with `signature_meaning='approval'` |
+| `audit_log_id` | `uuid` | — | NOT NULL | UNIQUE; FK |
+| `created_by_user_id` | `uuid` | — | NOT NULL | FK |
+| `is_active` | `boolean` | `true` | NOT NULL | Deactivation does NOT cascade — runtime check is `WHERE is_active = true AND target_platform_api_version_compatible(...)` |
+| `created_at` | `timestamptz` | `now()` | NOT NULL | — |
+| `updated_at` | `timestamptz` | `now()` | NOT NULL | Trigger-maintained |
+
+Indexes: PK; `ix_co_lookup ON (target_kind, target_pack_id, target_artifact_id, is_active) WHERE is_active = true` — the merge engine's primary hot-path index; `ix_co_customer ON (customer_id, target_kind, created_at DESC)` — per-customer audit + admin queries; `ix_co_priority_load ON (target_kind, target_pack_id, target_artifact_id, priority, created_at) WHERE is_active = true` — deterministic merge ordering.
+
+CHECK constraint: `(override_kind = 'replace' OR override_kind = 'add') = (override_spec ? 'customer_artifact_ref')` — replace/add overrides MUST reference a customer-namespaced artifact in `override_spec.customer_artifact_ref`.
+
+**Customer-namespaced replacement tables (per canon §17.5):**
+
+Customer artifacts referenced by `replace` / `add` overrides live in pack-namespaced customer tables:
+- `cust__{pack_id}__customizations__workflow_definition` — customer-authored workflow replacements
+- `cust__{pack_id}__customizations__form_definition` — customer-authored form replacements
+- `cust__{pack_id}__customizations__automation_rule` — customer-authored automation rules
+- `cust__{pack_id}__customizations__view` — customer-authored view definitions
+- `cust__{pack_id}__customizations__workspace_page` — customer-authored workspace pages
+- `cust__{pack_id}__customizations__notification_template` — customer-authored notification templates
+- `cust__{pack_id}__customizations__ava_tool_config` — customer-authored AVA tool configs
+
+These tables are pack-namespaced per canon §17.5; their schemas follow the corresponding pack-shipped artifact schemas. `customization_overrides.override_spec.customer_artifact_ref` resolves to a row in the relevant customer-namespaced table.
+
+#### 13.20.2 Migrations
+
+| # | Filename | Action |
+|---|---|---|
+| 1 | `1945000000000-create-customization-overrides.ts` | `metadata.customization_overrides` table + indexes + CHECK constraints + `updated_at` trigger |
+| 2 | `1945000000001-add-override-policy-to-pack-shipped-artifacts.ts` | Adds `override_policy jsonb DEFAULT 'false'::jsonb` to `metadata.workflow_definitions`, `metadata.form_definitions`, `metadata.automation_rules`, `metadata.collection_access_rules`, `metadata.property_definitions`, etc. (9 tables). Default `false` = platform-invariant; pack authors must explicitly set to `{kinds: [...], reason: '...'}` to enable customer overrides. |
+| 3 | `1945000000002-create-customer-namespaced-customization-tables.ts` | Stub migration that, on pack install, generates the `cust__{pack_id}__customizations__*` tables for each pack's customizable surfaces. Pack-installer hook materializes per-pack tables when pack ships override_policy declarations |
+
+#### 13.20.3 TypeORM entities
+
+`libs/instance-db/src/lib/entities/metadata.ts` gains:
+
+```typescript
+@Entity({ schema: 'metadata', name: 'customization_overrides' })
+export class CustomizationOverride {
+  @PrimaryGeneratedColumn('uuid') id!: string;
+  @Column({ type: 'uuid', nullable: true }) customerId!: string | null;
+  @Column({ type: 'varchar', length: 32 }) targetKind!: CustomizationTargetKind;
+  @Column({ type: 'text' }) targetPackId!: string;
+  @Column({ type: 'text' }) targetArtifactId!: string;
+  @Column({ type: 'text', nullable: true }) targetSubPath!: string | null;
+  @Column({ type: 'varchar', length: 32 }) overrideKind!: CustomizationOverrideKind;
+  @Column({ type: 'jsonb' }) overrideSpec!: Record<string, unknown>;
+  @Column({ type: 'varchar', length: 32 }) targetPlatformApiVersion!: string;
+  @Column({ type: 'smallint', default: 100 }) priority!: number;
+  @Column({ type: 'uuid' }) signatureChainId!: string;
+  @Column({ type: 'uuid' }) auditLogId!: string;
+  @Column({ type: 'uuid' }) createdByUserId!: string;
+  @Column({ default: true }) isActive!: boolean;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ type: 'timestamptz' }) updatedAt!: Date;
+}
+
+export type CustomizationTargetKind =
+  | 'workflow' | 'automation_rule' | 'form_definition' | 'view'
+  | 'workspace_page' | 'property_validator' | 'collection_access_rule'
+  | 'notification_template' | 'ava_tool_config';
+
+export type CustomizationOverrideKind = 'skip' | 'modify' | 'replace' | 'add' | 'remove';
+```
+
+#### 13.20.4 Services
+
+`apps/api/src/app/customization/` (new module):
+
+**`UniversalOverrideMergeEngine`** — `apps/api/src/app/customization/universal-override-merge.engine.ts`:
+
+```typescript
+async mergeForExecution<TArtifact>(
+  packArtifact: TArtifact,
+  targetKind: CustomizationTargetKind,
+  targetPackId: string,
+  targetArtifactId: string,
+  ctx: RequestContext
+): Promise<{ effective: TArtifact; appliedOverrides: CustomizationOverride[] }>;
+```
+
+Flow:
+1. Lookup active overrides via `ix_co_lookup` partial index — filtered by `(target_kind, target_pack_id, target_artifact_id, is_active=true, target_platform_api_version_compatible)`.
+2. Order by priority asc, then created_at asc.
+3. Resolve per-surface adapter via `OverrideAdapterRegistry.resolve(target_kind)`.
+4. Adapter applies overrides one-by-one to packArtifact, producing effective artifact.
+5. Cap nesting depth at 3 (e.g., a customer-added state being further overridden by another override) — depth limit prevents override storms.
+6. Return effective artifact + applied overrides (for audit trail at runtime).
+
+**Per-surface override adapter contract** — `apps/api/src/app/customization/adapters/<surface>-override.adapter.ts`:
+
+```typescript
+interface OverrideAdapter<TArtifact> {
+  readonly targetKind: CustomizationTargetKind;
+  applyOverride(artifact: TArtifact, override: CustomizationOverride): TArtifact;
+  validateOverrideSpec(spec: Record<string, unknown>, packArtifact: TArtifact): ValidationResult;
+  classifyOnUpgrade(override: CustomizationOverride, newPackArtifact: TArtifact, oldPackArtifact: TArtifact): UpgradeClassification;
+}
+
+type UpgradeClassification = 'green' | { kind: 'yellow', autoMigration: AutoMigrationSpec } | { kind: 'red', reason: string, remediation: string };
+```
+
+Nine adapter implementations:
+1. `WorkflowOverrideAdapter` — handles skip_state / modify_guard / modify_side_effect / replace_state / add_state / replace_entire
+2. `AutomationRuleOverrideAdapter` — skip / modify_condition / modify_action / replace
+3. `FormDefinitionOverrideAdapter` — skip_field / modify_field / replace_field / add_field / remove_field / replace_entire
+4. `ViewOverrideAdapter` — modify_columns / modify_filters / replace (already partially handled by canon §7 layering; this adapter formalizes it)
+5. `WorkspacePageOverrideAdapter` — modify_layout / replace_widget / add_widget / remove_widget
+6. `PropertyValidatorOverrideAdapter` — modify_predicate / add_validator / remove_validator
+7. `CollectionAccessRuleOverrideAdapter` — add_rule (customer adds; never modifies pack's default rule which is platform-invariant for the pack's documented permissions) / modify_row_condition (only if pack declared the rule overridable)
+8. `NotificationTemplateOverrideAdapter` — modify_body / modify_subject / modify_channels / replace
+9. `AvaToolConfigOverrideAdapter` — modify_trust_state / modify_confidence_threshold / modify_prompt_template
+
+Adapters are registered via `OverrideAdapterRegistry` on module boot; the merge engine dispatches by `target_kind`.
+
+**`PackArtifactOverridePolicyService`** — checks pack-shipped artifacts have `override_policy` declared:
+
+```typescript
+async validateOverridePolicyCoverage(packManifest: PackManifest): Promise<ValidationResult>;
+```
+
+Pack-validator extension that runs at pack publish. Refuses pack if any pack-shipped workflow / automation_rule / form_definition / etc. lacks an `override_policy` declaration. Default is NOT inferred; pack authors MUST explicitly declare `override_policy: false` (platform-invariant) or `override_policy: { kinds: [...], reason: '...' }` (customer-overridable).
+
+**`UpgradeOverrideClassifier`** — `apps/api/src/app/customization/upgrade-override-classifier.ts`:
+
+```typescript
+async classifyAllOverridesForUpgrade(
+  currentPackManifest: PackManifest,
+  newPackManifest: PackManifest,
+  customerId: string | null
+): Promise<UpgradeOverrideReport>;
+```
+
+Run at upgrade time (before upgrade ships):
+1. Query all `customization_overrides` rows where `target_pack_id = packId AND is_active = true`.
+2. For each override: resolve the appropriate adapter; call `adapter.classifyOnUpgrade(override, newPackArtifact, oldPackArtifact)`.
+3. Aggregate: count green / yellow / red.
+4. If `red_count > 0`: upgrade refuses; structured error report lists each red override with `target_kind / target_pack_id / target_artifact_id / customer_id / reason / remediation`.
+5. If `red_count = 0 AND yellow_count > 0`: upgrade proceeds, auto-migration applied per yellow's `autoMigration` spec; audit trail captures the migration.
+6. If `red_count = 0 AND yellow_count = 0`: upgrade proceeds clean.
+
+**`CustomizationOverrideService`** — admin CRUD on overrides (create / list / deactivate). Override creation requires §3.6 signature; deactivation requires `customization:override:manage` permission.
+
+#### 13.20.5 API endpoints
+
+| Method | Path | Boundary | Body / params |
+|---|---|---|---|
+| `POST` | `/api/customization/overrides` | `@RequirePermission('customization:override:create')` | `{ targetKind, targetPackId, targetArtifactId, targetSubPath?, overrideKind, overrideSpec, priority?, signatureChainPayload }` |
+| `GET` | `/api/customization/overrides` | `@RequirePermission('customization:override:read')` | query: `targetKind?`, `targetPackId?`, `customerId?`, `active?` |
+| `GET` | `/api/customization/overrides/:id` | `@RequirePermission('customization:override:read')` | — |
+| `PATCH` | `/api/customization/overrides/:id` | `@RequirePermission('customization:override:manage')` | `{ isActive?, priority? }` (override_spec is IMMUTABLE — to change, deactivate + create new) |
+| `DELETE` | `/api/customization/overrides/:id` | `@RequirePermission('customization:override:manage')` (`dangerous: true`) | `{ reason }` |
+| `POST` | `/api/customization/upgrade-classify` | `@RequirePermission('customization:upgrade:run')` | `{ newPackManifest }` returns `UpgradeOverrideReport` |
+| `GET` | `/api/customization/override-policies` | `@RequirePermission('metadata:pack:read')` | query: `packId?` — returns pack-author-declared override_policy entries for all customizable artifacts |
+
+New permission codes:
+- `customization:override:create`, `customization:override:read`, `customization:override:manage` (`dangerous: true` on the latter)
+- `customization:upgrade:run` (admin-only)
+
+#### 13.20.6 Validator extensions
+
+Pack validator gains 4 publish gates:
+
+1. **G20.1** — Every pack-shipped workflow / automation_rule / form_definition / view / workspace_page / property_validator / collection_access_rule / notification_template / ava_tool_config MUST declare `override_policy` (explicit; no inference). Error: `MISSING_OVERRIDE_POLICY_DECLARATION` with artifact path.
+2. **G20.2** — `override_policy.kinds[]` values MUST be in the canonical enum subset for the target_kind (e.g., workflow may declare `['skip_state', 'modify_guard', 'modify_side_effect', 'replace_state', 'add_state', 'replace_entire']`; form_definition may declare `['skip_field', 'modify_field', ...]`). Error: `INVALID_OVERRIDE_KIND_FOR_TARGET_KIND`.
+3. **G20.3** — Pack declaring `override_policy: false` on an artifact MUST provide a `reason` (documentation string explaining why this is platform-invariant). Error: `OVERRIDE_POLICY_FALSE_REQUIRES_REASON`.
+4. **G20.4** — Per-pack `migration_manifest.yaml` MUST include rename hints for any artifact whose stable identifier changed between releases (`oldId → newId`) — the classifier reads this to produce yellow auto-migrations. Without rename hints, the classifier treats renames as red (target removed). Error: `MISSING_RENAME_HINT_IN_MIGRATION_MANIFEST`.
+
+#### 13.20.7 Service-boundary scanner rules
+
+`tools/service-boundary-check.ts` `KNOWN_WRITES` table gains:
+
+| Entity | Allowed writers |
+|---|---|
+| `CustomizationOverride` | `CustomizationOverrideService.*`, `UpgradeOverrideClassifier.applyAutoMigration` (yellow rebind) |
+
+`tools/customization-coverage-check.ts` (NEW scanner): scans pack manifests in `packs/*/manifest.yaml` for missing `override_policy` declarations on customizable surfaces; flags packs that omit the declaration on any pack-shipped workflow/form/etc. Self-test: 12 assertions covering (a) workflow without override_policy → fail; (b) workflow with `override_policy: false` and no reason → fail; (c) workflow with `override_policy: {kinds: ['invalid_kind']}` → fail; (d) workflow with valid declaration → pass; (e) all 9 surfaces enumerated and validated; (f) missing rename hint on identifier change → fail; (g) duplicate override_policy on same artifact → fail; (h) override_policy on non-customizable surface (e.g., a system column) → fail.
+
+#### 13.20.8 Tests (self-test ≥ 18 assertions across 5-scenario fixture + per-surface adapters)
+
+Integration tests at `apps/api/test/integration/customization-overrides-*.spec.ts`:
+
+**5-scenario fixture (workflow surface; covers the user's RFP scenario set):**
+1. **`customization-scenario-1-as-is.spec.ts`** — Client 1: no override rows; pack workflow runs steps 1→2→3→4 unchanged.
+2. **`customization-scenario-2-skip-step.spec.ts`** — Client 2: one `skip` override on step_2; engine runs 1→3→4; audit trail captures override application.
+3. **`customization-scenario-3-replace-step.spec.ts`** — Client 3: one `replace` override on step_3 with `customer_artifact_ref` to `cust__maintenance_core__customizations__workflow_definition.id=...` containing custom state; engine runs 1→2→custom→4.
+4. **`customization-scenario-4-modify-partial.spec.ts`** — Client 4: one `modify` override on step_2's guard predicate (relaxed condition); engine runs 1→2(modified)→3→4.
+5. **`customization-scenario-5-replace-entire.spec.ts`** — Client 5: one `replace` override targeting whole workflow with `customer_artifact_ref` to customer-namespaced workflow definition; engine runs customer's workflow entirely.
+
+**Per-surface adapter tests (≥ 1 happy-path test per surface; 9 total):**
+6. **`customization-adapter-workflow.spec.ts`** — all 6 workflow override_kinds round-trip.
+7. **`customization-adapter-automation-rule.spec.ts`** — skip / modify_condition / replace.
+8. **`customization-adapter-form-definition.spec.ts`** — skip_field / modify_field / add_field / remove_field; respects §13.8 G8.4 mobile-eligibility on sync-eligible collections.
+9. **`customization-adapter-view.spec.ts`** — modify_columns / modify_filters; integration with canon §7 layering (customer override is HIGHER priority than role view but LOWER priority than personal view).
+10. **`customization-adapter-workspace-page.spec.ts`** — modify_layout / replace_widget / add_widget; respects UI Builder authoring contract.
+11. **`customization-adapter-property-validator.spec.ts`** — modify_predicate doesn't violate property's `confidentiality_class` hard-deny constraints (cannot override a `never_reveal` property's validator to be more permissive).
+12. **`customization-adapter-collection-access-rule.spec.ts`** — add_rule only; cannot modify pack's default rule (platform-invariant per pack); customer's added rule passes through canon §28 evaluator with proper priority.
+13. **`customization-adapter-notification-template.spec.ts`** — modify_body / modify_channels; template variable references validated against pack data.
+14. **`customization-adapter-ava-tool-config.spec.ts`** — modify_trust_state (Suggest→Preview→Execute progression; customer can DOWNGRADE trust but cannot UPGRADE past pack's declared maximum trust).
+
+**Upgrade classifier tests:**
+15. **`customization-upgrade-green.spec.ts`** — target artifact unchanged across pack versions → green; upgrade proceeds.
+16. **`customization-upgrade-yellow.spec.ts`** — target renamed AND migration_manifest has rename hint → yellow; auto-migration applied; override re-bound; audit trail captures rebind.
+17. **`customization-upgrade-red.spec.ts`** — target removed → red; upgrade REFUSED with structured error listing affected customer + remediation; new pack version NOT installed.
+18. **`customization-coverage-scanner.spec.ts`** — pack missing `override_policy` declaration → scanner fails CI.
+
+#### 13.20.9 PR breakdown for §3.19 (~13 PRs, lands in G0b/G0c)
+
+| PR | Goal | Files / scope | Gate | Depends |
+|---:|---|---|---|---|
+| 1 | `customization_overrides` table + entity + `UniversalOverrideMergeEngine` core + `OverrideAdapterRegistry` + `CustomizationOverrideService` CRUD + 5 permission codes | Migrations 1+3; entity; `apps/api/src/app/customization/**`; service-boundary scanner; API controller + permission registry | G0b | §3.2 task_projection awareness (for workflow runtime to consult overrides) |
+| 2 | `override_policy` column migration on 9 pack-shipped artifact tables + pack-validator G20.1-G20.3 + canon §45 amendment + 5-scenario fixture loader | Migration 2; pack-validator extension; CLAUDE.md amendment | G0b | PR-1 |
+| 3 | `WorkflowOverrideAdapter` + 5-scenario tests 1-5 (workflow surface — THE canonical first adapter) | Adapter implementation; tests 1-5 in fixture | G0b | PR-1, PR-2, workflow runtime |
+| 4 | `AutomationRuleOverrideAdapter` + test 7 | Adapter implementation; test | G0b | PR-1, rule engine |
+| 5 | `FormDefinitionOverrideAdapter` + test 8 + integration with §13.8 G8.4 mobile-eligibility | Adapter implementation; test; cross-reference §3.8 | G0b | PR-1, §3.8 |
+| 6 | `WorkspacePageOverrideAdapter` + test 10 + UI Builder authoring contract integration | Adapter implementation; test; canon §27 cross-ref | G0b | PR-1, §3.7 |
+| 7 | `ViewOverrideAdapter` + test 9 + canon §7 layering integration (priority: personal > customer-override > role > pack) | Adapter implementation; test; canon §7 layering update | G0c | PR-1, view runtime |
+| 8 | `PropertyValidatorOverrideAdapter` + test 11 + confidentiality_class hard-deny enforcement | Adapter implementation; test; §13.11 G11.1 integration | G0c | PR-1, §13.11 |
+| 9 | `CollectionAccessRuleOverrideAdapter` + test 12 + canon §28 evaluator integration (add_rule only; never modify pack's default) | Adapter implementation; test; §28 evaluator extension | G0c | PR-1, canon §28 |
+| 10 | `NotificationTemplateOverrideAdapter` + test 13 + template variable validation | Adapter implementation; test | G0c | PR-1, NotificationService |
+| 11 | `AvaToolConfigOverrideAdapter` + test 14 + canon §12 trust progression enforcement (cannot upgrade past pack maximum) | Adapter implementation; test; canon §12 cross-ref | G0c | PR-1, §3.8 |
+| 12 | `UpgradeOverrideClassifier` + `migration_manifest.yaml` rename-hint format + G20.4 validator + tests 15-17 + `/api/customization/upgrade-classify` endpoint | `apps/api/src/app/customization/upgrade-override-classifier.ts`; pack-validator extension; API controller | G0c | All 9 adapter PRs (3-11) |
+| 13 | `tools/customization-coverage-check.ts` scanner + self-test (12 assertions) + test 18 + canon §45 amendment finalization + `/api/customization/override-policies` endpoint | `tools/customization-coverage-check.ts` + self-test; CI workflow job; CLAUDE.md amendment | G0c | PR-12 |
+
+**Total: 13 PRs for §3.19. Estimated effort: ~22-28 working days across G0b weeks 6-11 + G0c weeks 12-17.**
+
+**G0c acceptance contract update:** "ALL 9 surface adapters active + UpgradeOverrideClassifier running on synthetic upgrade scenarios + customization-coverage-check.ts green; pack publish refuses missing override_policy declarations." Per founder direction (2026-05-18): platform capabilities must all be ready before pack work starts (G1).
+
+---
+
 ## 14. Pack Composition Implementation Plans
 
 §13's worked examples specify the platform's 18 substrate primitives. §14 specifies how the four customer-facing packs compose those primitives. Each pack section follows the same shape: collections (with taskable/sync/vector flags + key columns + substrate dependencies), workflows (state machines with transitions/guards/audit), automation rules, views, workspaces, plugin components, integration adapters, and PR breakdown.
@@ -7295,11 +7559,11 @@ Categories follow §5.1's natural grouping: AI (#1-5), technician superpowers (#
 
 ---
 
-### 13.20 Remaining implementation specs (inline expansion per §3.N — progress tracker)
+### 13.21 Remaining implementation specs (inline expansion per §3.N — progress tracker)
 
 Per user direction, all implementation detail is inline in this single mega-spec. **All 18 substrate worked examples (§13.2 — §13.19) are complete; §3.1 — §3.18 specified at the artifact level.** Remaining work moves to 4 pack specs + 30 workflows + 35 marquees in subsequent commits on `phase4/clinical-facilities-pack-design`.
 
-**Substrate (0 remaining — §3.1-§3.18 ✅ ALL DONE):**
+**Substrate (0 remaining — §3.1-§3.19 ✅ ALL DONE):**
 - ✅ §3.1 taskable capability — §13.2 (5 PRs)
 - ✅ §3.2 task_projection — §13.3 (12 PRs)
 - ✅ §3.3 scheduling primitives — §13.4 (6 PRs)
@@ -7318,6 +7582,7 @@ Per user direction, all implementation detail is inline in this single mega-spec
 - ✅ §3.16 Financial Control primitive — §13.17 (5 PRs)
 - ✅ §3.17 Bulk Import / Commissioning Staging — §13.18 (5 PRs)
 - ✅ §3.18 Integration Secrets + Egress Policy — §13.19 (6 PRs)
+- ✅ §3.19 Universal Customer Customization Override + Composition — §13.20 (13 PRs; G0b/G0c per founder direction 2026-05-18 "platform capabilities must all be ready before pack work starts")
 
 **Packs (4 packs, ALL 4 specified ✅):**
 - ✅ `maintenance-core` — 51 collections, 18 workflows, 32 plugins, 7 integrations, 9 workspaces. ~25 PRs across Phase 2. **Spec at §14.1.**
@@ -7347,7 +7612,7 @@ Every marquee carries an explicit user-perceivable latency budget + audit-trail 
 
 **Per-substrate-section spec doc** lives at `docs/superpowers/specs/2026-05-16-substrate-§{N}-{slug}.md`. Per-pack spec doc at `docs/superpowers/specs/2026-05-16-pack-{packname}.md`. Master implementation plan at `docs/superpowers/plans/2026-05-16-clinical-facilities-asset-maintenance-implementation.md` cross-references them in execution order.
 
-### 13.21 Convention for spec doc filenames (superseded by mega-spec-inline approach)
+### 13.22 Convention for spec doc filenames (superseded by mega-spec-inline approach)
 
 ```
 docs/
@@ -7368,7 +7633,7 @@ docs/
           aligned to gates G0a → G6 with explicit dependencies + slip budget.
 ```
 
-### 13.22 What's left to do BEFORE code starts
+### 13.23 What's left to do BEFORE code starts
 
 1. **Convert this plan file** to `docs/superpowers/specs/2026-05-16-clinical-facilities-asset-maintenance-design.md` (the architecture spec — already drafted; post-ExitPlanMode it's a `git mv` + commit).
 2. **Write 17 more substrate spec docs** (§3.2-§3.18), each following the §13.2 template above.

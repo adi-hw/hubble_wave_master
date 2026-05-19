@@ -23,8 +23,8 @@ The plan does NOT duplicate the spec's per-section PR breakdowns; it sequences t
 | Gate | Target week | Spec sections | PRs allocated | Acceptance demo |
 |---|---:|---|---:|---|
 | **G0a** Foundation | 5 | Pre-flight PR-A1/A2/A3 (§1.1 preconditions #2+#3) + §13.2 + §13.4 + §13.5 + §13.6 (partial) + §13.7 (single-sig) | ~29 | Pack-validator capability fields + property_definitions safety columns + taskable + scheduling + observation base + single-signature path; CI green |
-| **G0b** Advanced | 11 | §13.3 + §13.7 (Merkle) + §13.8 + §13.9 + §13.10 + §13.11 + §13.12 | ~52 | task_projection w/ circuit breaker + Merkle batch + mobile parity + kiosk |
-| **G0c** Marquee substrate | 17 | §13.13 + §13.14 + §13.15 + §13.16 + §13.17 + §13.18 + §13.19 | ~38 | Storage + Connector + Vector + Graph + Financial + Import + Secrets all live |
+| **G0b** Advanced | 11 | §13.3 + §13.7 (Merkle) + §13.8 + §13.9 + §13.10 + §13.11 + §13.12 + §13.20 (PRs B1-B6 — §3.19 core + 5 adapters) | ~58 | task_projection w/ circuit breaker + Merkle batch + mobile parity + kiosk + customization override core + workflow/automation/form/workspace override adapters |
+| **G0c** Marquee substrate | 17 | §13.13 + §13.14 + §13.15 + §13.16 + §13.17 + §13.18 + §13.19 + §13.20 (PRs C1-C7 — remaining 4 adapters + upgrade classifier + scanner) | ~45 | Storage + Connector + Vector + Graph + Financial + Import + Secrets + ALL 9 customization override adapters + UpgradeOverrideClassifier all live |
 | **G1** maintenance-core | 23 | §14.1 + selected §15.1 workflows + MQ-#1 | ~28 | WO + PM + checklists + mobile tech workspace + voice WO capture |
 | **G2** Overlays + MQ #2-5,31,33 | 31 | §14.2 + §14.3 + §14.4 + §15.2-§15.4 workflows + 7 marquees | ~38 | All 4 packs install together; AI marquees 1-5 + edges #31 #33 live |
 | **G3** Tech superpowers + #6-13 + #32 | 37 | MQ-#6-13 + MQ-#32 + workflow refinements | ~22 | Glove-Mode + Generative close-out + Dirty Nameplate + Elevator Mode + P2P parts + Pins + Routing + LOTO + Blast Radius all live |
@@ -32,7 +32,7 @@ The plan does NOT duplicate the spec's per-section PR breakdowns; it sequences t
 | **G5** Views + #18-22 + #30 + #34 | 47 | MQ-#18-22 + MQ-#30 + MQ-#34 | ~16 | Pivot-Kanban + Dual-Axis + Triage Deck + Live Command Map + Dependency Graph + Fleet + Joint Commission Merkle Proof |
 | **G6** Scale + Demo | 50 | scale-rig + perf baseline + on-site test | ~8 | 3M assets / 20M WOs / 10B observations; mobile field test in dead-zone |
 
-**Total: ~250 PRs across 50 weeks. Critical-path PR throughput required: ~5 PRs/week sustained, with parallelism on independent tracks.**
+**Total: ~263 PRs across 50 weeks (~250 original + ~13 §3.19 customization override PRs added 2026-05-18 per founder direction). Critical-path PR throughput required: ~5-6 PRs/week sustained, with parallelism on independent tracks.**
 
 Each gate ends with a written gate-acceptance memo + Go/No-Go decision (per §5.3). Gate slip → re-baseline before continuing.
 
@@ -141,24 +141,38 @@ The two remaining preconditions are NOT separate "operator action items" anymore
 | 065 | §13.12 PR-4 | Collaborator sign-closeout integration with §13.7 SignatureService + G12.1-G12.3 validator + canon §29 amendment | 064 |
 | 066 | §13.12 PR-5 | Audit forensic endpoint for kiosk/collaborator history + monitoring | 063, 064 |
 | 067 | §13.6 PR-7 | Canon §31 amendment + ops runbook (pg_partman + rollup-lag escalation) | 040, 041 |
-| 068 | (CI gate) | All G0b CI scanners green | 027-067 |
-| 069 | (Acceptance) | G0b demo: 100k WO bulk-import → circuit breaker → Merkle batch 50 signatures → kiosk session bind/revoke | 068 |
+| **B1** | §13.20 PR-1 | `customization_overrides` table + entity + `UniversalOverrideMergeEngine` core + `OverrideAdapterRegistry` + `CustomizationOverrideService` CRUD + 5 permission codes | 027 (task_projection awareness) |
+| **B2** | §13.20 PR-2 | `override_policy` column migration on 9 pack-shipped artifact tables + pack-validator G20.1-G20.3 + canon §45 amendment + 5-scenario fixture loader | B1 |
+| **B3** | §13.20 PR-3 | `WorkflowOverrideAdapter` + 5-scenario tests 1-5 (workflow surface — canonical first adapter) | B1, B2 |
+| **B4** | §13.20 PR-4 | `AutomationRuleOverrideAdapter` + test 7 | B1, B2 |
+| **B5** | §13.20 PR-5 | `FormDefinitionOverrideAdapter` + test 8 + integration with §13.8 G8.4 mobile-eligibility | B1, B2, 042-044 |
+| **B6** | §13.20 PR-6 | `WorkspacePageOverrideAdapter` + test 10 + UI Builder authoring contract integration | B1, B2, 042-044 |
+| 068 | (CI gate) | All G0b CI scanners green incl. customization override coverage on 4 active surfaces (workflow/automation/form/workspace) | 027-067, B1-B6 |
+| 069 | (Acceptance) | G0b demo: 100k WO bulk-import → circuit breaker → Merkle batch 50 signatures → kiosk session bind/revoke + workflow override applied (5-scenario fixture green) | 068 |
 | 070 | (Slack) | Slip-budget reserve PR — fix any G0b regressions before G0c | 069 |
-| 071 | (Slack) | Slip-budget reserve PR | 069 |
-| 072-078 | (Slack) | Slip-budget reserve PRs (~7 spare slots within G0b's 6-week window) | 069 |
+| 071-072 | (Slack) | Slip-budget reserve PRs (~2 spare slots within G0b's 6-week window; tighter than before due to §3.19 absorption) | 069 |
 
 **G0b acceptance:** 100k WO bulk-import → circuit breaker keeps list views responsive → Merkle batch of 50 signatures + replay attack rejected → kiosk session bound to a device → revoke is one-tap.
 
 **Critical path within G0b:** task_projection track (PR-027→028→029→031) is independent of the mobile track (PR-042→047→048). The Merkle batch (PR-039) requires single-sig (PR-021 from G0a) but unblocks offline signature queue (PR-048).
 
-## 5. G0c — Marquee substrate (Weeks 12-17; ~38 PRs)
+## 5. G0c — Marquee substrate (Weeks 12-17; ~45 PRs incl. 7 §3.19 adapters)
 
-**Goal:** §3.12 Storage + §3.13 Connector + §3.14 Vector + §3.15 Graph + §3.16 Financial + §3.17 Import + §3.18 Secrets. All shared marquee substrate.
+**Goal:** §3.12 Storage + §3.13 Connector + §3.14 Vector + §3.15 Graph + §3.16 Financial + §3.17 Import + §3.18 Secrets + COMPLETE §3.19 customization override (4 remaining adapters + upgrade classifier + scanner). All shared marquee substrate AND all 9 customization override adapters ready before G1 pack work begins.
+
+**§3.19 completion in G0c** is binding per founder direction (2026-05-18): "platform capabilities must all be ready before the pack work starts". PRs C1-C7 land all 4 remaining adapters + UpgradeOverrideClassifier + customization-coverage-check scanner before §14.1 maintenance-core PRs in G1.
 
 ### G0c PR sequence
 
 | PR# | Spec ref | Scope | Depends |
 |---:|---|---|---|
+| **C1** | §13.20 PR-7 | `ViewOverrideAdapter` + test 9 + canon §7 layering integration (priority: personal > customer-override > role > pack) | B1, view runtime |
+| **C2** | §13.20 PR-8 | `PropertyValidatorOverrideAdapter` + test 11 + confidentiality_class hard-deny enforcement | B1, §13.11 (will land via PR-058+) |
+| **C3** | §13.20 PR-9 | `CollectionAccessRuleOverrideAdapter` + test 12 + canon §28 evaluator integration (add_rule only; never modify pack's default) | B1, canon §28 evaluator |
+| **C4** | §13.20 PR-10 | `NotificationTemplateOverrideAdapter` + test 13 + template variable validation | B1, NotificationService |
+| **C5** | §13.20 PR-11 | `AvaToolConfigOverrideAdapter` + test 14 + canon §12 trust progression enforcement (cannot upgrade past pack maximum) | B1, 050-052 |
+| **C6** | §13.20 PR-12 | `UpgradeOverrideClassifier` + `migration_manifest.yaml` rename-hint format + G20.4 validator + tests 15-17 + `/api/customization/upgrade-classify` endpoint | C1-C5, B3-B6 (all 9 adapters) |
+| **C7** | §13.20 PR-13 | `tools/customization-coverage-check.ts` scanner + self-test (12 assertions) + test 18 + canon §45 amendment finalization + `/api/customization/override-policies` endpoint | C6 |
 | 079 | §13.13 PR-1 | Schema + tables + entities + StoragePresignService + validator | — |
 | 080 | §13.13 PR-2 | AttachmentIngestProcessor + content-type sniff + SHA-256 + ExpiredPresignSweeper | 079 |
 | 081 | §13.13 PR-3 | AV + secret + PII scanners + state machine | 080 |
@@ -199,7 +213,7 @@ The two remaining preconditions are NOT separate "operator action items" anymore
 | 116 | §13.19 PR-6 | Canon §44 amendment + service-boundary rule additions | 111-115 |
 | 117 | (CI gate + Acceptance) | All G0c scanners green; G0c demo end-to-end | 079-116 |
 
-**G0c acceptance:** Pre-signed upload + AV-scan + object-lock works E2E; one connector adapter runs in both live + simulator modes with conformance proof; semantic match returns explainable confidence bands; floor-plan graph route-solves a 4-floor hospital fixture; three-way match + SoD enforces on synthetic invoice; bulk import publishes 5,000 rows atomically; NAC adapter refuses to fire without dual-confirmation guardrails.
+**G0c acceptance:** Pre-signed upload + AV-scan + object-lock works E2E; one connector adapter runs in both live + simulator modes with conformance proof; semantic match returns explainable confidence bands; floor-plan graph route-solves a 4-floor hospital fixture; three-way match + SoD enforces on synthetic invoice; bulk import publishes 5,000 rows atomically; NAC adapter refuses to fire without dual-confirmation guardrails; **§3.19 universal customization override fully ready: all 9 surface adapters active + 5-scenario fixture green + UpgradeOverrideClassifier classifies synthetic upgrade green/yellow/red correctly + customization-coverage-check scanner blocks packs missing override_policy declarations** (binding per founder direction 2026-05-18).
 
 **Critical path within G0c:** Storage (PR-079→083) blocks intake attachment pipeline + evidence_artifact link-on-clean for all downstream marquees. Vector + Graph are independent tracks. Financial + Import are independent. Secrets + Egress unblock connector calls.
 
@@ -412,8 +426,8 @@ The single longest chain through the plan, gate-by-gate:
 
 ```
 G0a:  PR-001 (taskable) → 002 → 016 (observations) → 020 (compliance schema) → 021 (single-sig)
-G0b:  → 027 (task_projection) → 028 (refresh job) → 029 (circuit breaker) → 039 (Merkle batch) → 047 (mobile sync) → 048 (offline sig queue)
-G0c:  → 079 (storage) → 083 (link-on-clean) → 091 (vector) → 093 (semantic match) → 096 (graph) → 102 (transaction approval)
+G0b:  → 027 (task_projection) → 028 (refresh job) → 029 (circuit breaker) → 039 (Merkle batch) → 047 (mobile sync) → 048 (offline sig queue) → B1 (override engine core) → B3 (workflow adapter)
+G0c:  → 079 (storage) → 083 (link-on-clean) → 091 (vector) → 093 (semantic match) → 096 (graph) → 102 (transaction approval) → C6 (upgrade classifier) → C7 (coverage scanner)
 G1:   → 118 (pack scaffold) → 119 (asset) → 121 (WO) → 122 (PM) → 129 (dispatch)
 G2:   → 146 (clinical scaffold) → 151 (ehr_context_link) → 164 (ot-security scaffold) → 171 (NAC adapter) → 172 (WF-OT4)
 G3:   → 184 (Glove-Mode) → 192 (Blast Radius)
@@ -422,7 +436,9 @@ G5:   → 231 (Live Command Map) → 234 (Joint Commission Merkle Proof)
 G6:   → 244 (scale-rig) → 250 (RFP demo)
 ```
 
-This chain is ~115 PRs long. At a sustained throughput of 5 PRs/week on the critical path with AI agent parallelism on independent branches, the chain completes in ~23 weeks of critical-path engineer time. Total elapsed time including gate-acceptance demos + slack = 50 weeks.
+This chain is ~120 PRs long (was ~115; §3.19 added 5 to critical path: B1→B3→C6→C7 plus parallel adapter dependencies). At a sustained throughput of 5-6 PRs/week on the critical path with AI agent parallelism on independent branches, the chain completes in ~22-24 weeks of critical-path engineer time. Total elapsed time including gate-acceptance demos + slack = 50 weeks.
+
+**§3.19 universal customization override is on the critical path because every pack-shipped workflow / form / automation rule that customers will customize requires the override engine + classifier + scanner to be in place BEFORE the pack ships in G1.** Per founder direction (2026-05-18): "platform capabilities must all be ready before the pack work starts" — §3.19's completion at end of G0c (week 17) is binding.
 
 ## 14. Risk register (HIGH risks only; full list in spec §7)
 
@@ -438,14 +454,17 @@ This chain is ~115 PRs long. At a sustained throughput of 5 PRs/week on the crit
 | NAC quarantine triggering on clinical-critical asset | L | CRITICAL | §3.18 G19.3 validator + clinical_criticality_score > 70 hard refusal; PR-171 acceptance is the gate |
 | Spec-vs-implementation drift over 50 weeks | M | M | Every PR cross-references its §X.Y spec section + pack-validator catches drift at install |
 | External team merges to phase4 branch (recurring observation) | H | M | Worktree isolation for design-spec PRs; pack-implementation PRs go through standard PR review |
+| §3.19 customization override classifier produces false-positive red on legitimate yellow rename | M | HIGH | `migration_manifest.yaml` rename-hint format declared in §13.20 PR-12 (G20.4 validator); upgrade can be force-overridden by operator with audit row in extreme cases; classifier shipped with 17 fixture-tested scenarios covering rename / removal / signature-change / side-effect-change |
+| §3.19 customer override applies to a transition the pack later marks override_policy=false (regression) | L | M | Validator at upgrade time treats this as red; customer notified; remediation: deactivate override, re-author per new policy. Pack authors cannot tighten override_policy on a previously-overridable artifact without a green→red migration acknowledgment |
+| §3.19 G0c absorbs G0b slip → cascading slip into G1 | M | HIGH | G0c slack = 0 by design; if §3.19 PRs C1-C7 slip into week 18, push G1 to week 19. Pack work cannot begin until §3.19 fully ready per founder direction 2026-05-18. |
 
 ## 15. Slip budget per gate
 
 | Gate | Critical PRs | Slack PRs allocated | Slip absorb capacity |
 |---|---:|---:|---|
 | G0a | 28 (incl. 3 pre-flight) | 1 | 1 PR slip = 1 week slip; no buffer |
-| G0b | 41 | 11 | ~2 weeks slip absorbed within gate |
-| G0c | 38 | 0 | None (tight gate) — pre-allocate from G0b slack if needed |
+| G0b | 47 (41 + 6 §3.19 PRs B1-B6) | 5 (down from 11; §3.19 absorbed 6) | ~1 week slip absorbed within gate; tighter than original G0b plan |
+| G0c | 45 (38 + 7 §3.19 PRs C1-C7) | 0 | None (very tight gate) — pre-allocate from G0b slack OR extend by 1 week (push G1 from week 18 → week 19) if needed |
 | G1 | 28 | 0 | None — G1 has dense pack work; consider extending to 7 weeks if PR throughput < target |
 | G2 | 35 | 3 | Modest |
 | G3 | 11 | 11 | Largest slack — recovery window after dense G2 |
@@ -459,15 +478,16 @@ This chain is ~115 PRs long. At a sustained throughput of 5 PRs/week on the crit
 
 Before PR-001 ships, all of the following MUST be true:
 
-1. ✅ All 18 substrate worked examples specified at artifact level (§13.2-§13.19) — landed at `78ed4d3`
+1. ✅ All 19 substrate worked examples specified at artifact level (§13.2-§13.20) — §3.1-§3.18 landed `78ed4d3`; §3.19 added 2026-05-18
 2. ✅ All 4 pack composition specs landed (§14.1-§14.4) — landed at `78ed4d3`
 3. ✅ All 30 workflow state-machine deep dives complete (§15.1-§15.4) — landed at `78ed4d3`
 4. ✅ All 35 marquee end-to-end specs landed (§16.1-§16.8) — landed at `78ed4d3`
 5. ✅ **§1.1 precondition #1 cleared** — W2 Stream 1 role-code/role-id auth resolution + migration/package coherence + 13-scanner baseline green. Evidence: tag `phase3-w2-complete` (commit `fe71976`), merged to master via PR sequence closing 2026-05-17.
 6. 🔄 **§1.1 preconditions #2 + #3 embedded as G0a pre-flight PRs A1/A2/A3** (see §3 above) — no longer separate operator action items; they are the first executable PRs.
-7. ✅ **Canon amendments listed in §8 of design spec** — each substrate worked example commits its canon amendment as part of its final PR (§13.7 PR-6 commits canon §32; §13.8 PR-8 commits canon §33; etc.). Drafts already inline in the design spec's §24 amendment ledger. Per-substrate PRs land them incrementally; no separate pre-G0a canon work needed.
+7. 🔄 **§3.19 universal customization override embedded as G0b PRs B1-B6 + G0c PRs C1-C7** — all 9 surface adapters + upgrade classifier + scanner must be green by G0c close before G1 pack work begins. Founder direction 2026-05-18: "platform capabilities must all be ready before the pack work starts."
+8. ✅ **Canon amendments listed in §8 of design spec** — each substrate worked example commits its canon amendment as part of its final PR (§13.7 PR-6 commits canon §32; §13.8 PR-8 commits canon §33; §13.20 PR-13 commits canon §45). Drafts already inline in the design spec's §24 amendment ledger. Per-substrate PRs land them incrementally; no separate pre-G0a canon work needed.
 
-**Status:** All preconditions ✅ or embedded in PR sequence. **G0a is startable.** Pre-flight PRs A1+A2+A3 are the first 3 PRs of week 1; substrate PR-001 (taskable capability) lands when A3 acceptance memo is signed.
+**Status:** All preconditions ✅ or embedded in PR sequence. **G0a is startable.** Pre-flight PRs A1+A2+A3 are the first 3 PRs of week 1; substrate PR-001 (taskable capability) lands when A3 acceptance memo is signed. §3.19 customization override completion (PR-C7) is the latest substrate gate before G1 begins (week 18).
 
 ## 17. Notes for AI agent execution
 
@@ -491,4 +511,4 @@ AI agents executing this plan MUST NOT:
 
 This plan is a living document. As PRs land, mark them ✅ in the per-gate tables. When the design spec is amended (e.g., new canon section), update the corresponding "Spec ref" column. The plan's "Depends" column is the authoritative source for cross-PR ordering during execution.
 
-**Status:** Implementation-ready as of `78ed4d3` (2026-05-17). **§1.1 preconditions cleared 2026-05-17** (precondition #1 by W2 wave completion; preconditions #2 + #3 embedded as pre-flight PR-A1/A2/A3 at start of G0a). **G0a is startable.** Next operator action: kick off G0a pre-flight PR-A1 (pack-validator capability contract extension).
+**Status:** Implementation-ready as of `78ed4d3` (2026-05-17). **§1.1 preconditions cleared 2026-05-17** (precondition #1 by W2 wave completion; preconditions #2 + #3 embedded as pre-flight PR-A1/A2/A3 at start of G0a). **§3.19 universal customization override added 2026-05-18** (covers the customization-vs-upgrade moat across all 9 surfaces; embedded as G0b PRs B1-B6 + G0c PRs C1-C7 per founder direction "platform capabilities must all be ready before the pack work starts"). **G0a is startable.** Next operator action: kick off G0a pre-flight PR-A1 (pack-validator capability contract extension).
