@@ -2,7 +2,9 @@
 
 _Generated_ from `tools/scanners/entity-schema-manifest.json` + `tools/scanners/cross-domain-allowlist.json`. **Do not edit by hand.** Regenerate with `npx tsx tools/scanners/generate-schema-ownership-map.ts`.
 
-## Domain schemas
+## Instance plane — Domain schemas
+
+`apps/api` reads from the customer-instance DB. Each domain has its own schema (canon §17 modular monolith).
 
 ### `notify`
 
@@ -214,9 +216,9 @@ _Generated_ from `tools/scanners/entity-schema-manifest.json` + `tools/scanners/
 - `metadata.workspace_pages`
 - `metadata.workspace_variants`
 
-## Public-schema exceptions
+## Instance plane — Public-schema exceptions
 
-Tables intentionally kept in `public` (cross-domain shared or instance-wide singleton):
+Tables intentionally kept in `public` on the instance DB (cross-domain shared or instance-wide singleton):
 
 - `public.access_audit_logs`
 - `public.access_condition_groups`
@@ -250,6 +252,26 @@ Tables intentionally kept in `public` (cross-domain shared or instance-wide sing
 - `public.user_sessions`
 - `public.users`
 - `public.view_configurations`
+
+## Control plane — Schemas
+
+`apps/control-plane` reads from a separate DB (canon §18 — traditional multi-tenant admin app, not subject to the instance schema split). All tables live in `public`.
+
+### `controlPlane.public`
+
+- `public.control_plane_audit_log`
+- `public.control_plane_users`
+- `public.customers`
+- `public.global_settings`
+- `public.instance_metrics`
+- `public.instances`
+- `public.key_metadata`
+- `public.licenses`
+- `public.pack_registry`
+- `public.refresh_tokens`
+- `public.revoked_tokens`
+- `public.subscriptions`
+- `public.terraform_jobs`
 
 ## Allowlisted cross-domain relations
 

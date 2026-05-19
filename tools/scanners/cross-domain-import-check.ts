@@ -34,7 +34,43 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 
-interface Manifest { [schema: string]: string[] }
+/**
+ * Per-plane manifest shape (W2 follow-up round 3). Pre-round-3 the
+ * manifest was a flat `{ [schema]: tables[] }` map; round 3 wrapped it
+ * under `instance` and added a `controlPlane` sibling so the entity-
+ * schema scanner could validate both planes against the schemas they
+ * actually use. Cross-domain import-check operates on the INSTANCE
+ * plane only — control-plane entities live in a separate
+ * `libs/control-plane-db/` tree that is its own dependency graph
+ * (canon §17, §18) and cross-domain rules don't apply to it.
+ *
+ * Loader below supports both shapes: a manifest with a top-level
+ * `instance` key is treated as the new per-plane form (instance
+ * section is used); a manifest without it is treated as the legacy
+ * flat form.
+ */
+interface PerPlaneManifest {
+  _version?: number;
+  $comment?: string;
+  instance?: { [schema: string]: string[] };
+  controlPlane?: { [schema: string]: string[] };
+}
+interface FlatManifest { [schema: string]: string[] }
+type Manifest = FlatManifest;
+
+function loadManifest(path: string): Manifest {
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as PerPlaneManifest | FlatManifest;
+  if (raw && typeof raw === 'object' && 'instance' in raw && raw.instance) {
+    return raw.instance as Manifest;
+  }
+  // Filter out any non-array top-level keys ($comment / _version / etc.).
+  const flat = raw as FlatManifest & Record<string, unknown>;
+  const out: Manifest = {};
+  for (const [k, v] of Object.entries(flat)) {
+    if (Array.isArray(v)) out[k] = v as string[];
+  }
+  return out;
+}
 interface AllowlistEntry { from: string; to: string; rationale: string; addedBy: string; addedAt: string }
 interface Allowlist { entries: AllowlistEntry[] }
 
@@ -103,7 +139,7 @@ function extractImports(file: string): { path: string; line: number }[] {
 
 function main() {
   const { root, manifest: manifestPath, allowlist: allowlistPath, ci } = parseArgs(process.argv.slice(2));
-  const manifest: Manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const manifest: Manifest = loadManifest(manifestPath);
   const tableToSchema = new Map<string, string>();
   for (const [s, ts] of Object.entries(manifest)) for (const t of ts) tableToSchema.set(t, s);
   const allowlist: Allowlist = JSON.parse(readFileSync(allowlistPath, 'utf8'));

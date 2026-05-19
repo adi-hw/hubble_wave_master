@@ -78,6 +78,16 @@ servicenow-*.pdf
 .claude/*.local.md
 .claude/worktrees/
 
+# Local git worktrees rooted under the repo. The worktree's nested
+# `apps/` and `libs/` directories carry duplicate Nx project entries
+# (each worktree is a full repo checkout), and Nx's project graph +
+# Jest's project resolver scan the repo root recursively — every
+# nested worktree poisons workspace-level test commands with
+# duplicate-project errors. Move worktrees outside the repo if
+# possible; this rule is the seatbelt for ones that land inside.
+phase4-wt/
+*-wt/
+
 # Terraform
 .terraform/
 *.tfstate

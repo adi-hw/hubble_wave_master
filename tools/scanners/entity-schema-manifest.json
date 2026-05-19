@@ -1,5 +1,8 @@
 {
-  "notify": [
+  "$comment": "Per-plane entity schema ownership manifest. The scanner detects which plane an entity file belongs to by path (libs/control-plane-db/ → controlPlane; else → instance) and validates the entity's @Entity() schema declaration against the matching plane's section. The pre-W2-followup-round-3 flat-keyed schema (schema-name → tables[]) is preserved under the `instance` wrapper; control-plane entities now have explicit ownership rules under `controlPlane` instead of being skipped wholesale. A `_version: 2` marker disambiguates this shape from the flat form for any tooling that reads the file directly.",
+  "_version": 2,
+  "instance": {
+    "notify": [
     "notification_templates",
     "notification_queue",
     "notification_history",
@@ -234,5 +237,23 @@
     "user_preferences",
     "user_sessions",
     "view_configurations"
-  ]
+    ]
+  },
+  "controlPlane": {
+    "public": [
+      "control_plane_audit_log",
+      "control_plane_users",
+      "customers",
+      "global_settings",
+      "instance_metrics",
+      "instances",
+      "key_metadata",
+      "licenses",
+      "pack_registry",
+      "refresh_tokens",
+      "revoked_tokens",
+      "subscriptions",
+      "terraform_jobs"
+    ]
+  }
 }
